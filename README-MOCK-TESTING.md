@@ -14,7 +14,7 @@ Este documento explica como testar os dados mock implementados no sistema de an√
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "rafaelsinosak@relable.com",
+    "email": "rafaelsinosak@gmail.com",
     "password": "pwned"
   }'
 ```

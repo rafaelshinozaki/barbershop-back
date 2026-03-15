@@ -1,8 +1,8 @@
-# API Backend
+# Barbershop Backend API
 
 ## Descrição
 
-Este é o backend de uma aplicação construída com o framework [NestJS](https://nestjs.com/), usando Prisma como ORM e outras dependências para autenticação, validação e formatação de código.
+Backend do sistema de gerenciamento de barbearias, construído com o framework [NestJS](https://nestjs.com/), usando Prisma como ORM. Oferece autenticação, gestão de barbearias, agendamentos, clientes, pagamentos via Stripe e outras funcionalidades.
 
 ## Instalação
 
@@ -218,4 +218,4 @@ As rotas de pagamento exigem autenticação e verificam se o usuário possui uma
 
 ## Licença
 
-Relable © 2024. Todos os direitos reservados.
+Barbershop © 2024. Todos os direitos reservados.

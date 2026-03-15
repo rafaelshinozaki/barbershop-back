@@ -24,7 +24,7 @@ export class NotificationsResolver {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Query(() => [NotificationWithUser])
   async allNotificationsWithUser(
     @Args('limit', { type: () => Int, defaultValue: 100 }) limit: number,
@@ -93,7 +93,7 @@ export class NotificationsResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => UserNotification)
   async createNotification(
     @CurrentUser() user: UserDTO,
@@ -115,7 +115,7 @@ export class NotificationsResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => CommonResponse)
   async createBatchNotifications(
     @CurrentUser() user: UserDTO,

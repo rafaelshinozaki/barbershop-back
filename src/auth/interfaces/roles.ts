@@ -1,8 +1,8 @@
 // src\auth\interfaces\roles.ts
 export enum Role {
-  USER = 'User',
-  ADMIN = 'Admin',
-  MANAGER = 'Manager',
+  SYSTEM_ADMIN = 'SystemAdmin',
+  SYSTEM_MANAGER = 'SystemManager',
   BARBERSHOP_OWNER = 'BarbershopOwner',
+  BARBERSHOP_MANAGER = 'BarbershopManager',
   BARBERSHOP_EMPLOYEE = 'BarbershopEmployee',
 }

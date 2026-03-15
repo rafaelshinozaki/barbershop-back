@@ -7,7 +7,7 @@ import { Role } from '../auth/interfaces/roles';
 
 @Controller('backoffice')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.MANAGER)
+@Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
 export class BackofficeController {
   constructor(private readonly backofficeService: BackofficeService) {}
 

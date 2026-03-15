@@ -73,8 +73,8 @@ async function bootstrap() {
 
   // Swager/OpenAPI
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Relable Backend API')
-    .setDescription('API documentation for the Relable backend')
+    .setTitle('Barbershop Backend API')
+    .setDescription('API documentation for the Barbershop backend')
     .setVersion('1.0')
     .addCookieAuth('Authentication')
     .build();
@@ -108,8 +108,8 @@ async function bootstrap() {
     'http://localhost:5176', // front em dev (porta alternativa)
     'http://localhost:5177', // front em dev (porta alternativa)
     'http://localhost:5178', // front em dev (porta alternativa)
-    'https://relable-front.vercel.app', // domínio Vercel
-    'https://relable.zeero.dev.br', // domínio de produção
+    'https://barbershop-front.vercel.app', // domínio Vercel
+    'https://barbershop.zeero.dev.br', // domínio de produção
     'https://zeero.dev.br', // domínio alternativo
   ];
 

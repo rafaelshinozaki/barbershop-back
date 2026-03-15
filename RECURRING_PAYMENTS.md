@@ -1,8 +1,8 @@
-# Sistema de Cobrança Recorrente - Relable
+# Sistema de Cobrança Recorrente - Barbershop
 
 ## Visão Geral
 
-O sistema de cobrança recorrente do Relable foi implementado para processar automaticamente pagamentos mensais e anuais dos usuários, garantindo a continuidade dos serviços sem intervenção manual.
+O sistema de cobrança recorrente do Barbershop foi implementado para processar automaticamente pagamentos mensais e anuais dos usuários, garantindo a continuidade dos serviços sem intervenção manual.
 
 ## Como Funciona
 

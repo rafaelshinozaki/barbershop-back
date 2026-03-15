@@ -1,4 +1,4 @@
-# Exemplos Práticos do Relable CLI
+# Exemplos Práticos do Barbershop CLI
 
 Este arquivo contém exemplos práticos de como usar o CLI em diferentes cenários.
 
@@ -26,10 +26,10 @@ npm run cli -- db seed
 
 ```bash
 npm run cli -- user create \
-  --email admin@relable.com \
+  --email admin@barbershop.com \
   --password Admin123! \
   --name "Administrador" \
-  --role ADMIN \
+  --role SystemAdmin \
   --verified
 ```
 
@@ -47,10 +47,10 @@ npm run cli -- stripe sync-plans
 npm run cli -- user list
 ```
 
-### Listar Apenas Administradores
+### Listar Apenas Administradores do Sistema
 
 ```bash
-npm run cli -- user list --role ADMIN
+npm run cli -- user list --role SystemAdmin
 ```
 
 ### Listar Usuários Verificados
@@ -59,21 +59,21 @@ npm run cli -- user list --role ADMIN
 npm run cli -- user list --verified
 ```
 
-### Criar Usuário Manager
+### Criar Usuário Gerente do Sistema
 
 ```bash
 npm run cli -- user create \
-  --email manager@relable.com \
+  --email manager@barbershop.com \
   --password Manager123! \
-  --name "Gerente" \
-  --role MANAGER \
+  --name "Gerente do Sistema" \
+  --role SystemManager \
   --verified
 ```
 
 ### Atualizar Role de Usuário
 
 ```bash
-npm run cli -- user update --id 5 --role MANAGER
+npm run cli -- user update --id 5 --role BarbershopManager
 ```
 
 ### Verificar Estatísticas de Usuários
@@ -158,7 +158,7 @@ npm run cli -- stripe check-payments --days 7 --sync
 
 ```bash
 npm run cli -- stripe create-webhook \
-  --url https://api.relable.com/webhooks/stripe \
+  --url https://api.barbershop.com/webhooks/stripe \
   --events "payment_intent.succeeded,payment_intent.payment_failed"
 ```
 
@@ -401,7 +401,7 @@ npm run cli -- system cleanup --all
 #!/bin/bash
 # create-test-user.sh
 
-EMAIL="test@relable.com"
+EMAIL="test@barbershop.com"
 PASSWORD="Test123!"
 
 npm run cli -- user create \

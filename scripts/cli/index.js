@@ -13,8 +13,8 @@ const program = new Command();
 
 // Configuração básica do programa
 program
-  .name('relable-cli')
-  .description('CLI para gerenciamento do backend Relable')
+  .name('barbershop-cli')
+  .description('CLI para gerenciamento do backend Barbershop')
   .version('1.0.0');
 
 // Adicionar comandos
@@ -28,7 +28,7 @@ program.addHelpText(
   'after',
   `
 Exemplos:
-  $ relable-cli user create --email admin@example.com --password 123456
+  $ barbershop-cli user create --email admin@example.com --password 123456
   $ relable-cli db migrate
   $ relable-cli stripe sync-plans
   $ relable-cli system health

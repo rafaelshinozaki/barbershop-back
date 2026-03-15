@@ -31,14 +31,14 @@ export class CouponsResolver {
 
   @Query(() => [Coupon], { name: 'allCoupons' })
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async getAllCoupons() {
     return await this.couponsService.getAllCoupons();
   }
 
   @Query(() => CouponStats, { name: 'couponStats' })
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async getCouponStats(@Args('id') id: number) {
     return await this.couponsService.getCouponUsageStats(id);
   }
@@ -66,7 +66,7 @@ export class CouponsResolver {
 
   @Mutation(() => Coupon, { name: 'createCoupon' })
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async createCoupon(@Args('data') data: CreateCouponInput) {
     const couponData = {
       ...data,
@@ -77,7 +77,7 @@ export class CouponsResolver {
 
   @Mutation(() => Coupon, { name: 'updateCoupon' })
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async updateCoupon(@Args('id') id: number, @Args('data') data: UpdateCouponInput) {
     const updateData = {
       ...data,
@@ -88,7 +88,7 @@ export class CouponsResolver {
 
   @Mutation(() => DeleteCouponResponse, { name: 'deleteCoupon' })
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async deleteCoupon(@Args('id') id: number) {
     await this.couponsService.deleteCoupon(id);
     return { success: true, message: 'Cupom deletado com sucesso' };

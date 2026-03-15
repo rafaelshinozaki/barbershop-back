@@ -73,14 +73,14 @@ export class NotificationsController {
   // Endpoints administrativos (apenas para admins)
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   async createNotification(@Body() createNotificationDto: CreateNotificationDto) {
     return this.notificationsService.createNotification(createNotificationDto);
   }
 
   @Post('create-for-users')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   async createNotificationsForUsers(
     @Body() createBatchNotificationsDto: CreateBatchNotificationsDto,
   ) {
@@ -90,7 +90,7 @@ export class NotificationsController {
 
   @Post('create-for-all')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   async createNotificationForAllActiveUsers(
     @Body() createAllNotificationsDto: CreateAllNotificationsDto,
   ) {

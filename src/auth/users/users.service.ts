@@ -155,7 +155,7 @@ export class UserService {
       // Transformar o objeto role para string (nome) para compatibilizar com o GraphQL
       const transformedUsers = users.map((user) => ({
         ...user,
-        role: user.role?.name || 'User',
+        role: user.role?.name || 'BarbershopOwner',
         membership: user.membership || 'FREE',
         isActive: user.isActive ?? true,
       }));
@@ -185,7 +185,7 @@ export class UserService {
       const hashedPassword = await bcrypt.hash(userData.password, 10);
 
       // Buscar role (padrão User ou roleName quando fornecido, ex: BarbershopOwner)
-      const roleName = (userData as any).roleName ?? Role.USER;
+      const roleName = (userData as any).roleName ?? Role.BARBERSHOP_OWNER;
       const defaultRole = await this.prisma.role.findFirst({
         where: { name: roleName },
       });
@@ -304,9 +304,9 @@ export class UserService {
       try {
         const context = {
           FullName: newUser.fullName,
-          AppName: 'Relable',
-          LoginURL: 'https://app.relable.com/login',
-          SupportEmail: 'suporte@relable.com.br',
+          AppName: 'Barbershop',
+          LoginURL: 'https://app.barbershop.com/login',
+          SupportEmail: 'suporte@barbershop.com.br',
           Year: new Date().getFullYear(),
         };
 
@@ -314,7 +314,7 @@ export class UserService {
           newUser.id,
           'welcome_email',
           context,
-          'Bem-vindo ao Relable',
+          'Bem-vindo ao Barbershop',
           'welcome-email',
           newUser.email,
         );
@@ -582,7 +582,7 @@ export class UserService {
 
     if (!user) {
       const userRole = await this.prisma.role.findFirst({
-        where: { name: Role.USER },
+        where: { name: Role.BARBERSHOP_OWNER },
       });
 
       user = await this.prisma.user.create({
@@ -665,9 +665,9 @@ export class UserService {
       try {
         const context = {
           FullName: user.fullName,
-          AppName: 'Relable',
-          LoginURL: 'https://app.relable.com/login',
-          SupportEmail: 'suporte@relable.com.br',
+          AppName: 'Barbershop',
+          LoginURL: 'https://app.barbershop.com/login',
+          SupportEmail: 'suporte@barbershop.com.br',
           Year: new Date().getFullYear(),
         };
 
@@ -675,7 +675,7 @@ export class UserService {
           user.id,
           'welcome_email',
           context,
-          'Bem-vindo ao Relable',
+          'Bem-vindo ao Barbershop',
           'welcome-email',
           user.email,
         );
@@ -785,7 +785,7 @@ export class UserService {
     // Transformar o objeto role para string (nome) para compatibilizar com o GraphQL
     return {
       ...user,
-      role: user.role?.name || 'User',
+      role: user.role?.name || 'BarbershopOwner',
       membership: user.membership || 'FREE',
       isActive: user.isActive ?? true,
     };
@@ -821,8 +821,8 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
-      SupportEmail: 'suporte@relable.com.br',
+      AppName: 'Barbershop',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -863,11 +863,11 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable - ' + token,
-      // AppName: 'Relable',
+      AppName: 'Barbershop - ' + token,
+      // AppName: 'Barbershop',
       ResetURL: resetURL,
       ExpirationHours: 2,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -985,8 +985,8 @@ export class UserService {
     // Enviar email de confirmação
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
-      SupportEmail: 'suporte@relable.com.br',
+      AppName: 'Barbershop',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -1038,8 +1038,8 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
-      SupportEmail: 'suporte@relable.com.br',
+      AppName: 'Barbershop',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -1406,9 +1406,9 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -1548,8 +1548,8 @@ export class UserService {
 
       const context = {
         FullName: user.fullName,
-        AppName: 'Relable',
-        SupportEmail: 'suporte@relable.com.br',
+        AppName: 'Barbershop',
+        SupportEmail: 'suporte@barbershop.com.br',
         Year: new Date().getFullYear(),
       };
 
@@ -1582,9 +1582,9 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -1636,9 +1636,9 @@ export class UserService {
 
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -1803,7 +1803,7 @@ export class UserService {
       // Transformar o objeto role para string (nome) para compatibilizar com o GraphQL
       const transformedUsers = users.map((user) => ({
         ...user,
-        role: user.role?.name || 'User',
+        role: user.role?.name || 'BarbershopOwner',
         membership: user.membership || 'FREE',
         isActive: user.isActive ?? true,
       }));
@@ -1976,9 +1976,9 @@ export class UserService {
       success: [] as Array<{ email: string; fullName: string }>,
     };
 
-    // Buscar role padrão (USER)
+    // Buscar role padrão (BarbershopOwner)
     const userRole = await this.prisma.role.findFirst({
-      where: { name: Role.USER },
+      where: { name: Role.BARBERSHOP_OWNER },
     });
 
     if (!userRole) {
@@ -2120,9 +2120,9 @@ export class UserService {
         try {
           const context = {
             FullName: newUser.fullName,
-            AppName: 'Relable',
-            LoginURL: 'https://app.relable.com/login',
-            SupportEmail: 'suporte@relable.com.br',
+            AppName: 'Barbershop',
+            LoginURL: 'https://app.barbershop.com/login',
+            SupportEmail: 'suporte@barbershop.com.br',
             Year: new Date().getFullYear(),
           };
 
@@ -2130,7 +2130,7 @@ export class UserService {
             newUser.id,
             'welcome_email',
             context,
-            'Bem-vindo ao Relable',
+            'Bem-vindo ao Barbershop',
             'welcome-email',
             newUser.email,
           );
@@ -2268,9 +2268,9 @@ export class UserService {
       if (userData) {
         const context = {
           FullName: userData.fullName,
-          AppName: 'Relable',
-          UpgradeURL: 'https://app.relable.com/plans',
-          SupportEmail: 'suporte@relable.com.br',
+          AppName: 'Barbershop',
+          UpgradeURL: 'https://app.barbershop.com/plans',
+          SupportEmail: 'suporte@barbershop.com.br',
           Year: new Date().getFullYear(),
         };
 

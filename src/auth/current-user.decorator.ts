@@ -12,10 +12,11 @@ const getCurrentUserByContext = (context: ExecutionContext): UserDTO => {
     const gqlContext = GqlExecutionContext.create(context);
     const contextData = gqlContext.getContext();
 
-    // Log apenas informações essenciais
-    logger.logEssential('GraphQL context data', contextData, ['user', 'req']);
+    // Log apenas informações essenciais (NUNCA incluir 'req' - contém referências circulares Socket/HTTPParser)
     logger.logEssential('GraphQL context user', contextData.user, ['id', 'email']);
-    logger.logEssential('GraphQL context req.user', contextData.req?.user, ['id', 'email']);
+    if (!contextData.user && contextData.req?.user) {
+      logger.logEssential('GraphQL context req.user', contextData.req.user, ['id', 'email']);
+    }
 
     return contextData.user || contextData.req?.user;
   }

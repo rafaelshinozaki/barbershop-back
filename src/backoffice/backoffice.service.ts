@@ -118,23 +118,23 @@ export class BackofficeService {
         // Map role names to GraphQL enum values
         let roleEnum: string;
         switch (user.role?.name) {
-          case 'Admin':
           case 'SystemAdmin':
-            roleEnum = 'ADMIN';
+            roleEnum = 'SYSTEM_ADMIN';
             break;
-          case 'Manager':
           case 'SystemManager':
-            roleEnum = 'MANAGER';
+            roleEnum = 'SYSTEM_MANAGER';
             break;
           case 'BarbershopOwner':
             roleEnum = 'BARBERSHOP_OWNER';
             break;
+          case 'BarbershopManager':
+            roleEnum = 'BARBERSHOP_MANAGER';
+            break;
           case 'BarbershopEmployee':
             roleEnum = 'BARBERSHOP_EMPLOYEE';
             break;
-          case 'User':
           default:
-            roleEnum = 'USER';
+            roleEnum = 'BARBERSHOP_OWNER';
             break;
         }
         roleCounts.set(roleEnum, (roleCounts.get(roleEnum) || 0) + 1);
@@ -717,13 +717,11 @@ export class BackofficeService {
       // Map role names to GraphQL enum values
       let roleEnum: string;
       switch (user.role?.name) {
-        case 'Admin':
         case 'SystemAdmin':
-          roleEnum = 'ADMIN';
+          roleEnum = 'SYSTEM_ADMIN';
           break;
-        case 'Manager':
         case 'SystemManager':
-          roleEnum = 'MANAGER';
+          roleEnum = 'SYSTEM_MANAGER';
           break;
         case 'BarbershopOwner':
           roleEnum = 'BARBERSHOP_OWNER';
@@ -731,9 +729,11 @@ export class BackofficeService {
         case 'BarbershopEmployee':
           roleEnum = 'BARBERSHOP_EMPLOYEE';
           break;
-        case 'User':
+        case 'BarbershopManager':
+          roleEnum = 'BARBERSHOP_MANAGER';
+          break;
         default:
-          roleEnum = 'USER';
+          roleEnum = 'BARBERSHOP_OWNER';
           break;
       }
 

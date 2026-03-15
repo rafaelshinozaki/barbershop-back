@@ -7,7 +7,7 @@ const axios = require('axios');
 
 const CONFIG = {
   API_URL: process.env.API_URL || 'http://localhost:3020',
-  EMAIL: 'rafael.lima@relable.com',
+  EMAIL: 'rafael.lima@barbershop.com',
   PASSWORD: 'pwned'
 };
 

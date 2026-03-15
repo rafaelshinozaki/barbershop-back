@@ -155,7 +155,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Remove user' })
   @ApiResponse({ status: 200, description: 'User removed' })
   @Post('remove')
@@ -164,7 +164,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'List users with filters' })
   @ApiResponse({ status: 200, description: 'List of users' })
   @ApiQuery({ name: 'plan', required: false })
@@ -201,7 +201,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Activate or deactivate user' })
   @ApiResponse({ status: 200, description: 'User status updated' })
   @Post('admin/set-active')
@@ -210,7 +210,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Activate or deactivate multiple users' })
   @ApiResponse({ status: 200, description: 'Users status updated' })
   @Post('admin/set-multiple-active')
@@ -219,7 +219,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Change multiple users plan' })
   @ApiResponse({ status: 200, description: 'Users plan changed' })
   @Post('admin/change-multiple-plans')
@@ -228,7 +228,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Update payment status' })
   @ApiResponse({ status: 200, description: 'Payment status updated' })
   @Post('admin/update-payment-status')
@@ -237,7 +237,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Change user plan' })
   @ApiResponse({ status: 200, description: 'User plan changed' })
   @Post('admin/change-plan')
@@ -360,7 +360,7 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Import users from CSV' })
   @ApiResponse({ status: 200, description: 'Users imported' })
   @Post('admin/import-csv')

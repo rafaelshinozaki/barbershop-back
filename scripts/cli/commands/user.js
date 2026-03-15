@@ -13,7 +13,7 @@ function userCommands(program) {
     .requiredOption('-e, --email <email>', 'Email do usuário')
     .requiredOption('-p, --password <password>', 'Senha do usuário')
     .option('-n, --name <name>', 'Nome do usuário')
-    .option('-r, --role <role>', 'Role do usuário (USER, ADMIN, MANAGER)', 'USER')
+    .option('-r, --role <role>', 'Role do usuário (SystemManager, SystemAdmin, BarbershopOwner, BarbershopManager, BarbershopEmployee)', 'BarbershopOwner')
     .option('--verified', 'Marcar usuário como verificado', false)
     .action(async (options) => {
       try {
@@ -191,8 +191,8 @@ function userCommands(program) {
           await Promise.all([
             prisma.user.count(),
             prisma.user.count({ where: { emailVerified: true } }),
-            prisma.user.count({ where: { role: 'ADMIN' } }),
-            prisma.user.count({ where: { role: 'MANAGER' } }),
+            prisma.user.count({ where: { role: { name: 'SystemAdmin' } } }),
+            prisma.user.count({ where: { role: { name: 'SystemManager' } } }),
             prisma.user.count({
               where: {
                 createdAt: {

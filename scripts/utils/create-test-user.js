@@ -9,13 +9,13 @@ async function createTestUser() {
 
     // Primeiro, vamos verificar se existe um role
     let role = await prisma.role.findFirst({
-      where: { name: 'User' },
+      where: { name: 'BarbershopOwner' },
     });
 
     if (!role) {
       console.log('Creating User role...');
       role = await prisma.role.create({
-        data: { name: 'User' },
+        data: { name: 'BarbershopOwner' },
       });
     }
 

@@ -111,10 +111,25 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       context: ({ req, res }) => ({ req, res, user: req.user }),
+      formatError: (formattedError) => {
+        // Evita "Converting circular structure to JSON" - retorna apenas campos serializáveis
+        try {
+          const ext = formattedError.extensions as Record<string, unknown> | undefined
+          const code = typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined
+          return {
+            message: String(formattedError.message ?? 'Internal server error'),
+            locations: formattedError.locations,
+            path: formattedError.path,
+            extensions: code !== undefined ? { code } : undefined,
+          }
+        } catch {
+          return { message: 'Internal server error' }
+        }
+      },
       playground: true,
       introspection: true,
-      debug: true, // Adicionar debug para ver erros
-      sortSchema: true, // Ordenar schema para melhor legibilidade
+      debug: true,
+      sortSchema: true,
     }),
     AuthModule,
     PrismaModule,

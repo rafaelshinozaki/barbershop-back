@@ -95,7 +95,7 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @ApiOperation({ summary: 'Cancel user subscription' })
   @ApiResponse({ status: 200, description: 'Subscription canceled' })
   @Delete('cancel/:userId')

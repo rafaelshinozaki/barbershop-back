@@ -1,6 +1,6 @@
-# Relable CLI
+# Barbershop CLI
 
-Interface de linha de comando para gerenciamento do backend Relable.
+Interface de linha de comando para gerenciamento do backend Barbershop.
 
 ## Instalação
 
@@ -21,20 +21,20 @@ Gerenciamento de usuários do sistema.
 #### Criar usuário
 
 ```bash
-npm run cli user create --email admin@example.com --password 123456 --name "Admin User" --role ADMIN --verified
+npm run cli user create --email admin@example.com --password 123456 --name "Admin User" --role SystemAdmin --verified
 ```
 
 #### Listar usuários
 
 ```bash
 npm run cli user list
-npm run cli user list --limit 20 --role ADMIN --verified
+npm run cli user list --limit 20 --role SystemAdmin --verified
 ```
 
 #### Atualizar usuário
 
 ```bash
-npm run cli user update --id 1 --name "Novo Nome" --role MANAGER --verify
+npm run cli user update --id 1 --name "Novo Nome" --role SystemManager --verify
 ```
 
 #### Deletar usuário
@@ -233,7 +233,7 @@ npm run cli db migrate
 npm run cli db seed
 
 # Criar usuário admin
-npm run cli user create --email admin@relable.com --password admin123 --role ADMIN --verified
+npm run cli user create --email admin@barbershop.com --password admin123 --role SystemAdmin --verified
 
 # Sincronizar planos com Stripe
 npm run cli stripe sync-plans

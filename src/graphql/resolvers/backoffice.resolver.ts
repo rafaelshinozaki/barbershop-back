@@ -54,56 +54,56 @@ export class BackofficeResolver {
   ) {}
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => BackofficeStats)
   async backofficeStats() {
     return this.backofficeService.getStats();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => UserGrowthData)
   async userGrowthData() {
     return this.backofficeService.getUserGrowth();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => RoleDistribution)
   async roleDistribution() {
     return this.backofficeService.getRoleDistribution();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => StatusDistribution)
   async statusDistribution() {
     return this.backofficeService.getStatusDistribution();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => PlanDistribution)
   async planDistribution() {
     return this.backofficeService.getPlanDistribution();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => GeographicAnalysis)
   async geographicAnalysis() {
     return this.backofficeService.getGeographicAnalysis();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => DemographicAnalysis)
   async demographicAnalysis() {
     return this.backofficeService.getDemographicAnalysis();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => ProfessionalSegmentAnalysis)
   async professionalSegmentAnalysis() {
     this.logger.log('professionalSegmentAnalysis resolver called');
@@ -118,14 +118,14 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => CompanyAnalysis)
   async companyAnalysis() {
     return this.backofficeService.getCompanyAnalysis();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => DetailedUsersResponse)
   async usersDetailed(@Args('filters') filters: UsersDetailedFilters) {
     const filtersWithDefaults = {
@@ -137,7 +137,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => BackofficeDashboard)
   async backofficeDashboard() {
     this.logger.log('backofficeDashboard called');
@@ -171,7 +171,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async bulkUserAction(@Args('input') input: BulkUserAction) {
     switch (input.action) {
@@ -193,7 +193,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async setUserActive(
     @Args('userId', { type: () => Int }) userId: number,
@@ -204,7 +204,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async changeUserPlan(
     @Args('userId', { type: () => Int }) userId: number,
@@ -215,7 +215,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async updateUser(@Args('input') input: UpdateUserByAdminInput) {
     const userDto: Partial<UserDTO> = {
@@ -238,7 +238,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async removeUser(@Args('userId', { type: () => Int }) userId: number) {
     await this.userService.removeUser(userId);
@@ -246,7 +246,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => Boolean)
   async sendEmailNotification(@Args('input') input: SendEmailNotificationInput) {
     await this.backofficeService.sendEmailNotification(input);
@@ -254,7 +254,7 @@ export class BackofficeResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => PaginatedEmailHistory)
   async emailHistory(@Args('filters') filters: EmailHistoryFilters) {
     return this.backofficeService.getEmailHistory(filters);

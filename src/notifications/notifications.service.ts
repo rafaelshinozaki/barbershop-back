@@ -258,7 +258,7 @@ export class NotificationsService {
         ...notification,
         user: {
           ...notification.user,
-          role: notification.user.role?.name || 'User',
+          role: notification.user.role?.name || 'BarbershopOwner',
         },
       }));
 

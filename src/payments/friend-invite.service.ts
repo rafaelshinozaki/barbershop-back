@@ -323,9 +323,9 @@ export class FriendInviteService {
       {
         InviterName: invite.inviter.fullName,
         InviteUrl: inviteUrl,
-        AppName: 'Relable',
+        AppName: 'Barbershop',
       },
-      'Convite Especial - Ganhe 1 Mês Grátis no Relable',
+      'Convite Especial - Ganhe 1 Mês Grátis no Barbershop',
       `Friend invite sent to ${invite.friendEmail}`,
       invite.friendEmail,
     );
@@ -344,7 +344,7 @@ export class FriendInviteService {
           InviterName: invite.inviter.fullName,
           FriendName: invite.acceptedByUser.fullName,
           CouponCode: invite.inviterCoupon.code,
-          AppName: 'Relable',
+          AppName: 'Barbershop',
         },
         'Seu convite foi aceito! - 1 Mês Grátis',
         `Friend invite accepted by ${invite.acceptedByUser.email}`,
@@ -359,7 +359,7 @@ export class FriendInviteService {
           FriendName: invite.acceptedByUser.fullName,
           InviterName: invite.inviter.fullName,
           CouponCode: invite.friendCoupon.code,
-          AppName: 'Relable',
+          AppName: 'Barbershop',
         },
         'Convite aceito! - 1 Mês Grátis',
         `Friend invite accepted by ${invite.acceptedByUser.email}`,
@@ -373,7 +373,7 @@ export class FriendInviteService {
         {
           InviterName: invite.inviter.fullName,
           FriendName: invite.acceptedByUser.fullName,
-          AppName: 'Relable',
+          AppName: 'Barbershop',
         },
         'Seu convite foi aceito!',
         `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
@@ -387,7 +387,7 @@ export class FriendInviteService {
         {
           FriendName: invite.acceptedByUser.fullName,
           InviterName: invite.inviter.fullName,
-          AppName: 'Relable',
+          AppName: 'Barbershop',
         },
         'Convite aceito!',
         `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
@@ -407,7 +407,7 @@ export class FriendInviteService {
       {
         InviterName: invite.inviter.fullName,
         FriendName: invite.acceptedByUser.fullName,
-        AppName: 'Relable',
+        AppName: 'Barbershop',
       },
       'Convite não pode ser usado',
       `Friend invite rejected by ${invite.acceptedByUser.email} (existing user)`,
@@ -421,7 +421,7 @@ export class FriendInviteService {
       {
         FriendName: invite.acceptedByUser.fullName,
         InviterName: invite.inviter.fullName,
-        AppName: 'Relable',
+        AppName: 'Barbershop',
       },
       'Convite não pode ser usado',
       `Friend invite rejected by ${invite.acceptedByUser.email} (existing user)`,

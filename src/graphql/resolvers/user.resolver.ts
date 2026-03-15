@@ -114,7 +114,7 @@ export class UserResolver {
     const result = {
       ...userData,
       emailNotification: userData.emailNotification || defaultEmailNotification,
-      role: userData.role?.name || 'User',
+      role: userData.role?.name || 'BarbershopOwner',
       membership: userData.membership || 'FREE',
       isActive: userData.isActive ?? true,
     };
@@ -240,7 +240,7 @@ export class UserResolver {
 
       return {
         ...updatedUser,
-        role: updatedUser.role?.name || 'User',
+        role: updatedUser.role?.name || 'BarbershopOwner',
         membership: updatedUser.membership || 'FREE',
         isActive: updatedUser.isActive ?? true,
       };
@@ -308,7 +308,7 @@ export class UserResolver {
 
     return {
       ...updatedUser,
-      role: updatedUser.role?.name || 'User',
+      role: updatedUser.role?.name || 'BarbershopOwner',
       membership: updatedUser.membership || 'FREE',
       isActive: updatedUser.isActive ?? true,
     };
@@ -348,7 +348,7 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => [User])
   async getAllUsers() {
     return this.userService.getAllUsers();
@@ -370,7 +370,7 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => [User])
   async getUsers() {
     return this.userService.getAllUsers();
@@ -410,14 +410,14 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async removeUser(@Args('userId', { type: () => Int }) userId: number) {
     return this.userService.removeUser(userId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async setUserActive(
     @Args('userId', { type: () => Int }) userId: number,
@@ -427,7 +427,7 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async setMultipleUsersActive(
     @Args('userIds', { type: () => [Int] }) userIds: number[],
@@ -437,7 +437,7 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async changeMultipleUsersPlan(
     @Args('userIds', { type: () => [Int] }) userIds: number[],
@@ -447,7 +447,7 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async changeUserPlan(
     @Args('userId', { type: () => Int }) userId: number,

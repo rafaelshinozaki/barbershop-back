@@ -4,18 +4,18 @@ services:
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: relable
-      POSTGRES_PASSWORD: relable
-      POSTGRES_DB: relable
+      POSTGRES_USER: barbershop
+      POSTGRES_PASSWORD: barbershop
+      POSTGRES_DB: barbershop
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U relable -d relable"]
+      test: ["CMD-SHELL", "pg_isready -U barbershop -d barbershop"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - relable-network
+      - barbershop-network
 
   backend:
     build:
@@ -30,16 +30,16 @@ services:
       - "5555:5555"
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://relable:relable@postgres:5432/relable
+      DATABASE_URL: postgresql://barbershop:barbershop@postgres:5432/barbershop
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - relable-network
+      - barbershop-network
 
 volumes:
   postgres_data:
 
 networks:
-  relable-network:
+  barbershop-network:
     driver: bridge

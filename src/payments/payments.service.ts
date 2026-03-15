@@ -435,9 +435,9 @@ export class PaymentsService {
     if (user) {
       const context = {
         FullName: user.fullName,
-        AppName: 'Relable',
-        ReactivateURL: 'https://app.relable.com/plans',
-        SupportEmail: 'suporte@relable.com.br',
+        AppName: 'Barbershop',
+        ReactivateURL: 'https://app.barbershop.com/plans',
+        SupportEmail: 'suporte@barbershop.com.br',
         Year: new Date().getFullYear(),
       };
 
@@ -933,11 +933,11 @@ export class PaymentsService {
     // Enviar email de confirmação
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       InvoiceID: stripePayment.id,
       Amount: paymentAmount.toFixed(2),
       DueDate: new Date(nextPaymentDate).toLocaleDateString('pt-BR'),
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -986,11 +986,11 @@ export class PaymentsService {
     // Enviar email de notificação de falha
     const context = {
       FullName: user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       PlanName: plan.name,
       Amount: plan.price.toFixed(2),
       Reason: reason,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 

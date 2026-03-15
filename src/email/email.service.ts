@@ -22,7 +22,7 @@ export class EmailService {
     userId: number,
     template: string, // ex: 'welcome_email'
     context: Record<string, any>, // ex: { FullName, AppName, … }
-    subject: string, // ex: 'Bem-vindo ao Relable'
+    subject: string, // ex: 'Bem-vindo ao Barbershop'
     meta: string, // string genérica só para log
     to: string, // ex: 'rafaelsinosak@gmail.com'
   ) {
@@ -47,7 +47,7 @@ export class EmailService {
       const from = this.config.get<string>('EMAIL_FROM') || 'noreply@yourdomain.com';
 
       const emailResponse = await this.mailgun.send({
-        from: `Relable <${from}>`,
+        from: `Barbershop <${from}>`,
         to,
         subject,
         html,

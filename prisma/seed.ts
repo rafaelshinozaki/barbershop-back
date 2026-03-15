@@ -51,55 +51,55 @@ const departments = [
 ];
 
 const roles = [
-  'User',
-  'Manager',
-  'Admin',
+  'SystemManager',
+  'SystemAdmin',
   'BarbershopOwner',
+  'BarbershopManager',
   'BarbershopEmployee',
 ];
 
 const plans = [
   {
     name: 'Basic',
-    description: 'Basic plan with limited features',
+    description: 'Plano básico com recursos limitados',
     price: 9.99,
     billingCycle: 'MONTHLY',
-    features: 'Basic Support, 10 Projects',
+    features: 'Suporte básico, 1 barbearia',
   },
   {
     name: 'Basic',
-    description: 'Basic plan with limited features',
+    description: 'Plano básico com recursos limitados',
     price: 99.99,
     billingCycle: 'YEARLY',
-    features: 'Basic Support, 10 Projects',
+    features: 'Suporte básico, 1 barbearia',
   },
   {
     name: 'Standard',
-    description: 'Standard plan with additional features',
+    description: 'Plano padrão com recursos adicionais',
     price: 19.99,
     billingCycle: 'MONTHLY',
-    features: 'Priority Support, 50 Projects',
+    features: 'Suporte prioritário, até 3 barbearias',
   },
   {
     name: 'Standard',
-    description: 'Standard plan with additional features',
+    description: 'Plano padrão com recursos adicionais',
     price: 189.99,
     billingCycle: 'YEARLY',
-    features: 'Priority Support, 50 Projects',
+    features: 'Suporte prioritário, até 3 barbearias',
   },
   {
     name: 'Premium',
-    description: 'Premium plan with all features',
+    description: 'Plano premium com todos os recursos',
     price: 29.99,
     billingCycle: 'MONTHLY',
-    features: '24/7 Support, Unlimited Projects',
+    features: 'Suporte 24/7, barbearias ilimitadas',
   },
   {
     name: 'Premium',
-    description: 'Premium plan with all features',
+    description: 'Plano premium com todos os recursos',
     price: 284.99,
     billingCycle: 'YEARLY',
-    features: '24/7 Support, Unlimited Projects',
+    features: 'Suporte 24/7, barbearias ilimitadas',
   },
 ];
 
@@ -154,7 +154,7 @@ async function createRandomUser() {
   const lastName = faker.name.lastName();
   return {
     fullName: `${firstName} ${lastName}`,
-    email: faker.internet.email(firstName, lastName, 'relable.com'),
+    email: faker.internet.email(firstName, lastName, 'barbershop.com'),
     provider: 'local',
     phone: faker.phone.number('(###) ###-####'),
     gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
@@ -231,9 +231,24 @@ async function main() {
   try {
     console.log('Starting seed script...');
 
-    // Clean DB
+    // Clean DB (Barbershop/Network first - they reference User)
     console.log('Cleaning database...');
     await prisma.$transaction([
+      prisma.saleItem.deleteMany(),
+      prisma.sale.deleteMany(),
+      prisma.serviceHistory.deleteMany(),
+      prisma.walkInService.deleteMany(),
+      prisma.walkIn.deleteMany(),
+      prisma.appointmentService.deleteMany(),
+      prisma.appointment.deleteMany(),
+      prisma.barberSchedule.deleteMany(),
+      prisma.barberTimeOff.deleteMany(),
+      prisma.barber.deleteMany(),
+      prisma.barbershopService.deleteMany(),
+      prisma.barbershopProduct.deleteMany(),
+      prisma.customer.deleteMany(),
+      prisma.barbershop.deleteMany(),
+      prisma.network.deleteMany(),
       prisma.userNotification.deleteMany(),
       prisma.invalidatedToken.deleteMany(),
       prisma.activeSession.deleteMany(),
@@ -276,7 +291,7 @@ async function main() {
     await prisma.user.create({
       data: {
         provider: 'local',
-        email: 'rafaelsinosak@relable.com',
+        email: 'rafaelsinosak@barbershop.com',
         fullName: 'Rafael Vieira Sinosaki',
         phone: faker.phone.number('(###) ###-####'),
         gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
@@ -353,7 +368,7 @@ async function main() {
             country: 'Brazil',
           },
         },
-        roleId: rs.filter((r) => r.name === 'Admin')[0].id,
+        roleId: rs.filter((r) => r.name === 'SystemAdmin')[0].id,
       },
     });
 
@@ -362,10 +377,10 @@ async function main() {
     await prisma.user.create({
       data: {
         provider: 'local',
-        email: 'rafael.lima@relable.com',
+        email: 'rafael.lima@barbershop.com',
         password: await bcrypt.hash('pwned', 10),
         fullName: 'Rafael Lima',
-        roleId: rs.filter((r) => r.name === 'Admin')[0].id,
+        roleId: rs.filter((r) => r.name === 'SystemAdmin')[0].id,
         phone: faker.phone.number('(###) ###-####'),
         gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
         birthdate: faker.date.birthdate(),
@@ -408,12 +423,12 @@ async function main() {
         email: 'rafaelsinosak@gmail.com',
         password: await bcrypt.hash('Adv88798!', 10),
         fullName: 'Rafael',
-        roleId: rs.filter((r) => r.name === 'User')[0].id,
+        roleId: rs.filter((r) => r.name === 'BarbershopOwner')[0].id,
         phone: '(11) 99999-9999',
         gender: 'Male',
         birthdate: new Date('1990-01-01'),
         idDocNumber: '12345678901',
-        company: 'Relable',
+        company: 'Barbershop',
         professionalSegment: 'IT',
         knowledgeApp: 'LinkedIn',
         readTerms: true,
@@ -454,10 +469,10 @@ async function main() {
     await prisma.user.create({
       data: {
         provider: 'local',
-        email: 'humberto.perinni@relable.com',
+        email: 'jacqueline.mariane@barbershop.com',
         password: await bcrypt.hash('pwned', 10),
-        fullName: 'Humberto Perinni',
-        roleId: rs.filter((r) => r.name === 'Manager')[0].id,
+        fullName: 'Jacqueline Mariane',
+        roleId: rs.filter((r) => r.name === 'SystemManager')[0].id,
         phone: faker.phone.number('(###) ###-####'),
         gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
         birthdate: faker.date.birthdate(),
@@ -502,7 +517,7 @@ async function main() {
           provider: 'local',
           fullName: userData.fullName,
           email: userData.email,
-          roleId: rs.filter((r) => r.name === 'User')[0].id,
+          roleId: rs.filter((r) => r.name === (['BarbershopOwner', 'BarbershopManager', 'BarbershopEmployee'][i % 3]))[0].id,
           password: userData.password,
           gender: userData.gender,
           phone: userData.phone,

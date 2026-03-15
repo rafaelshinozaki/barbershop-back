@@ -1,6 +1,6 @@
-# Testes de Fluxos de Pagamento - Relable
+# Testes de Fluxos de Pagamento - Barbershop
 
-Suite completa de testes para validar todas as implementações e fluxos do sistema de pagamentos do Relable.
+Suite completa de testes para validar todas as implementações e fluxos do sistema de pagamentos do Barbershop.
 
 ## 📁 Estrutura
 
@@ -111,14 +111,14 @@ Testa integração com Stripe:
 
 O módulo `auth.js` gerencia a autenticação automática usando credenciais locais:
 
-- **Email:** `rafael.lima@relable.com`
+- **Email:** `rafael.lima@barbershop.com`
 - **Senha:** `pwned`
 
 ### Configuração
 ```javascript
 const CONFIG = {
   API_URL: process.env.API_URL || 'http://localhost:3020',
-  EMAIL: 'rafael.lima@relable.com',
+  EMAIL: 'rafael.lima@barbershop.com',
   PASSWORD: 'pwned'
 };
 ```
@@ -177,7 +177,7 @@ Edite `auth.js`:
 ```javascript
 const CONFIG = {
   API_URL: process.env.API_URL || 'http://localhost:3020',
-  EMAIL: 'seu-email@relable.com',
+  EMAIL: 'seu-email@barbershop.com',
   PASSWORD: 'sua-senha'
 };
 ```

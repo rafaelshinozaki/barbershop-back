@@ -26,7 +26,7 @@ export class CouponsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async createCoupon(
     @Body()
     data: {
@@ -47,7 +47,7 @@ export class CouponsController {
 
   @Get()
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async getAllCoupons() {
     return await this.couponsService.getAllCoupons();
   }
@@ -59,28 +59,28 @@ export class CouponsController {
 
   @Get(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async getCouponById(@Param('id') id: string) {
     return await this.couponsService.getCouponById(parseInt(id));
   }
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async updateCoupon(@Param('id') id: string, @Body() data: any) {
     return await this.couponsService.updateCoupon(parseInt(id), data);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async deleteCoupon(@Param('id') id: string) {
     return await this.couponsService.deleteCoupon(parseInt(id));
   }
 
   @Get(':id/stats')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   async getCouponStats(@Param('id') id: string) {
     return await this.couponsService.getCouponUsageStats(parseInt(id));
   }

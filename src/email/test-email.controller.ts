@@ -14,9 +14,9 @@ export class TestEmailController {
   async testReactivationEmail() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       ReactivationURL: 'https://seusite.com/reactivate?token=xyz789',
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -37,8 +37,8 @@ export class TestEmailController {
   async testPasswordChanged() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
-      SupportEmail: 'suporte@relable.com.br',
+      AppName: 'Barbershop',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
     return this.emailService.sendTemplateEmail(
@@ -57,10 +57,10 @@ export class TestEmailController {
   async testPasswordReset() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       ResetURL: 'https://seusite.com/reset?token=abc123',
       ExpirationHours: 2,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -80,9 +80,9 @@ export class TestEmailController {
   async testVerificationCode() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       VerificationCode: '123456',
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -102,9 +102,9 @@ export class TestEmailController {
   async testVerifyEmail() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       VerifyURL: 'https://seusite.com/verify?token=abc123',
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -124,9 +124,9 @@ export class TestEmailController {
   async testWelcomeEmail() {
     const context = {
       FullName: 'Rafael Sinosaki',
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       LoginURL: 'https://seusite.com/login',
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 
@@ -134,7 +134,7 @@ export class TestEmailController {
       1, // userId para log
       'welcome_email', // nome do arquivo welcome_email.hbs
       context,
-      'Bem-vindo ao Relable', // assunto do e-mail
+      'Bem-vindo ao Barbershop', // assunto do e-mail
       'welcome-email', // meta para log
       'rafaelsinosak@gmail.com', // destinatário de teste
     );

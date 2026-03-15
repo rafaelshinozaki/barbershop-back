@@ -1,8 +1,8 @@
-# Sistema de Pagamentos, Assinaturas e Referrals - Relable
+# Sistema de Pagamentos, Assinaturas e Referrals - Barbershop
 
 ## 📋 Visão Geral
 
-O sistema de pagamentos do Relable é um módulo completo que gerencia:
+O sistema de pagamentos do Barbershop é um módulo completo que gerencia:
 - **Assinaturas recorrentes** com integração Stripe
 - **Sistema de cupons** com múltiplos tipos de desconto
 - **Programa de referrals (convite de amigos)** com recompensas automáticas
@@ -567,7 +567,7 @@ await paymentsService.processRecurringPayments();
 - **Redução CAC**: Menor custo de aquisição por cliente
 - **Fidelização**: Recompensas fortalecem relacionamento
 
-Este sistema completo torna o Relable uma plataforma de SaaS robusta e escalável, com múltiplas fontes de receita e estratégias de crescimento integradas ao nível do código.
+Este sistema completo torna o Barbershop uma plataforma de SaaS robusta e escalável, com múltiplas fontes de receita e estratégias de crescimento integradas ao nível do código.
 
 ---
 

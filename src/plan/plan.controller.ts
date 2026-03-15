@@ -29,7 +29,7 @@ export class PlanController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Create a new plan' })
   @ApiResponse({ status: 201, description: 'Plan created' })
   @Post('create')
@@ -38,7 +38,7 @@ export class PlanController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Update a plan' })
   @ApiResponse({ status: 200, description: 'Plan updated' })
   @Post('update')
@@ -47,7 +47,7 @@ export class PlanController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Remove a plan' })
   @ApiResponse({ status: 200, description: 'Plan removed' })
   @Post('remove')
@@ -56,7 +56,7 @@ export class PlanController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Sync plans with Stripe' })
   @ApiResponse({ status: 200, description: 'Plans synced with Stripe' })
   @Post('sync-stripe')

@@ -86,7 +86,7 @@ export class StripeController {
     }
 
     const memberRole = await this.prisma.role.findFirst({
-      where: { name: Role.USER },
+      where: { name: Role.BARBERSHOP_OWNER },
     });
 
     // Atualizar status do usuário
@@ -123,12 +123,12 @@ export class StripeController {
     // Enviar email de confirmação
     const context = {
       FullName: subscription.user.fullName,
-      AppName: 'Relable',
+      AppName: 'Barbershop',
       InvoiceID: invoice.id,
       Amount: (invoice.amount_paid / 100).toFixed(2),
       DueDate: new Date(payment.nextPaymentDate).toLocaleDateString('pt-BR'),
       InvoiceURL: invoice.hosted_invoice_url,
-      SupportEmail: 'suporte@relable.com.br',
+      SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
 

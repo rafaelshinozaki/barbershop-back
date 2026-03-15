@@ -52,7 +52,7 @@ export class PlanResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Plan)
   async createPlan(@Args('input') input: CreatePlanInput) {
     // Convert CreatePlanInput to PlanDTO format expected by service
@@ -69,7 +69,7 @@ export class PlanResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Plan)
   async updatePlan(
     @Args('id', { type: () => Int }) id: number,
@@ -89,7 +89,7 @@ export class PlanResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async removePlan(@Args('id', { type: () => Int }) id: number) {
     await this.planService.removePlan(id);
@@ -97,7 +97,7 @@ export class PlanResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async syncPlansWithStripe() {
     await this.planService.syncWithStripe();

@@ -6,12 +6,12 @@ const prisma = new PrismaClient();
 async function createUser() {
   try {
     let role = await prisma.role.findFirst({
-      where: { name: 'User' },
+      where: { name: 'BarbershopOwner' },
     });
 
     if (!role) {
       role = await prisma.role.create({
-        data: { name: 'User' },
+        data: { name: 'BarbershopOwner' },
       });
     }
 
@@ -27,7 +27,7 @@ async function createUser() {
         gender: 'Male',
         birthdate: new Date('1990-01-01'),
         idDocNumber: '12345678901',
-        company: 'Relable',
+        company: 'Barbershop',
         professionalSegment: 'IT',
         knowledgeApp: 'LinkedIn',
         readTerms: true,
