@@ -1,0 +1,209 @@
+{
+  "info": {
+    "_postman_id": "ec9697cc-1234-4123-a123-aa1234567890",
+    "name": "Relable API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Coleção com todos os endpoints da API Relable"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"senha123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "User logado",
+              "body": "{\n  \"id\": 1,\n  \"email\": \"user@example.com\",\n  \"fullName\": \"Usuário Teste\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verificar 2FA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login", "verify"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "Usuário logado",
+              "body": "{\n  \"id\": 1,\n  \"email\": \"user@example.com\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "Sucesso",
+              "body": "{\n  \"success\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Usuário",
+      "item": [
+        {
+          "name": "Criar usuário",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"senha123\",\n  \"fullName\": \"Usuário Teste\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "create"]
+            }
+          },
+          "response": [
+            {
+              "code": 201,
+              "name": "Criado",
+              "body": "{\n  \"id\": 2,\n  \"email\": \"user@example.com\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Consultar usuário atual",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/user/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["user", "me"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "Dados do usuário",
+              "body": "{\n  \"id\": 2,\n  \"email\": \"user@example.com\",\n  \"fullName\": \"Usuário Teste\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pagamentos",
+      "item": [
+        {
+          "name": "Criar assinatura",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          },
+          "response": [
+            {
+              "code": 201,
+              "name": "Assinatura criada",
+              "body": "{\n  \"subscriptionId\": 1\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Planos",
+      "item": [
+        {
+          "name": "Listar planos",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/plans/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["plans", "all"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "Lista de planos",
+              "body": "[ { \"id\": 1, \"name\": \"Básico\" } ]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Saúde",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          },
+          "response": [
+            {
+              "code": 200,
+              "name": "OK",
+              "body": "{ \"status\": \"ok\" }"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

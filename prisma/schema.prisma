@@ -1,0 +1,656 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int                @id @default(autoincrement())
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deleted_at          DateTime?
+  email               String
+  provider            String             @default("local")
+  password            String
+  fullName            String
+  idDocNumber         String
+  phone               String
+  gender              String
+  birthdate           DateTime
+  company             String
+  jobTitle            String?
+  department          String?
+  professionalSegment String
+  knowledgeApp        String
+  readTerms           Boolean
+  membership          String             @default("FREE")
+  isActive            Boolean            @default(false)
+  stripeCustomerId    String?
+  trialStartDate      DateTime?
+  trialEndDate        DateTime?
+  isInViewerMode      Boolean            @default(false)
+  viewerModeStartDate DateTime?
+  roleId              Int
+  twoFactorEnabled    Boolean            @default(false)
+  photoKey            String?
+  ActiveSession       ActiveSession[]
+  address             Address?
+  emailLogger         EmailLogger[]
+  emailNotification   EmailNotification?
+  acceptedInvites     FriendInvite[]     @relation("AcceptedBy")
+  sentInvites         FriendInvite[]     @relation("Inviter")
+  invalidatedTokens   InvalidatedToken[]
+  LoginHistory        LoginHistory[]
+  subscriptions       Subscription[]
+  role                Role               @relation(fields: [roleId], references: [id])
+  userCoupons         UserCoupon[]
+  notifications       UserNotification[]
+  userSystemConfig    UserSystemConfig?
+  verificationCodes   VerificationCode[]
+  barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
+  barberProfile      Barber?
+  networksOwned      Network[]     @relation("NetworkOwner")
+
+  @@unique([email, provider])
+}
+
+model VerificationCode {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model UserSystemConfig {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  theme       String
+  accentColor String
+  grayColor   String
+  radius      String
+  scaling     String
+  language    String
+  userId      Int      @unique
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Address {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  zipcode      String
+  street       String
+  city         String
+  neighborhood String
+  state        String
+  country      String
+  complement1  String?
+  complement2  String?
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  name  String
+  users User[]
+}
+
+model Plan {
+  id            Int            @id @default(autoincrement())
+  name          String
+  description   String?
+  price         Decimal
+  billingCycle  String
+  features      String?
+  stripePriceId String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deleted_at    DateTime?
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                   Int       @id @default(autoincrement())
+  userId               Int
+  planId               Int
+  startSubDate         DateTime
+  cancelationDate      DateTime?
+  status               String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  payments             Payment[]
+  plan                 Plan      @relation(fields: [planId], references: [id])
+  user                 User      @relation(fields: [userId], references: [id])
+}
+
+model Payment {
+  id              Int          @id @default(autoincrement())
+  subscriptionId  Int
+  amount          Decimal
+  paymentDate     DateTime
+  nextPaymentDate DateTime
+  paymentMethod   String?
+  transactionId   String?
+  status          String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  payerId         String?
+  paymentId       String?
+  appliedCouponId Int?
+  originalAmount  Decimal?
+  discountAmount  Decimal?
+  appliedCoupon   Coupon?      @relation("AppliedCoupons", fields: [appliedCouponId], references: [id])
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id])
+}
+
+model Coupon {
+  id                    Int            @id @default(autoincrement())
+  code                  String         @unique
+  name                  String
+  description           String?
+  type                  String
+  value                 Decimal
+  maxUses               Int?
+  usedCount             Int            @default(0)
+  isActive              Boolean        @default(true)
+  validFrom             DateTime       @default(now())
+  validUntil            DateTime?
+  minSubscriptionMonths Int?
+  applicablePlans       String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  deleted_at            DateTime?
+  friendInvites         FriendInvite[] @relation("FriendCoupon")
+  inviterInvites        FriendInvite[] @relation("InviterCoupon")
+  payments              Payment[]      @relation("AppliedCoupons")
+  userCoupons           UserCoupon[]
+}
+
+model UserCoupon {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  couponId  Int
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  coupon    Coupon    @relation(fields: [couponId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, couponId])
+}
+
+model EmailNotification {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  news        Boolean
+  promotions  Boolean
+  instability Boolean
+  security    Boolean
+  userId      Int      @unique
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model EmailLogger {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  sentTo    String
+  subject   String
+  body      String
+  meta      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model LoginHistory {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  deviceType String
+  browser    String
+  os         String
+  ip         String
+  location   String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model ActiveSession {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  deviceType String
+  browser    String
+  os         String
+  ip         String
+  location   String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model UserNotification {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  title      String
+  message    String
+  type       String
+  isRead     Boolean  @default(false)
+  isNew      Boolean  @default(true)
+  actionUrl  String?
+  actionText String?
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model InvalidatedToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model FriendInvite {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  inviterId        Int
+  friendEmail      String
+  inviteToken      String   @unique
+  status           String   @default("PENDING")
+  expiresAt        DateTime
+  acceptedByUserId Int?
+  inviterCouponId  Int?
+  friendCouponId   Int?
+  sentVia          String?
+  acceptedByUser   User?    @relation("AcceptedBy", fields: [acceptedByUserId], references: [id])
+  friendCoupon     Coupon?  @relation("FriendCoupon", fields: [friendCouponId], references: [id])
+  inviterCoupon    Coupon?  @relation("InviterCoupon", fields: [inviterCouponId], references: [id])
+  inviter          User     @relation("Inviter", fields: [inviterId], references: [id])
+
+  @@unique([inviterId, friendEmail])
+  @@index([inviteToken])
+  @@index([status])
+}
+
+// ============ BARBERSHOP MANAGEMENT ============
+
+model Network {
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  name           String?
+  logoUrl        String?
+  logoKey        String?      // S3 key for franchise logo (separate bucket path from user photos)
+  city           String?
+  description    String?
+  mission        String?
+  foundationYear Int?
+  ownerUserId    Int
+  ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
+  barbershops    Barbershop[]
+  customers      Customer[]
+
+  @@index([ownerUserId])
+}
+
+model Barbershop {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  name           String
+  slug           String    @unique
+  address        String
+  city           String
+  state          String
+  country        String
+  postalCode     String
+  phone          String
+  email          String
+  timezone       String    @default("America/Sao_Paulo")
+  businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
+  isActive       Boolean   @default(true)
+  networkId      Int
+  network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  ownerUserId    Int?      // denormalized for backward compat / quick access
+  ownerUser      User?     @relation("BarbershopOwner", fields: [ownerUserId], references: [id])
+  barbers        Barber[]
+  services       BarbershopService[]
+  products       BarbershopProduct[]
+  appointments   Appointment[]
+  walkIns        WalkIn[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  inventoryItems InventoryItem[]
+
+  @@index([networkId])
+  @@index([ownerUserId])
+  @@index([isActive])
+  @@index([slug])
+}
+
+model Customer {
+  id             Int             @id @default(autoincrement())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  networkId      Int
+  name           String
+  phone          String
+  email          String?
+  birthDate      DateTime?
+  notes          String?
+  isActive       Boolean         @default(true)
+  network        Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  walkIns        WalkIn[]
+
+  @@index([networkId])
+  @@index([networkId, phone])
+  @@index([networkId, email])
+}
+
+model Barber {
+  id             Int              @id @default(autoincrement())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  barbershopId   Int
+  userId         Int?      @unique
+  name           String
+  phone          String
+  email          String?
+  avatarUrl      String?
+  specialization String?
+  isActive       Boolean          @default(true)
+  hireDate       DateTime?
+  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  user           User?            @relation(fields: [userId], references: [id])
+  schedules      BarberSchedule[]
+  timeOffs       BarberTimeOff[]
+  appointments   Appointment[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  walkIns        WalkIn[]
+
+  @@index([barbershopId])
+  @@index([userId])
+  @@index([barbershopId, isActive])
+}
+
+model BarberSchedule {
+  id         Int      @id @default(autoincrement())
+  barberId   Int
+  dayOfWeek  Int      // 0=Sunday, 6=Saturday
+  startTime  String   // "09:00"
+  endTime    String   // "18:00"
+  breakStart String?
+  breakEnd   String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  barber     Barber   @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@unique([barberId, dayOfWeek])
+  @@index([barberId])
+}
+
+model BarberTimeOff {
+  id        Int      @id @default(autoincrement())
+  barberId  Int
+  startAt   DateTime
+  endAt     DateTime
+  reason    String   // VACATION, SICK, PERSONAL, OTHER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  barber    Barber   @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@index([barberId])
+  @@index([barberId, startAt, endAt])
+}
+
+model BarbershopService {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  barbershopId     Int
+  name             String
+  description      String?
+  durationMinutes  Int
+  price            Decimal
+  category         String   // HAIRCUT, BEARD, COMBO, etc.
+  isActive         Boolean  @default(true)
+  displayOrder     Int      @default(0)
+  barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  appointmentServices AppointmentService[]
+  walkInServices   WalkInService[]
+  serviceHistory   ServiceHistory[]
+  saleItems        SaleItem[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, isActive])
+  @@index([barbershopId, category])
+}
+
+model BarbershopProduct {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  barbershopId Int
+  name        String
+  sku         String?
+  description String?
+  salePrice   Decimal
+  costPrice   Decimal?
+  unit        String   @default("UNIT") // UNIT, ML, G
+  isActive    Boolean  @default(true)
+  barbershop  Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+  saleItems   SaleItem[]
+
+  @@index([barbershopId])
+  @@unique([barbershopId, sku])
+  @@index([barbershopId, isActive])
+}
+
+model Appointment {
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  barbershopId Int
+  customerId   Int
+  barberId     Int
+  startAt      DateTime
+  endAt        DateTime
+  status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
+  notes        String?
+  source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
+  barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  services     AppointmentService[]
+  serviceHistory ServiceHistory[]
+  sale         Sale?
+
+  @@index([barbershopId])
+  @@index([barbershopId, startAt])
+  @@index([barbershopId, barberId, startAt])
+  @@index([barbershopId, customerId, startAt])
+  @@index([status])
+}
+
+model AppointmentService {
+  id            Int       @id @default(autoincrement())
+  appointmentId Int
+  serviceId     Int
+  quantity      Int       @default(1)
+  unitPrice     Decimal
+  notes         String?
+  appointment   Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service       BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([serviceId])
+}
+
+model WalkIn {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  barbershopId   Int
+  customerId     Int?
+  barberId       Int?
+  customerName   String
+  customerPhone  String?
+  status         String    @default("WAITING") // WAITING, IN_PROGRESS, COMPLETED, CANCELLED
+  queuePosition  Int       @default(0)
+  servedAt       DateTime?
+  barbershop     Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  barber         Barber?       @relation(fields: [barberId], references: [id])
+  services       WalkInService[]
+  serviceHistory ServiceHistory[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, status, createdAt])
+  @@index([barbershopId, queuePosition])
+}
+
+model WalkInService {
+  id        Int       @id @default(autoincrement())
+  walkInId  Int
+  serviceId Int
+  quantity  Int       @default(1)
+  notes     String?
+  walkIn    WalkIn            @relation(fields: [walkInId], references: [id], onDelete: Cascade)
+  service   BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([walkInId])
+  @@index([serviceId])
+}
+
+model ServiceHistory {
+  id             Int       @id @default(autoincrement())
+  barbershopId   Int
+  customerId     Int
+  barberId       Int
+  appointmentId  Int?
+  walkInId       Int?
+  serviceId      Int
+  performedAt    DateTime
+  priceCharged   Decimal
+  durationMinutes Int?
+  notes          String?
+  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barber         Barber           @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  appointment    Appointment?     @relation(fields: [appointmentId], references: [id])
+  walkIn         WalkIn?          @relation(fields: [walkInId], references: [id])
+  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  saleItems      SaleItem[]
+
+  @@index([barbershopId])
+  @@index([customerId])
+  @@index([barbershopId, performedAt])
+  @@index([barberId])
+  @@index([serviceId])
+}
+
+model Sale {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  barbershopId   Int
+  customerId     Int?
+  barberId       Int?
+  appointmentId  Int?      @unique
+  saleType       String    // SERVICE, PRODUCT, MIXED
+  subtotal       Decimal
+  discountAmount Decimal   @default(0)
+  taxAmount      Decimal   @default(0)
+  total          Decimal
+  paymentStatus  String    @default("PENDING") // PENDING, PAID, REFUNDED, PARTIAL
+  paymentMethod  String?   // CASH, CARD, PIX, etc.
+  paidAt         DateTime?
+  barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer?  @relation(fields: [customerId], references: [id])
+  barber         Barber?    @relation(fields: [barberId], references: [id])
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  items          SaleItem[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, createdAt])
+  @@index([customerId])
+  @@index([barberId])
+  @@index([paymentStatus])
+}
+
+model SaleItem {
+  id                Int       @id @default(autoincrement())
+  saleId            Int
+  itemType          String    // SERVICE, PRODUCT
+  serviceId         Int?
+  productId         Int?
+  serviceHistoryId  Int?
+  quantity          Int
+  unitPrice         Decimal
+  totalPrice        Decimal
+  notes             String?
+  sale              Sale              @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  service           BarbershopService? @relation(fields: [serviceId], references: [id])
+  product           BarbershopProduct? @relation(fields: [productId], references: [id])
+  serviceHistory    ServiceHistory?   @relation(fields: [serviceHistoryId], references: [id])
+
+  @@index([saleId])
+  @@index([serviceHistoryId])
+  @@index([productId])
+}
+
+model InventoryItem {
+  id             Int       @id @default(autoincrement())
+  barbershopId   Int
+  productId      Int
+  quantity       Decimal
+  unit           String    @default("UNIT")
+  minQuantity    Decimal?
+  lastCountedAt  DateTime?
+  location       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  barbershop     Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  product        BarbershopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements      InventoryMovement[]
+
+  @@unique([barbershopId, productId])
+  @@index([barbershopId])
+  @@index([productId])
+  @@index([barbershopId, quantity])
+}
+
+model InventoryMovement {
+  id               Int       @id @default(autoincrement())
+  inventoryItemId  Int
+  movementType     String    // PURCHASE, SALE, ADJUSTMENT, LOSS, TRANSFER
+  quantityChange   Decimal
+  quantityBefore   Decimal
+  quantityAfter    Decimal
+  referenceType    String?   // SALE, MANUAL, etc.
+  referenceId      String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+  @@index([inventoryItemId, createdAt])
+  @@index([referenceType, referenceId])
+}

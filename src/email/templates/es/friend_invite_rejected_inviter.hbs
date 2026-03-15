@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invitación no puede ser usada</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            background-color: #ffffff;
+            padding: 30px;
+            border: 1px solid #e9ecef;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 0 0 8px 8px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{AppName}}</h1>
+    </div>
+    
+    <div class="content">
+        <h2>¡Hola, {{InviterName}}!</h2>
+        
+        <p>Desafortunadamente, la invitación que enviaste a <strong>{{FriendName}}</strong> no puede ser usada.</p>
+        
+        <div class="alert">
+            <strong>Motivo:</strong> El usuario ya tiene una cuenta en nuestra plataforma.
+        </div>
+        
+        <p>Las invitaciones de amigos solo son válidas para <strong>nuevos usuarios</strong> que aún no tienen una cuenta.</p>
+        
+        <p>Puedes:</p>
+        <ul>
+            <li>Enviar invitaciones a otros amigos que aún no tienen cuenta</li>
+            <li>Compartir nuestra plataforma a través de otros medios</li>
+        </ul>
+        
+        <p>¡Gracias por compartir {{AppName}} con tus amigos!</p>
+    </div>
+    
+    <div class="footer">
+        <p>Este es un email automático. No respondas a este email.</p>
+        <p>&copy; 2024 {{AppName}}. Todos los derechos reservados.</p>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,1382 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type ActiveSession {
+  browser: String!
+  createdAt: String!
+  deviceType: String!
+  id: Int!
+  ip: String!
+  isCurrent: Boolean!
+  location: String!
+  os: String!
+  userId: Int!
+}
+
+type Address {
+  city: String!
+  complement1: String
+  complement2: String
+  country: String!
+  createdAt: String!
+  id: Int!
+  neighborhood: String!
+  state: String!
+  street: String!
+  updatedAt: String!
+  zipcode: String!
+}
+
+input AddressInput {
+  city: String
+  country: String
+  neighborhood: String
+  state: String
+  street: String
+  zipcode: String
+}
+
+type AdminProcessAllRecurringPaymentsResponse {
+  message: String!
+  processedAt: String!
+  processedCount: Int!
+  success: Boolean!
+}
+
+type AdminProcessRecurringPaymentResponse {
+  message: String!
+  processedAt: String!
+  success: Boolean!
+}
+
+type AdminRecurringPaymentsStats {
+  lastCheck: String!
+  nextScheduledRun: String!
+  overdueCount: Int!
+  overduePayments: [OverduePaymentDetail!]!
+  timezone: String!
+  upcomingCount: Int!
+  upcomingPayments: [UpcomingPaymentDetail!]!
+}
+
+type Appointment {
+  barberId: Int!
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int!
+  endAt: String!
+  id: Int!
+  notes: String
+  source: String!
+  startAt: String!
+  status: String!
+  updatedAt: String!
+}
+
+input AppointmentServiceInput {
+  notes: String
+  quantity: Float = 1
+  serviceId: Int!
+  unitPrice: Float!
+}
+
+type BackofficeDashboard {
+  planDistribution: PlanDistribution!
+  roleDistribution: RoleDistribution!
+  stats: BackofficeStats!
+  statusDistribution: StatusDistribution!
+  userGrowth: UserGrowthData!
+}
+
+type BackofficeStats {
+  activeUsers: Int!
+  newUsersThisMonth: Int!
+  revenue: Int!
+  totalUsers: Int!
+}
+
+type Barber {
+  avatarUrl: String
+  barbershopId: Int!
+  createdAt: String!
+  email: String
+  hireDate: String
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  phone: String!
+  specialization: String
+  updatedAt: String!
+  userId: Int
+}
+
+type BarberScheduleType {
+  barberId: Int!
+  breakEnd: String
+  breakStart: String
+  createdAt: String!
+  dayOfWeek: Int!
+  endTime: String!
+  id: Int!
+  isActive: Boolean!
+  startTime: String!
+  updatedAt: String!
+}
+
+type BarberTimeOffType {
+  barberId: Int!
+  createdAt: String!
+  endAt: String!
+  id: Int!
+  reason: String!
+  startAt: String!
+  updatedAt: String!
+}
+
+type Barbershop {
+  address: String!
+
+  """
+  Módulos disponíveis conforme o plano do dono (ex: clients, queue, appointments)
+  """
+  availableModules: [String!]
+  businessHours: String
+  city: String!
+  country: String!
+  createdAt: String!
+  email: String!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  ownerUserId: Int
+  phone: String!
+  postalCode: String!
+  slug: String!
+  state: String!
+  timezone: String!
+  updatedAt: String!
+}
+
+type BarbershopCustomer {
+  birthDate: String
+  createdAt: String!
+  email: String
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  networkId: Int!
+  notes: String
+  phone: String!
+  updatedAt: String!
+}
+
+type BarbershopProductType {
+  barbershopId: Int!
+  costPrice: Float
+  createdAt: String!
+  description: String
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  salePrice: Float!
+  sku: String
+  unit: String!
+  updatedAt: String!
+}
+
+type BarbershopServiceType {
+  barbershopId: Int!
+  category: String!
+  createdAt: String!
+  description: String
+  displayOrder: Int!
+  durationMinutes: Int!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  price: Float!
+  updatedAt: String!
+}
+
+input BarbershopSignupData {
+  address: String!
+  businessHours: String
+  city: String!
+  country: String!
+  email: String!
+  name: String!
+  phone: String!
+  postalCode: String!
+  slug: String!
+  state: String!
+  timezone: String
+}
+
+input BulkUserAction {
+  action: String!
+  plan: String
+  userIds: [Int!]!
+}
+
+type Card {
+  brand: String!
+  expMonth: Int!
+  expYear: Int!
+  last4: String!
+}
+
+input ChangePasswordInput {
+  code: String!
+  email: String!
+  newPassword: String!
+  oldPassword: String!
+}
+
+type ChartData {
+  data: [Int!]!
+  labels: [String!]!
+}
+
+input CheckPasswordInput {
+  password: String!
+}
+
+type CommonResponse {
+  count: Int!
+}
+
+type CompanyAnalysis {
+  companies: ChartData!
+  companySizes: ChartData!
+}
+
+type CompletedPayment {
+  amount: Float!
+  createdAt: String!
+  id: Int!
+  nextPaymentDate: String!
+  paymentDate: String!
+  paymentMethod: String!
+  planBillingCycle: String!
+  planName: String!
+  planPrice: Float!
+  status: String!
+  transactionId: String!
+  updatedAt: String!
+  userEmail: String!
+  userId: Int!
+  userMembership: String!
+  userName: String!
+}
+
+input CompletedPaymentsFilters {
+  limit: Int! = 10
+  nextPaymentDateMonth: String
+  page: Int! = 1
+  paymentDateMonth: String
+  paymentMethod: String
+  plan: String
+  status: String
+  user: String
+}
+
+type ConfirmPaymentIntentResponse {
+  subscription: SubscriptionResponse
+  success: Boolean!
+}
+
+type Coupon {
+  applicablePlans: String
+  code: String!
+  createdAt: String!
+  deleted_at: String
+  description: String
+  id: Int!
+  isActive: Boolean!
+  maxUses: Int
+  minSubscriptionMonths: Int
+  name: String!
+  type: CouponType!
+  updatedAt: String!
+  usedCount: Int!
+  validFrom: String!
+  validUntil: String
+  value: Float!
+}
+
+type CouponStats {
+  averageDiscount: Float!
+  totalDiscount: Float!
+  totalUses: Int!
+  uniqueUsers: Int!
+}
+
+"""The type of coupon"""
+enum CouponType {
+  FIXED_AMOUNT
+  FREE_MONTH
+  FREE_SUBSCRIPTION
+  PERCENTAGE
+}
+
+type CouponValidationResult {
+  coupon: Coupon
+  discountAmount: Float
+  error: String
+  isValid: Boolean!
+  originalAmount: Float
+}
+
+input CreateAppointmentInput {
+  barberId: Int!
+  barbershopId: Int!
+  customerId: Int!
+  endAt: String!
+  notes: String
+  services: [AppointmentServiceInput!]!
+  source: String = "PHONE"
+  startAt: String!
+}
+
+input CreateBarberInput {
+  avatarUrl: String
+  barbershopId: Int!
+  email: String
+  hireDate: String
+  name: String!
+  phone: String!
+  specialization: String
+  userId: Float
+}
+
+input CreateBarberScheduleInput {
+  barberId: Int!
+  breakEnd: String
+  breakStart: String
+  dayOfWeek: Int!
+  endTime: String!
+  startTime: String!
+}
+
+input CreateBarberTimeOffInput {
+  barberId: Int!
+  endAt: String!
+  reason: String! = "PERSONAL"
+  startAt: String!
+}
+
+input CreateBarbershopInput {
+  address: String!
+  businessHours: String
+  city: String!
+  country: String!
+  email: String!
+  name: String!
+  phone: String!
+  postalCode: String!
+  slug: String!
+  state: String!
+  timezone: String
+}
+
+input CreateBarbershopProductInput {
+  barbershopId: Int!
+  costPrice: Float
+  description: String
+  name: String!
+  salePrice: Float!
+  sku: String
+  unit: String = "UNIT"
+}
+
+input CreateBarbershopServiceInput {
+  barbershopId: Int!
+  category: String!
+  description: String
+  displayOrder: Float = 0
+  durationMinutes: Int!
+  name: String!
+  price: Float!
+}
+
+input CreateCouponInput {
+  applicablePlans: String
+  code: String!
+  description: String
+  maxUses: Int
+  minSubscriptionMonths: Int
+  name: String!
+  type: CouponType!
+  validFrom: DateTime
+  validUntil: DateTime
+  value: Float!
+}
+
+input CreateCustomerInput {
+  """Opcional - usa barbershopId da mutation"""
+  barbershopId: Int
+  birthDate: String
+  email: String
+  name: String!
+  notes: String
+  phone: String!
+}
+
+input CreatePlanInput {
+  billingCycle: String!
+  description: String
+  features: String
+  name: String!
+  price: Float!
+  stripePriceId: String
+}
+
+input CreateSaleInput {
+  appointmentId: Int
+  barberId: Int
+  customerId: Int
+  discountAmount: Float = 0
+  items: [CreateSaleItemInput!]!
+  paymentMethod: String
+  paymentStatus: String = "PENDING"
+  saleType: String!
+  subtotal: Float!
+  taxAmount: Float = 0
+  total: Float!
+}
+
+input CreateSaleItemInput {
+  itemType: String!
+  notes: String
+  productId: Int
+  quantity: Int!
+  serviceHistoryId: Int
+  serviceId: Int
+  totalPrice: Float!
+  unitPrice: Float!
+}
+
+input CreateSubscriptionInput {
+  planId: Int!
+}
+
+type CreateSubscriptionResponse {
+  checkoutUrl: String
+  clientSecret: String
+  message: String
+  subscription: Subscription
+  success: Boolean!
+}
+
+input CreateUserInput {
+  barbershopData: BarbershopSignupData
+  birthdate: DateTime!
+  company: String!
+  department: String
+  email: String!
+  fullName: String!
+  gender: String!
+  idDocNumber: String!
+  jobTitle: String
+  knowledgeApp: String!
+  password: String!
+  phone: String!
+  professionalSegment: String!
+  readTerms: Boolean!
+  signupType: String
+}
+
+input CreateWalkInInput {
+  barberId: Float
+  barbershopId: Int!
+  customerId: Float
+  customerName: String!
+  customerPhone: String
+  services: [WalkInServiceInput!]!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type DeleteCouponResponse {
+  message: String!
+  success: Boolean!
+}
+
+type DeletePaymentMethodResponse {
+  message: String!
+  success: Boolean!
+}
+
+type DemographicAnalysis {
+  ageRanges: ChartData!
+  gender: ChartData!
+}
+
+type DetailedUser {
+  age: Int
+  ageRange: String!
+  birthdate: String!
+  city: String!
+  company: String!
+  country: String!
+  createdAt: String!
+  department: String!
+  email: String!
+  fullName: String!
+  gender: String!
+  id: Int!
+  jobTitle: String!
+  lastLogin: String!
+  plan: MembershipStatus!
+  professionalSegment: String!
+  role: UserRole!
+  state: String!
+  status: UserStatus!
+}
+
+type DetailedUsersResponse {
+  data: [DetailedUser!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+input EmailHistoryFilters {
+  dateFrom: String
+  dateTo: String
+  limit: Int! = 20
+  page: Int! = 1
+  subject: String
+  user: String
+}
+
+type EmailHistoryItem {
+  body: String!
+  createdAt: String!
+  id: Int!
+  meta: String!
+  sentTo: String!
+  subject: String!
+  userEmail: String!
+  userId: Int!
+  userName: String!
+}
+
+type EmailNotification {
+  createdAt: String!
+  id: Int!
+  instability: Boolean!
+  news: Boolean!
+  promotions: Boolean!
+  security: Boolean!
+  updatedAt: String!
+}
+
+input EmailNotificationInput {
+  instability: Boolean
+  news: Boolean
+  promotions: Boolean
+  security: Boolean
+}
+
+input ForgotPasswordCheckInput {
+  email: String!
+  token: String!
+}
+
+input ForgotPasswordInput {
+  email: String!
+}
+
+type GeographicAnalysis {
+  cities: ChartData!
+  countries: ChartData!
+  states: ChartData!
+}
+
+type LoginHistory {
+  browser: String!
+  createdAt: String!
+  deviceType: String!
+  id: Int!
+  ip: String!
+  location: String!
+  os: String!
+  userId: Int!
+}
+
+input LoginInput {
+  browser: String
+  deviceType: String
+  email: String!
+  ip: String
+  location: String
+  os: String
+  password: String!
+}
+
+enum MembershipStatus {
+  BASIC
+  ENTERPRISE
+  FREE
+  PAID
+  PAST_DUE
+  PREMIUM
+}
+
+type Mutation {
+  applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
+  bulkUserAction(input: BulkUserAction!): Boolean!
+  cancelSubscription: Boolean!
+  changeMultipleUsersPlan(plan: String!, userIds: [Int!]!): Boolean!
+  changePassword(input: ChangePasswordInput!): Boolean!
+  changeUserPlan(plan: String!, userId: Int!): Boolean!
+  checkPassword(input: CheckPasswordInput!): Boolean!
+  completeSocialSignup(input: SocialSignupInput!, token: String!): User!
+  confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
+  createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
+  createBarber(barbershopId: Int!, input: CreateBarberInput!): Barber!
+  createBarberSchedule(input: CreateBarberScheduleInput!): BarberScheduleType!
+  createBarberTimeOff(input: CreateBarberTimeOffInput!): BarberTimeOffType!
+  createBarbershop(input: CreateBarbershopInput!): Barbershop!
+  createBarbershopProduct(barbershopId: Int!, input: CreateBarbershopProductInput!): BarbershopProductType!
+  createBarbershopService(barbershopId: Int!, input: CreateBarbershopServiceInput!): BarbershopServiceType!
+  createBatchNotifications(message: String!, title: String!, type: String! = "info", userIds: [Int!]!): CommonResponse!
+  createCoupon(data: CreateCouponInput!): Coupon!
+  createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
+  createNotification(message: String!, title: String!, type: String! = "info", userId: Int): UserNotification!
+  createPaymentIntent(planId: Int!): PaymentIntentResponse!
+  createPlan(input: CreatePlanInput!): Plan!
+  createSale(barbershopId: Int!, input: CreateSaleInput!): Sale!
+  createSetupIntent: SetupIntent!
+  createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
+  createUser(input: CreateUserInput!): User!
+  createWalkIn(barbershopId: Int!, input: CreateWalkInInput!): WalkIn!
+  deleteAppointment(barbershopId: Int!, id: Int!): Boolean!
+  deleteBarber(barbershopId: Int!, id: Int!): Boolean!
+  deleteBarberSchedule(id: Int!): Boolean!
+  deleteBarberTimeOff(id: Int!): Boolean!
+  deleteBarbershop(id: Int!): Boolean!
+  deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
+  deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
+  deleteCoupon(id: Float!): DeleteCouponResponse!
+  deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
+  deleteNotification(id: Int!): CommonResponse!
+  deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
+  forgotPassword(input: ForgotPasswordInput!): Boolean!
+  forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
+  getPhotoUploadUrl(contentType: String, fileExtension: String): String!
+  login(input: LoginInput!): User!
+  logout: Boolean!
+  logoutOtherSessions: Boolean!
+  markAllNotificationsAsRead: CommonResponse!
+  markNotificationAsRead(id: Int!): CommonResponse!
+  processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
+  processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
+  processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
+  processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
+  removePlan(id: Int!): Boolean!
+  removeUser(userId: Int!): Boolean!
+  requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
+  resetPassword(input: ResetPasswordInput!): Boolean!
+  resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
+  sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
+  setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
+  setTwoFactor(input: TwoFactorInput!): Boolean!
+  setUserActive(active: Boolean!, userId: Int!): Boolean!
+  startSocialSignup(email: String!, fullName: String!, provider: String!): String!
+  syncPlansWithStripe: Boolean!
+  terminateSession(sessionId: String!): Boolean!
+  updateAppointment(barbershopId: Int!, id: Int!, input: UpdateAppointmentInput!): Appointment!
+  updateBarber(barbershopId: Int!, id: Int!, input: UpdateBarberInput!): Barber!
+  updateBarberSchedule(id: Int!, input: UpdateBarberScheduleInput!): BarberScheduleType!
+  updateBarbershop(id: Int!, input: UpdateBarbershopInput!): Barbershop!
+  updateBarbershopProduct(barbershopId: Int!, id: Int!, input: UpdateBarbershopProductInput!): BarbershopProductType!
+  updateBarbershopService(barbershopId: Int!, id: Int!, input: UpdateBarbershopServiceInput!): BarbershopServiceType!
+  updateCoupon(data: UpdateCouponInput!, id: Float!): Coupon!
+  updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
+  updateEmailNotification(input: UpdateEmailNotificationInput!): User!
+  updateNetwork(input: UpdateNetworkInput!): Network!
+  updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
+  updateUser(input: UpdateUserByAdminInput!): Boolean!
+  updateUserProfile(input: UpdateUserInput!): User!
+  updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
+  updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
+  validateCoupon(amount: Float!, code: String!, planId: Float!): CouponValidationResult!
+  verify2FA(input: Verify2FAInput!): User!
+  verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
+}
+
+type Network {
+  city: String
+  createdAt: String!
+  description: String
+  foundationYear: Int
+  id: Int!
+  logoUrl: String
+  mission: String
+  name: String
+  updatedAt: String!
+}
+
+type NotificationCount {
+  newCount: Int!
+  unreadCount: Int!
+}
+
+"""The type of notification"""
+enum NotificationType {
+  ERROR
+  INFO
+  SUCCESS
+  WARNING
+}
+
+type NotificationUser {
+  email: String!
+  fullName: String!
+  id: Int!
+  isActive: Boolean!
+  role: String
+}
+
+type NotificationWithUser {
+  actionText: String
+  actionUrl: String
+  createdAt: String!
+  id: Int!
+  isNew: Boolean!
+  isRead: Boolean!
+  message: String!
+  title: String!
+  type: NotificationType!
+  updatedAt: String!
+  user: NotificationUser!
+  userId: Int!
+}
+
+type OverduePayment {
+  amount: Float!
+  daysOverdue: Int!
+  id: Int!
+  nextPaymentDate: String!
+  planName: String!
+}
+
+type OverduePaymentDetail {
+  amount: Float!
+  daysOverdue: Int!
+  hasStripeCustomer: Boolean!
+  id: Int!
+  nextPaymentDate: String!
+  planBillingCycle: String!
+  planName: String!
+  planPrice: Float!
+  userEmail: String!
+  userId: Int!
+  userMembership: String!
+  userName: String!
+}
+
+input OverduePaymentsFilters {
+  nextPaymentDateMonth: String
+  paymentMethod: String
+  plan: String
+  user: String
+}
+
+type PaginatedActiveSessions {
+  data: [ActiveSession!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type PaginatedCompletedPayments {
+  data: [CompletedPayment!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type PaginatedEmailHistory {
+  data: [EmailHistoryItem!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type PaginatedLoginHistory {
+  data: [LoginHistory!]!
+  limit: Int!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type Payment {
+  amount: Float!
+  createdAt: String!
+  daysOverdue: Int
+  id: Int!
+  nextPaymentDate: String!
+  paymentDate: String!
+  paymentMethod: String
+  status: String!
+  subscriptionId: Int!
+  transactionId: String
+  updatedAt: String!
+}
+
+type PaymentIntentResponse {
+  clientSecret: String!
+  paymentIntentId: String!
+}
+
+type PaymentMethod {
+  card: Card
+  id: String!
+  type: String!
+}
+
+type Plan {
+  billingCycle: String!
+  createdAt: String!
+  deleted_at: String
+  description: String
+  features: String
+  id: Int!
+  name: String!
+  price: Float!
+  stripePriceId: String
+  updatedAt: String!
+}
+
+type PlanDistribution {
+  plans: ChartData!
+}
+
+type ProcessAllRecurringPaymentsResponse {
+  message: String!
+  processedAt: String!
+  processedCount: Int!
+  success: Boolean!
+}
+
+type ProcessRecurringPaymentResponse {
+  message: String!
+  processedAt: String!
+  success: Boolean!
+}
+
+type ProfessionalSegmentAnalysis {
+  departments: ChartData!
+  jobTitles: ChartData!
+  segments: ChartData!
+}
+
+type Query {
+  activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
+  allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
+  allCoupons: [Coupon!]!
+  allNotificationsWithUser(limit: Int! = 100): [NotificationWithUser!]!
+  allOverduePayments(filters: OverduePaymentsFilters): [OverduePaymentDetail!]!
+  allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
+  appointment(barbershopId: Int!, id: Int!): Appointment
+  backofficeDashboard: BackofficeDashboard!
+  backofficeStats: BackofficeStats!
+  barberSchedules(barberId: Int!): [BarberScheduleType!]!
+  barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
+  barbershop(id: Int!): Barbershop
+  barbershopAppointments(barberId: Float, barbershopId: Int!, endAt: String, startAt: String, status: String): [Appointment!]!
+  barbershopBarbers(barbershopId: Int!): [Barber!]!
+  barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
+  barbershopSales(barbershopId: Int!, endAt: String, startAt: String): [Sale!]!
+  barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
+  barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
+  companyAnalysis: CompanyAnalysis!
+  couponStats(id: Float!): CouponStats!
+  customer(barbershopId: Int!, id: Int!): BarbershopCustomer
+  customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Float): [ServiceHistory!]!
+  demographicAnalysis: DemographicAnalysis!
+  emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
+  geographicAnalysis: GeographicAnalysis!
+  getAllPlans: [Plan!]!
+  getAllUsers: [User!]!
+  getPhotoUrl: String
+  getPlanById(id: Int!): Plan
+  getUserPhotoDownloadUrl: String
+  getUsers: [User!]!
+  latestPendingPayment: Payment
+  loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
+  me: User!
+  myBarbershops: [Barbershop!]!
+  myCoupons: [Coupon!]!
+  myNetwork: Network
+  myNewNotifications: [UserNotification!]!
+  myNotifications(limit: Int! = 10): [UserNotification!]!
+  myNotificationsCount: NotificationCount!
+  myPaymentMethods: [PaymentMethod!]!
+  myPayments: [Payment!]!
+  mySubscriptions: [Subscription!]!
+  myUnreadNotifications: [UserNotification!]!
+  overduePayments: [Payment!]!
+  planDistribution: PlanDistribution!
+  professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
+  recurringPaymentsStats: UserRecurringPaymentsStats!
+  roleDistribution: RoleDistribution!
+  sessions: [ActiveSession!]!
+  statusDistribution: StatusDistribution!
+  user(id: Int!): User!
+  userGrowthData: UserGrowthData!
+  userSystemConfig: UserSystemConfig!
+  usersDetailed(filters: UsersDetailedFilters!): DetailedUsersResponse!
+}
+
+input RequestChangePasswordCodeInput {
+  email: String!
+}
+
+input ResetPasswordInput {
+  email: String!
+  newPassword: String!
+  token: String!
+}
+
+input ResetPasswordWithCodeInput {
+  code: String!
+  currentPassword: String!
+  newPassword: String!
+}
+
+type RoleDistribution {
+  roles: ChartData!
+}
+
+type Sale {
+  appointmentId: Int
+  barberId: Int
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int
+  discountAmount: Float!
+  id: Int!
+  paidAt: String
+  paymentMethod: String
+  paymentStatus: String!
+  saleType: String!
+  subtotal: Float!
+  taxAmount: Float!
+  total: Float!
+}
+
+input SendEmailNotificationInput {
+  actionText: String
+  actionUrl: String
+  message: String!
+  subject: String!
+  type: String
+  userIds: [Int!]!
+}
+
+type ServiceHistory {
+  appointmentId: Int
+  barberId: Int!
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int!
+  durationMinutes: Int
+  id: Int!
+  notes: String
+  performedAt: String!
+  priceCharged: Float!
+  serviceId: Int!
+  walkInId: Int
+}
+
+type SetupIntent {
+  client_secret: String!
+  id: String!
+}
+
+input SocialSignupInput {
+  birthdate: DateTime!
+  company: String!
+  department: String
+  email: String!
+  fullName: String!
+  gender: String!
+  idDocNumber: String!
+  jobTitle: String
+  knowledgeApp: String!
+  phone: String!
+  professionalSegment: String!
+  provider: String!
+  readTerms: Boolean!
+}
+
+type StatusDistribution {
+  status: ChartData!
+}
+
+type Subscription {
+  cancelationDate: String
+  createdAt: String!
+  id: Int!
+  payments: [Payment!]
+  plan: Plan!
+  planId: Int!
+  startSubDate: String!
+  status: String!
+  stripeCustomerId: String
+  stripeSubscriptionId: String
+  updatedAt: String!
+  userId: Int!
+}
+
+type SubscriptionPlan {
+  id: Int!
+  name: String!
+  price: Float!
+}
+
+type SubscriptionResponse {
+  id: Int!
+  plan: SubscriptionPlan!
+  status: String!
+}
+
+input TwoFactorInput {
+  enabled: Boolean!
+}
+
+type UpcomingPayment {
+  amount: Float!
+  daysUntilPayment: Int!
+  id: Int!
+  nextPaymentDate: String!
+  planName: String!
+}
+
+type UpcomingPaymentDetail {
+  amount: Float!
+  daysUntilPayment: Int!
+  hasStripeCustomer: Boolean!
+  id: Int!
+  nextPaymentDate: String!
+  planBillingCycle: String!
+  planName: String!
+  planPrice: Float!
+  userEmail: String!
+  userId: Int!
+  userMembership: String!
+  userName: String!
+}
+
+input UpdateAppointmentInput {
+  barberId: Int
+  customerId: Int
+  endAt: String
+  notes: String
+  startAt: String
+  status: String
+}
+
+input UpdateBarberInput {
+  avatarUrl: String
+  email: String
+  hireDate: String
+  isActive: Boolean
+  name: String
+  phone: String
+  specialization: String
+  userId: Float
+}
+
+input UpdateBarberScheduleInput {
+  breakEnd: String
+  breakStart: String
+  endTime: String
+  isActive: Boolean
+  startTime: String
+}
+
+input UpdateBarbershopInput {
+  address: String
+  businessHours: String
+  city: String
+  country: String
+  email: String
+  isActive: Boolean
+  name: String
+  phone: String
+  postalCode: String
+  state: String
+  timezone: String
+}
+
+input UpdateBarbershopProductInput {
+  costPrice: Float
+  description: String
+  isActive: Boolean
+  name: String
+  salePrice: Float
+  sku: String
+  unit: String
+}
+
+input UpdateBarbershopServiceInput {
+  category: String
+  description: String
+  displayOrder: Int
+  durationMinutes: Int
+  isActive: Boolean
+  name: String
+  price: Float
+}
+
+input UpdateCouponInput {
+  applicablePlans: String
+  code: String
+  description: String
+  maxUses: Int
+  minSubscriptionMonths: Int
+  name: String
+  type: CouponType
+  validFrom: DateTime
+  validUntil: DateTime
+  value: Float
+}
+
+input UpdateCustomerInput {
+  birthDate: String
+  email: String
+  isActive: Boolean
+  name: String
+  notes: String
+  phone: String
+}
+
+input UpdateEmailNotificationInput {
+  instability: Boolean!
+  news: Boolean!
+  promotions: Boolean!
+  security: Boolean!
+}
+
+input UpdateNetworkInput {
+  city: String
+  description: String
+  foundationYear: Int
+  logoUrl: String
+  mission: String
+  name: String
+}
+
+input UpdatePlanInput {
+  billingCycle: String
+  description: String
+  features: String
+  name: String
+  price: Float
+  stripePriceId: String
+}
+
+input UpdateUserByAdminInput {
+  address: AddressInput
+  birthdate: String
+  company: String
+  department: String
+  email: String
+  emailNotification: EmailNotificationInput
+  fullName: String
+  gender: String
+  isActive: Boolean
+  jobTitle: String
+  phone: String
+  professionalSegment: String
+  twoFactorEnabled: Boolean
+  userId: Int!
+  userSystemConfig: UserSystemConfigInput
+}
+
+input UpdateUserInput {
+  birthdate: String
+  city: String
+  company: String
+  complement1: String
+  complement2: String
+  country: String
+  department: String
+  email: String
+  fullName: String
+  gender: String
+  knowledgeApp: String
+  neighborhood: String
+  phone: String
+  position: String
+  professionalSegment: String
+  state: String
+  street: String
+  twoFactorEnabled: Boolean
+  zipcode: String
+}
+
+input UpdateUserSystemConfigInput {
+  accentColor: String
+  grayColor: String
+  language: String
+  radius: String
+  scaling: String
+  theme: String
+}
+
+type User {
+  address: Address
+  birthdate: String!
+  company: String!
+  createdAt: String!
+  deleted_at: String
+  department: String
+  email: String!
+  emailNotification: EmailNotification
+  fullName: String!
+  gender: String!
+  id: Int!
+  idDocNumber: String!
+  isActive: Boolean!
+  jobTitle: String
+  knowledgeApp: String!
+  loginId: String
+  membership: MembershipStatus
+  phone: String!
+  photoKey: String
+  plan: String
+  professionalSegment: String!
+  provider: String!
+  readTerms: Boolean!
+  role: String
+  stripeCustomerId: String
+  subscriptionStatus: String
+  twoFactorEnabled: Boolean!
+  twoFactorRequired: Boolean
+  updatedAt: String!
+  userSystemConfig: UserSystemConfig
+}
+
+type UserGrowthData {
+  monthly: ChartData!
+  weekly: ChartData!
+}
+
+type UserNotification {
+  actionText: String
+  actionUrl: String
+  createdAt: String!
+  id: Int!
+  isNew: Boolean!
+  isRead: Boolean!
+  message: String!
+  title: String!
+  type: NotificationType!
+  updatedAt: String!
+  userId: Int!
+}
+
+type UserRecurringPaymentsStats {
+  lastCheck: String!
+  nextScheduledRun: String!
+  overdueCount: Int!
+  overduePayments: [OverduePayment!]!
+  timezone: String!
+  upcomingCount: Int!
+  upcomingPayments: [UpcomingPayment!]!
+}
+
+enum UserRole {
+  ADMIN
+  BARBERSHOP_EMPLOYEE
+  BARBERSHOP_OWNER
+  MANAGER
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+type UserSystemConfig {
+  accentColor: String!
+  createdAt: String!
+  grayColor: String!
+  id: Int!
+  language: String!
+  radius: String!
+  scaling: String!
+  theme: String!
+  updatedAt: String!
+}
+
+input UserSystemConfigInput {
+  accentColor: String
+  grayColor: String
+  language: String
+  radius: String
+  scaling: String
+  theme: String
+}
+
+input UsersDetailedFilters {
+  ageRange: String
+  city: String
+  company: String
+  country: String
+  email: String
+  gender: String
+  limit: Int! = 20
+  name: String
+  page: Int! = 1
+  plan: String
+  professionalSegment: String
+  role: String
+  status: String
+}
+
+input Verify2FAInput {
+  code: String!
+  loginId: String!
+}
+
+input VerifyChangePasswordCodeInput {
+  code: String!
+}
+
+type WalkIn {
+  barberId: Int
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int
+  customerName: String!
+  customerPhone: String
+  id: Int!
+  queuePosition: Int!
+  servedAt: String
+  status: String!
+}
+
+input WalkInServiceInput {
+  notes: String
+  quantity: Float = 1
+  serviceId: Int!
+}

@@ -1,0 +1,10 @@
+services:
+  backend:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "3020:3020"
+      - "5555:5555"
+    environment:
+      - NODE_ENV=production

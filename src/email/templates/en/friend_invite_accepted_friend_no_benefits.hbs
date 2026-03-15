@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invite Accepted</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 0 0 8px 8px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .highlight {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎉 Invite accepted!</h1>
+    </div>
+    
+    <div class="content">
+        <p>Hello <strong>{{FriendName}}</strong>,</p>
+        
+        <p>You accepted your friend <strong>{{InviterName}}</strong>'s invitation to {{AppName}}.</p>
+        
+        <div class="highlight">
+            <p><strong>Important note:</strong> Since you already had an account on {{AppName}}, there are no additional benefits for this invite.</p>
+        </div>
+        
+        <p>Thank you for accepting the invitation! Keep enjoying all {{AppName}} features.</p>
+        
+        <p>Best regards,<br>{{AppName}} Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>This email was sent automatically. Please do not reply to this email.</p>
+        <p>{{AppName}} - Reliability Analysis</p>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,3 @@
+email,fullName,password,idDocNumber,phone,gender,birthdate,company,professionalSegment,knowledgeApp,zipcode,street,city,neighborhood,state,membership,isActive,language
+test1@exemplo.com,Teste 1,Senha123!,11111111111,11111111111,male,1990-01-01,Empresa Teste,Teste,Básico,00000-000,Rua Teste,000,Teste,Teste,SP,FREE,false,pt
+test2@exemplo.com,Teste 2,Senha123!,22222222222,22222222222,female,1990-01-01,Empresa Teste 2,Teste 2,Básico,00000-000,Rua Teste 2,000,Teste 2,Teste 2,SP,PAID,true,pt 

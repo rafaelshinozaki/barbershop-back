@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>¡Invitación Aceptada! - Relable</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            color: #059669;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #64748b;
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        .success-box {
+            background-color: #d1fae5;
+            border-left: 4px solid #059669;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .coupon-box {
+            background-color: #fef3c7;
+            border: 2px dashed #f59e0b;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .coupon-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #d97706;
+            letter-spacing: 2px;
+            margin: 10px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #059669;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">🎉 ¡Tu Invitación Fue Aceptada!</h1>
+            <p class="subtitle">{{FriendName}} aceptó tu invitación</p>
+        </div>
+
+        <div class="success-box">
+            <h2 style="color: #059669; margin-top: 0;">✅ ¡Felicitaciones!</h2>
+            <p style="font-size: 18px; margin-bottom: 0;">
+                <strong>{{FriendName}}</strong> aceptó tu invitación y ahora ambos ganaron <strong>1 mes gratis</strong> en Relable!
+            </p>
+        </div>
+
+        <p>¡Hola {{InviterName}}!</p>
+        
+        <p>¡Excelentes noticias! <strong>{{FriendName}}</strong> aceptó tu invitación y se unió a Relable. Como agradecimiento, ambos ganaron beneficios especiales:</p>
+
+        <div class="coupon-box">
+            <h3 style="color: #d97706; margin-top: 0;">🎁 Tu Cupón de 1 Mes Gratis</h3>
+            <div class="coupon-code">{{CouponCode}}</div>
+            <p style="margin-bottom: 0; color: #92400e;">
+                ¡Usa este cupón en la próxima renovación de tu suscripción para ganar 1 mes gratis!
+            </p>
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{{AppName}}/dashboard" class="cta-button">
+                🚀 Acceder al Dashboard
+            </a>
+        </div>
+
+        <p style="font-size: 14px; color: #6b7280;">
+            <strong>Cómo usar el cupón:</strong><br>
+            1. Accede a tu cuenta en Relable<br>
+            2. Ve a "Configuración" > "Cupones"<br>
+            3. Aplica el código <strong>{{CouponCode}}</strong><br>
+            4. El descuento se aplicará en la próxima facturación
+        </p>
+
+        <div class="footer">
+            <p>© 2024 {{AppName}}. Todos los derechos reservados.</p>
+            <p>¡Gracias por compartir Relable con tus amigos!</p>
+        </div>
+    </div>
+</body>
+</html> 

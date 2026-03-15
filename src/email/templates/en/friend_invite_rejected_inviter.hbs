@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invite cannot be used</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            background-color: #ffffff;
+            padding: 30px;
+            border: 1px solid #e9ecef;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 0 0 8px 8px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{AppName}}</h1>
+    </div>
+    
+    <div class="content">
+        <h2>Hello, {{InviterName}}!</h2>
+        
+        <p>Unfortunately, the invite you sent to <strong>{{FriendName}}</strong> cannot be used.</p>
+        
+        <div class="alert">
+            <strong>Reason:</strong> The user already has an account on our platform.
+        </div>
+        
+        <p>Friend invites are only valid for <strong>new users</strong> who don't have an account yet.</p>
+        
+        <p>You can:</p>
+        <ul>
+            <li>Send invites to other friends who don't have an account yet</li>
+            <li>Share our platform through other means</li>
+        </ul>
+        
+        <p>Thank you for sharing {{AppName}} with your friends!</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated email. Please do not reply to this email.</p>
+        <p>&copy; 2024 {{AppName}}. All rights reserved.</p>
+    </div>
+</body>
+</html> 

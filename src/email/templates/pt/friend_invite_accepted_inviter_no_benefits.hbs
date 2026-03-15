@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convite Aceito</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-radius: 0 0 8px 8px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .highlight {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎉 Seu convite foi aceito!</h1>
+    </div>
+    
+    <div class="content">
+        <p>Olá <strong>{{InviterName}}</strong>,</p>
+        
+        <p>Ótimas notícias! Seu amigo <strong>{{FriendName}}</strong> aceitou seu convite para o {{AppName}}.</p>
+        
+        <div class="highlight">
+            <p><strong>Nota importante:</strong> Como seu amigo já tinha uma conta no {{AppName}}, não há benefícios adicionais neste convite.</p>
+        </div>
+        
+        <p>Obrigado por compartilhar o {{AppName}} com seus amigos! Continue convidando novos usuários para ganhar benefícios especiais.</p>
+        
+        <p>Atenciosamente,<br>Equipe {{AppName}}</p>
+    </div>
+    
+    <div class="footer">
+        <p>Este email foi enviado automaticamente. Não responda a este email.</p>
+        <p>{{AppName}} - Análise de Confiabilidade</p>
+    </div>
+</body>
+</html> 

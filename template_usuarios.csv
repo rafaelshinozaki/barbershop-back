@@ -1,0 +1,6 @@
+email,fullName,password,idDocNumber,phone,gender,birthdate,company,professionalSegment,knowledgeApp,zipcode,street,city,neighborhood,state,membership,isActive,language
+joao.silva@exemplo.com,João Silva,Senha123!,12345678901,11999999999,male,1990-01-01,Empresa ABC,Engenharia,Intermediário,01234-567,Rua das Flores,123,São Paulo,Centro,SP,FREE,false,pt
+maria.santos@exemplo.com,Maria Santos,Senha123!,98765432109,11888888888,female,1985-05-15,Empresa XYZ,Tecnologia,Avançado,04567-890,Av. Paulista,456,São Paulo,Bela Vista,SP,PAID,true,pt
+pedro.oliveira@exemplo.com,Pedro Oliveira,Senha123!,11122233344,11777777777,male,1988-12-10,Tech Solutions,Consultoria,Básico,07890-123,Rua Augusta,789,São Paulo,Consolação,SP,PAID,true,pt
+ana.costa@exemplo.com,Ana Costa,Senha123!,55566677788,11666666666,female,1992-03-20,Universidade Federal,Acadêmico,Intermediário,04567-890,Rua Oscar Freire,321,São Paulo,Jardins,SP,FREE,false,pt
+carlos.rodrigues@exemplo.com,Carlos Rodrigues,Senha123!,99988877766,11555555555,male,1983-07-08,Governo Municipal,Instituição Governamental,Avançado,01234-567,Av. Brigadeiro Faria Lima,654,São Paulo,Itaim Bibi,SP,PAST_DUE,false,pt

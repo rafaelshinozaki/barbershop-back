@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: relable
+      POSTGRES_PASSWORD: relable
+      POSTGRES_DB: relable
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relable -d relable"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - relable-network
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    stdin_open: false
+    tty: false
+    env_file:
+      - ../.env
+    ports:
+      - "3020:3020"
+      - "5555:5555"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://relable:relable@postgres:5432/relable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - relable-network
+
+volumes:
+  postgres_data:
+
+networks:
+  relable-network:
+    driver: bridge

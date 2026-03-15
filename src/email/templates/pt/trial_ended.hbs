@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trial Encerrado - Relable</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2563eb;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            background-color: #f8fafc;
+            padding: 30px;
+            border-radius: 0 0 8px 8px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #2563eb;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Seu Trial Acabou!</h1>
+    </div>
+    
+    <div class="content">
+        <p>Olá {{FullName}},</p>
+        
+        <p>Seu período de trial de 30 dias no Relable chegou ao fim. Agora você está no modo <strong>Viewer</strong>, que permite:</p>
+        
+        <ul>
+            <li>Visualizar análises existentes por mais 6 meses</li>
+            <li>Acessar relatórios e gráficos já criados</li>
+            <li>Compartilhar análises com colegas</li>
+        </ul>
+        
+        <p><strong>Para continuar criando novas análises</strong>, você precisa fazer upgrade para um dos nossos planos:</p>
+        
+        <ul>
+            <li><strong>Básico:</strong> R$ 29,90/mês - Análises LDA e RGA</li>
+            <li><strong>Premium:</strong> R$ 59,90/mês - Todos os módulos</li>
+            <li><strong>Enterprise:</strong> R$ 99,90/mês - Recursos avançados</li>
+        </ul>
+        
+        <div style="text-align: center;">
+            <a href="{{UpgradeURL}}" class="button">Fazer Upgrade Agora</a>
+        </div>
+        
+        <p>Se tiver alguma dúvida, entre em contato conosco: <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a></p>
+    </div>
+    
+    <div class="footer">
+        <p>&copy; {{Year}} Relable. Todos os direitos reservados.</p>
+    </div>
+</body>
+</html> 

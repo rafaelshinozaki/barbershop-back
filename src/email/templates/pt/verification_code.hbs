@@ -1,0 +1,134 @@
+{{!-- src/email/templates/verification_code.hbs --}}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Código de Verificação – {{AppName}}</title>
+  <style>
+    /* Reset básico */
+    body, p, h1, h2, h3, h4, h5, h6 {
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      color: #333333;
+      line-height: 1.6;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header {
+      background-color: #000;
+      color: #ffffff;
+      padding: 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: normal;
+    }
+    .content {
+      padding: 30px 20px;
+    }
+    .content h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: #000;
+    }
+    .content p {
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+    .code-box {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .code {
+      display: inline-block;
+      font-family: 'Courier New', monospace;
+      background-color: #f1f1f1;
+      padding: 12px 20px;
+      border-radius: 4px;
+      font-size: 18px;
+      letter-spacing: 4px;
+      color: #333333;
+    }
+    .footer {
+      background-color: #f4f4f4;
+      color: #777777;
+      text-align: center;
+      padding: 20px;
+      font-size: 14px;
+    }
+    .footer a {
+      color: #000;
+      text-decoration: none;
+    }
+    /* Responsividade */
+    @media only screen and (max-width: 600px) {
+      .container {
+        width: 100% !important;
+        border-radius: 0;
+      }
+      .content {
+        padding: 20px 10px;
+      }
+      .header h1 {
+        font-size: 20px;
+      }
+      .content h2 {
+        font-size: 18px;
+      }
+      .code {
+        font-size: 16px;
+        letter-spacing: 3px;
+        padding: 10px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Cabeçalho -->
+    <div class="header">
+      <h1>Código de Verificação</h1>
+    </div>
+
+    <!-- Conteúdo principal -->
+    <div class="content">
+      <h2>Olá, {{FullName}}!</h2>
+      <p>
+        Para concluir sua ação (por exemplo, login, alteração de e-mail ou autenticação em duas etapas),
+        utilize o código de verificação abaixo:
+      </p>
+
+      <div class="code-box">
+        <span class="code">{{VerificationCode}}</span>
+      </div>
+
+      <p>
+        Este código é válido apenas por alguns minutos. Não compartilhe este código com ninguém.
+      </p>
+
+      <p>
+        Se você não solicitou este código, por favor ignore este e-mail ou entre em contato com 
+        <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>.
+      </p>
+    </div>
+
+    <!-- Rodapé -->
+    <div class="footer">
+      <p>&copy; {{Year}} {{AppName}}. Todos os direitos reservados.</p>
+    </div>
+  </div>
+</body>
+</html>

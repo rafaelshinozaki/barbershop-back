@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Relable! - Relable</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            color: #2563eb;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #64748b;
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        .welcome-box {
+            background-color: #dbeafe;
+            border-left: 4px solid #2563eb;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .coupon-box {
+            background-color: #fef3c7;
+            border: 2px dashed #f59e0b;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .coupon-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #d97706;
+            letter-spacing: 2px;
+            margin: 10px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #2563eb;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .features {
+            background-color: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .feature-icon {
+            color: #059669;
+            margin-right: 10px;
+            font-size: 20px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">🎉 Welcome to Relable!</h1>
+            <p class="subtitle">You accepted {{InviterName}}'s invitation</p>
+        </div>
+
+        <div class="welcome-box">
+            <h2 style="color: #2563eb; margin-top: 0;">✅ Invitation Successfully Accepted!</h2>
+            <p style="font-size: 18px; margin-bottom: 0;">
+                Congratulations! You and <strong>{{InviterName}}</strong> got <strong>1 month free</strong> on Relable!
+            </p>
+        </div>
+
+        <p>Hello {{FriendName}}!</p>
+        
+        <p>Welcome to <strong>Relable</strong>! You accepted {{InviterName}}'s invitation and now have access to the most advanced platform for reliability and degradation analysis.</p>
+
+        <div class="coupon-box">
+            <h3 style="color: #d97706; margin-top: 0;">🎁 Your 1 Month Free Coupon</h3>
+            <div class="coupon-code">{{CouponCode}}</div>
+            <p style="margin-bottom: 0; color: #92400e;">
+                Use this coupon on your next subscription renewal to get 1 month free!
+            </p>
+        </div>
+
+        <div class="features">
+            <h3 style="color: #2563eb; margin-top: 0;">🚀 What you can do now:</h3>
+            
+            <div class="feature-item">
+                <span class="feature-icon">🔬</span>
+                <span>Create <strong>LDA, RGA, DA</strong> analyses and much more</span>
+            </div>
+            
+            <div class="feature-item">
+                <span class="feature-icon">📊</span>
+                <span>Generate professional reports and advanced charts</span>
+            </div>
+            
+            <div class="feature-item">
+                <span class="feature-icon">💾</span>
+                <span>Save and share your analyses</span>
+            </div>
+            
+            <div class="feature-item">
+                <span class="feature-icon">🎯</span>
+                <span>Access specialized technical support</span>
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{{AppName}}/dashboard" class="cta-button">
+                🚀 Start Using Relable
+            </a>
+        </div>
+
+        <p style="font-size: 14px; color: #6b7280;">
+            <strong>How to use the coupon:</strong><br>
+            1. Access your Relable account<br>
+            2. Go to "Settings" > "Coupons"<br>
+            3. Apply the code <strong>{{CouponCode}}</strong><br>
+            4. The discount will be applied on the next billing
+        </p>
+
+        <div class="footer">
+            <p>© 2024 {{AppName}}. All rights reserved.</p>
+            <p>Thank you for joining Relable through {{InviterName}}'s invitation!</p>
+        </div>
+    </div>
+</body>
+</html> 

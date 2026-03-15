@@ -1,0 +1,2 @@
+email,fullName,password,idDocNumber,phone,gender,birthdate,company,professionalSegment,knowledgeApp,zipcode,street,city,neighborhood,state,membership,isActive,language
+test@exemplo.com,Teste,Senha123!,12345678901,11999999999,male,1990-01-01,Empresa,Teste,Básico,00000-000,Rua,000,Teste,SP,FREE,false,pt 

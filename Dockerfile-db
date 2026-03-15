@@ -1,0 +1,22 @@
+# Dockerfile para backend
+FROM node:20.1-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+RUN npx prisma migrate dev
+
+# Gera o cliente do Prisma
+RUN npx prisma generate
+
+# Popula o db
+RUN npm run seed
+
+EXPOSE 3020
+EXPOSE 5555
+
+CMD ["npm", "run", "start:dev"]

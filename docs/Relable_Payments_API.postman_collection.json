@@ -1,0 +1,773 @@
+{
+	"info": {
+		"_postman_id": "relable-payments-api",
+		"name": "Relable Payments API",
+		"description": "Complete collection for testing Relable payment system APIs including authentication, GraphQL mutations, and REST endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"console.log('Running request to:', pm.request.url);"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3020",
+			"type": "string"
+		},
+		{
+			"key": "graphqlUrl",
+			"value": "http://localhost:3020/graphql",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "planId",
+			"value": "22",
+			"type": "string"
+		},
+		{
+			"key": "paymentIntentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "clientSecret",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Login (Get JWT Token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 or 201', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+									"});",
+									"",
+									"pm.test('Response has success field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('success');",
+									"});",
+									"",
+									"// Extract token from cookies",
+									"var cookies = pm.response.headers.get('Set-Cookie');",
+									"if (cookies) {",
+									"    var authMatch = cookies.match(/Authentication=([^;]+)/);",
+									"    if (authMatch) {",
+									"        pm.collectionVariables.set('authToken', authMatch[1]);",
+									"        console.log('JWT Token extracted from cookie:', authMatch[1].substring(0, 50) + '...');",
+									"    }",
+									"}",
+									"",
+									"// Extract user data",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.id) {",
+									"    pm.collectionVariables.set('userId', jsonData.data.id);",
+									"    console.log('User ID extracted:', jsonData.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"rafael.lima@relable.com\",\n  \"password\": \"pwned\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Login to get JWT token for authenticated requests"
+					}
+				}
+			]
+		},
+		{
+			"name": "2. GraphQL - Payment Operations",
+			"item": [
+				{
+					"name": "Get All Plans (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('getAllPlans returns array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.getAllPlans).to.be.an('array');",
+									"});",
+									"",
+									"// Extract first plan ID for later use",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.getAllPlans && jsonData.data.getAllPlans.length > 0) {",
+									"    pm.collectionVariables.set('planId', jsonData.data.getAllPlans[0].id);",
+									"    console.log('Plan ID extracted:', jsonData.data.getAllPlans[0].id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GetAllPlans { getAllPlans { id name description price billingCycle features stripePriceId createdAt updatedAt } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Get all available plans via GraphQL"
+					}
+				},
+				{
+					"name": "Create PaymentIntent (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('createPaymentIntent returns clientSecret', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.createPaymentIntent).to.have.property('clientSecret');",
+									"    pm.expect(jsonData.data.createPaymentIntent).to.have.property('paymentIntentId');",
+									"});",
+									"",
+									"// Extract PaymentIntent data for later use",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.createPaymentIntent) {",
+									"    pm.collectionVariables.set('clientSecret', jsonData.data.createPaymentIntent.clientSecret);",
+									"    pm.collectionVariables.set('paymentIntentId', jsonData.data.createPaymentIntent.paymentIntentId);",
+									"    console.log('PaymentIntent ID extracted:', jsonData.data.createPaymentIntent.paymentIntentId);",
+									"    console.log('ClientSecret extracted:', jsonData.data.createPaymentIntent.clientSecret.substring(0, 30) + '...');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation CreatePaymentIntent($planId: Int!) { createPaymentIntent(planId: $planId) { clientSecret paymentIntentId } }\",\n  \"variables\": {\n    \"planId\": {{planId}}\n  }\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Create PaymentIntent for checkout via GraphQL"
+					}
+				},
+				{
+					"name": "Confirm PaymentIntent (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation ConfirmPaymentIntent($paymentIntentId: String!) { confirmPaymentIntent(paymentIntentId: $paymentIntentId) { success subscription { id status plan { id name price } } } }\",\n  \"variables\": {\n    \"paymentIntentId\": \"{{paymentIntentId}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Confirm PaymentIntent and create subscription via GraphQL"
+					}
+				},
+				{
+					"name": "Get My Payments (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('myPayments returns array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.myPayments).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GetMyPayments { myPayments { id subscriptionId amount paymentDate nextPaymentDate paymentMethod transactionId status createdAt updatedAt } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Get user's payments via GraphQL"
+					}
+				},
+				{
+					"name": "Get My Subscriptions (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('mySubscriptions returns array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.mySubscriptions).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GetMySubscriptions { mySubscriptions { id userId planId status startSubDate cancelationDate createdAt updatedAt plan { id name price description billingCycle } payments { id amount status paymentDate nextPaymentDate } } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Get user's subscriptions via GraphQL"
+					}
+				},
+				{
+					"name": "Create Setup Intent (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('createSetupIntent returns client_secret', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.createSetupIntent).to.have.property('client_secret');",
+									"    pm.expect(jsonData.data.createSetupIntent).to.have.property('id');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation CreateSetupIntent { createSetupIntent { id client_secret } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Create SetupIntent for saving payment methods via GraphQL"
+					}
+				},
+				{
+					"name": "Get My Payment Methods (GraphQL)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has data field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});",
+									"",
+									"pm.test('myPaymentMethods returns array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.myPaymentMethods).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GetMyPaymentMethods { myPaymentMethods { id type card { brand last4 expMonth expYear } } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "Get user's saved payment methods via GraphQL"
+					}
+				}
+			]
+		},
+		{
+			"name": "3. REST - Payment Operations",
+			"item": [
+				{
+					"name": "Get All Plans (REST)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response is array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/plans/all",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"plans",
+								"all"
+							]
+						},
+						"description": "Get all available plans via REST"
+					}
+				},
+				{
+					"name": "Create PaymentIntent (REST)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has clientSecret', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('clientSecret');",
+									"    pm.expect(jsonData).to.have.property('paymentIntentId');",
+									"});",
+									"",
+									"// Extract PaymentIntent data for later use",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.clientSecret && jsonData.paymentIntentId) {",
+									"    pm.collectionVariables.set('clientSecret', jsonData.clientSecret);",
+									"    pm.collectionVariables.set('paymentIntentId', jsonData.paymentIntentId);",
+									"    console.log('REST - PaymentIntent ID extracted:', jsonData.paymentIntentId);",
+									"    console.log('REST - ClientSecret extracted:', jsonData.clientSecret.substring(0, 30) + '...');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"planId\": {{planId}}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/payments/create-payment-intent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"payments",
+								"create-payment-intent"
+							]
+						},
+						"description": "Create PaymentIntent for checkout via REST"
+					}
+				},
+				{
+					"name": "Confirm PaymentIntent (REST)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"paymentIntentId\": \"{{paymentIntentId}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/payments/confirm-payment-intent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"payments",
+								"confirm-payment-intent"
+							]
+						},
+						"description": "Confirm PaymentIntent and create subscription via REST"
+					}
+				},
+				{
+					"name": "Get My Payments (REST)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response is array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/payments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"payments"
+							]
+						},
+						"description": "Get user's payments via REST"
+					}
+				},
+				{
+					"name": "Get My Subscriptions (REST)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response is array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Cookie",
+								"value": "Authentication={{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/payments/subscriptions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"payments",
+								"subscriptions"
+							]
+						},
+						"description": "Get user's subscriptions via REST"
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Health Checks & Debug",
+			"item": [
+				{
+					"name": "Backend Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.expect(pm.response.code).to.eql(200);",
+									"});",
+									"",
+									"pm.test('Response has status', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('status');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Check if backend is running"
+					}
+				},
+				{
+					"name": "GraphQL Introspection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query IntrospectionQuery { __schema { queryType { name } mutationType { name } subscriptionType { name } types { ...FullType } } } fragment FullType on __Type { kind name description fields(includeDeprecated: true) { name description args { ...InputValue } type { ...TypeRef } isDeprecated deprecationReason } inputFields { ...InputValue } interfaces { ...TypeRef } enumValues(includeDeprecated: true) { name description isDeprecated deprecationReason } possibleTypes { ...TypeRef } } fragment InputValue on __InputValue { name description type { ...TypeRef } defaultValue } fragment TypeRef on __Type { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name } } } } } } } }\"\n}"
+						},
+						"url": {
+							"raw": "{{graphqlUrl}}",
+							"host": [
+								"{{graphqlUrl}}"
+							]
+						},
+						"description": "GraphQL schema introspection for debugging"
+					}
+				}
+			]
+		}
+	]
+}
