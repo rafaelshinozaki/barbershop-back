@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { Role } from '../interfaces/roles';
@@ -75,14 +81,33 @@ export class GraphQLRolesGuard implements CanActivate {
         throw new UnauthorizedException('User not found');
       }
 
+      if (!user.role) {
+        this.logger.warn('User has no role assigned', { userId: user.id });
+        throw new ForbiddenException(
+          'User has no role assigned. Contact administrator.',
+        );
+      }
+
       // Check if user has one of the required roles
       const hasRequiredRole = requiredRoles.some(
         (r) => r.toLowerCase() === user.role.name.toLowerCase(),
       );
       this.logger.log('User has required role', hasRequiredRole);
 
-      return hasRequiredRole;
+      if (!hasRequiredRole) {
+        throw new ForbiddenException(
+          `Access denied. Required roles: ${requiredRoles.join(', ')}. Your role: ${user.role.name}`,
+        );
+      }
+
+      return true;
     } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
       this.logger.error('Error in GraphQLRolesGuard', error);
       throw new UnauthorizedException('Invalid token');
     }

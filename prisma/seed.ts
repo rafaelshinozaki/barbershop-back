@@ -286,225 +286,81 @@ async function main() {
       rs.push(r);
     }
 
-    // Create admin
-    console.log('Creating admin...');
-    await prisma.user.create({
-      data: {
-        provider: 'local',
-        email: 'rafaelsinosak@barbershop.com',
-        fullName: 'Rafael Vieira Sinosaki',
-        phone: faker.phone.number('(###) ###-####'),
-        gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
-        birthdate: faker.date.birthdate(),
-        idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-        password: await bcrypt.hash('pwned', 10),
-        company: faker.company.name(),
-        jobTitle: faker.helpers.arrayElement(jobTypes),
-        department: faker.helpers.arrayElement(departments),
-        professionalSegment: 'IT',
-        knowledgeApp: 'LinkedIn',
-        readTerms: true,
-        isActive: true,
-        userSystemConfig: {
-          create: {
-            theme: faker.helpers.arrayElement(['light', 'dark']),
-            accentColor: faker.helpers.arrayElement([
-              'gray',
-              'gold',
-              'bronze',
-              'brown',
-              'yellow',
-              'amber',
-              'orange',
-              'tomato',
-              'red',
-              'ruby',
-              'crimson',
-              'pink',
-              'plum',
-              'purple',
-              'violet',
-              'iris',
-              'indigo',
-              'blue',
-              'cyan',
-              'teal',
-              'jade',
-              'green',
-              'grass',
-              'lime',
-              'mint',
-              'sky',
-            ]),
-            grayColor: faker.helpers.arrayElement([
-              'auto',
-              'gray',
-              'mauve',
-              'slate',
-              'sage',
-              'olive',
-              'sand',
-            ]),
-            radius: faker.helpers.arrayElement(['small', 'none', 'medium', 'large', 'full']),
-            scaling: faker.helpers.arrayElement(['90%', '95%', '100%', '105%', '110%']),
-            language: faker.helpers.arrayElement(['es', 'en', 'pt']),
-          },
-        },
-        emailNotification: {
-          create: {
-            news: faker.helpers.arrayElement([true, false]),
-            promotions: faker.helpers.arrayElement([true, false]),
-            instability: faker.helpers.arrayElement([true, false]),
-            security: faker.helpers.arrayElement([true, false]),
-          },
-        },
-        address: {
-          create: {
-            zipcode: faker.address.zipCode(),
-            street: faker.address.street(),
-            city: faker.address.city(),
-            neighborhood: faker.address.street(),
-            state: faker.address.stateAbbr(),
-            country: 'Brazil',
-          },
-        },
-        roleId: rs.filter((r) => r.name === 'SystemAdmin')[0].id,
+    // Create seed users with specific roles
+    const seedUsers = [
+      {
+        email: 'rafael.sinosaki@barbershop.com',
+        fullName: 'Rafael Sinosaki',
+        role: 'SystemAdmin',
       },
-    });
-
-    // Create developer
-    console.log('Creating Developer...');
-    await prisma.user.create({
-      data: {
-        provider: 'local',
-        email: 'rafael.lima@barbershop.com',
-        password: await bcrypt.hash('pwned', 10),
-        fullName: 'Rafael Lima',
-        roleId: rs.filter((r) => r.name === 'SystemAdmin')[0].id,
-        phone: faker.phone.number('(###) ###-####'),
-        gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
-        birthdate: faker.date.birthdate(),
-        idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-        company: faker.company.name(),
-        jobTitle: faker.helpers.arrayElement(jobTypes),
-        department: faker.helpers.arrayElement(departments),
-        professionalSegment: 'IT',
-        knowledgeApp: 'LinkedIn',
-        readTerms: true,
-        membership: 'FREE',
-        isActive: true,
-        emailNotification: {
-          create: {
-            news: faker.datatype.boolean(),
-            promotions: faker.datatype.boolean(),
-            instability: faker.datatype.boolean(),
-            security: faker.datatype.boolean(),
-          },
-        },
-        address: {
-          create: {
-            zipcode: faker.address.zipCode(),
-            street: faker.address.street(),
-            city: faker.address.city(),
-            neighborhood: faker.address.street(),
-            state: faker.address.stateAbbr(),
-            country: 'Brazil',
-          },
-        },
-        userSystemConfig,
-      },
-    });
-
-    // Create Rafael (rafaelsinosak@gmail.com)
-    console.log('Creating Rafael...');
-    await prisma.user.create({
-      data: {
-        provider: 'local',
-        email: 'rafaelsinosak@gmail.com',
-        password: await bcrypt.hash('Adv88798!', 10),
-        fullName: 'Rafael',
-        roleId: rs.filter((r) => r.name === 'BarbershopOwner')[0].id,
-        phone: '(11) 99999-9999',
-        gender: 'Male',
-        birthdate: new Date('1990-01-01'),
-        idDocNumber: '12345678901',
-        company: 'Barbershop',
-        professionalSegment: 'IT',
-        knowledgeApp: 'LinkedIn',
-        readTerms: true,
-        isActive: true,
-        userSystemConfig: {
-          create: {
-            theme: 'light',
-            accentColor: 'blue',
-            grayColor: 'gray',
-            radius: 'medium',
-            scaling: '100%',
-            language: 'pt',
-          },
-        },
-        address: {
-          create: {
-            zipcode: '01234-567',
-            street: 'Rua Exemplo',
-            city: 'São Paulo',
-            neighborhood: 'Centro',
-            state: 'SP',
-            country: 'Brazil',
-          },
-        },
-        emailNotification: {
-          create: {
-            news: true,
-            promotions: false,
-            instability: true,
-            security: true,
-          },
-        },
-      },
-    });
-
-    // Create manager
-    console.log('Creating manager...');
-    await prisma.user.create({
-      data: {
-        provider: 'local',
+      {
         email: 'jacqueline.mariane@barbershop.com',
-        password: await bcrypt.hash('pwned', 10),
         fullName: 'Jacqueline Mariane',
-        roleId: rs.filter((r) => r.name === 'SystemManager')[0].id,
-        phone: faker.phone.number('(###) ###-####'),
-        gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
-        birthdate: faker.date.birthdate(),
-        idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-        company: faker.company.name(),
-        jobTitle: faker.helpers.arrayElement(jobTypes),
-        department: faker.helpers.arrayElement(departments),
-        professionalSegment: 'IT',
-        knowledgeApp: 'LinkedIn',
-        readTerms: true,
-        membership: 'FREE',
-        isActive: true,
-        emailNotification: {
-          create: {
-            news: faker.helpers.arrayElement([true, false]),
-            promotions: faker.helpers.arrayElement([true, false]),
-            instability: faker.helpers.arrayElement([true, false]),
-            security: faker.helpers.arrayElement([true, false]),
-          },
-        },
-        address: {
-          create: {
-            zipcode: faker.address.zipCode(),
-            street: faker.address.street(),
-            city: faker.address.city(),
-            neighborhood: faker.address.street(),
-            state: faker.address.stateAbbr(),
-            country: 'Brazil',
-          },
+        role: 'SystemManager',
+      },
+      {
+        email: 'cayo.carlos@barbershop.com',
+        fullName: 'Cayo Carlos',
+        role: 'BarbershopOwner',
+      },
+      {
+        email: 'bianca.silverio@barbershop.com',
+        fullName: 'Bianca Silverio',
+        role: 'BarbershopManager',
+      },
+      {
+        email: 'minion.cayo@barbershop.com',
+        fullName: 'Minion Cayo',
+        role: 'BarbershopEmployee',
+      },
+    ];
+
+    const sharedUserData = {
+      provider: 'local' as const,
+      password: bcrypt.hashSync('pwned', 10),
+      phone: faker.phone.number('(###) ###-####'),
+      gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
+      birthdate: faker.date.birthdate(),
+      idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
+      company: faker.company.name(),
+      jobTitle: faker.helpers.arrayElement(jobTypes),
+      department: faker.helpers.arrayElement(departments),
+      professionalSegment: 'IT',
+      knowledgeApp: 'LinkedIn',
+      readTerms: true,
+      isActive: true,
+      userSystemConfig: { create: userSystemConfig.create },
+      emailNotification: {
+        create: {
+          news: faker.helpers.arrayElement([true, false]),
+          promotions: faker.helpers.arrayElement([true, false]),
+          instability: faker.helpers.arrayElement([true, false]),
+          security: faker.helpers.arrayElement([true, false]),
         },
       },
-    });
+      address: {
+        create: {
+          zipcode: faker.address.zipCode(),
+          street: faker.address.street(),
+          city: faker.address.city(),
+          neighborhood: faker.address.street(),
+          state: faker.address.stateAbbr(),
+          country: 'Brazil',
+        },
+      },
+    };
+
+    for (const u of seedUsers) {
+      console.log(`Creating ${u.fullName} (${u.role})...`);
+      await prisma.user.create({
+        data: {
+          ...sharedUserData,
+          email: u.email,
+          fullName: u.fullName,
+          roleId: rs.find((r) => r.name === u.role)!.id,
+        },
+      });
+    }
 
     // Create users and subscriptions
     console.log('Creating users and subscriptions...');

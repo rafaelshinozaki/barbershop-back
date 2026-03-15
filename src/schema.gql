@@ -107,6 +107,7 @@ type Barber {
   name: String!
   phone: String!
   specialization: String
+  staffType: String
   updatedAt: String!
   userId: Int
 }
@@ -686,8 +687,10 @@ type Mutation {
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
+  reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
+  requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
@@ -1329,11 +1332,11 @@ type UserRecurringPaymentsStats {
 }
 
 enum UserRole {
-  ADMIN
   BARBERSHOP_EMPLOYEE
+  BARBERSHOP_MANAGER
   BARBERSHOP_OWNER
-  MANAGER
-  USER
+  SYSTEM_ADMIN
+  SYSTEM_MANAGER
 }
 
 enum UserStatus {

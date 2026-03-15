@@ -231,6 +231,28 @@ export class BarbershopResolver {
     return true;
   }
 
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async reactivateBarber(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    await this.barbershopService.reactivateBarber(user.id, barbershopId, id);
+    return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async requestBarberPasswordReset(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    await this.barbershopService.requestBarberPasswordReset(user.id, barbershopId, id);
+    return true;
+  }
+
   // ============ SERVICES ============
 
   @UseGuards(GraphQLJwtAuthGuard)

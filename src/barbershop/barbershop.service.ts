@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   planIncludesModule,
@@ -17,7 +18,10 @@ import {
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userService: UserService,
+  ) {}
 
   /**
    * Retorna o plano efetivo da barbearia (baseado na assinatura do dono).
@@ -92,6 +96,11 @@ export class BarbershopService {
       throw new ForbiddenException('Você não tem acesso a esta barbearia');
     }
     return barbershop;
+  }
+
+  /** Verifica acesso à barbearia (usado por EmployeeInviteService). */
+  async verifyBarbershopAccess(userId: number, barbershopId: number) {
+    return this.ensureBarbershopAccess(userId, barbershopId);
   }
 
   /** Encontra ou cria a rede do usuário (uma rede por dono). */
@@ -493,7 +502,43 @@ export class BarbershopService {
 
   async deleteBarber(userId: number, barbershopId: number, barberId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    await this.prisma.barber.delete({ where: { id: barberId } });
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, barbershopId },
+    });
+    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    await this.prisma.barber.update({
+      where: { id: barberId },
+      data: { isActive: false },
+    });
+  }
+
+  async reactivateBarber(userId: number, barbershopId: number, barberId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, barbershopId },
+    });
+    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    return this.prisma.barber.update({
+      where: { id: barberId },
+      data: { isActive: true },
+    });
+  }
+
+  async requestBarberPasswordReset(userId: number, barbershopId: number, barberId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, barbershopId },
+      include: { user: true },
+    });
+    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    const email = barber.user?.email ?? barber.email;
+    if (!email) throw new BadRequestException('Barbeiro não possui email cadastrado');
+    const user = await this.prisma.user.findFirst({
+      where: { email, provider: 'local' },
+    });
+    if (!user) throw new BadRequestException('O funcionário ainda não criou a conta. Peça que aceite o convite por email primeiro.');
+    await this.userService.forgotPass({ email });
+    return true;
   }
 
   // ============ SERVICES (BarbershopService) ============

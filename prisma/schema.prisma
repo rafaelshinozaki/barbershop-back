@@ -53,6 +53,8 @@ model User {
   barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
   barberProfile      Barber?
   networksOwned      Network[]     @relation("NetworkOwner")
+  sentEmployeeInvites    EmployeeInvite[] @relation("EmployeeInviteInviter")
+  acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
 
   @@unique([email, provider])
 }
@@ -285,6 +287,29 @@ model FriendInvite {
   @@index([status])
 }
 
+model EmployeeInvite {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  inviterId      Int
+  barbershopId   Int
+  barberId       Int
+  email          String
+  inviteToken    String    @unique
+  role           String    // BarbershopEmployee | BarbershopManager
+  status         String    @default("PENDING")
+  expiresAt      DateTime
+  acceptedByUserId Int?
+  inviter        User      @relation("EmployeeInviteInviter", fields: [inviterId], references: [id])
+  barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  barber         Barber    @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  acceptedByUser User?     @relation("EmployeeInviteAcceptedBy", fields: [acceptedByUserId], references: [id])
+
+  @@index([inviteToken])
+  @@index([status])
+  @@index([barbershopId])
+}
+
 // ============ BARBERSHOP MANAGEMENT ============
 
 model Network {
@@ -334,6 +359,7 @@ model Barbershop {
   serviceHistory ServiceHistory[]
   sales          Sale[]
   inventoryItems InventoryItem[]
+  employeeInvites EmployeeInvite[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -369,6 +395,7 @@ model Barber {
   updatedAt      DateTime         @updatedAt
   barbershopId   Int
   userId         Int?      @unique
+  staffType      String?          @default("barber") // barber | manager
   name           String
   phone          String
   email          String?
@@ -378,6 +405,7 @@ model Barber {
   hireDate       DateTime?
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   user           User?            @relation(fields: [userId], references: [id])
+  employeeInvites EmployeeInvite[]
   schedules      BarberSchedule[]
   timeOffs       BarberTimeOff[]
   appointments   Appointment[]

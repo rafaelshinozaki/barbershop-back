@@ -210,6 +210,9 @@ export class Barber {
   @Field({ nullable: true })
   hireDate?: string;
 
+  @Field({ nullable: true })
+  staffType?: string;
+
   @Field()
   createdAt: string;
 

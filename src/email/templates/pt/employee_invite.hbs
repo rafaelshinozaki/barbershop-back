@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convite de Funcionário - {{AppName}}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; }
+        .container { background-color: #ffffff; border-radius: 10px; padding: 30px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { color: #2563eb; font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+        .subtitle { color: #64748b; font-size: 18px; margin-bottom: 30px; }
+        .highlight { background-color: #dbeafe; border-left: 4px solid #2563eb; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .cta-button { display: inline-block; background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 20px 0; text-align: center; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Convite para fazer parte da equipe</h1>
+            <p class="subtitle">{{InviterName}} te convidou para ser {{RoleLabel}} na {{BarbershopName}}</p>
+        </div>
+
+        <div class="highlight">
+            <p style="font-size: 18px; margin: 0;">
+                Você foi convidado(a) para integrar a equipe da <strong>{{BarbershopName}}</strong> como <strong>{{RoleLabel}}</strong>.
+            </p>
+        </div>
+
+        <p>Olá!</p>
+        <p>{{InviterName}} te convidou para fazer parte da equipe da <strong>{{BarbershopName}}</strong>. Aceite o convite para criar sua conta e ter acesso à plataforma.</p>
+        <p><strong>O dono da barbearia já cuida da assinatura</strong> – você não precisará cadastrar cartão de crédito.</p>
+
+        <div style="text-align: center;">
+            <a href="{{InviteUrl}}" class="cta-button">Criar minha conta e aceitar convite</a>
+        </div>
+
+        <p style="font-size: 14px; color: #6b7280; text-align: center;">Este convite expira em 30 dias.</p>
+
+        <div class="footer">
+            <p>© {{AppName}}. Todos os direitos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

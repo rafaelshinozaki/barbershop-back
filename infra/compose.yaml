@@ -17,26 +17,6 @@ services:
     networks:
       - barbershop-network
 
-  backend:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    stdin_open: false
-    tty: false
-    env_file:
-      - ../.env
-    ports:
-      - "3020:3020"
-      - "5555:5555"
-    environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://barbershop:barbershop@postgres:5432/barbershop
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - barbershop-network
-
 volumes:
   postgres_data:
 
