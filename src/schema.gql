@@ -629,6 +629,12 @@ enum MembershipStatus {
   PREMIUM
 }
 
+type MonthlyRevenueItem {
+  month: String!
+  total: Float!
+  year: Int!
+}
+
 type Mutation {
   applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
@@ -722,6 +728,25 @@ type Network {
   mission: String
   name: String
   updatedAt: String!
+}
+
+type NetworkDashboardEvent {
+  date: String!
+  id: String!
+  subtitle: String
+  title: String!
+  type: String!
+  value: Float
+}
+
+type NetworkDashboardStats {
+  monthlyRevenue: [MonthlyRevenueItem!]!
+  recentEvents: [NetworkDashboardEvent!]!
+  revenueThisMonth: Float!
+  totalBarbers: Int!
+  totalBarbershops: Int!
+  totalProductsSold: Int!
+  totalServicesDone: Int!
 }
 
 type NotificationCount {
@@ -929,6 +954,7 @@ type Query {
   myPayments: [Payment!]!
   mySubscriptions: [Subscription!]!
   myUnreadNotifications: [UserNotification!]!
+  networkDashboardStats: NetworkDashboardStats!
   overduePayments: [Payment!]!
   planDistribution: PlanDistribution!
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!

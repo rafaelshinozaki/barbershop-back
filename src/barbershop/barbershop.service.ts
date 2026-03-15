@@ -137,6 +137,152 @@ export class BarbershopService {
     });
   }
 
+  /** Dashboard stats agregados para dono da franquia */
+  async getNetworkDashboardStats(userId: number) {
+    const barbershops = await this.getMyBarbershops(userId);
+    const barbershopIds = barbershops.map((b) => b.id);
+    if (barbershopIds.length === 0) {
+      return {
+        totalBarbers: 0,
+        totalBarbershops: 0,
+        totalServicesDone: 0,
+        totalProductsSold: 0,
+        revenueThisMonth: 0,
+        monthlyRevenue: [],
+        recentEvents: [],
+      };
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Total barbers (funcionários)
+    const totalBarbers = await this.prisma.barber.count({
+      where: {
+        barbershopId: { in: barbershopIds },
+        isActive: true,
+      },
+    });
+
+    // Serviços realizados (ServiceHistory)
+    const totalServicesDone = await this.prisma.serviceHistory.count({
+      where: { barbershopId: { in: barbershopIds } },
+    });
+
+    // Produtos vendidos (SaleItem onde itemType = PRODUCT)
+    const productsSoldResult = await this.prisma.saleItem.aggregate({
+      where: {
+        itemType: 'PRODUCT',
+        sale: { barbershopId: { in: barbershopIds } },
+      },
+      _sum: { quantity: true },
+    });
+    const totalProductsSold = productsSoldResult._sum.quantity ?? 0;
+
+    // Faturamento do mês vigente (vendas pagas)
+    const revenueThisMonthResult = await this.prisma.sale.aggregate({
+      where: {
+        barbershopId: { in: barbershopIds },
+        paymentStatus: 'PAID',
+        createdAt: { gte: startOfMonth },
+      },
+      _sum: { total: true },
+    });
+    const revenueThisMonth = Number(revenueThisMonthResult._sum.total ?? 0);
+
+    // Comparativo mensal (últimos 6 meses)
+    const monthlyRevenue: { month: string; year: number; total: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const r = await this.prisma.sale.aggregate({
+        where: {
+          barbershopId: { in: barbershopIds },
+          paymentStatus: 'PAID',
+          createdAt: { gte: start, lte: end },
+        },
+        _sum: { total: true },
+      });
+      monthlyRevenue.push({
+        month: start.toLocaleDateString('pt-BR', { month: 'short' }),
+        year: start.getFullYear(),
+        total: Number(r._sum.total ?? 0),
+      });
+    }
+
+    // Últimos eventos (appointments + sales, ordenados por data)
+    const [recentAppointments, recentSales] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: { barbershopId: { in: barbershopIds } },
+        orderBy: { startAt: 'desc' },
+        take: 10,
+        include: {
+          barbershop: { select: { name: true } },
+          customer: { select: { name: true } },
+          barber: { select: { name: true } },
+        },
+      }),
+      this.prisma.sale.findMany({
+        where: {
+          barbershopId: { in: barbershopIds },
+          paymentStatus: 'PAID',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          barbershop: { select: { name: true } },
+          barber: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const events: Array<{
+      id: string;
+      type: string;
+      date: Date;
+      title: string;
+      subtitle?: string;
+      value?: number;
+    }> = [];
+
+    recentAppointments.forEach((a) => {
+      events.push({
+        id: `apt-${a.id}`,
+        type: 'appointment',
+        date: a.startAt,
+        title: `Agendamento: ${a.customer?.name ?? '-'}`,
+        subtitle: `${a.barbershop.name} • ${a.barber?.name ?? '-'}`,
+      });
+    });
+    recentSales.forEach((s) => {
+      events.push({
+        id: `sale-${s.id}`,
+        type: 'sale',
+        date: s.createdAt,
+        title: `Venda #${s.id}`,
+        subtitle: `${s.barbershop.name} • ${s.barber?.name ?? '-'}`,
+        value: Number(s.total),
+      });
+    });
+
+    events.sort((a, b) => b.date.getTime() - a.date.getTime());
+    const recentEvents = events.slice(0, 15).map((e) => ({
+      ...e,
+      date: e.date.toISOString(),
+    }));
+
+    return {
+      totalBarbers,
+      totalBarbershops: barbershops.length,
+      totalServicesDone,
+      totalProductsSold,
+      revenueThisMonth,
+      monthlyRevenue,
+      recentEvents,
+    };
+  }
+
   // ============ BARBERSHOP ============
 
   async createBarbershop(

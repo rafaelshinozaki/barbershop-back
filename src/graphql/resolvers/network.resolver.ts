@@ -44,7 +44,7 @@ export class NetworkResolver {
 
     await this.prisma.network.update({
       where: { id: network.id },
-      data: { logoKey, logoUrl: null },
+      data: { logoKey, logoUrl: null } as { logoKey: string; logoUrl: null },
     });
 
     return uploadUrl;
@@ -54,7 +54,8 @@ export class NetworkResolver {
   @Query(() => String, { nullable: true })
   async getNetworkLogoUrl(@CurrentUser() user: UserDTO): Promise<string | null> {
     const network = await this.barbershopService.getMyNetwork(user.id);
-    if (!network?.logoKey) return null;
-    return this.s3Service.getDownloadUrl(network.logoKey);
+    const logoKey = network && 'logoKey' in network ? (network as { logoKey?: string }).logoKey : null;
+    if (!logoKey) return null;
+    return this.s3Service.getDownloadUrl(logoKey);
   }
 }

@@ -6,6 +6,7 @@ import {
   Customer,
   Barber,
   Network,
+  NetworkDashboardStats,
   BarbershopServiceType,
   BarbershopProductType,
   BarberScheduleType,
@@ -119,6 +120,12 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.updateNetwork(user.id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => NetworkDashboardStats)
+  async networkDashboardStats(@CurrentUser() user: UserDTO) {
+    return this.barbershopService.getNetworkDashboardStats(user.id);
   }
 
   // ============ CUSTOMERS ============

@@ -31,6 +31,63 @@ export class Network {
 }
 
 @ObjectType()
+export class NetworkDashboardEvent {
+  @Field()
+  id: string;
+
+  @Field()
+  type: string;
+
+  @Field()
+  date: string;
+
+  @Field()
+  title: string;
+
+  @Field({ nullable: true })
+  subtitle?: string;
+
+  @Field(() => Float, { nullable: true })
+  value?: number;
+}
+
+@ObjectType()
+export class MonthlyRevenueItem {
+  @Field()
+  month: string;
+
+  @Field(() => Int)
+  year: number;
+
+  @Field(() => Float)
+  total: number;
+}
+
+@ObjectType()
+export class NetworkDashboardStats {
+  @Field(() => Int)
+  totalBarbers: number;
+
+  @Field(() => Int)
+  totalBarbershops: number;
+
+  @Field(() => Int)
+  totalServicesDone: number;
+
+  @Field(() => Int)
+  totalProductsSold: number;
+
+  @Field(() => Float)
+  revenueThisMonth: number;
+
+  @Field(() => [MonthlyRevenueItem])
+  monthlyRevenue: MonthlyRevenueItem[];
+
+  @Field(() => [NetworkDashboardEvent])
+  recentEvents: NetworkDashboardEvent[];
+}
+
+@ObjectType()
 export class Barbershop {
   @Field(() => Int)
   id: number;
