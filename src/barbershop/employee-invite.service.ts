@@ -207,7 +207,7 @@ export class EmployeeInviteService {
         birthdate,
         company: invite.barbershop.name,
         professionalSegment: 'barbershop',
-        knowledgeApp: 'relable',
+        knowledgeApp: 'barbershop',
         readTerms: true,
         membership: 'FREE',
         isActive: true,

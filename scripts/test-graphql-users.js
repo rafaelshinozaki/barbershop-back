@@ -47,7 +47,7 @@ async function testGraphQL() {
       body: JSON.stringify({
         query: LOGIN_MUTATION,
         variables: {
-          email: 'rafaelsinosak@relable.com',
+          email: 'rafaelsinosak@barbershop.com',
           password: 'pwned',
         },
       }),

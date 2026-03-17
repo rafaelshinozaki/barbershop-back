@@ -1,8 +1,8 @@
 {
 	"info": {
-		"_postman_id": "relable-payments-api",
-		"name": "Relable Payments API",
-		"description": "Complete collection for testing Relable payment system APIs including authentication, GraphQL mutations, and REST endpoints.",
+		"_postman_id": "barbershop-payments-api",
+		"name": "Barbershop Payments API",
+		"description": "Complete collection for testing Barbershop payment system APIs including authentication, GraphQL mutations, and REST endpoints.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"event": [
@@ -104,7 +104,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"rafael.lima@relable.com\",\n  \"password\": \"pwned\"\n}"
+							"raw": "{\n  \"email\": \"rafael.lima@barbershop.com\",\n  \"password\": \"pwned\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/auth/login",

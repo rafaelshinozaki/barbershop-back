@@ -59,13 +59,13 @@ export class AuthService {
     if (!existing) {
       const context = {
         FullName: user.fullName,
-        AppName: 'Relable',
+        AppName: 'Barbershop',
         IP: ip,
         Location: location,
         DeviceType: deviceType,
         Browser: browser,
         OS: os,
-        SupportEmail: 'suporte@relable.com.br',
+        SupportEmail: 'suporte@barbershop.com.br',
         Year: new Date().getFullYear(),
       };
 

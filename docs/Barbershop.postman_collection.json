@@ -1,9 +1,9 @@
 {
   "info": {
     "_postman_id": "ec9697cc-1234-4123-a123-aa1234567890",
-    "name": "Relable API",
+    "name": "Barbershop API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Coleção com todos os endpoints da API Relable"
+    "description": "Coleção com todos os endpoints da API Barbershop"
   },
   "item": [
     {

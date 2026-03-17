@@ -29,7 +29,7 @@ const mockRequest = {
   },
   user: {
     id: 1,
-    email: 'rafaelsinosak@relable.com',
+    email: 'rafaelsinosak@barbershop.com',
     fullName: 'Rafael Vieira Sinosaki23',
     role: { id: 3, name: 'Admin' },
   },
@@ -41,7 +41,7 @@ logger.logEssential('Request data', mockRequest, ['headers', 'cookies', 'body', 
 // Teste 2: Objeto de usuário
 const userData = {
   id: 1,
-  email: 'rafaelsinosak@relable.com',
+  email: 'rafaelsinosak@barbershop.com',
   fullName: 'Rafael Vieira Sinosaki23',
   password: '$2a$10$nI/p4H8eD084aYVhC1kTTuXA3xLtfiCE2.L/Yr9YLDBILsvE8KY9O',
   token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',

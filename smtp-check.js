@@ -2,10 +2,10 @@
 const nodemailer = require('nodemailer');
 
 (async () => {
-  const host = process.env.EMAIL_HOST;         // "mail.relable.org"
+  const host = process.env.EMAIL_HOST;         // "mail.barbershop.org"
   const port = parseInt(process.env.EMAIL_PORT, 10); // 587
   const secure = process.env.EMAIL_SECURE === 'true'; // false
-  const user = process.env.EMAIL_USER;         // "api@relable.org"
+  const user = process.env.EMAIL_USER;         // "api@barbershop.org"
   const pass = process.env.EMAIL_PASS;         // "mg-&Q$;6!SoB"
 
   console.log('Tentando conectar a SMTP:', { host, port, secure, user });

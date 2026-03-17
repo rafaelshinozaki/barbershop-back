@@ -195,7 +195,7 @@ class PaymentTestRunner {
 // Função para mostrar ajuda
 function showHelp() {
   console.log(`
-🚀 Executor de Testes de Pagamento - Relable
+🚀 Executor de Testes de Pagamento - Barbershop
 
 Uso:
   node run-all-tests.js [opções]

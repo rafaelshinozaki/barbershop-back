@@ -4,7 +4,7 @@ const BASE_URL = 'http://localhost:3020';
 
 // Credenciais de teste (baseadas no seed)
 const TEST_CREDENTIALS = {
-  email: 'rafael.lima@relable.com',
+  email: 'rafael.lima@barbershop.com',
   password: 'pwned',
 };
 

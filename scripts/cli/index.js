@@ -29,9 +29,9 @@ program.addHelpText(
   `
 Exemplos:
   $ barbershop-cli user create --email admin@example.com --password 123456
-  $ relable-cli db migrate
-  $ relable-cli stripe sync-plans
-  $ relable-cli system health
+  $ barbershop-cli db migrate
+  $ barbershop-cli stripe sync-plans
+  $ barbershop-cli system health
 `,
 );
 

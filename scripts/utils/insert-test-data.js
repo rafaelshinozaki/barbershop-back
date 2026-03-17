@@ -8,7 +8,7 @@ async function insertTestData() {
 
     // Buscar o usuário de teste
     const testUser = await prisma.user.findFirst({
-      where: { email: 'rafael.sinosaki@relable.com' },
+      where: { email: 'rafael.sinosaki@barbershop.com' },
     });
 
     if (!testUser) {
