@@ -350,9 +350,10 @@ async function main() {
       },
     };
 
+    const createdSeedUsers: { email: string; id: number }[] = [];
     for (const u of seedUsers) {
       console.log(`Creating ${u.fullName} (${u.role})...`);
-      await prisma.user.create({
+      const user = await prisma.user.create({
         data: {
           ...sharedUserData,
           email: u.email,
@@ -360,6 +361,63 @@ async function main() {
           roleId: rs.find((r) => r.name === u.role)!.id,
         },
       });
+      createdSeedUsers.push({ email: u.email, id: user.id });
+    }
+
+    // Create Network, Barbershop and link Bianca as manager for Cayo's barbershop
+    const cayo = createdSeedUsers.find((u) => u.email === 'cayo.carlos@barbershop.com');
+    const bianca = createdSeedUsers.find((u) => u.email === 'bianca.silverio@barbershop.com');
+    if (cayo && bianca) {
+      console.log('Creating Green Barbershop (Cayo owns, Bianca is manager)...');
+      const network = await prisma.network.create({
+        data: { ownerUserId: cayo.id },
+      });
+      const barbershop = await prisma.barbershop.create({
+        data: {
+          name: 'Green Barbershop',
+          slug: 'green-barbershop',
+          address: 'Rua Raimundo Barbosa Nogueira',
+          city: 'São José dos Campos',
+          state: 'SP',
+          country: 'Brazil',
+          postalCode: '12245-000',
+          phone: '(12) 99757-2011',
+          email: 'rafaelsinosak@barbershop.com',
+          networkId: network.id,
+          ownerUserId: cayo.id,
+        },
+      });
+      const biancaBarber = await prisma.barber.create({
+        data: {
+          barbershopId: barbershop.id,
+          userId: bianca.id,
+          staffType: 'manager',
+          name: 'Bianca Silverio',
+          phone: faker.phone.number('(###) ###-####'),
+          email: 'bianca.silverio@barbershop.com',
+          isActive: true,
+        },
+      });
+      await prisma.customer.create({
+        data: {
+          networkId: network.id,
+          name: 'João Silva',
+          phone: '(12) 98765-4321',
+          email: 'joao.silva@email.com',
+          isActive: true,
+        },
+      });
+      await prisma.barbershopService.create({
+        data: {
+          barbershopId: barbershop.id,
+          name: 'Corte masculino',
+          category: 'HAIRCUT',
+          durationMinutes: 30,
+          price: 35,
+          isActive: true,
+        },
+      });
+      console.log(`  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`);
     }
 
     // Create users and subscriptions

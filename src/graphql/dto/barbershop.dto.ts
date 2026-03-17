@@ -104,10 +104,10 @@ export class CreateCustomerInput {
   @Field()
   name: string;
 
-  @Field()
-  phone: string;
+  @Field({ nullable: true, description: 'Obrigatório se email não informado' })
+  phone?: string;
 
-  @Field({ nullable: true })
+  @Field({ nullable: true, description: 'Obrigatório se telefone não informado' })
   email?: string;
 
   @Field({ nullable: true })

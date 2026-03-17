@@ -418,10 +418,14 @@ input CreateCustomerInput {
   """Opcional - usa barbershopId da mutation"""
   barbershopId: Int
   birthDate: String
+
+  """Obrigatório se telefone não informado"""
   email: String
   name: String!
   notes: String
-  phone: String!
+
+  """Obrigatório se email não informado"""
+  phone: String
 }
 
 input CreatePlanInput {

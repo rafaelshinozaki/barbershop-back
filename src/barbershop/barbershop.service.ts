@@ -92,7 +92,10 @@ export class BarbershopService {
     }
     const ownsViaBarbershop = barbershop.ownerUserId === userId;
     const ownsViaNetwork = barbershop.network?.ownerUserId === userId;
-    if (!ownsViaBarbershop && !ownsViaNetwork) {
+    const isBarberInShop = await this.prisma.barber.findFirst({
+      where: { barbershopId, userId },
+    });
+    if (!ownsViaBarbershop && !ownsViaNetwork && !isBarberInShop) {
       throw new ForbiddenException('Você não tem acesso a esta barbearia');
     }
     return barbershop;
@@ -385,15 +388,27 @@ export class BarbershopService {
     barbershopId: number,
     data: {
       name: string;
-      phone: string;
+      phone?: string;
       email?: string;
       birthDate?: Date;
       notes?: string;
     },
   ) {
+    const phone = data.phone?.trim();
+    const email = data.email?.trim();
+    if (!phone && !email) {
+      throw new BadRequestException(
+        'Informe pelo menos telefone ou email para cadastrar o cliente.',
+      );
+    }
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     return this.prisma.customer.create({
-      data: { networkId: barbershop.networkId, ...data },
+      data: {
+        networkId: barbershop.networkId,
+        ...data,
+        phone: phone || '(sem telefone)',
+        email: email || null,
+      },
     });
   }
 
