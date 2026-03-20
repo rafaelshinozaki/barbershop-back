@@ -87,6 +87,21 @@ export class EmployeeInviteService {
       throw new BadRequestException('Já existe um convite pendente para este email nesta barbearia');
     }
 
+    const phone = input.phone.trim();
+    const existingBarberByPhone = await this.prisma.barber.findFirst({
+      where: { barbershopId: input.barbershopId, phone, isActive: true },
+    });
+    if (existingBarberByPhone) {
+      throw new BadRequestException('Já existe um funcionário com este telefone nesta barbearia');
+    }
+
+    const existingBarberByEmail = await this.prisma.barber.findFirst({
+      where: { barbershopId: input.barbershopId, email, isActive: true },
+    });
+    if (existingBarberByEmail) {
+      throw new BadRequestException('Já existe um funcionário com este email nesta barbearia');
+    }
+
     const staffType: StaffType = input.role === 'BarbershopManager' ? 'manager' : 'barber';
     const inviteToken = randomBytes(32).toString('hex');
     const expiresAt = new Date();
@@ -96,7 +111,7 @@ export class EmployeeInviteService {
       data: {
         barbershopId: input.barbershopId,
         name: input.name.trim(),
-        phone: input.phone.trim(),
+        phone,
         email,
         specialization: input.specialization?.trim() || (staffType === 'barber' ? undefined : 'Gerente'),
         hireDate: input.hireDate ? new Date(input.hireDate) : undefined,

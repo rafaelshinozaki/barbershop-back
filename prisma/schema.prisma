@@ -455,6 +455,7 @@ model BarbershopService {
   updatedAt        DateTime @updatedAt
   barbershopId     Int
   name             String
+  icon             String?
   description      String?
   durationMinutes  Int
   price            Decimal

@@ -438,7 +438,7 @@ export class BarbershopResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('startAt', { nullable: true }) startAt?: string,
     @Args('endAt', { nullable: true }) endAt?: string,
-    @Args('barberId', { nullable: true }) barberId?: number,
+    @Args('barberId', { type: () => Int, nullable: true }) barberId?: number,
     @Args('status', { nullable: true }) status?: string,
   ) {
     return this.barbershopService.getAppointments(user.id, barbershopId, {
@@ -526,7 +526,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('customerId', { type: () => Int }) customerId: number,
-    @Args('limit', { nullable: true }) limit?: number,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
   ) {
     return this.barbershopService.getCustomerServiceHistory(
       user.id,

@@ -387,7 +387,19 @@ async function main() {
           ownerUserId: cayo.id,
         },
       });
-      const biancaBarber = await prisma.barber.create({
+      await prisma.barber.create({
+        data: {
+          barbershopId: barbershop.id,
+          userId: cayo.id,
+          staffType: 'barber',
+          name: 'Cayo Carlos',
+          phone: '(12) 99757-2011',
+          email: 'cayo.carlos@barbershop.com',
+          specialization: 'Proprietário',
+          isActive: true,
+        },
+      });
+      await prisma.barber.create({
         data: {
           barbershopId: barbershop.id,
           userId: bianca.id,
@@ -398,6 +410,21 @@ async function main() {
           isActive: true,
         },
       });
+      const minion = createdSeedUsers.find((u) => u.email === 'minion.cayo@barbershop.com');
+      if (minion) {
+        await prisma.barber.create({
+          data: {
+            barbershopId: barbershop.id,
+            userId: minion.id,
+            staffType: 'barber',
+            name: 'Minion Cayo',
+            phone: faker.phone.number('(###) ###-####'),
+            email: 'minion.cayo@barbershop.com',
+            specialization: 'Corte masculino',
+            isActive: true,
+          },
+        });
+      }
       await prisma.customer.create({
         data: {
           networkId: network.id,
@@ -411,6 +438,7 @@ async function main() {
         data: {
           barbershopId: barbershop.id,
           name: 'Corte masculino',
+          icon: '✂️',
           category: 'HAIRCUT',
           durationMinutes: 30,
           price: 35,

@@ -259,6 +259,9 @@ export class CreateBarbershopServiceInput {
   name: string;
 
   @Field({ nullable: true })
+  icon?: string;
+
+  @Field({ nullable: true })
   description?: string;
 
   @Field(() => Int)
@@ -278,6 +281,9 @@ export class CreateBarbershopServiceInput {
 export class UpdateBarbershopServiceInput {
   @Field({ nullable: true })
   name?: string;
+
+  @Field({ nullable: true })
+  icon?: string;
 
   @Field({ nullable: true })
   description?: string;

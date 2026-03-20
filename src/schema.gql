@@ -68,6 +68,7 @@ type Appointment {
   endAt: String!
   id: Int!
   notes: String
+  services: [AppointmentServiceType!]
   source: String!
   startAt: String!
   status: String!
@@ -77,6 +78,14 @@ type Appointment {
 input AppointmentServiceInput {
   notes: String
   quantity: Float = 1
+  serviceId: Int!
+  unitPrice: Float!
+}
+
+type AppointmentServiceType {
+  id: Int!
+  quantity: Int!
+  service: BarbershopServiceType
   serviceId: Int!
   unitPrice: Float!
 }
@@ -193,6 +202,7 @@ type BarbershopServiceType {
   description: String
   displayOrder: Int!
   durationMinutes: Int!
+  icon: String
   id: Int!
   isActive: Boolean!
   name: String!
@@ -397,6 +407,7 @@ input CreateBarbershopServiceInput {
   description: String
   displayOrder: Float = 0
   durationMinutes: Int!
+  icon: String
   name: String!
   price: Float!
 }
@@ -928,7 +939,7 @@ type Query {
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
   barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
   barbershop(id: Int!): Barbershop
-  barbershopAppointments(barberId: Float, barbershopId: Int!, endAt: String, startAt: String, status: String): [Appointment!]!
+  barbershopAppointments(barberId: Int, barbershopId: Int!, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
@@ -938,7 +949,7 @@ type Query {
   companyAnalysis: CompanyAnalysis!
   couponStats(id: Float!): CouponStats!
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
-  customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Float): [ServiceHistory!]!
+  customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
   demographicAnalysis: DemographicAnalysis!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
   geographicAnalysis: GeographicAnalysis!
@@ -1172,6 +1183,7 @@ input UpdateBarbershopServiceInput {
   description: String
   displayOrder: Int
   durationMinutes: Int
+  icon: String
   isActive: Boolean
   name: String
   price: Float

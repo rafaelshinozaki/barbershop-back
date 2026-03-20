@@ -320,7 +320,7 @@ export class BarbershopService {
       throw new BadRequestException('Já existe uma barbearia com este slug');
     }
     const network = await this.findOrCreateNetwork(userId);
-    return this.prisma.barbershop.create({
+    const barbershop = await this.prisma.barbershop.create({
       data: {
         ...data,
         timezone: data.timezone ?? 'America/Sao_Paulo',
@@ -328,6 +328,24 @@ export class BarbershopService {
         ownerUserId: userId,
       },
     });
+
+    const owner = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (owner) {
+      const alreadyLinked = await this.prisma.barber.findUnique({ where: { userId } });
+      await this.prisma.barber.create({
+        data: {
+          barbershopId: barbershop.id,
+          userId: alreadyLinked ? undefined : userId,
+          name: owner.fullName,
+          phone: owner.phone ?? data.phone,
+          email: owner.email,
+          staffType: 'barber',
+          specialization: 'Proprietário',
+        },
+      });
+    }
+
+    return barbershop;
   }
 
   async getUserBarbershops(userId: number) {
@@ -485,6 +503,25 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+
+    const phone = data.phone.trim();
+    const existingByPhone = await this.prisma.barber.findFirst({
+      where: { barbershopId, phone, isActive: true },
+    });
+    if (existingByPhone) {
+      throw new BadRequestException('Já existe um funcionário com este telefone nesta barbearia');
+    }
+
+    if (data.email) {
+      const email = data.email.toLowerCase().trim();
+      const existingByEmail = await this.prisma.barber.findFirst({
+        where: { barbershopId, email, isActive: true },
+      });
+      if (existingByEmail) {
+        throw new BadRequestException('Já existe um funcionário com este email nesta barbearia');
+      }
+    }
+
     return this.prisma.barber.create({
       data: { barbershopId, ...data },
     });

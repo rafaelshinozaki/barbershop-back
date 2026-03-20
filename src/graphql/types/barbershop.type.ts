@@ -289,6 +289,9 @@ export class BarbershopServiceType {
   name: string;
 
   @Field({ nullable: true })
+  icon?: string;
+
+  @Field({ nullable: true })
   description?: string;
 
   @Field(() => Int)
@@ -350,6 +353,24 @@ export class BarbershopProductType {
 }
 
 @ObjectType()
+export class AppointmentServiceType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field(() => Int)
+  quantity: number;
+
+  @Field(() => Float)
+  unitPrice: number;
+
+  @Field(() => BarbershopServiceType, { nullable: true })
+  service?: BarbershopServiceType;
+}
+
+@ObjectType()
 export class Appointment {
   @Field(() => Int)
   id: number;
@@ -377,6 +398,9 @@ export class Appointment {
 
   @Field()
   source: string;
+
+  @Field(() => [AppointmentServiceType], { nullable: true })
+  services?: AppointmentServiceType[];
 
   @Field()
   createdAt: string;
