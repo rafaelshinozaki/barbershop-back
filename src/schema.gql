@@ -183,10 +183,14 @@ type BarbershopCustomer {
 
 type BarbershopProductType {
   barbershopId: Int!
+  category: ProductCategoryType
+  categoryId: Int
   costPrice: Float
   createdAt: String!
   description: String
+  icon: String
   id: Int!
+  imageUrl: String
   isActive: Boolean!
   name: String!
   salePrice: Float!
@@ -393,8 +397,10 @@ input CreateBarbershopInput {
 
 input CreateBarbershopProductInput {
   barbershopId: Int!
+  categoryId: Int
   costPrice: Float
   description: String
+  icon: String
   name: String!
   salePrice: Float!
   sku: String
@@ -446,6 +452,14 @@ input CreatePlanInput {
   name: String!
   price: Float!
   stripePriceId: String
+}
+
+input CreateProductCategoryInput {
+  barbershopId: Int!
+  color: String
+  displayOrder: Int
+  icon: String
+  name: String!
 }
 
 input CreateSaleInput {
@@ -674,6 +688,7 @@ type Mutation {
   createNotification(message: String!, title: String!, type: String! = "info", userId: Int): UserNotification!
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
+  createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
   createSale(barbershopId: Int!, input: CreateSaleInput!): Sale!
   createSetupIntent: SetupIntent!
   createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
@@ -690,9 +705,11 @@ type Mutation {
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
   deleteNotification(id: Int!): CommonResponse!
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
+  deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getPhotoUploadUrl(contentType: String, fileExtension: String): String!
+  getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String, productId: Int!): String!
   login(input: LoginInput!): User!
   logout: Boolean!
   logoutOtherSessions: Boolean!
@@ -727,6 +744,7 @@ type Mutation {
   updateEmailNotification(input: UpdateEmailNotificationInput!): User!
   updateNetwork(input: UpdateNetworkInput!): Network!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
+  updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
   updateUser(input: UpdateUserByAdminInput!): Boolean!
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
@@ -920,6 +938,17 @@ type ProcessRecurringPaymentResponse {
   success: Boolean!
 }
 
+type ProductCategoryType {
+  barbershopId: Int!
+  color: String
+  createdAt: String!
+  displayOrder: Int!
+  icon: String
+  id: Int!
+  name: String!
+  updatedAt: String!
+}
+
 type ProfessionalSegmentAnalysis {
   departments: ChartData!
   jobTitles: ChartData!
@@ -942,6 +971,7 @@ type Query {
   barbershopAppointments(barberId: Int, barbershopId: Int!, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopSales(barbershopId: Int!, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
@@ -1169,8 +1199,10 @@ input UpdateBarbershopInput {
 }
 
 input UpdateBarbershopProductInput {
+  categoryId: Int
   costPrice: Float
   description: String
+  icon: String
   isActive: Boolean
   name: String
   salePrice: Float
@@ -1234,6 +1266,13 @@ input UpdatePlanInput {
   name: String
   price: Float
   stripePriceId: String
+}
+
+input UpdateProductCategoryInput {
+  color: String
+  displayOrder: Int
+  icon: String
+  name: String
 }
 
 input UpdateUserByAdminInput {

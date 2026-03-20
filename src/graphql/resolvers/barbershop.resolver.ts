@@ -8,6 +8,7 @@ import {
   Network,
   NetworkDashboardStats,
   BarbershopServiceType,
+  ProductCategoryType,
   BarbershopProductType,
   BarberScheduleType,
   BarberTimeOffType,
@@ -25,6 +26,8 @@ import {
   UpdateBarberInput,
   CreateBarbershopServiceInput,
   UpdateBarbershopServiceInput,
+  CreateProductCategoryInput,
+  UpdateProductCategoryInput,
   CreateBarbershopProductInput,
   UpdateBarbershopProductInput,
   CreateBarberScheduleInput,
@@ -299,6 +302,47 @@ export class BarbershopResolver {
   // ============ PRODUCTS ============
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ProductCategoryType])
+  async barbershopProductCategories(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getProductCategories(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ProductCategoryType)
+  async createProductCategory(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateProductCategoryInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createProductCategory(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ProductCategoryType)
+  async updateProductCategory(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: UpdateProductCategoryInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateProductCategory(user.id, barbershopId, id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteProductCategory(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    await this.barbershopService.deleteProductCategory(user.id, barbershopId, id);
+    return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => BarbershopProductType)
   async createBarbershopProduct(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
@@ -337,6 +381,33 @@ export class BarbershopResolver {
   ) {
     await this.barbershopService.deleteProduct(user.id, barbershopId, id);
     return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => String)
+  async getProductPhotoUploadUrl(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('productId', { type: () => Int }) productId: number,
+    @Args('fileExtension', { nullable: true }) fileExtension?: string,
+    @Args('contentType', { nullable: true }) contentType?: string,
+    @CurrentUser() user?: UserDTO,
+  ): Promise<string> {
+    if (!user?.id) throw new Error('Não autorizado');
+    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    const product = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+    });
+    if (!product) {
+      throw new Error('Produto não encontrado');
+    }
+    const ext = fileExtension || 'jpg';
+    const imageKey = `products/${barbershopId}/${productId}/photo.${ext}`;
+    const uploadUrl = await this.s3Service.getUploadUrl(imageKey, contentType);
+    await this.prisma.barbershopProduct.update({
+      where: { id: productId },
+      data: { imageKey },
+    });
+    return uploadUrl;
   }
 
   // ============ BARBER SCHEDULE ============

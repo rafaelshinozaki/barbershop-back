@@ -304,14 +304,54 @@ export class UpdateBarbershopServiceInput {
   isActive?: boolean;
 }
 
+// ============ ProductCategory ============
+@InputType()
+export class CreateProductCategoryInput {
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field()
+  name: string;
+
+  @Field({ nullable: true })
+  icon?: string;
+
+  @Field({ nullable: true })
+  color?: string;
+
+  @Field(() => Int, { nullable: true })
+  displayOrder?: number;
+}
+
+@InputType()
+export class UpdateProductCategoryInput {
+  @Field({ nullable: true })
+  name?: string;
+
+  @Field({ nullable: true })
+  icon?: string;
+
+  @Field({ nullable: true })
+  color?: string;
+
+  @Field(() => Int, { nullable: true })
+  displayOrder?: number;
+}
+
 // ============ BarbershopProduct ============
 @InputType()
 export class CreateBarbershopProductInput {
   @Field(() => Int)
   barbershopId: number;
 
+  @Field(() => Int, { nullable: true })
+  categoryId?: number;
+
   @Field()
   name: string;
+
+  @Field({ nullable: true })
+  icon?: string;
 
   @Field({ nullable: true })
   sku?: string;
@@ -333,6 +373,12 @@ export class CreateBarbershopProductInput {
 export class UpdateBarbershopProductInput {
   @Field({ nullable: true })
   name?: string;
+
+  @Field(() => Int, { nullable: true })
+  categoryId?: number;
+
+  @Field({ nullable: true })
+  icon?: string;
 
   @Field({ nullable: true })
   sku?: string;

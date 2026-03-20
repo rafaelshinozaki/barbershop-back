@@ -351,10 +351,11 @@ model Barbershop {
   network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
   ownerUserId    Int?      // denormalized for backward compat / quick access
   ownerUser      User?     @relation("BarbershopOwner", fields: [ownerUserId], references: [id])
-  barbers        Barber[]
-  services       BarbershopService[]
-  products       BarbershopProduct[]
-  appointments   Appointment[]
+  barbers          Barber[]
+  services         BarbershopService[]
+  productCategories ProductCategory[]
+  products         BarbershopProduct[]
+  appointments     Appointment[]
   walkIns        WalkIn[]
   serviceHistory ServiceHistory[]
   sales          Sale[]
@@ -473,23 +474,43 @@ model BarbershopService {
   @@index([barbershopId, category])
 }
 
-model BarbershopProduct {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model ProductCategory {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   barbershopId Int
-  name        String
-  sku         String?
-  description String?
-  salePrice   Decimal
-  costPrice   Decimal?
-  unit        String   @default("UNIT") // UNIT, ML, G
-  isActive    Boolean  @default(true)
-  barbershop  Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  inventoryItems InventoryItem[]
-  saleItems   SaleItem[]
+  name         String
+  icon         String?
+  color        String?
+  displayOrder Int      @default(0)
+  barbershop   Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  products     BarbershopProduct[]
 
   @@index([barbershopId])
+}
+
+model BarbershopProduct {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  barbershopId Int
+  categoryId   Int?
+  name         String
+  icon         String?
+  imageKey     String?  // S3 key for product photo
+  sku          String?
+  description  String?
+  salePrice    Decimal
+  costPrice    Decimal?
+  unit         String   @default("UNIT") // UNIT, ML, G
+  isActive     Boolean  @default(true)
+  barbershop   Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  category     ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inventoryItems InventoryItem[]
+  saleItems    SaleItem[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, categoryId])
   @@unique([barbershopId, sku])
   @@index([barbershopId, isActive])
 }

@@ -655,6 +655,56 @@ export class BarbershopService {
     await this.prisma.barbershopService.delete({ where: { id: serviceId } });
   }
 
+  // ============ PRODUCT CATEGORIES ============
+
+  async getProductCategories(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.productCategory.findMany({
+      where: { barbershopId },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createProductCategory(
+    userId: number,
+    barbershopId: number,
+    data: { name: string; icon?: string; color?: string; displayOrder?: number },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.productCategory.create({
+      data: {
+        barbershopId,
+        name: data.name.trim(),
+        icon: data.icon || null,
+        color: data.color || null,
+        displayOrder: data.displayOrder ?? 0,
+      },
+    });
+  }
+
+  async updateProductCategory(
+    userId: number,
+    barbershopId: number,
+    categoryId: number,
+    data: Partial<{ name: string; icon?: string; color?: string; displayOrder?: number }>,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.productCategory.update({
+      where: { id: categoryId },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.icon !== undefined && { icon: data.icon || null }),
+        ...(data.color !== undefined && { color: data.color || null }),
+        ...(data.displayOrder !== undefined && { displayOrder: data.displayOrder }),
+      },
+    });
+  }
+
+  async deleteProductCategory(userId: number, barbershopId: number, categoryId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.prisma.productCategory.delete({ where: { id: categoryId } });
+  }
+
   // ============ PRODUCTS ============
 
   async createProduct(
@@ -662,11 +712,13 @@ export class BarbershopService {
     barbershopId: number,
     data: {
       name: string;
+      categoryId?: number;
       sku?: string;
       description?: string;
       salePrice: number | Decimal;
       costPrice?: number | Decimal;
       unit?: string;
+      icon?: string;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
@@ -674,6 +726,7 @@ export class BarbershopService {
       data: {
         barbershopId,
         ...data,
+        categoryId: data.categoryId ?? null,
         salePrice: new Decimal(data.salePrice),
         costPrice: data.costPrice ? new Decimal(data.costPrice) : null,
         unit: data.unit ?? 'UNIT',
@@ -687,6 +740,7 @@ export class BarbershopService {
     if (activeOnly) where.isActive = true;
     return this.prisma.barbershopProduct.findMany({
       where,
+      include: { category: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -697,20 +751,24 @@ export class BarbershopService {
     productId: number,
     data: Partial<{
       name: string;
+      categoryId: number;
       sku: string;
       description: string;
       salePrice: number | Decimal;
       costPrice: number | Decimal;
       unit: string;
       isActive: boolean;
+      icon: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const salePrice = data.salePrice !== undefined ? new Decimal(data.salePrice) : undefined;
     const costPrice = data.costPrice !== undefined ? new Decimal(data.costPrice) : undefined;
+    const updateData: any = { ...data, salePrice, costPrice };
+    if (data.categoryId !== undefined) updateData.categoryId = data.categoryId || null;
     return this.prisma.barbershopProduct.update({
       where: { id: productId },
-      data: { ...data, salePrice, costPrice },
+      data: updateData,
     });
   }
 

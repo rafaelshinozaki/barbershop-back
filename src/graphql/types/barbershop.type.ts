@@ -317,7 +317,7 @@ export class BarbershopServiceType {
 }
 
 @ObjectType()
-export class BarbershopProductType {
+export class ProductCategoryType {
   @Field(() => Int)
   id: number;
 
@@ -326,6 +326,45 @@ export class BarbershopProductType {
 
   @Field()
   name: string;
+
+  @Field({ nullable: true })
+  icon?: string;
+
+  @Field({ nullable: true })
+  color?: string;
+
+  @Field(() => Int)
+  displayOrder: number;
+
+  @Field()
+  createdAt: string;
+
+  @Field()
+  updatedAt: string;
+}
+
+@ObjectType()
+export class BarbershopProductType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int, { nullable: true })
+  categoryId?: number;
+
+  @Field(() => ProductCategoryType, { nullable: true })
+  category?: ProductCategoryType;
+
+  @Field()
+  name: string;
+
+  @Field({ nullable: true })
+  icon?: string;
+
+  @Field(() => String, { nullable: true })
+  imageUrl?: string;
 
   @Field({ nullable: true })
   sku?: string;
