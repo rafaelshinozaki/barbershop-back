@@ -51,6 +51,18 @@ export class NetworkResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async removeNetworkLogo(@CurrentUser() user: UserDTO): Promise<boolean> {
+    const network = await this.barbershopService.getMyNetwork(user.id);
+    if (!network) throw new Error('Franquia não encontrada');
+    await this.prisma.network.update({
+      where: { id: network.id },
+      data: { logoKey: null, logoUrl: null },
+    });
+    return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => String, { nullable: true })
   async getNetworkLogoUrl(@CurrentUser() user: UserDTO): Promise<string | null> {
     const network = await this.barbershopService.getMyNetwork(user.id);

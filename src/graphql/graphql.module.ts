@@ -9,6 +9,7 @@ import { CouponsResolver } from './resolvers/coupons.resolver';
 import { BarbershopResolver } from './resolvers/barbershop.resolver';
 import { BarbershopProductResolver } from './resolvers/barbershop-product.resolver';
 import { BarbershopPhotoResolver } from './resolvers/barbershop-photo.resolver';
+import { NetworkResolver } from './resolvers/network.resolver';
 import { AuthModule } from '../auth/auth.module';
 import { UserModule } from '../auth/users/users.module';
 import { PlanModule } from '../plan/plan.module';
@@ -44,6 +45,7 @@ import { PaymentsModule } from '../payments/payments.module';
     BarbershopResolver,
     BarbershopProductResolver,
     BarbershopPhotoResolver,
+    NetworkResolver,
   ],
   exports: [
     AuthResolver,

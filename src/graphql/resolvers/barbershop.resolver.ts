@@ -548,12 +548,14 @@ export class BarbershopResolver {
     @Args('startAt', { nullable: true }) startAt?: string,
     @Args('endAt', { nullable: true }) endAt?: string,
     @Args('barberId', { type: () => Int, nullable: true }) barberId?: number,
+    @Args('customerId', { type: () => Int, nullable: true }) customerId?: number,
     @Args('status', { nullable: true }) status?: string,
   ) {
     return this.barbershopService.getAppointments(user.id, barbershopId, {
       startFrom: startAt ? new Date(startAt) : undefined,
       startTo: endAt ? new Date(endAt) : undefined,
       barberId,
+      customerId,
       status,
     });
   }
@@ -685,10 +687,12 @@ export class BarbershopResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('startAt', { nullable: true }) startAt?: string,
     @Args('endAt', { nullable: true }) endAt?: string,
+    @Args('customerId', { type: () => Int, nullable: true }) customerId?: number,
   ) {
     return this.barbershopService.getSales(user.id, barbershopId, {
       from: startAt ? new Date(startAt) : undefined,
       to: endAt ? new Date(endAt) : undefined,
+      customerId,
     });
   }
 }

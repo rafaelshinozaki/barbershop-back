@@ -711,6 +711,7 @@ type Mutation {
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
+  getNetworkLogoUploadUrl(contentType: String, fileExtension: String): String!
   getPhotoUploadUrl(contentType: String, fileExtension: String): String!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String, productId: Int!): String!
   login(input: LoginInput!): User!
@@ -724,6 +725,7 @@ type Mutation {
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
+  removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
@@ -974,12 +976,12 @@ type Query {
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
   barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
   barbershop(id: Int!): Barbershop
-  barbershopAppointments(barberId: Int, barbershopId: Int!, endAt: String, startAt: String, status: String): [Appointment!]!
+  barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
-  barbershopSales(barbershopId: Int!, endAt: String, startAt: String): [Sale!]!
+  barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   companyAnalysis: CompanyAnalysis!
@@ -991,6 +993,7 @@ type Query {
   geographicAnalysis: GeographicAnalysis!
   getAllPlans: [Plan!]!
   getAllUsers: [User!]!
+  getNetworkLogoUrl: String
   getPhotoUrl: String
   getPlanById(id: Int!): Plan
   getUserPhotoDownloadUrl: String
