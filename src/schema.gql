@@ -157,6 +157,7 @@ type Barbershop {
   createdAt: String!
   email: String!
   id: Int!
+  imageUrl: String
   isActive: Boolean!
   name: String!
   ownerUserId: Int
@@ -706,8 +707,10 @@ type Mutation {
   deleteNotification(id: Int!): CommonResponse!
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
   deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
+  deleteSale(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
+  getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
   getPhotoUploadUrl(contentType: String, fileExtension: String): String!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String, productId: Int!): String!
   login(input: LoginInput!): User!
@@ -720,8 +723,10 @@ type Mutation {
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
+  removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
+  removeUserPhoto: Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
   resetPassword(input: ResetPasswordInput!): Boolean!
@@ -745,6 +750,7 @@ type Mutation {
   updateNetwork(input: UpdateNetworkInput!): Network!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
   updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
+  updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
   updateUser(input: UpdateUserByAdminInput!): Boolean!
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
@@ -1039,11 +1045,14 @@ type RoleDistribution {
 type Sale {
   appointmentId: Int
   barberId: Int
+  barberName: String
   barbershopId: Int!
   createdAt: String!
   customerId: Int
+  customerName: String
   discountAmount: Float!
   id: Int!
+  items: [SaleItemType!]
   paidAt: String
   paymentMethod: String
   paymentStatus: String!
@@ -1051,6 +1060,20 @@ type Sale {
   subtotal: Float!
   taxAmount: Float!
   total: Float!
+}
+
+type SaleItemType {
+  id: Int!
+  itemType: String!
+  notes: String
+  productId: Int
+  productName: String
+  quantity: Int!
+  saleId: Int!
+  serviceId: Int
+  serviceName: String
+  totalPrice: Float!
+  unitPrice: Float!
 }
 
 input SendEmailNotificationInput {
@@ -1273,6 +1296,19 @@ input UpdateProductCategoryInput {
   displayOrder: Int
   icon: String
   name: String
+}
+
+input UpdateSaleInput {
+  barberId: Int
+  customerId: Int
+  discountAmount: Float
+  items: [CreateSaleItemInput!]
+  paymentMethod: String
+  paymentStatus: String
+  saleType: String
+  subtotal: Float
+  taxAmount: Float
+  total: Float
 }
 
 input UpdateUserByAdminInput {

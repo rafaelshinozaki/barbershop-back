@@ -344,6 +344,7 @@ model Barbershop {
   postalCode     String
   phone          String
   email          String
+  photoKey       String?
   timezone       String    @default("America/Sao_Paulo")
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
   isActive       Boolean   @default(true)

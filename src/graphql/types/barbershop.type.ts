@@ -119,6 +119,9 @@ export class Barbershop {
   @Field()
   email: string;
 
+  @Field(() => String, { nullable: true })
+  imageUrl?: string | null;
+
   @Field()
   timezone: string;
 
@@ -521,6 +524,42 @@ export class ServiceHistory {
 }
 
 @ObjectType()
+export class SaleItemType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  saleId: number;
+
+  @Field()
+  itemType: string;
+
+  @Field(() => Int, { nullable: true })
+  serviceId?: number;
+
+  @Field(() => Int, { nullable: true })
+  productId?: number;
+
+  @Field(() => Int)
+  quantity: number;
+
+  @Field(() => Float)
+  unitPrice: number;
+
+  @Field(() => Float)
+  totalPrice: number;
+
+  @Field({ nullable: true })
+  notes?: string;
+
+  @Field({ nullable: true })
+  productName?: string;
+
+  @Field({ nullable: true })
+  serviceName?: string;
+}
+
+@ObjectType()
 export class Sale {
   @Field(() => Int)
   id: number;
@@ -563,6 +602,15 @@ export class Sale {
 
   @Field()
   createdAt: string;
+
+  @Field(() => [SaleItemType], { nullable: true })
+  items?: SaleItemType[];
+
+  @Field({ nullable: true })
+  customerName?: string;
+
+  @Field({ nullable: true })
+  barberName?: string;
 }
 
 // Type aliases for resolver (naming consistency)

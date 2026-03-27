@@ -1236,13 +1236,112 @@ export class BarbershopService {
       if (filters.from) where.createdAt.gte = filters.from;
       if (filters.to) where.createdAt.lte = filters.to;
     }
-    return this.prisma.sale.findMany({
+    const sales = await this.prisma.sale.findMany({
       where,
-      include: { items: true, customer: true, barber: true },
+      include: {
+        items: { include: { service: true, product: true } },
+        customer: true,
+        barber: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: filters?.limit ?? 50,
       skip: filters?.offset ?? 0,
     });
+    return sales.map((s) => ({
+      ...s,
+      customerName: (s.customer as any)?.name ?? null,
+      barberName: (s.barber as any)?.name ?? null,
+      items: s.items.map((item) => ({
+        ...item,
+        productName: (item.product as any)?.name ?? null,
+        serviceName: (item.service as any)?.name ?? null,
+      })),
+    }));
+  }
+
+  async updateSale(
+    userId: number,
+    barbershopId: number,
+    saleId: number,
+    data: {
+      customerId?: number;
+      barberId?: number;
+      saleType?: string;
+      items?: Array<{
+        itemType: string;
+        serviceId?: number;
+        productId?: number;
+        serviceHistoryId?: number;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+        notes?: string;
+      }>;
+      subtotal?: number;
+      discountAmount?: number;
+      taxAmount?: number;
+      total?: number;
+      paymentStatus?: string;
+      paymentMethod?: string;
+    },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.sale.findFirst({
+        where: { id: saleId, barbershopId },
+      });
+      if (!existing) throw new BadRequestException('Venda não encontrada');
+
+      const updateData: any = {};
+      if (data.customerId !== undefined) updateData.customerId = data.customerId;
+      if (data.barberId !== undefined) updateData.barberId = data.barberId;
+      if (data.saleType !== undefined) updateData.saleType = data.saleType;
+      if (data.subtotal !== undefined) updateData.subtotal = new Decimal(data.subtotal);
+      if (data.discountAmount !== undefined) updateData.discountAmount = new Decimal(data.discountAmount);
+      if (data.taxAmount !== undefined) updateData.taxAmount = new Decimal(data.taxAmount);
+      if (data.total !== undefined) updateData.total = new Decimal(data.total);
+      if (data.paymentStatus !== undefined) {
+        updateData.paymentStatus = data.paymentStatus;
+        if (data.paymentStatus === 'PAID' && existing.paymentStatus !== 'PAID') {
+          updateData.paidAt = new Date();
+        }
+      }
+      if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
+
+      await tx.sale.update({ where: { id: saleId }, data: updateData });
+
+      if (data.items) {
+        await tx.saleItem.deleteMany({ where: { saleId } });
+        await tx.saleItem.createMany({
+          data: data.items.map((item) => ({
+            saleId,
+            itemType: item.itemType,
+            serviceId: item.serviceId,
+            productId: item.productId,
+            serviceHistoryId: item.serviceHistoryId,
+            quantity: item.quantity,
+            unitPrice: new Decimal(item.unitPrice),
+            totalPrice: new Decimal(item.totalPrice),
+            notes: item.notes,
+          })),
+        });
+      }
+
+      return tx.sale.findUnique({
+        where: { id: saleId },
+        include: { items: true, customer: true, barber: true },
+      });
+    });
+  }
+
+  async deleteSale(userId: number, barbershopId: number, saleId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const existing = await this.prisma.sale.findFirst({
+      where: { id: saleId, barbershopId },
+    });
+    if (!existing) throw new BadRequestException('Venda não encontrada');
+    await this.prisma.sale.delete({ where: { id: saleId } });
+    return true;
   }
 
   // ============ INVENTORY ============

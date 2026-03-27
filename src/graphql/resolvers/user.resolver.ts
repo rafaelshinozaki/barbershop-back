@@ -395,6 +395,16 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async removeUserPhoto(@CurrentUser() user: UserDTO): Promise<boolean> {
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { photoKey: null },
+    });
+    return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => String, { nullable: true })
   async getPhotoUrl(@CurrentUser() user: UserDTO) {
     const userData = await this.prisma.user.findUnique({

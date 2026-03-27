@@ -39,6 +39,7 @@ import {
   WalkInServiceInput,
   CreateSaleInput,
   CreateSaleItemInput,
+  UpdateSaleInput,
   UpdateNetworkInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
@@ -410,6 +411,43 @@ export class BarbershopResolver {
     return uploadUrl;
   }
 
+  // ============ BARBERSHOP PHOTO ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => String)
+  async getBarbershopPhotoUploadUrl(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('fileExtension', { nullable: true }) fileExtension?: string,
+    @Args('contentType', { nullable: true }) contentType?: string,
+    @CurrentUser() user?: UserDTO,
+  ): Promise<string> {
+    if (!user?.id) throw new Error('Não autorizado');
+    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    const ext = fileExtension || 'jpg';
+    const photoKey = `barbershops/${barbershopId}/photo.${ext}`;
+    const uploadUrl = await this.s3Service.getUploadUrl(photoKey, contentType);
+    await this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      data: { photoKey },
+    });
+    return uploadUrl;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async removeBarbershopPhoto(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user?: UserDTO,
+  ): Promise<boolean> {
+    if (!user?.id) throw new Error('Não autorizado');
+    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    await this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      data: { photoKey: null },
+    });
+    return true;
+  }
+
   // ============ BARBER SCHEDULE ============
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -617,6 +655,27 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.createSale(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Sale)
+  async updateSale(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: UpdateSaleInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateSale(user.id, barbershopId, id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteSale(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteSale(user.id, barbershopId, id);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

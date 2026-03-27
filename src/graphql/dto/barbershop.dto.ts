@@ -561,6 +561,39 @@ export class CreateSaleInput {
   paymentMethod?: string;
 }
 
+@InputType()
+export class UpdateSaleInput {
+  @Field(() => Int, { nullable: true })
+  customerId?: number;
+
+  @Field(() => Int, { nullable: true })
+  barberId?: number;
+
+  @Field({ nullable: true })
+  saleType?: string;
+
+  @Field(() => [CreateSaleItemInput], { nullable: true })
+  items?: CreateSaleItemInput[];
+
+  @Field(() => Float, { nullable: true })
+  subtotal?: number;
+
+  @Field(() => Float, { nullable: true })
+  discountAmount?: number;
+
+  @Field(() => Float, { nullable: true })
+  taxAmount?: number;
+
+  @Field(() => Float, { nullable: true })
+  total?: number;
+
+  @Field({ nullable: true })
+  paymentStatus?: string;
+
+  @Field({ nullable: true })
+  paymentMethod?: string;
+}
+
 // Aliases for resolver (without barbershopId in input)
 export const CreateServiceInput = CreateBarbershopServiceInput;
 export const UpdateServiceInput = UpdateBarbershopServiceInput;
