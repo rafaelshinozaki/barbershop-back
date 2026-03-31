@@ -11,7 +11,9 @@ import helmet from 'helmet';
 import { json } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
+  });
   const logger = new Logger('main');
   const configService = app.get(ConfigService);
 
@@ -19,13 +21,14 @@ async function bootstrap() {
   logger.log('🚀 Iniciando aplicação...');
   logger.log('📋 Verificando configuração GraphQL...');
 
-  // Stripe webhook needs the raw body for signature verification.
-  // Store it on req before the JSON parser processes it.
+  // Custom body parser: saves raw body on webhook route for Stripe signature verification,
+  // while parsing JSON normally for all other routes.
   app.use(
-    '/stripe/webhook',
     json({
       verify: (req: any, _res, buf) => {
-        req.rawBody = buf;
+        if (req.originalUrl === '/stripe/webhook') {
+          req.rawBody = buf;
+        }
       },
     }),
   );

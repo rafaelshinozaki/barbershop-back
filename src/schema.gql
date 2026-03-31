@@ -249,6 +249,12 @@ input ChangePasswordInput {
   oldPassword: String!
 }
 
+type ChangePlanResponse {
+  message: String
+  subscription: SubscriptionResponse
+  success: Boolean!
+}
+
 type ChartData {
   data: [Int!]!
   labels: [String!]!
@@ -673,6 +679,7 @@ type Mutation {
   cancelSubscription: Boolean!
   changeMultipleUsersPlan(plan: String!, userIds: [Int!]!): Boolean!
   changePassword(input: ChangePasswordInput!): Boolean!
+  changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
