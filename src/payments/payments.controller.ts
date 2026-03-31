@@ -63,6 +63,30 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @ApiOperation({ summary: 'Get payment methods' })
+  @ApiResponse({ status: 200, description: 'Payment methods list' })
+  @Get('payment-methods/list')
+  getPaymentMethods(@Req() req: Request) {
+    return this.paymentsService.getPaymentMethods((req as any).user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Test authentication and user data' })
+  @ApiResponse({ status: 200, description: 'User data' })
+  @Get('test-auth')
+  testAuth(@Req() req: Request) {
+    const user = (req as any).user;
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        email: user.email,
+        authenticated: true,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @ApiOperation({ summary: 'Get invoice by id' })
   @ApiResponse({ status: 200, description: 'Invoice data' })
   @Get(':id')
@@ -104,35 +128,11 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
-  @ApiOperation({ summary: 'Get payment methods' })
-  @ApiResponse({ status: 200, description: 'Payment methods list' })
-  @Get('payment-methods/list')
-  getPaymentMethods(@Req() req: Request) {
-    return this.paymentsService.getPaymentMethods((req as any).user.userId);
-  }
-
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @ApiOperation({ summary: 'Create setup intent for payment method' })
   @ApiResponse({ status: 200, description: 'Setup intent created' })
   @Post('setup-intent')
   createSetupIntent(@Req() req: Request) {
     return this.paymentsService.createSetupIntent((req as any).user.userId);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Test authentication and user data' })
-  @ApiResponse({ status: 200, description: 'User data' })
-  @Get('test-auth')
-  testAuth(@Req() req: Request) {
-    const user = (req as any).user;
-    return {
-      success: true,
-      user: {
-        userId: user.userId,
-        email: user.email,
-        authenticated: true,
-      },
-    };
   }
 
   @ApiOperation({ summary: 'Test PaymentIntent creation' })

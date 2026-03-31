@@ -7,6 +7,7 @@ import {
   PaymentIntentResponse,
   ConfirmPaymentIntentResponse,
   DeletePaymentMethodResponse,
+  ChangePlanResponse,
 } from '../types/payment.type';
 import { Subscription } from '../types/plan.type';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
@@ -14,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { PaymentsService } from '../../payments/payments.service';
 import { Logger } from '@nestjs/common';
+import { PAGAMENTO_STATUS } from '../../common/contants';
 import {
   UserRecurringPaymentsStats,
   ProcessRecurringPaymentResponse,
@@ -374,6 +376,53 @@ export class PaymentResolver {
     }
   }
 
+  @Mutation(() => ChangePlanResponse)
+  async changePlan(
+    @Args('planId', { type: () => Int }) planId: number,
+    @Context() context: any,
+  ): Promise<ChangePlanResponse> {
+    const userId = context.req.user?.id;
+    this.logger.log(`Changing plan for user ${userId} to plan ${planId}`);
+
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    if (!planId || planId <= 0) {
+      throw new Error('Invalid plan ID');
+    }
+
+    try {
+      const result = await this.paymentsService.changePlan(userId, planId);
+
+      // changePlan returns either the subscription directly or { subscription, paymentIntent }
+      const sub = 'subscription' in result ? result.subscription : result;
+      const subscriptionWithPlan = await this.prisma.subscription.findUnique({
+        where: { id: sub.id },
+        include: { plan: true },
+      });
+
+      return {
+        success: true,
+        message: 'Plan changed successfully',
+        subscription: subscriptionWithPlan
+          ? {
+              id: subscriptionWithPlan.id,
+              status: subscriptionWithPlan.status,
+              plan: {
+                id: subscriptionWithPlan.plan.id,
+                name: subscriptionWithPlan.plan.name,
+                price: Number(subscriptionWithPlan.plan.price),
+              },
+            }
+          : undefined,
+      };
+    } catch (error) {
+      this.logger.error(`Error changing plan for user ${userId}:`, error);
+      throw new Error(error.message || 'Failed to change plan');
+    }
+  }
+
   @Query(() => [Payment])
   async overduePayments(@Context() context: any): Promise<Payment[]> {
     const userId = context.req.user.id;
@@ -388,7 +437,7 @@ export class PaymentResolver {
           nextPaymentDate: {
             lte: new Date(),
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {
@@ -439,7 +488,7 @@ export class PaymentResolver {
           nextPaymentDate: {
             lte: new Date(),
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {
@@ -459,7 +508,7 @@ export class PaymentResolver {
             gte: new Date(),
             lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Próximos 7 dias
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {

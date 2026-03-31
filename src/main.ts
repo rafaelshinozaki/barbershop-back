@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { json } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,17 @@ async function bootstrap() {
   // Log para debug do GraphQL
   logger.log('🚀 Iniciando aplicação...');
   logger.log('📋 Verificando configuração GraphQL...');
+
+  // Stripe webhook needs the raw body for signature verification.
+  // Store it on req before the JSON parser processes it.
+  app.use(
+    '/stripe/webhook',
+    json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   // Security Headers with Helmet
   app.use(

@@ -785,18 +785,18 @@ export class PaymentsService {
    * Este método é chamado por um cron job
    */
   async processRecurringPayments() {
-    this.logger.log('Iniciando processamento de cobranças recorrentes...');
+    this.logger.log('Iniciando processamento de cobranças pendentes...');
 
     try {
-      // Buscar pagamentos vencidos (incluindo pendentes de mudança de plano)
-      const overduePayments = await this.prisma.payment.findMany({
+      // Only process PENDING payments (e.g. plan-change diffs).
+      // COMPLETED payments with Stripe subscriptions are billed automatically
+      // by Stripe and handled via webhooks (invoice.payment_succeeded/failed).
+      const pendingPayments = await this.prisma.payment.findMany({
         where: {
           nextPaymentDate: {
-            lte: new Date(), // Pagamentos vencidos
+            lte: new Date(),
           },
-          status: {
-            in: [PAGAMENTO_STATUS.COMPLETED, PAGAMENTO_STATUS.PENDING], // Incluir pagamentos pendentes
-          },
+          status: PAGAMENTO_STATUS.PENDING,
         },
         include: {
           subscription: {
@@ -808,20 +808,20 @@ export class PaymentsService {
         },
       });
 
-      this.logger.log(`Encontrados ${overduePayments.length} pagamentos vencidos para processar`);
+      this.logger.log(`Encontrados ${pendingPayments.length} pagamentos pendentes para processar`);
 
-      for (const payment of overduePayments) {
+      for (const payment of pendingPayments) {
         try {
           await this.processRecurringPayment(payment);
         } catch (error) {
           this.logger.error(
-            `Erro ao processar cobrança recorrente para pagamento ${payment.id}:`,
+            `Erro ao processar cobrança pendente para pagamento ${payment.id}:`,
             error,
           );
         }
       }
 
-      this.logger.log('Processamento de cobranças recorrentes concluído');
+      this.logger.log('Processamento de cobranças pendentes concluído');
     } catch (error) {
       this.logger.error('Erro durante o processamento de cobranças recorrentes:', error);
     }

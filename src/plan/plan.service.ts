@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PlanDTO } from './dto/plan.dto';
 import { Prisma } from '@prisma/client';
 import { StripeService } from '../stripe/stripe.service';
+import { PLANO_STATUS } from '../common/contants';
 
 @Injectable()
 export class PlanService {
@@ -108,7 +109,7 @@ export class PlanService {
     const activeSubscriptions = await this.prisma.subscription.count({
       where: {
         planId,
-        status: 'ACTIVE',
+        status: PLANO_STATUS.ACTIVE,
       },
     });
 

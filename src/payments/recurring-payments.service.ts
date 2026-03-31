@@ -36,27 +36,21 @@ export class RecurringPaymentsService {
     timeZone: 'America/Sao_Paulo',
   })
   async handleOverduePaymentsCheck() {
-    this.logger.log('🔍 Verificando pagamentos vencidos...');
+    this.logger.log('Verificando pagamentos vencidos...');
 
     try {
       const overduePayments = await this.paymentsService.getOverduePayments();
 
       if (overduePayments.length > 0) {
-        this.logger.warn(`⚠️ Encontrados ${overduePayments.length} pagamentos vencidos`);
-
-        // Processar pagamentos vencidos
-        for (const payment of overduePayments) {
-          try {
-            await this.paymentsService.forceRecurringPayment(payment.id);
-          } catch (error) {
-            this.logger.error(`Erro ao processar pagamento vencido ${payment.id}:`, error);
-          }
-        }
+        this.logger.warn(
+          `Encontrados ${overduePayments.length} pagamentos vencidos. ` +
+            `Stripe subscriptions are billed automatically; review manually if needed.`,
+        );
       } else {
-        this.logger.log('✅ Nenhum pagamento vencido encontrado');
+        this.logger.log('Nenhum pagamento vencido encontrado');
       }
     } catch (error) {
-      this.logger.error('❌ Erro ao verificar pagamentos vencidos:', error);
+      this.logger.error('Erro ao verificar pagamentos vencidos:', error);
     }
   }
 

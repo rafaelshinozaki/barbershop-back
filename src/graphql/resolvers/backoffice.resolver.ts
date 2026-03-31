@@ -41,6 +41,7 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { SmartLogger } from '../../common/logger.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentsService } from '../../payments/payments.service';
+import { PAGAMENTO_STATUS } from '../../common/contants';
 
 @Resolver()
 export class BackofficeResolver {
@@ -294,7 +295,7 @@ export class BackofficeResolver {
           nextPaymentDate: {
             lte: new Date(),
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {
@@ -329,7 +330,7 @@ export class BackofficeResolver {
             gte: new Date(),
             lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Próximos 7 dias
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {
@@ -420,7 +421,7 @@ export class BackofficeResolver {
           nextPaymentDate: {
             lte: new Date(),
           },
-          status: 'COMPLETED',
+          status: PAGAMENTO_STATUS.COMPLETED,
         },
         include: {
           subscription: {
@@ -584,7 +585,7 @@ export class BackofficeResolver {
 
       // Construir where clause baseada nos filtros - versão simplificada
       const where: any = {
-        status: 'COMPLETED',
+        status: PAGAMENTO_STATUS.COMPLETED,
       };
 
       this.logger.log('Using simplified where clause:', JSON.stringify(where, null, 2));
@@ -638,7 +639,7 @@ export class BackofficeResolver {
 
       try {
         const simplePayments = await this.prisma.payment.findMany({
-          where: { status: 'COMPLETED' },
+          where: { status: PAGAMENTO_STATUS.COMPLETED },
           take: 5,
           include: {
             subscription: {
@@ -671,7 +672,7 @@ export class BackofficeResolver {
         this.logger.log('Testing very simple query...');
 
         const testPayments = await this.prisma.payment.findMany({
-          where: { status: 'COMPLETED' },
+          where: { status: PAGAMENTO_STATUS.COMPLETED },
           take: 1,
         });
 

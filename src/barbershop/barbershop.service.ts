@@ -13,6 +13,7 @@ import {
   getModulesForPlanName,
   BarbershopModule,
 } from './barbershop-plan.constants';
+import { PLANO_STATUS } from '../common/contants';
 
 @Injectable()
 export class BarbershopService {
@@ -34,7 +35,7 @@ export class BarbershopService {
         ownerUser: {
           include: {
             subscriptions: {
-              where: { status: 'ACTIVE' },
+              where: { status: PLANO_STATUS.ACTIVE },
               orderBy: { startSubDate: 'desc' },
               take: 1,
               include: { plan: true },
@@ -46,7 +47,7 @@ export class BarbershopService {
             ownerUser: {
               include: {
                 subscriptions: {
-                  where: { status: 'ACTIVE' },
+                  where: { status: PLANO_STATUS.ACTIVE },
                   orderBy: { startSubDate: 'desc' },
                   take: 1,
                   include: { plan: true },

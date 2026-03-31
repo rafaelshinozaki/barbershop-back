@@ -503,7 +503,7 @@ model BarbershopProduct {
   description  String?
   salePrice    Decimal
   costPrice    Decimal?
-  unit         String   @default("UNIT") // UNIT, ML, G
+  unit         String   @default("UNIT") // UNIT, ML, L, FL_OZ, G, KG, OZ
   isActive     Boolean  @default(true)
   barbershop   Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   category     ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)

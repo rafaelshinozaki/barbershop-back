@@ -12,6 +12,7 @@ import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../../stripe/stripe.service';
+import { PLANO_STATUS } from '../../common/contants';
 
 @Resolver(() => Plan)
 export class PlanResolver {
@@ -186,7 +187,7 @@ export class PlanResolver {
       const existingSubscription = await this.prisma.subscription.findFirst({
         where: {
           userId: user.id,
-          status: 'ACTIVE',
+          status: PLANO_STATUS.ACTIVE,
         },
       });
 
@@ -205,7 +206,7 @@ export class PlanResolver {
         await this.prisma.subscription.update({
           where: { id: existingSubscription.id },
           data: {
-            status: 'CANCELLED',
+            status: PLANO_STATUS.INACTIVE,
             cancelationDate: new Date(),
           },
         });
@@ -243,7 +244,7 @@ export class PlanResolver {
           userId: user.id,
           planId: plan.id,
           startSubDate: new Date(),
-          status: 'ACTIVE',
+          status: PLANO_STATUS.ACTIVE,
           stripeCustomerId,
           stripeSubscriptionId: stripeSubscription.id,
         },
@@ -286,7 +287,7 @@ export class PlanResolver {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
           userId: user.id,
-          status: 'ACTIVE',
+          status: PLANO_STATUS.ACTIVE,
         },
       });
 
@@ -303,7 +304,7 @@ export class PlanResolver {
       await this.prisma.subscription.update({
         where: { id: subscription.id },
         data: {
-          status: 'CANCELLED',
+          status: PLANO_STATUS.INACTIVE,
           cancelationDate: new Date(),
         },
       });

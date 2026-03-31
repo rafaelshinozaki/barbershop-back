@@ -27,6 +27,7 @@ import { UpdateUserInput } from '../../auth/users/dto/update-user.dto';
 import { ChangePasswordInput } from '../../auth/users/dto/change-password.dto';
 import { UpdateUserSystemConfigInput } from '../../auth/users/dto/userSystemConfig.dto';
 import { UpdateEmailNotificationInput } from '../dto/auth.dto';
+import { PLANO_STATUS } from '../../common/contants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../aws/s3.service';
 import { SmartLogger } from '../../common/logger.util';
@@ -46,7 +47,7 @@ export class UserResolver {
     const activeSubscription = await this.prisma.subscription.findFirst({
       where: {
         userId: user.id,
-        status: 'ACTIVE',
+        status: PLANO_STATUS.ACTIVE,
       },
       include: {
         plan: true,
@@ -64,7 +65,7 @@ export class UserResolver {
     const activeSubscription = await this.prisma.subscription.findFirst({
       where: {
         userId: user.id,
-        status: 'ACTIVE',
+        status: PLANO_STATUS.ACTIVE,
       },
       orderBy: {
         startSubDate: 'desc',

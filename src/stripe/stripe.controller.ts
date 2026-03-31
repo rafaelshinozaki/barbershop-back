@@ -1,4 +1,4 @@
-import { Controller, Post, Headers, Body, HttpCode, Logger, Get, Param } from '@nestjs/common';
+import { Controller, Post, Headers, Req, HttpCode, Logger, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { MEMBERSHIP_STATUS, PLANO_STATUS, PAGAMENTO_STATUS } from '@/common';
 import { Role } from '@/auth/interfaces/roles';
 import { StripeService } from './stripe.service';
+import { Request } from 'express';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -25,15 +26,23 @@ export class StripeController {
   @ApiOperation({ summary: 'Stripe webhook handler' })
   @ApiResponse({ status: 200 })
   @HttpCode(200)
-  async handleWebhook(@Headers('stripe-signature') signature: string, @Body() body: any) {
+  async handleWebhook(
+    @Headers('stripe-signature') signature: string,
+    @Req() req: Request,
+  ) {
     const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
 
     let event: Stripe.Event;
     try {
-      const payload = typeof body === 'string' ? body : JSON.stringify(body);
+      const rawBody = (req as any).rawBody as Buffer;
+      if (!rawBody) {
+        this.logger.error('Raw body not available for webhook verification');
+        return { received: false };
+      }
+      const payload = rawBody.toString('utf8');
       event = await this.stripeService.handleWebhookEvent(payload, signature, webhookSecret);
     } catch (err) {
-      this.logger.error('Invalid stripe webhook', err);
+      this.logger.error('Invalid stripe webhook signature', err);
       return { received: false };
     }
 

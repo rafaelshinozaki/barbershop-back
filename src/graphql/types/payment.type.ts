@@ -123,3 +123,15 @@ export class DeletePaymentMethodResponse {
   @Field()
   message: string;
 }
+
+@ObjectType()
+export class ChangePlanResponse {
+  @Field()
+  success: boolean;
+
+  @Field({ nullable: true })
+  message?: string;
+
+  @Field(() => SubscriptionResponse, { nullable: true })
+  subscription?: SubscriptionResponse;
+}
