@@ -203,7 +203,12 @@ export class BarbershopService {
     const revenueThisMonth = Number(revenueThisMonthResult._sum.total ?? 0);
 
     // Comparativo mensal (últimos 6 meses)
-    const monthlyRevenue: { month: string; year: number; total: number }[] = [];
+    const monthlyRevenue: {
+      month: string;
+      monthIndex: number;
+      year: number;
+      total: number;
+    }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const start = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -217,7 +222,8 @@ export class BarbershopService {
         _sum: { total: true },
       });
       monthlyRevenue.push({
-        month: start.toLocaleDateString('pt-BR', { month: 'short' }),
+        month: start.toLocaleDateString('en-US', { month: 'short' }),
+        monthIndex: start.getMonth(),
         year: start.getFullYear(),
         total: Number(r._sum.total ?? 0),
       });
@@ -256,15 +262,19 @@ export class BarbershopService {
       title: string;
       subtitle?: string;
       value?: number;
+      customerName?: string;
+      saleId?: number;
     }> = [];
 
     recentAppointments.forEach((a) => {
+      const customerName = a.customer?.name ?? '-';
       events.push({
         id: `apt-${a.id}`,
         type: 'appointment',
         date: a.startAt,
-        title: `Agendamento: ${a.customer?.name ?? '-'}`,
+        title: `Agendamento: ${customerName}`,
         subtitle: `${a.barbershop.name} • ${a.barber?.name ?? '-'}`,
+        customerName,
       });
     });
     recentSales.forEach((s) => {
@@ -275,6 +285,7 @@ export class BarbershopService {
         title: `Venda #${s.id}`,
         subtitle: `${s.barbershop.name} • ${s.barber?.name ?? '-'}`,
         value: Number(s.total),
+        saleId: s.id,
       });
     });
 

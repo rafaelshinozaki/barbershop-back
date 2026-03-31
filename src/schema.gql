@@ -662,6 +662,7 @@ enum MembershipStatus {
 
 type MonthlyRevenueItem {
   month: String!
+  monthIndex: Int!
   total: Float!
   year: Int!
 }
@@ -775,8 +776,10 @@ type Network {
 }
 
 type NetworkDashboardEvent {
+  customerName: String
   date: String!
   id: String!
+  saleId: Int
   subtitle: String
   title: String!
   type: String!

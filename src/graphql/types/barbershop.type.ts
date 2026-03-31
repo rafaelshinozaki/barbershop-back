@@ -49,12 +49,24 @@ export class NetworkDashboardEvent {
 
   @Field(() => Float, { nullable: true })
   value?: number;
+
+  /** For appointments: localize title on the client */
+  @Field({ nullable: true })
+  customerName?: string;
+
+  /** For sales: localize title on the client */
+  @Field(() => Int, { nullable: true })
+  saleId?: number;
 }
 
 @ObjectType()
 export class MonthlyRevenueItem {
+  /** Legacy localized month label (prefer monthIndex + year on the client) */
   @Field()
   month: string;
+
+  @Field(() => Int)
+  monthIndex: number;
 
   @Field(() => Int)
   year: number;
