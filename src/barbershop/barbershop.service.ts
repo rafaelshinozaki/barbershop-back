@@ -984,6 +984,39 @@ export class BarbershopService {
     });
   }
 
+  async getNetworkAppointments(
+    userId: number,
+    filters?: {
+      barbershopId?: number;
+      status?: string;
+      startFrom?: Date;
+      startTo?: Date;
+    },
+  ) {
+    const barbershops = await this.getMyBarbershops(userId);
+    const allIds = barbershops.map((b) => b.id);
+    if (allIds.length === 0) return [];
+
+    const barbershopIds =
+      filters?.barbershopId && allIds.includes(filters.barbershopId)
+        ? [filters.barbershopId]
+        : allIds;
+
+    const where: any = { barbershopId: { in: barbershopIds } };
+    if (filters?.status) where.status = filters.status;
+    if (filters?.startFrom || filters?.startTo) {
+      where.startAt = {};
+      if (filters.startFrom) where.startAt.gte = filters.startFrom;
+      if (filters.startTo) where.startAt.lte = filters.startTo;
+    }
+    return this.prisma.appointment.findMany({
+      where,
+      include: { services: { include: { service: true } }, customer: true, barber: true },
+      orderBy: { startAt: 'asc' },
+      take: 200,
+    });
+  }
+
   async getAppointment(userId: number, barbershopId: number, appointmentId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const appointment = await this.prisma.appointment.findFirst({

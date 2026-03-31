@@ -561,6 +561,23 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [Appointment])
+  async networkAppointments(
+    @CurrentUser() user: UserDTO,
+    @Args('startAt', { nullable: true }) startAt?: string,
+    @Args('endAt', { nullable: true }) endAt?: string,
+    @Args('barbershopId', { type: () => Int, nullable: true }) barbershopId?: number,
+    @Args('status', { nullable: true }) status?: string,
+  ) {
+    return this.barbershopService.getNetworkAppointments(user.id, {
+      barbershopId,
+      status,
+      startFrom: startAt ? new Date(startAt) : undefined,
+      startTo: endAt ? new Date(endAt) : undefined,
+    });
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => Appointment, { nullable: true })
   async appointment(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,

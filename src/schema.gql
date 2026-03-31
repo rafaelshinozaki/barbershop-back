@@ -1011,6 +1011,7 @@ type Query {
   myPayments: [Payment!]!
   mySubscriptions: [Subscription!]!
   myUnreadNotifications: [UserNotification!]!
+  networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
   overduePayments: [Payment!]!
   planDistribution: PlanDistribution!
