@@ -768,6 +768,7 @@ type Mutation {
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
   updateUser(input: UpdateUserByAdminInput!): Boolean!
   updateUserProfile(input: UpdateUserInput!): User!
+  updateUserRole(role: String!, userId: Int!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
   updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
   validateCoupon(amount: Float!, code: String!, planId: Float!): CouponValidationResult!

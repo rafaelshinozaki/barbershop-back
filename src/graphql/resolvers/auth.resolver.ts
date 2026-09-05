@@ -1,4 +1,4 @@
-import { Resolver, Mutation, Args, Query, Context } from '@nestjs/graphql';
+import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards, UseFilters } from '@nestjs/common';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -335,11 +335,12 @@ export class AuthResolver {
     return isValid;
   }
 
-  @UseGuards(GraphQLJwtAuthGuard)
-  @Query(() => User)
-  async me(@CurrentUser() user: UserDTO): Promise<any> {
-    return toGraphQLUser(user) as any;
-  }
+  // `me` vive em UserResolver — dois resolvers definindo a mesma query
+  // root causava um conflito silencioso (UserResolver vencia; esta versão
+  // nunca era chamada, confirmado ao vivo checando se userSystemConfig/
+  // address/emailNotification vinham populados — só o refetch completo do
+  // UserResolver faz isso, já que o user de @CurrentUser() aqui só inclui
+  // `role`, ver GraphQLJwtAuthGuard).
 
   @Mutation(() => String)
   async startSocialSignup(

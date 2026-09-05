@@ -367,9 +367,18 @@ export class BarbershopService {
   }
 
   async getMyBarbershops(userId: number) {
+    // Inclui barbearias onde o usuário é dono (direto ou via rede) OU é
+    // membro da equipe (Barber) — antes só considerava posse, então
+    // managers/employees (ex.: staffType 'manager'/'barber') não viam a
+    // barbearia onde trabalham em lugar nenhum da UI, mesmo já tendo acesso
+    // de fato via ensureBarbershopAccess (que já checa os três casos).
     return this.prisma.barbershop.findMany({
       where: {
-        OR: [{ ownerUserId: userId }, { network: { ownerUserId: userId } }],
+        OR: [
+          { ownerUserId: userId },
+          { network: { ownerUserId: userId } },
+          { barbers: { some: { userId } } },
+        ],
       },
       orderBy: { name: 'asc' },
     });

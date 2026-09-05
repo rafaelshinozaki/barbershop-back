@@ -18,7 +18,7 @@ import {
   PaginatedActiveSessions,
 } from '../types/notification.type';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
-import { GraphQLRolesGuard } from '../../auth/guards/graphql-roles.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
@@ -342,13 +342,17 @@ export class UserResolver {
     return this.userService.getAllSessions(user.id);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard)
+  // Só admin/manager de sistema — mesmo problema do REST GET /user/:userId
+  // (qualquer usuário autenticado podia ler email/CPF/telefone de qualquer
+  // outro usuário só sabendo o ID).
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => User)
   async user(@Args('id', { type: () => Int }) id: number) {
     return this.userService.getUserById(id);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => [User])
   async getAllUsers() {
@@ -370,7 +374,7 @@ export class UserResolver {
     return this.s3Service.getDownloadUrl(userData.photoKey);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => [User])
   async getUsers() {
@@ -420,14 +424,30 @@ export class UserResolver {
     return this.s3Service.getDownloadUrl(userData.photoKey);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN)
+  @Mutation(() => User)
+  async updateUserRole(
+    @Args('userId', { type: () => Int }) userId: number,
+    @Args('role') role: string,
+  ) {
+    const updatedUser = await this.userService.updateUserRole(userId, role);
+    return {
+      ...updatedUser,
+      role: updatedUser.role?.name || 'BarbershopOwner',
+      membership: updatedUser.membership || 'FREE',
+      isActive: updatedUser.isActive ?? true,
+    };
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async removeUser(@Args('userId', { type: () => Int }) userId: number) {
     return this.userService.removeUser(userId);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async setUserActive(
@@ -437,7 +457,7 @@ export class UserResolver {
     return this.userService.setUserActive(userId, active);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async setMultipleUsersActive(
@@ -447,7 +467,7 @@ export class UserResolver {
     return this.userService.setMultipleUsersActive(userIds, active);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async changeMultipleUsersPlan(
@@ -457,7 +477,7 @@ export class UserResolver {
     return this.userService.changeMultipleUsersPlan(userIds, plan);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async changeUserPlan(

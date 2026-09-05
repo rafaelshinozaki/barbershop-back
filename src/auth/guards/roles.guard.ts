@@ -1,5 +1,16 @@
 // src\auth\guards\roles.guard.ts
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+//
+// Consolidated role guard — works for both REST controllers and GraphQL
+// resolvers (a separate GraphQLRolesGuard used to duplicate this logic with
+// slightly different token-extraction and error-handling; merged here so
+// there's one implementation to keep correct).
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
@@ -79,9 +90,24 @@ export class RolesGuard implements CanActivate {
         throw new UnauthorizedException('User not found');
       }
 
+      if (!user.role) {
+        throw new ForbiddenException('User has no role assigned. Contact administrator.');
+      }
+
       // Verifica se o usuário tem uma das roles necessárias
-      return requiredRoles.some((r) => r.toLowerCase() === user.role.name.toLowerCase());
+      const hasRequiredRole = requiredRoles.some(
+        (r) => r.toLowerCase() === user.role.name.toLowerCase(),
+      );
+      if (!hasRequiredRole) {
+        throw new ForbiddenException(
+          `Access denied. Required roles: ${requiredRoles.join(', ')}. Your role: ${user.role.name}`,
+        );
+      }
+      return true;
     } catch (error) {
+      if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid token');
     }
   }

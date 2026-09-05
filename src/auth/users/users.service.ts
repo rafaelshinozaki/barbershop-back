@@ -1850,6 +1850,18 @@ export class UserService {
     }
   }
 
+  async updateUserRole(userId: number, roleName: string) {
+    const role = await this.prisma.role.findFirst({ where: { name: roleName } });
+    if (!role) {
+      throw new BadRequestException(`Role "${roleName}" not found`);
+    }
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { roleId: role.id },
+      include: { role: true },
+    });
+  }
+
   async setUserActive(userId: number, active: boolean) {
     await this.prisma.user.update({ where: { id: userId }, data: { isActive: active } });
   }

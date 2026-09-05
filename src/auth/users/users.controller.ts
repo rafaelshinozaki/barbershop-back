@@ -124,13 +124,8 @@ export class UserController {
     return this.userService.getPhotoDownloadUrl(user.id).then((downloadUrl) => ({ downloadUrl }));
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get user by id' })
-  @ApiResponse({ status: 200, description: 'User data' })
-  @Get(':userId')
-  getUserById(@Param('userId', ParseIntPipe) userId: number) {
-    return this.userService.getUserById(userId);
-  }
+  // Buscar usuário por ID (admin/manager) foi migrado para a query GraphQL
+  // `user(id)` — operação interna do app, sem consumidor externo do REST.
 
   @PublicRoute()
   @ThrottleAuth()

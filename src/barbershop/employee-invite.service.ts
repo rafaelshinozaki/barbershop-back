@@ -196,8 +196,27 @@ export class EmployeeInviteService {
     const existingUser = await this.prisma.user.findFirst({
       where: { email: invite.email, provider: 'local' },
     });
-    if (existingUser) {
-      throw new BadRequestException('Já existe uma conta com este email');
+
+    // Mesma checagem de documento duplicado do signup principal (ver
+    // UserService.createUser) — esse fluxo cria o usuário por um caminho
+    // separado e não tinha a proteção. Escopada por país e ignorada quando
+    // vazia, pelos mesmos motivos.
+    const documentNumber = data.idDocNumber?.trim();
+    let documentAlreadyExists = false;
+    if (documentNumber) {
+      const documentCountry = data.address?.country;
+      const existingDocument = await this.prisma.user.findFirst({
+        where: {
+          idDocNumber: documentNumber,
+          provider: 'local',
+          ...(documentCountry ? { address: { country: documentCountry } } : {}),
+        },
+      });
+      documentAlreadyExists = !!existingDocument;
+    }
+
+    if (existingUser || documentAlreadyExists) {
+      throw new BadRequestException('Já existe uma conta com estes dados');
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);

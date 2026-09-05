@@ -5,7 +5,7 @@ import { Plan, Subscription, CreateSubscriptionResponse } from '../types/plan.ty
 import { Payment } from '../types/payment.type';
 import { CreatePlanInput, UpdatePlanInput, CreateSubscriptionInput } from '../dto/plan.dto';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
-import { GraphQLRolesGuard } from '../../auth/guards/graphql-roles.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
@@ -52,7 +52,7 @@ export class PlanResolver {
     };
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Plan)
   async createPlan(@Args('input') input: CreatePlanInput) {
@@ -69,7 +69,7 @@ export class PlanResolver {
     return this.planService.createPlan(planData);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Plan)
   async updatePlan(
@@ -89,7 +89,7 @@ export class PlanResolver {
     return this.planService.updatePlan(id, planData);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async removePlan(@Args('id', { type: () => Int }) id: number) {
@@ -97,7 +97,7 @@ export class PlanResolver {
     return true;
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Mutation(() => Boolean)
   async syncPlansWithStripe() {

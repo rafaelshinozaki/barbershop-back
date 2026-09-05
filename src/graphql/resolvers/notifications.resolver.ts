@@ -7,7 +7,7 @@ import {
   NotificationWithUser,
 } from '../types/notification.type';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
-import { GraphQLRolesGuard } from '../../auth/guards/graphql-roles.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
@@ -23,7 +23,7 @@ export class NotificationsResolver {
 
   constructor(private readonly notificationsService: NotificationsService) {}
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
   @Query(() => [NotificationWithUser])
   async allNotificationsWithUser(
@@ -92,7 +92,7 @@ export class NotificationsResolver {
     return this.notificationsService.deleteNotification(id, user.id);
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => UserNotification)
   async createNotification(
@@ -114,7 +114,7 @@ export class NotificationsResolver {
     return result;
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, GraphQLRolesGuard)
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Mutation(() => CommonResponse)
   async createBatchNotifications(
