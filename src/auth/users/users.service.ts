@@ -177,8 +177,31 @@ export class UserService {
         where: { email: userData.email, provider: 'local' },
       });
 
-      if (existingUser) {
-        throw new HttpException('User already exists', 400);
+      // Verificar documento duplicado (CPF/SSN/etc.) — nem todo país tem um
+      // documento equivalente, então um idDocNumber vazio não é checado (isso
+      // não deve travar países sem esse campo). A checagem é escopada por
+      // país porque o mesmo número pode existir legitimamente em documentos
+      // de países diferentes.
+      const documentNumber = userData.idDocNumber?.trim();
+      let documentAlreadyExists = false;
+      if (documentNumber) {
+        const documentCountry = userData.address?.country;
+        const existingDocument = await this.prisma.user.findFirst({
+          where: {
+            idDocNumber: documentNumber,
+            provider: 'local',
+            ...(documentCountry ? { address: { country: documentCountry } } : {}),
+          },
+        });
+        documentAlreadyExists = !!existingDocument;
+      }
+
+      // Mensagem e status idênticos para email e documento duplicados: dar
+      // respostas diferentes permitiria que alguém descobrisse, testando a
+      // API diretamente, se um email ou CPF específico já tem conta aqui
+      // (enumeração de usuários) — sensível sobretudo para o CPF.
+      if (existingUser || documentAlreadyExists) {
+        throw new HttpException('Registration data already in use', 400);
       }
 
       // Hash da senha
@@ -334,6 +357,11 @@ export class UserService {
 
       return result;
     } catch (error) {
+      // Não mascarar exceções intencionais (email/documento duplicado etc.)
+      // como "Internal server error" — só erros realmente inesperados.
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(error);
       throw new HttpException('Internal server error', 500, { cause: error });
     }

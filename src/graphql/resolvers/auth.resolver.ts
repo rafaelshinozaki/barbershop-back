@@ -1,5 +1,7 @@
 import { Resolver, Mutation, Args, Query, Context } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, UseFilters } from '@nestjs/common';
+import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
+import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { UserService } from '../../auth/users/users.service';
 import { BarbershopService } from '../../barbershop/barbershop.service';
@@ -72,6 +74,7 @@ const pendingSocialSignups = new Map<
 >();
 
 @Resolver(() => User)
+@UseFilters(GqlHttpExceptionFilter)
 export class AuthResolver {
   private readonly logger = new SmartLogger('AuthResolver');
 
@@ -79,6 +82,7 @@ export class AuthResolver {
     private readonly authService: AuthService,
     private readonly userService: UserService,
     private readonly barbershopService: BarbershopService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Mutation(() => User)
@@ -164,21 +168,42 @@ export class AuthResolver {
     const dbUser = await this.userService.createUser(userData as NewUserSchema);
 
     if (isBarbershopOwner && createUserInput.barbershopData) {
-      await this.barbershopService.createBarbershop(dbUser.id, {
-        name: createUserInput.barbershopData.name,
-        slug: createUserInput.barbershopData.slug,
-        address: createUserInput.barbershopData.address,
-        complement1: createUserInput.barbershopData.complement1,
-        complement2: createUserInput.barbershopData.complement2,
-        city: createUserInput.barbershopData.city,
-        state: createUserInput.barbershopData.state,
-        country: createUserInput.barbershopData.country,
-        postalCode: createUserInput.barbershopData.postalCode,
-        phone: createUserInput.barbershopData.phone,
-        email: createUserInput.barbershopData.email,
-        timezone: createUserInput.barbershopData.timezone,
-        businessHours: createUserInput.barbershopData.businessHours,
-      });
+      try {
+        await this.barbershopService.createBarbershop(dbUser.id, {
+          name: createUserInput.barbershopData.name,
+          slug: createUserInput.barbershopData.slug,
+          address: createUserInput.barbershopData.address,
+          complement1: createUserInput.barbershopData.complement1,
+          complement2: createUserInput.barbershopData.complement2,
+          city: createUserInput.barbershopData.city,
+          state: createUserInput.barbershopData.state,
+          country: createUserInput.barbershopData.country,
+          postalCode: createUserInput.barbershopData.postalCode,
+          phone: createUserInput.barbershopData.phone,
+          email: createUserInput.barbershopData.email,
+          timezone: createUserInput.barbershopData.timezone,
+          businessHours: createUserInput.barbershopData.businessHours,
+        });
+      } catch (error) {
+        // userService.createUser() e barbershopService.createBarbershop() não
+        // rodam na mesma transação — se a barbearia falhar (ex.: slug
+        // duplicado), o usuário já foi criado e ficaria órfão (sem barbearia,
+        // sem poder se cadastrar de novo com o mesmo email). Desfaz o usuário
+        // manualmente para manter o cadastro atômico do ponto de vista do cliente.
+        //
+        // User tem soft-delete global (ver PrismaService: delete vira update
+        // com deleted_at) — mas @@unique([email, provider]) é uma constraint
+        // real do Postgres que não sabe de deleted_at, então um soft-delete
+        // aqui deixaria o email permanentemente preso e a pessoa nunca mais
+        // conseguiria se cadastrar com ele. Por isso o delete final é via SQL
+        // bruto, contornando o middleware, para realmente liberar o registro.
+        await this.prisma.address.deleteMany({ where: { userId: dbUser.id } });
+        await this.prisma.userSystemConfig.deleteMany({ where: { userId: dbUser.id } });
+        await this.prisma.emailNotification.deleteMany({ where: { userId: dbUser.id } });
+        await this.prisma.subscription.deleteMany({ where: { userId: dbUser.id } });
+        await this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${dbUser.id}`;
+        throw error;
+      }
     }
 
     return toGraphQLUser(dbUser) as any;
