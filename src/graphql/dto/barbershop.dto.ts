@@ -12,6 +12,12 @@ export class CreateBarbershopInput {
   @Field()
   address: string;
 
+  @Field({ nullable: true })
+  complement1?: string;
+
+  @Field({ nullable: true })
+  complement2?: string;
+
   @Field()
   city: string;
 
@@ -44,6 +50,12 @@ export class UpdateBarbershopInput {
 
   @Field({ nullable: true })
   address?: string;
+
+  @Field({ nullable: true })
+  complement1?: string;
+
+  @Field({ nullable: true })
+  complement2?: string;
 
   @Field({ nullable: true })
   city?: string;

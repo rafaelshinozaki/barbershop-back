@@ -315,6 +315,8 @@ export class BarbershopService {
       name: string;
       slug: string;
       address: string;
+      complement1?: string;
+      complement2?: string;
       city: string;
       state: string;
       country: string;
@@ -388,6 +390,8 @@ export class BarbershopService {
     data: Partial<{
       name: string;
       address: string;
+      complement1: string;
+      complement2: string;
       city: string;
       state: string;
       country: string;

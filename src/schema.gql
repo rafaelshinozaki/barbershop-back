@@ -219,6 +219,8 @@ input BarbershopSignupData {
   address: String!
   businessHours: String
   city: String!
+  complement1: String
+  complement2: String
   country: String!
   email: String!
   name: String!
@@ -392,6 +394,8 @@ input CreateBarbershopInput {
   address: String!
   businessHours: String
   city: String!
+  complement1: String
+  complement2: String
   country: String!
   email: String!
   name: String!
@@ -507,6 +511,7 @@ type CreateSubscriptionResponse {
 }
 
 input CreateUserInput {
+  address: UserAddressInput
   barbershopData: BarbershopSignupData
   birthdate: DateTime!
   company: String!
@@ -1225,6 +1230,8 @@ input UpdateBarbershopInput {
   address: String
   businessHours: String
   city: String
+  complement1: String
+  complement2: String
   country: String
   email: String
   isActive: Boolean
@@ -1405,6 +1412,17 @@ type User {
   twoFactorRequired: Boolean
   updatedAt: String!
   userSystemConfig: UserSystemConfig
+}
+
+input UserAddressInput {
+  city: String!
+  complement1: String
+  complement2: String
+  country: String!
+  neighborhood: String!
+  state: String!
+  street: String!
+  zipcode: String!
 }
 
 type UserGrowthData {

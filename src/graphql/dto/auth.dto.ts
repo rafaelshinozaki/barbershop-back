@@ -53,6 +53,16 @@ export class BarbershopSignupData {
   @IsString()
   address: string;
 
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  complement1?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  complement2?: string;
+
   @Field()
   @IsString()
   city: string;
@@ -86,6 +96,44 @@ export class BarbershopSignupData {
   @IsOptional()
   @IsString()
   businessHours?: string;
+}
+
+/** Endereço pessoal do usuário no cadastro */
+@InputType()
+export class UserAddressInput {
+  @Field()
+  @IsString()
+  zipcode: string;
+
+  @Field()
+  @IsString()
+  street: string;
+
+  @Field()
+  @IsString()
+  city: string;
+
+  @Field()
+  @IsString()
+  neighborhood: string;
+
+  @Field()
+  @IsString()
+  state: string;
+
+  @Field()
+  @IsString()
+  country: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  complement1?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  complement2?: string;
 }
 
 @InputType()
@@ -142,6 +190,11 @@ export class CreateUserInput {
   @Field()
   @IsBoolean()
   readTerms: boolean;
+
+  /** Endereço pessoal do usuário (opcional — nem todo fluxo de cadastro o coleta) */
+  @Field({ nullable: true })
+  @IsOptional()
+  address?: UserAddressInput;
 
   /** 'barbershop_owner' = cadastro como dono de barbearia (cria User + Barbershop) */
   @Field({ nullable: true })

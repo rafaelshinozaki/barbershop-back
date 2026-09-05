@@ -338,6 +338,8 @@ model Barbershop {
   name           String
   slug           String    @unique
   address        String
+  complement1    String?
+  complement2    String?
   city           String
   state          String
   country        String

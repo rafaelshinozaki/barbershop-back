@@ -130,7 +130,11 @@ export class AuthResolver {
 
     const userData: Record<string, any> = {
       ...createUserInput,
-      address: {
+      // Usa o endereço enviado pelo cliente quando presente — antes isso era
+      // sempre sobrescrito por um objeto vazio, então o endereço pessoal
+      // (rua, bairro, complemento etc.) do usuário nunca era gravado no
+      // cadastro via GraphQL, mesmo quando o formulário coletava esses dados.
+      address: createUserInput.address ?? {
         zipcode: '',
         street: '',
         city: '',
@@ -164,6 +168,8 @@ export class AuthResolver {
         name: createUserInput.barbershopData.name,
         slug: createUserInput.barbershopData.slug,
         address: createUserInput.barbershopData.address,
+        complement1: createUserInput.barbershopData.complement1,
+        complement2: createUserInput.barbershopData.complement2,
         city: createUserInput.barbershopData.city,
         state: createUserInput.barbershopData.state,
         country: createUserInput.barbershopData.country,
