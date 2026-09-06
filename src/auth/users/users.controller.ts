@@ -50,25 +50,10 @@ export class UserController {
     return result;
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'List login history of current user' })
-  @ApiResponse({ status: 200, description: 'Login history list' })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10)' })
-  @Get('login-history')
-  getLoginHistory(
-    @CurrentUser() user: UserDTO,
-    @Query('page') page = '1',
-    @Query('limit') limit = '10',
-  ) {
-    const pageNumber = parseInt(page as any, 10) || 1;
-    const limitNumber = parseInt(limit as any, 10) || 10;
-    return this.userService.getLoginHistory(user.id, pageNumber, limitNumber);
-  }
-
-  // GET /user/active-sessions e GET /user/sessions existiam aqui como
-  // réplicas REST da query GraphQL activeSessions (a única realmente usada
-  // pelo frontend, ver ActiveSessions.tsx) — ambas confirmadas sem nenhum
+  // GET /user/login-history, GET /user/active-sessions e GET /user/sessions
+  // existiam aqui como réplicas REST das queries GraphQL loginHistory/
+  // activeSessions (as únicas realmente usadas pelo frontend, ver
+  // LoginHistory.tsx/ActiveSessions.tsx) — todas confirmadas sem nenhum
   // chamador no frontend via grep. A de active-sessions também identificava
   // "sessão atual" pelo IP, o mesmo bug corrigido no resolver GraphQL; a de
   // sessions chamava um getAllSessions() removido (dedup por timestamp
