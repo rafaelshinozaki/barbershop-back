@@ -348,6 +348,7 @@ model Network {
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]
   customers      Customer[]
+  favoritedBy    ClientFavorite[]
 
   @@index([ownerUserId])
 }
@@ -416,17 +417,20 @@ model Resource {
 }
 
 model Customer {
-  id             Int             @id @default(autoincrement())
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  networkId      Int
-  name           String
-  phone          String
-  email          String?
-  birthDate      DateTime?
-  notes          String?
-  isActive       Boolean         @default(true)
-  network        Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  id              Int             @id @default(autoincrement())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  networkId       Int
+  clientAccountId Int?            // conta de cliente da plataforma (opcional) — liga o histórico deste
+                                   // negócio a uma conta que também compra em outros negócios
+  name            String
+  phone           String
+  email           String?
+  birthDate       DateTime?
+  notes           String?
+  isActive        Boolean         @default(true)
+  network         Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  clientAccount   ClientAccount?  @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   appointments   Appointment[]
   serviceHistory ServiceHistory[]
   sales          Sale[]
@@ -437,6 +441,36 @@ model Customer {
   @@index([networkId])
   @@index([networkId, phone])
   @@index([networkId, email])
+  @@index([clientAccountId])
+}
+
+// Conta de cliente da plataforma (marketplace) — distinta do User (usado por
+// donos/gerentes/funcionários). Um cliente pode ter um Customer em cada
+// Network que frequenta; esta conta é o que liga esses registros entre si
+// para dar histórico e favoritos cross-negócio.
+model ClientAccount {
+  id        Int              @id @default(autoincrement())
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  email     String           @unique
+  password  String
+  name      String
+  phone     String?
+  avatarUrl String?
+  customers Customer[]
+  favorites ClientFavorite[]
+}
+
+model ClientFavorite {
+  id              Int           @id @default(autoincrement())
+  createdAt       DateTime      @default(now())
+  clientAccountId Int
+  networkId       Int
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  network         Network       @relation(fields: [networkId], references: [id], onDelete: Cascade)
+
+  @@unique([clientAccountId, networkId])
+  @@index([networkId])
 }
 
 model Barber {

@@ -10,7 +10,9 @@ import { BarbershopResolver } from './resolvers/barbershop.resolver';
 import { BarbershopProductResolver } from './resolvers/barbershop-product.resolver';
 import { BarbershopPhotoResolver } from './resolvers/barbershop-photo.resolver';
 import { NetworkResolver } from './resolvers/network.resolver';
+import { ClientAuthResolver } from './resolvers/client-auth.resolver';
 import { AuthModule } from '../auth/auth.module';
+import { ClientAuthModule } from '../client-auth/client-auth.module';
 import { UserModule } from '../auth/users/users.module';
 import { PlanModule } from '../plan/plan.module';
 import { BackofficeModule } from '../backoffice/backoffice.module';
@@ -33,6 +35,7 @@ import { PaymentsModule } from '../payments/payments.module';
     StripeModule,
     BarbershopModule,
     PaymentsModule,
+    ClientAuthModule,
   ],
   providers: [
     AuthResolver,
@@ -46,6 +49,7 @@ import { PaymentsModule } from '../payments/payments.module';
     BarbershopProductResolver,
     BarbershopPhotoResolver,
     NetworkResolver,
+    ClientAuthResolver,
   ],
   exports: [
     AuthResolver,

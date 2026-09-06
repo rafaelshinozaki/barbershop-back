@@ -302,6 +302,31 @@ input CheckPasswordInput {
   password: String!
 }
 
+type ClientAccountType {
+  avatarUrl: String
+  email: String!
+  id: Int!
+  name: String!
+  phone: String
+}
+
+type ClientHistoryEntryType {
+  barbershopName: String!
+  currency: String
+  date: String!
+  detail: String
+  id: String!
+  networkName: String!
+  status: String!
+  total: Float
+  type: String!
+}
+
+input ClientLoginInput {
+  email: String!
+  password: String!
+}
+
 type ClientPackageType {
   barbershopId: Int!
   createdAt: String!
@@ -313,6 +338,13 @@ type ClientPackageType {
   status: String!
   totalSessions: Int!
   usedSessions: Int!
+}
+
+input ClientSignupInput {
+  email: String!
+  name: String!
+  password: String!
+  phone: String
 }
 
 input CloseCashSessionInput {
@@ -839,6 +871,7 @@ type MonthlyRevenueItem {
 }
 
 type Mutation {
+  addClientFavorite(networkId: Float!): [Network!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
@@ -848,6 +881,9 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  clientLogin(input: ClientLoginInput!): ClientAccountType!
+  clientLogout: Boolean!
+  clientSignup(input: ClientSignupInput!): ClientAccountType!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
@@ -912,6 +948,7 @@ type Mutation {
   purchaseClientPackage(barbershopId: Int!, input: PurchaseClientPackageInput!): ClientPackageType!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
+  removeClientFavorite(networkId: Float!): [Network!]!
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
@@ -1206,6 +1243,9 @@ type Query {
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
+  clientFavorites: [Network!]!
+  clientHistory: [ClientHistoryEntryType!]!
+  clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
@@ -1250,6 +1290,7 @@ type Query {
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
   roleDistribution: RoleDistribution!
+  searchNetworks(query: String!): [Network!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   statusDistribution: StatusDistribution!
   user(id: Int!): User!
