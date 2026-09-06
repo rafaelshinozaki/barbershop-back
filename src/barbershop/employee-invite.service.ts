@@ -279,13 +279,17 @@ export class EmployeeInviteService {
       },
     });
 
-    await this.prisma.emailNotification.create({
+    await this.prisma.notificationPreference.create({
       data: {
         userId: newUser.id,
-        news: true,
-        promotions: true,
-        instability: true,
-        security: true,
+        newsEmail: true,
+        newsInApp: true,
+        promotionsEmail: true,
+        promotionsInApp: true,
+        instabilityEmail: true,
+        instabilityInApp: true,
+        securityEmail: true,
+        securityInApp: true,
       },
     });
 

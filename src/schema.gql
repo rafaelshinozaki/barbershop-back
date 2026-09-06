@@ -37,6 +37,17 @@ input AddressInput {
   zipcode: String
 }
 
+input AdminNotificationPreferenceInput {
+  instabilityEmail: Boolean
+  instabilityInApp: Boolean
+  newsEmail: Boolean
+  newsInApp: Boolean
+  promotionsEmail: Boolean
+  promotionsInApp: Boolean
+  securityEmail: Boolean
+  securityInApp: Boolean
+}
+
 type AdminProcessAllRecurringPaymentsResponse {
   message: String!
   processedAt: String!
@@ -609,23 +620,6 @@ type EmailHistoryItem {
   userName: String!
 }
 
-type EmailNotification {
-  createdAt: String!
-  id: Int!
-  instability: Boolean!
-  news: Boolean!
-  promotions: Boolean!
-  security: Boolean!
-  updatedAt: String!
-}
-
-input EmailNotificationInput {
-  instability: Boolean
-  news: Boolean
-  promotions: Boolean
-  security: Boolean
-}
-
 input ForgotPasswordCheckInput {
   email: String!
   token: String!
@@ -757,8 +751,8 @@ type Mutation {
   updateBarbershopService(barbershopId: Int!, id: Int!, input: UpdateBarbershopServiceInput!): BarbershopServiceType!
   updateCoupon(data: UpdateCouponInput!, id: Float!): Coupon!
   updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
-  updateEmailNotification(input: UpdateEmailNotificationInput!): User!
   updateNetwork(input: UpdateNetworkInput!): Network!
+  updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
   updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
@@ -808,6 +802,20 @@ type NetworkDashboardStats {
 type NotificationCount {
   newCount: Int!
   unreadCount: Int!
+}
+
+type NotificationPreference {
+  createdAt: String!
+  id: Int!
+  instabilityEmail: Boolean!
+  instabilityInApp: Boolean!
+  newsEmail: Boolean!
+  newsInApp: Boolean!
+  promotionsEmail: Boolean!
+  promotionsInApp: Boolean!
+  securityEmail: Boolean!
+  securityInApp: Boolean!
+  updatedAt: String!
 }
 
 """The type of notification"""
@@ -1285,13 +1293,6 @@ input UpdateCustomerInput {
   phone: String
 }
 
-input UpdateEmailNotificationInput {
-  instability: Boolean!
-  news: Boolean!
-  promotions: Boolean!
-  security: Boolean!
-}
-
 input UpdateNetworkInput {
   city: String
   description: String
@@ -1299,6 +1300,17 @@ input UpdateNetworkInput {
   logoUrl: String
   mission: String
   name: String
+}
+
+input UpdateNotificationPreferenceInput {
+  instabilityEmail: Boolean!
+  instabilityInApp: Boolean!
+  newsEmail: Boolean!
+  newsInApp: Boolean!
+  promotionsEmail: Boolean!
+  promotionsInApp: Boolean!
+  securityEmail: Boolean!
+  securityInApp: Boolean!
 }
 
 input UpdatePlanInput {
@@ -1336,11 +1348,11 @@ input UpdateUserByAdminInput {
   company: String
   department: String
   email: String
-  emailNotification: EmailNotificationInput
   fullName: String
   gender: String
   isActive: Boolean
   jobTitle: String
+  notificationPreference: AdminNotificationPreferenceInput
   phone: String
   professionalSegment: String
   twoFactorEnabled: Boolean
@@ -1386,7 +1398,6 @@ type User {
   deleted_at: String
   department: String
   email: String!
-  emailNotification: EmailNotification
   fullName: String!
   gender: String!
   id: Int!
@@ -1396,6 +1407,7 @@ type User {
   knowledgeApp: String!
   loginId: String
   membership: MembershipStatus
+  notificationPreference: NotificationPreference
   phone: String!
   photoKey: String
   plan: String

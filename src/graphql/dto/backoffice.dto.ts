@@ -77,26 +77,46 @@ export class UserSystemConfigInput {
 }
 
 @InputType()
-export class EmailNotificationInput {
+export class AdminNotificationPreferenceInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsBoolean()
-  news?: boolean;
+  newsEmail?: boolean;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsBoolean()
-  promotions?: boolean;
+  newsInApp?: boolean;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsBoolean()
-  instability?: boolean;
+  promotionsEmail?: boolean;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsBoolean()
-  security?: boolean;
+  promotionsInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  instabilityEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  instabilityInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  securityEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  securityInApp?: boolean;
 }
 
 @InputType()
@@ -168,9 +188,9 @@ export class UpdateUserByAdminInput {
   @IsOptional()
   userSystemConfig?: UserSystemConfigInput;
 
-  @Field(() => EmailNotificationInput, { nullable: true })
+  @Field(() => AdminNotificationPreferenceInput, { nullable: true })
   @IsOptional()
-  emailNotification?: EmailNotificationInput;
+  notificationPreference?: AdminNotificationPreferenceInput;
 }
 
 @InputType()

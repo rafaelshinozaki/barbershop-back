@@ -59,7 +59,7 @@ function toGraphQLUser(user: any) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     deleted_at: user.deleted_at,
-    emailNotification: user.emailNotification,
+    notificationPreference: user.notificationPreference,
     userSystemConfig: user.userSystemConfig,
     address: user.address,
     twoFactorRequired: user.twoFactorRequired,
@@ -190,7 +190,7 @@ export class AuthResolver {
         // bruto, contornando o middleware, para realmente liberar o registro.
         await this.prisma.address.deleteMany({ where: { userId: dbUser.id } });
         await this.prisma.userSystemConfig.deleteMany({ where: { userId: dbUser.id } });
-        await this.prisma.emailNotification.deleteMany({ where: { userId: dbUser.id } });
+        await this.prisma.notificationPreference.deleteMany({ where: { userId: dbUser.id } });
         await this.prisma.subscription.deleteMany({ where: { userId: dbUser.id } });
         await this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${dbUser.id}`;
         throw error;
@@ -338,7 +338,7 @@ export class AuthResolver {
   // `me` vive em UserResolver — dois resolvers definindo a mesma query
   // root causava um conflito silencioso (UserResolver vencia; esta versão
   // nunca era chamada, confirmado ao vivo checando se userSystemConfig/
-  // address/emailNotification vinham populados — só o refetch completo do
+  // address/notificationPreference vinham populados — só o refetch completo do
   // UserResolver faz isso, já que o user de @CurrentUser() aqui só inclui
   // `role`, ver GraphQLJwtAuthGuard).
 

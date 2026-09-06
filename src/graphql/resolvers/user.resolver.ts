@@ -24,7 +24,7 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { UpdateUserInput } from '../../auth/users/dto/update-user.dto';
 import { ChangePasswordInput } from '../../auth/users/dto/change-password.dto';
 import { UpdateUserSystemConfigInput } from '../../auth/users/dto/userSystemConfig.dto';
-import { UpdateEmailNotificationInput } from '../dto/auth.dto';
+import { UpdateNotificationPreferenceInput } from '../dto/auth.dto';
 import { PLANO_STATUS } from '../../common/contants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../aws/s3.service';
@@ -90,7 +90,7 @@ export class UserResolver {
       where: { id: user.id },
       include: {
         role: true,
-        emailNotification: true,
+        notificationPreference: true,
         userSystemConfig: true,
         address: true,
       },
@@ -103,16 +103,20 @@ export class UserResolver {
 
     this.logger.logEssential('User data from DB', userData, ['id', 'email', 'fullName', 'role']);
 
-    const defaultEmailNotification = {
-      news: false,
-      promotions: false,
-      security: false,
-      instability: false,
+    const defaultNotificationPreference = {
+      newsEmail: false,
+      newsInApp: false,
+      promotionsEmail: false,
+      promotionsInApp: false,
+      securityEmail: false,
+      securityInApp: false,
+      instabilityEmail: false,
+      instabilityInApp: false,
     };
 
     const result = {
       ...userData,
-      emailNotification: userData.emailNotification || defaultEmailNotification,
+      notificationPreference: userData.notificationPreference || defaultNotificationPreference,
       role: userData.role?.name || 'BarbershopOwner',
       membership: userData.membership || 'FREE',
       isActive: userData.isActive ?? true,
@@ -231,7 +235,7 @@ export class UserResolver {
         data: updateData,
         include: {
           role: true,
-          emailNotification: true,
+          notificationPreference: true,
           userSystemConfig: true,
           address: true,
         },
@@ -278,21 +282,20 @@ export class UserResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => User)
-  async updateEmailNotification(
+  async updateNotificationPreference(
     @CurrentUser() user: UserDTO,
-    @Args('input') input: UpdateEmailNotificationInput,
+    @Args('input') input: UpdateNotificationPreferenceInput,
   ) {
-    this.logger.log(`updateEmailNotification called for user ${user.id}`);
-    this.logger.logEssential('updateEmailNotification input', input, [
-      'news',
-      'promotions',
-      'security',
+    this.logger.log(`updateNotificationPreference called for user ${user.id}`);
+    this.logger.logEssential('updateNotificationPreference input', input, [
+      'newsEmail',
+      'newsInApp',
     ]);
 
     const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        emailNotification: {
+        notificationPreference: {
           upsert: {
             create: input,
             update: input,
@@ -301,7 +304,7 @@ export class UserResolver {
       },
       include: {
         role: true,
-        emailNotification: true,
+        notificationPreference: true,
         userSystemConfig: true,
         address: true,
       },

@@ -1,6 +1,6 @@
 // src\auth\users\dto\user.dto.ts
 import { AddressSchema } from '../models/address.schema';
-import { EmailNotificationSchema } from '../models/emailNotification.schema';
+import { NotificationPreferenceSchema } from '../models/notificationPreference.schema';
 import { UserSystemConfigDTO } from './userSystemConfig.dto';
 
 export class UserDTO {
@@ -25,7 +25,7 @@ export class UserDTO {
   birthdate: Date;
   address: AddressSchema;
   userSystemConfig: UserSystemConfigDTO;
-  emailNotification: EmailNotificationSchema;
+  notificationPreference: NotificationPreferenceSchema;
   twoFactorEnabled: boolean;
   photoKey?: string;
   role?: { id: number; name: string };

@@ -246,22 +246,38 @@ export class ResetPasswordInput {
 }
 
 @InputType()
-export class UpdateEmailNotificationInput {
+export class UpdateNotificationPreferenceInput {
   @Field()
   @IsBoolean()
-  news: boolean;
+  newsEmail: boolean;
 
   @Field()
   @IsBoolean()
-  promotions: boolean;
+  newsInApp: boolean;
 
   @Field()
   @IsBoolean()
-  security: boolean;
+  promotionsEmail: boolean;
 
   @Field()
   @IsBoolean()
-  instability: boolean;
+  promotionsInApp: boolean;
+
+  @Field()
+  @IsBoolean()
+  securityEmail: boolean;
+
+  @Field()
+  @IsBoolean()
+  securityInApp: boolean;
+
+  @Field()
+  @IsBoolean()
+  instabilityEmail: boolean;
+
+  @Field()
+  @IsBoolean()
+  instabilityInApp: boolean;
 }
 
 @InputType()

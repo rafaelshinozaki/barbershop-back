@@ -106,21 +106,33 @@ export class UserNotification {
 }
 
 @ObjectType()
-export class EmailNotification {
+export class NotificationPreference {
   @Field(() => Int)
   id: number;
 
   @Field()
-  news: boolean;
+  newsEmail: boolean;
 
   @Field()
-  promotions: boolean;
+  newsInApp: boolean;
 
   @Field()
-  instability: boolean;
+  promotionsEmail: boolean;
 
   @Field()
-  security: boolean;
+  promotionsInApp: boolean;
+
+  @Field()
+  securityEmail: boolean;
+
+  @Field()
+  securityInApp: boolean;
+
+  @Field()
+  instabilityEmail: boolean;
+
+  @Field()
+  instabilityInApp: boolean;
 
   @Field()
   createdAt: string;

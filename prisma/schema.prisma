@@ -39,7 +39,7 @@ model User {
   ActiveSession       ActiveSession[]
   address             Address?
   emailLogger         EmailLogger[]
-  emailNotification   EmailNotification?
+  notificationPreference NotificationPreference?
   acceptedInvites     FriendInvite[]     @relation("AcceptedBy")
   sentInvites         FriendInvite[]     @relation("Inviter")
   invalidatedTokens   InvalidatedToken[]
@@ -204,16 +204,20 @@ model UserCoupon {
   @@unique([userId, couponId])
 }
 
-model EmailNotification {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  news        Boolean
-  promotions  Boolean
-  instability Boolean
-  security    Boolean
-  userId      Int      @unique
-  user        User     @relation(fields: [userId], references: [id])
+model NotificationPreference {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  newsEmail        Boolean  @default(true)
+  newsInApp        Boolean  @default(true)
+  promotionsEmail  Boolean  @default(true)
+  promotionsInApp  Boolean  @default(true)
+  securityEmail    Boolean  @default(true)
+  securityInApp    Boolean  @default(true)
+  instabilityEmail Boolean  @default(true)
+  instabilityInApp Boolean  @default(true)
+  userId           Int      @unique
+  user             User     @relation(fields: [userId], references: [id])
 }
 
 model EmailLogger {

@@ -47,11 +47,15 @@ export class UserService {
     language: 'pt',
   };
 
-  private readonly _defaultEmailNotification = {
-    news: true,
-    promotions: true,
-    instability: true,
-    security: true,
+  private readonly _defaultNotificationPreference = {
+    newsEmail: true,
+    newsInApp: true,
+    promotionsEmail: true,
+    promotionsInApp: true,
+    instabilityEmail: true,
+    instabilityInApp: true,
+    securityEmail: true,
+    securityInApp: true,
   };
 
   private _temp = new Set<string>();
@@ -247,7 +251,7 @@ export class UserService {
           role: true,
           address: true,
           userSystemConfig: true,
-          emailNotification: true,
+          notificationPreference: true,
         },
       });
 
@@ -281,14 +285,11 @@ export class UserService {
         },
       });
 
-      // Criar configurações de email
-      await this.prisma.emailNotification.create({
+      // Criar preferências de notificação (email + in-app)
+      await this.prisma.notificationPreference.create({
         data: {
           userId: newUser.id,
-          news: true,
-          promotions: true,
-          instability: true,
-          security: true,
+          ...this._defaultNotificationPreference,
         },
       });
 
@@ -406,18 +407,22 @@ export class UserService {
     this.logger.log(`Data object keys:`, Object.keys(data));
     this.logger.log(`Data object has twoFactorEnabled:`, 'twoFactorEnabled' in data);
 
-    if (userDto.emailNotification) {
-      data.emailNotification = {
+    if (userDto.notificationPreference) {
+      data.notificationPreference = {
         update: {},
       };
-      if (userDto.emailNotification.news !== undefined)
-        data.emailNotification.update.news = userDto.emailNotification.news;
-      if (userDto.emailNotification.promotions !== undefined)
-        data.emailNotification.update.promotions = userDto.emailNotification.promotions;
-      if (userDto.emailNotification.instability !== undefined)
-        data.emailNotification.update.instability = userDto.emailNotification.instability;
-      if (userDto.emailNotification.security !== undefined)
-        data.emailNotification.update.security = userDto.emailNotification.security;
+      const pref = userDto.notificationPreference;
+      const fields = [
+        'newsEmail', 'newsInApp',
+        'promotionsEmail', 'promotionsInApp',
+        'securityEmail', 'securityInApp',
+        'instabilityEmail', 'instabilityInApp',
+      ] as const;
+      for (const field of fields) {
+        if (pref[field] !== undefined) {
+          data.notificationPreference.update[field] = pref[field];
+        }
+      }
     }
 
     if (userDto.userSystemConfig) {
@@ -530,12 +535,16 @@ export class UserService {
             language: true,
           },
         },
-        emailNotification: {
+        notificationPreference: {
           select: {
-            news: true,
-            promotions: true,
-            instability: true,
-            security: true,
+            newsEmail: true,
+            newsInApp: true,
+            promotionsEmail: true,
+            promotionsInApp: true,
+            instabilityEmail: true,
+            instabilityInApp: true,
+            securityEmail: true,
+            securityInApp: true,
           },
         },
         subscriptions: {
@@ -593,12 +602,16 @@ export class UserService {
             language: true,
           },
         },
-        emailNotification: {
+        notificationPreference: {
           select: {
-            news: true,
-            promotions: true,
-            instability: true,
-            security: true,
+            newsEmail: true,
+            newsInApp: true,
+            promotionsEmail: true,
+            promotionsInApp: true,
+            instabilityEmail: true,
+            instabilityInApp: true,
+            securityEmail: true,
+            securityInApp: true,
           },
         },
         subscriptions: {
@@ -643,8 +656,8 @@ export class UserService {
           userSystemConfig: {
             create: this._defaultSystemConfig,
           },
-          emailNotification: {
-            create: this._defaultEmailNotification,
+          notificationPreference: {
+            create: this._defaultNotificationPreference,
           },
         },
         include: {
@@ -674,12 +687,16 @@ export class UserService {
               language: true,
             },
           },
-          emailNotification: {
+          notificationPreference: {
             select: {
-              news: true,
-              promotions: true,
-              instability: true,
-              security: true,
+              newsEmail: true,
+              newsInApp: true,
+              promotionsEmail: true,
+              promotionsInApp: true,
+              instabilityEmail: true,
+              instabilityInApp: true,
+              securityEmail: true,
+              securityInApp: true,
             },
           },
           subscriptions: {
@@ -773,13 +790,17 @@ export class UserService {
             country: true,
           },
         },
-        emailNotification: {
+        notificationPreference: {
           select: {
             id: true,
-            news: true,
-            promotions: true,
-            instability: true,
-            security: true,
+            newsEmail: true,
+            newsInApp: true,
+            promotionsEmail: true,
+            promotionsInApp: true,
+            instabilityEmail: true,
+            instabilityInApp: true,
+            securityEmail: true,
+            securityInApp: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -1084,12 +1105,16 @@ export class UserService {
             updatedAt: true,
           },
         },
-        emailNotification: {
+        notificationPreference: {
           select: {
-            news: true,
-            promotions: true,
-            instability: true,
-            security: true,
+            newsEmail: true,
+            newsInApp: true,
+            promotionsEmail: true,
+            promotionsInApp: true,
+            instabilityEmail: true,
+            instabilityInApp: true,
+            securityEmail: true,
+            securityInApp: true,
           },
         },
       },
@@ -2065,15 +2090,15 @@ export class UserService {
                 language: userData.userSystemConfig.language,
               },
             },
-            emailNotification: {
-              create: this._defaultEmailNotification,
+            notificationPreference: {
+              create: this._defaultNotificationPreference,
             },
           },
           include: {
             role: true,
             address: true,
             userSystemConfig: true,
-            emailNotification: true,
+            notificationPreference: true,
           },
         });
 

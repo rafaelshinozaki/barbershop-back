@@ -220,11 +220,15 @@ async function createRandomUser() {
       complement1: faker.address.secondaryAddress(),
       complement2: faker.helpers.maybe(() => 'Próximo ao mercado', { probability: 0.3 }),
     },
-    emailNotification: {
-      news: faker.helpers.arrayElement([true, false]),
-      promotions: faker.helpers.arrayElement([true, false]),
-      instability: faker.helpers.arrayElement([true, false]),
-      security: faker.helpers.arrayElement([true, false]),
+    notificationPreference: {
+      newsEmail: faker.helpers.arrayElement([true, false]),
+      newsInApp: faker.helpers.arrayElement([true, false]),
+      promotionsEmail: faker.helpers.arrayElement([true, false]),
+      promotionsInApp: faker.helpers.arrayElement([true, false]),
+      instabilityEmail: faker.helpers.arrayElement([true, false]),
+      instabilityInApp: faker.helpers.arrayElement([true, false]),
+      securityEmail: faker.helpers.arrayElement([true, false]),
+      securityInApp: faker.helpers.arrayElement([true, false]),
     },
   };
 }
@@ -271,7 +275,7 @@ async function main() {
         prisma.address.deleteMany(),
         prisma.userSystemConfig.deleteMany(),
         prisma.emailLogger.deleteMany(),
-        prisma.emailNotification.deleteMany(),
+        prisma.notificationPreference.deleteMany(),
         prisma.user.deleteMany(),
         prisma.role.deleteMany(),
       ]);
@@ -343,12 +347,16 @@ async function main() {
       readTerms: true,
       isActive: true,
       userSystemConfig: { create: userSystemConfig.create },
-      emailNotification: {
+      notificationPreference: {
         create: {
-          news: faker.helpers.arrayElement([true, false]),
-          promotions: faker.helpers.arrayElement([true, false]),
-          instability: faker.helpers.arrayElement([true, false]),
-          security: faker.helpers.arrayElement([true, false]),
+          newsEmail: faker.helpers.arrayElement([true, false]),
+          newsInApp: faker.helpers.arrayElement([true, false]),
+          promotionsEmail: faker.helpers.arrayElement([true, false]),
+          promotionsInApp: faker.helpers.arrayElement([true, false]),
+          instabilityEmail: faker.helpers.arrayElement([true, false]),
+          instabilityInApp: faker.helpers.arrayElement([true, false]),
+          securityEmail: faker.helpers.arrayElement([true, false]),
+          securityInApp: faker.helpers.arrayElement([true, false]),
         },
       },
       address: {
@@ -556,12 +564,16 @@ async function main() {
               language: faker.helpers.arrayElement(['es', 'en', 'pt']),
             },
           },
-          emailNotification: {
+          notificationPreference: {
             create: {
-              news: faker.helpers.arrayElement([true, false]),
-              promotions: faker.helpers.arrayElement([true, false]),
-              instability: faker.helpers.arrayElement([true, false]),
-              security: faker.helpers.arrayElement([true, false]),
+              newsEmail: faker.helpers.arrayElement([true, false]),
+              newsInApp: faker.helpers.arrayElement([true, false]),
+              promotionsEmail: faker.helpers.arrayElement([true, false]),
+              promotionsInApp: faker.helpers.arrayElement([true, false]),
+              instabilityEmail: faker.helpers.arrayElement([true, false]),
+              instabilityInApp: faker.helpers.arrayElement([true, false]),
+              securityEmail: faker.helpers.arrayElement([true, false]),
+              securityInApp: faker.helpers.arrayElement([true, false]),
             },
           },
           address: {

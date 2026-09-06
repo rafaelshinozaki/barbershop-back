@@ -1,5 +1,5 @@
 import { ObjectType, Field, Int } from '@nestjs/graphql';
-import { EmailNotification } from './notification.type';
+import { NotificationPreference } from './notification.type';
 import { UserRole, MembershipStatus } from './enums';
 
 @ObjectType()
@@ -139,8 +139,8 @@ export class User {
   @Field({ nullable: true })
   deleted_at?: string;
 
-  @Field(() => EmailNotification, { nullable: true })
-  emailNotification?: EmailNotification;
+  @Field(() => NotificationPreference, { nullable: true })
+  notificationPreference?: NotificationPreference;
 
   @Field(() => UserSystemConfig, { nullable: true })
   userSystemConfig?: UserSystemConfig;
