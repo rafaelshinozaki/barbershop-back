@@ -262,6 +262,21 @@ type Card {
   last4: String!
 }
 
+type CashSessionType {
+  barbershopId: Int!
+  closedAt: String
+  closedByName: String
+  countedBalance: Float
+  difference: Float
+  expectedBalance: Float
+  id: Int!
+  notes: String
+  openedAt: String!
+  openedByName: String
+  openingBalance: Float!
+  status: String!
+}
+
 input ChangePasswordInput {
   code: String!
   email: String!
@@ -282,6 +297,11 @@ type ChartData {
 
 input CheckPasswordInput {
   password: String!
+}
+
+input CloseCashSessionInput {
+  countedBalance: Float!
+  notes: String
 }
 
 type CommonResponse {
@@ -474,6 +494,14 @@ input CreateCustomerInput {
   phone: String
 }
 
+input CreateExpenseInput {
+  amount: Float!
+  category: String!
+  description: String!
+  expenseDate: String
+  paymentMethod: String
+}
+
 input CreatePlanInput {
   billingCycle: String!
   description: String
@@ -627,6 +655,38 @@ type EmailHistoryItem {
   userName: String!
 }
 
+type ExpenseType {
+  amount: Float!
+  barbershopId: Int!
+  cashSessionId: Int
+  category: String!
+  createdAt: String!
+  createdByName: String
+  description: String!
+  expenseDate: String!
+  id: Int!
+  paymentMethod: String
+}
+
+type FinancialCategoryTotal {
+  category: String!
+  total: Float!
+}
+
+type FinancialChartSeries {
+  data: [Float!]!
+  labels: [String!]!
+}
+
+type FinancialSummaryType {
+  expensesByCategory: [FinancialCategoryTotal!]!
+  netProfit: Float!
+  revenueByDay: FinancialChartSeries!
+  revenueByPaymentMethod: [FinancialCategoryTotal!]!
+  totalExpenses: Float!
+  totalRevenue: Float!
+}
+
 input ForgotPasswordCheckInput {
   email: String!
   token: String!
@@ -711,6 +771,7 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
@@ -723,6 +784,7 @@ type Mutation {
   createBatchNotifications(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userIds: [Int!]!): CommonResponse!
   createCoupon(data: CreateCouponInput!): Coupon!
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
+  createExpense(barbershopId: Int!, input: CreateExpenseInput!): ExpenseType!
   createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
@@ -741,6 +803,7 @@ type Mutation {
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
   deleteCoupon(id: Float!): DeleteCouponResponse!
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
+  deleteExpense(barbershopId: Int!, id: Int!): Boolean!
   deleteNotification(id: Int!): CommonResponse!
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
   deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
@@ -756,6 +819,7 @@ type Mutation {
   logoutOtherSessions: Boolean!
   markAllNotificationsAsRead: CommonResponse!
   markNotificationAsRead(id: Int!): CommonResponse!
+  openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
   processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
@@ -883,6 +947,10 @@ type NotificationWithUser {
   updatedAt: String!
   user: NotificationUser!
   userId: Int!
+}
+
+input OpenCashSessionInput {
+  openingBalance: Float!
 }
 
 type OverduePayment {
@@ -1040,12 +1108,16 @@ type Query {
   barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
+  cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   companyAnalysis: CompanyAnalysis!
   couponStats(id: Float!): CouponStats!
+  currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
   demographicAnalysis: DemographicAnalysis!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
+  expenses(barbershopId: Int!, category: String, from: String, to: String): [ExpenseType!]!
+  financialSummary(barbershopId: Int!, from: String!, to: String!): FinancialSummaryType!
   geographicAnalysis: GeographicAnalysis!
   getAllPlans: [Plan!]!
   getAllUsers: [User!]!

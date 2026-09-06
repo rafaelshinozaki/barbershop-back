@@ -56,6 +56,9 @@ model User {
   networksOwned      Network[]     @relation("NetworkOwner")
   sentEmployeeInvites    EmployeeInvite[] @relation("EmployeeInviteInviter")
   acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
+  cashSessionsOpened     CashSession[]    @relation("CashSessionOpenedBy")
+  cashSessionsClosed     CashSession[]    @relation("CashSessionClosedBy")
+  expensesCreated        Expense[]        @relation("ExpenseCreatedBy")
 
   @@unique([email, provider])
 }
@@ -381,6 +384,8 @@ model Barbershop {
   sales          Sale[]
   inventoryItems InventoryItem[]
   employeeInvites EmployeeInvite[]
+  cashSessions   CashSession[]
+  expenses       Expense[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -644,6 +649,7 @@ model Sale {
   customerId     Int?
   barberId       Int?
   appointmentId  Int?      @unique
+  cashSessionId  Int?
   saleType       String    // SERVICE, PRODUCT, MIXED
   subtotal       Decimal
   discountAmount Decimal   @default(0)
@@ -656,6 +662,7 @@ model Sale {
   customer       Customer?  @relation(fields: [customerId], references: [id])
   barber         Barber?    @relation(fields: [barberId], references: [id])
   appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  cashSession    CashSession? @relation(fields: [cashSessionId], references: [id])
   items          SaleItem[]
 
   @@index([barbershopId])
@@ -663,6 +670,50 @@ model Sale {
   @@index([customerId])
   @@index([barberId])
   @@index([paymentStatus])
+  @@index([cashSessionId])
+}
+
+model CashSession {
+  id              Int       @id @default(autoincrement())
+  barbershopId    Int
+  openedByUserId  Int
+  openedAt        DateTime  @default(now())
+  openingBalance  Decimal
+  closedByUserId  Int?
+  closedAt        DateTime?
+  countedBalance  Decimal?
+  expectedBalance Decimal?
+  difference      Decimal?
+  status          String    @default("OPEN") // OPEN, CLOSED
+  notes           String?
+  barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  openedBy        User       @relation("CashSessionOpenedBy", fields: [openedByUserId], references: [id])
+  closedBy        User?      @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id])
+  sales           Sale[]
+  expenses        Expense[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, status])
+}
+
+model Expense {
+  id              Int          @id @default(autoincrement())
+  barbershopId    Int
+  cashSessionId   Int?
+  category        String       // RENT, UTILITIES, SUPPLIES, SALARY, MAINTENANCE, OTHER
+  description     String
+  amount          Decimal
+  paymentMethod   String?      // CASH, CARD, PIX, TRANSFER
+  expenseDate     DateTime     @default(now())
+  createdByUserId Int
+  createdAt       DateTime     @default(now())
+  barbershop      Barbershop   @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  cashSession     CashSession? @relation(fields: [cashSessionId], references: [id])
+  createdBy       User         @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([barbershopId])
+  @@index([barbershopId, expenseDate])
+  @@index([cashSessionId])
 }
 
 model SaleItem {

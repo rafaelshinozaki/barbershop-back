@@ -12,6 +12,9 @@ import {
   BarbershopProductType,
   InventoryItemType,
   InventoryMovementType,
+  CashSessionType,
+  ExpenseType,
+  FinancialSummaryType,
   BarberScheduleType,
   BarberTimeOffType,
   Appointment,
@@ -34,6 +37,9 @@ import {
   UpdateBarbershopProductInput,
   AdjustInventoryInput,
   UpdateInventoryItemInput,
+  OpenCashSessionInput,
+  CloseCashSessionInput,
+  CreateExpenseInput,
   CreateBarberScheduleInput,
   UpdateBarberScheduleInput,
   CreateBarberTimeOffInput,
@@ -455,6 +461,103 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getInventoryMovements(user.id, barbershopId, productId);
+  }
+
+  // ============ CASH SESSION ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CashSessionType, { nullable: true })
+  async currentCashSession(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCurrentCashSession(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [CashSessionType])
+  async cashSessions(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('limit', { type: () => Int, nullable: true }) limit: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCashSessions(user.id, barbershopId, limit);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => CashSessionType)
+  async openCashSession(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: OpenCashSessionInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.openCashSession(user.id, barbershopId, input.openingBalance);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => CashSessionType)
+  async closeCashSession(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CloseCashSessionInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.closeCashSession(user.id, barbershopId, input);
+  }
+
+  // ============ EXPENSES ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ExpenseType)
+  async createExpense(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateExpenseInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createExpense(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ExpenseType])
+  async expenses(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('from', { nullable: true }) from: string,
+    @Args('to', { nullable: true }) to: string,
+    @Args('category', { nullable: true }) category: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getExpenses(user.id, barbershopId, {
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      category,
+    });
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteExpense(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteExpense(user.id, barbershopId, id);
+  }
+
+  // ============ FINANCIAL DASHBOARD ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => FinancialSummaryType)
+  async financialSummary(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('from') from: string,
+    @Args('to') to: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getFinancialSummary(
+      user.id,
+      barbershopId,
+      new Date(from),
+      new Date(to),
+    );
   }
 
   // ============ BARBERSHOP PHOTO ============

@@ -1347,6 +1347,14 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
+    // Vincula a venda ao caixa aberto no momento, se houver um — é o que
+    // permite reconciliar o fechamento de caixa depois (ver
+    // closeCashSession). Uma venda feita sem caixa aberto simplesmente não
+    // entra na conferência de dinheiro físico, mas continua contando no
+    // dashboard financeiro (que não depende de sessão de caixa).
+    const openSession = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
+    });
     return this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
         data: {
@@ -1354,6 +1362,7 @@ export class BarbershopService {
           customerId: data.customerId,
           barberId: data.barberId,
           appointmentId: data.appointmentId,
+          cashSessionId: openSession?.id,
           saleType: data.saleType,
           subtotal: new Decimal(data.subtotal),
           discountAmount: new Decimal(discount),
@@ -1557,78 +1566,227 @@ export class BarbershopService {
     return true;
   }
 
-  // ============ INVENTORY ============
+  // ============ CASH SESSION ============
 
-  async getInventoryItems(userId: number, barbershopId: number) {
+  async getCurrentCashSession(userId: number, barbershopId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.prisma.inventoryItem.findMany({
-      where: { barbershopId },
-      include: { product: true },
-      orderBy: { product: { name: 'asc' } },
+    const session = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
+      include: { openedBy: true, closedBy: true },
     });
+    return session ? this.toCashSessionResult(session) : null;
   }
 
-  async createInventoryItem(
+  async getCashSessions(userId: number, barbershopId: number, limit = 30) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const sessions = await this.prisma.cashSession.findMany({
+      where: { barbershopId },
+      include: { openedBy: true, closedBy: true },
+      orderBy: { openedAt: 'desc' },
+      take: limit,
+    });
+    return sessions.map((s) => this.toCashSessionResult(s));
+  }
+
+  async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const existing = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
+    });
+    if (existing) {
+      throw new BadRequestException('Já existe um caixa aberto para esta barbearia');
+    }
+    const session = await this.prisma.cashSession.create({
+      data: {
+        barbershopId,
+        openedByUserId: userId,
+        openingBalance: new Decimal(openingBalance),
+      },
+      include: { openedBy: true, closedBy: true },
+    });
+    return this.toCashSessionResult(session);
+  }
+
+  /**
+   * expectedBalance considera só transações em dinheiro (CASH) — cartão e
+   * Pix não afetam o dinheiro físico na gaveta, que é o que essa conferência
+   * existe pra checar.
+   */
+  async closeCashSession(
+    userId: number,
+    barbershopId: number,
+    data: { countedBalance: number; notes?: string },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const session = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
+    });
+    if (!session) {
+      throw new NotFoundException('Nenhum caixa aberto para esta barbearia');
+    }
+    const [cashSales, cashExpenses] = await Promise.all([
+      this.prisma.sale.aggregate({
+        where: {
+          cashSessionId: session.id,
+          paymentMethod: 'CASH',
+          paymentStatus: 'PAID',
+        },
+        _sum: { total: true },
+      }),
+      this.prisma.expense.aggregate({
+        where: { cashSessionId: session.id, paymentMethod: 'CASH' },
+        _sum: { amount: true },
+      }),
+    ]);
+    const openingBalance = Number(session.openingBalance);
+    const cashIn = Number(cashSales._sum.total ?? 0);
+    const cashOut = Number(cashExpenses._sum.amount ?? 0);
+    const expectedBalance = openingBalance + cashIn - cashOut;
+    const difference = data.countedBalance - expectedBalance;
+    const updated = await this.prisma.cashSession.update({
+      where: { id: session.id },
+      data: {
+        closedByUserId: userId,
+        closedAt: new Date(),
+        countedBalance: new Decimal(data.countedBalance),
+        expectedBalance: new Decimal(expectedBalance),
+        difference: new Decimal(difference),
+        status: 'CLOSED',
+        notes: data.notes,
+      },
+      include: { openedBy: true, closedBy: true },
+    });
+    return this.toCashSessionResult(updated);
+  }
+
+  private toCashSessionResult(session: any) {
+    return {
+      ...session,
+      openedByName: session.openedBy?.fullName ?? null,
+      closedByName: session.closedBy?.fullName ?? null,
+    };
+  }
+
+  // ============ EXPENSES ============
+
+  async createExpense(
     userId: number,
     barbershopId: number,
     data: {
-      productId: number;
-      quantity: number;
-      unit?: string;
-      minQuantity?: number;
-      location?: string;
+      category: string;
+      description: string;
+      amount: number;
+      paymentMethod?: string;
+      expenseDate?: string;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    const existing = await this.prisma.inventoryItem.findUnique({
-      where: { barbershopId_productId: { barbershopId, productId: data.productId } },
+    const openSession = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
     });
-    if (existing) {
-      throw new BadRequestException('Produto já possui item de inventário');
-    }
-    return this.prisma.inventoryItem.create({
+    const expense = await this.prisma.expense.create({
       data: {
         barbershopId,
-        ...data,
-        unit: data.unit ?? 'UNIT',
+        cashSessionId: openSession?.id,
+        category: data.category,
+        description: data.description,
+        amount: new Decimal(data.amount),
+        paymentMethod: data.paymentMethod,
+        expenseDate: data.expenseDate ? new Date(data.expenseDate) : new Date(),
+        createdByUserId: userId,
       },
+      include: { createdBy: true },
     });
+    return { ...expense, createdByName: expense.createdBy?.fullName ?? null };
   }
 
-  async updateInventoryQuantity(
+  async getExpenses(
     userId: number,
     barbershopId: number,
-    inventoryItemId: number,
-    quantityChange: number,
-    movementType: string,
-    notes?: string,
+    filters?: { from?: Date; to?: Date; category?: string },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    const item = await this.prisma.inventoryItem.findFirst({
-      where: { id: inventoryItemId, barbershopId },
+    const where: any = { barbershopId };
+    if (filters?.category) where.category = filters.category;
+    if (filters?.from || filters?.to) {
+      where.expenseDate = {};
+      if (filters.from) where.expenseDate.gte = filters.from;
+      if (filters.to) where.expenseDate.lte = filters.to;
+    }
+    const expenses = await this.prisma.expense.findMany({
+      where,
+      include: { createdBy: true },
+      orderBy: { expenseDate: 'desc' },
     });
-    if (!item) throw new NotFoundException('Item de inventário não encontrado');
-    const quantityBefore = Number(item.quantity);
-    const quantityAfter = Math.max(0, quantityBefore + quantityChange);
+    return expenses.map((e) => ({ ...e, createdByName: e.createdBy?.fullName ?? null }));
+  }
 
-    return this.prisma.$transaction([
-      this.prisma.inventoryItem.update({
-        where: { id: inventoryItemId },
-        data: {
-          quantity: quantityAfter,
-          lastCountedAt: new Date(),
+  async deleteExpense(userId: number, barbershopId: number, expenseId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const existing = await this.prisma.expense.findFirst({
+      where: { id: expenseId, barbershopId },
+    });
+    if (!existing) throw new NotFoundException('Despesa não encontrada');
+    await this.prisma.expense.delete({ where: { id: expenseId } });
+    return true;
+  }
+
+  // ============ FINANCIAL DASHBOARD ============
+
+  async getFinancialSummary(userId: number, barbershopId: number, from: Date, to: Date) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const [sales, expenses] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          barbershopId,
+          paymentStatus: 'PAID',
+          createdAt: { gte: from, lte: to },
         },
+        select: { total: true, paymentMethod: true, createdAt: true },
       }),
-      this.prisma.inventoryMovement.create({
-        data: {
-          inventoryItemId,
-          movementType,
-          quantityChange,
-          quantityBefore,
-          quantityAfter,
-          notes,
-        },
+      this.prisma.expense.findMany({
+        where: { barbershopId, expenseDate: { gte: from, lte: to } },
+        select: { amount: true, category: true },
       }),
-    ]).then(([updated]) => updated);
+    ]);
+
+    const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+    const byMethod = new Map<string, number>();
+    sales.forEach((s) => {
+      const key = s.paymentMethod ?? 'UNKNOWN';
+      byMethod.set(key, (byMethod.get(key) ?? 0) + Number(s.total));
+    });
+
+    const byCategory = new Map<string, number>();
+    expenses.forEach((e) => {
+      byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + Number(e.amount));
+    });
+
+    const byDay = new Map<string, number>();
+    sales.forEach((s) => {
+      const key = s.createdAt.toISOString().slice(0, 10); // YYYY-MM-DD
+      byDay.set(key, (byDay.get(key) ?? 0) + Number(s.total));
+    });
+    const sortedDays = Array.from(byDay.keys()).sort();
+
+    return {
+      totalRevenue,
+      totalExpenses,
+      netProfit: totalRevenue - totalExpenses,
+      revenueByPaymentMethod: Array.from(byMethod.entries()).map(([category, total]) => ({
+        category,
+        total,
+      })),
+      expensesByCategory: Array.from(byCategory.entries()).map(([category, total]) => ({
+        category,
+        total,
+      })),
+      revenueByDay: {
+        labels: sortedDays,
+        data: sortedDays.map((d) => byDay.get(d) ?? 0),
+      },
+    };
   }
 }

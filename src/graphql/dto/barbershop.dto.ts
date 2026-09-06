@@ -439,6 +439,40 @@ export class UpdateInventoryItemInput {
   location?: string;
 }
 
+// ============ Cash Session & Expense ============
+@InputType()
+export class OpenCashSessionInput {
+  @Field(() => Float)
+  openingBalance: number;
+}
+
+@InputType()
+export class CloseCashSessionInput {
+  @Field(() => Float)
+  countedBalance: number;
+
+  @Field({ nullable: true })
+  notes?: string;
+}
+
+@InputType()
+export class CreateExpenseInput {
+  @Field()
+  category: string; // RENT, UTILITIES, SUPPLIES, SALARY, MAINTENANCE, OTHER
+
+  @Field()
+  description: string;
+
+  @Field(() => Float)
+  amount: number;
+
+  @Field({ nullable: true })
+  paymentMethod?: string;
+
+  @Field({ nullable: true })
+  expenseDate?: string;
+}
+
 // ============ Appointment ============
 @InputType()
 export class AppointmentServiceInput {

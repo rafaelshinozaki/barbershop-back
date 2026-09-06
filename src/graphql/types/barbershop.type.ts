@@ -694,6 +694,117 @@ export class Sale {
   barberName?: string;
 }
 
+@ObjectType()
+export class CashSessionType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field()
+  openedAt: string;
+
+  @Field(() => Float)
+  openingBalance: number;
+
+  @Field({ nullable: true })
+  openedByName?: string;
+
+  @Field({ nullable: true })
+  closedAt?: string;
+
+  @Field(() => Float, { nullable: true })
+  countedBalance?: number;
+
+  @Field(() => Float, { nullable: true })
+  expectedBalance?: number;
+
+  @Field(() => Float, { nullable: true })
+  difference?: number;
+
+  @Field({ nullable: true })
+  closedByName?: string;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+}
+
+@ObjectType()
+export class ExpenseType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int, { nullable: true })
+  cashSessionId?: number;
+
+  @Field()
+  category: string;
+
+  @Field()
+  description: string;
+
+  @Field(() => Float)
+  amount: number;
+
+  @Field({ nullable: true })
+  paymentMethod?: string;
+
+  @Field()
+  expenseDate: string;
+
+  @Field({ nullable: true })
+  createdByName?: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class FinancialChartSeries {
+  @Field(() => [String])
+  labels: string[];
+
+  @Field(() => [Float])
+  data: number[];
+}
+
+@ObjectType()
+export class FinancialCategoryTotal {
+  @Field()
+  category: string;
+
+  @Field(() => Float)
+  total: number;
+}
+
+@ObjectType()
+export class FinancialSummaryType {
+  @Field(() => Float)
+  totalRevenue: number;
+
+  @Field(() => Float)
+  totalExpenses: number;
+
+  @Field(() => Float)
+  netProfit: number;
+
+  @Field(() => [FinancialCategoryTotal])
+  revenueByPaymentMethod: FinancialCategoryTotal[];
+
+  @Field(() => [FinancialCategoryTotal])
+  expensesByCategory: FinancialCategoryTotal[];
+
+  @Field(() => FinancialChartSeries)
+  revenueByDay: FinancialChartSeries;
+}
+
 // Type aliases for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
 export const BarberSchedule = BarberScheduleType;
