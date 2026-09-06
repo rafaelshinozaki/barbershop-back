@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Put,
   Post,
   UseGuards,
   Param,
@@ -16,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { UserService } from './users.service';
 import { UserDTO } from './dto/user.dto';
-import { UserSystemConfigDTO } from './dto/userSystemConfig.dto';
 import { ApiTags, ApiCookieAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
 import { PublicRoute, MEMBERSHIP_STATUS } from '@/common';
@@ -192,22 +190,12 @@ export class UserController {
     return this.userService.changeUserPlan(userId, plan);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Update user system config' })
-  @ApiResponse({ status: 200, description: 'User system config updated' })
-  @Put('system-config/:id')
-  async updateUserSystemConfig(
-    @Param('id') id: number,
-    @Body() updateConfigDto: UserSystemConfigDTO,
-  ): Promise<{ success: boolean; message: string }> {
-    const result = await this.userService.updateUserSystemConfig(id, updateConfigDto);
-    return {
-      success: result,
-      message: result
-        ? 'User system config updated successfully'
-        : 'Failed to update user system config',
-    };
-  }
+  // PUT /user/system-config/:id existia aqui recebendo o id direto da URL
+  // (não de @CurrentUser()) — qualquer usuário autenticado podia sobrescrever
+  // tema/idioma/etc. de outro usuário. Sem chamador no frontend (o helper que
+  // apontava pra cá nem montava essa URL certo — mesmo padrão do PUT
+  // /user/update já removido, ver abaixo). GraphQL updateUserSystemConfig
+  // (user.resolver.ts) já resolve isso corretamente via @CurrentUser().
 
   // check-password, change-password-request, verify-change-password,
   // change-password, two-factor, two-factor-request e two-factor-verify
