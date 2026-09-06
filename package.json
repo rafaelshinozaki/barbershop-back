@@ -52,6 +52,7 @@
     "cookie-parser": "^1.4.6",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "express-session": "^1.17.3",
     "fetch-cookie": "2",
     "form-data": "^4.0.3",
