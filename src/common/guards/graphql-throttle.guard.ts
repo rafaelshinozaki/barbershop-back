@@ -29,14 +29,19 @@ export class GraphQLThrottleGuard extends ThrottlerGuard {
   }
 
   protected getRequestResponse(context: ExecutionContext) {
-    try {
+    // GqlExecutionContext.create() nunca lança exceção mesmo para uma rota
+    // REST comum — ela só embrulha o que quer que seja o contexto recebido,
+    // então tentar pegar req/res dela para uma request REST silenciosamente
+    // devolvia undefined (sem erro nenhum) em vez de cair no catch/fallback
+    // abaixo, e o ThrottlerGuard base quebrava tentando chamar res.header()
+    // num res undefined. Precisa checar o tipo real do contexto antes.
+    if (context.getType<'http' | 'graphql'>() === 'graphql') {
       const gqlContext = GqlExecutionContext.create(context);
       const ctx = gqlContext.getContext();
       return { req: ctx.req, res: ctx.res };
-    } catch (error) {
-      // Fallback to HTTP context if GraphQL context fails
-      const httpContext = context.switchToHttp();
-      return { req: httpContext.getRequest(), res: httpContext.getResponse() };
     }
+
+    const httpContext = context.switchToHttp();
+    return { req: httpContext.getRequest(), res: httpContext.getResponse() };
   }
 }

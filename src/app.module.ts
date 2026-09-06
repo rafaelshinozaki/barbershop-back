@@ -22,6 +22,7 @@ import { GraphQLAppModule } from './graphql/graphql.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
 
 @Module({
   imports: [
@@ -99,12 +100,14 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
     }),
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: 60000, // 1 minuto
-        limit: 100, // 100 requisições por minuto
-      },
-      {
-        ttl: 3600000, // 1 hora
-        limit: 1000, // 1000 requisições por hora
+        limit: 300, // 300 requisições por minuto por IP — generoso o bastante para
+        // uso normal (varias queries GraphQL em paralelo por página), mas
+        // barra flood em velocidade de rede. Rotas sensíveis (login,
+        // forgot-password, criação de conta, etc.) usam limites bem mais
+        // restritos via @ThrottleLogin()/@ThrottleAuth()/etc., que sobrescrevem
+        // este throttler 'default' (ver common/decorators/throttle.decorator.ts).
       },
     ]),
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -126,9 +129,12 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
           return { message: 'Internal server error' }
         }
       },
-      playground: true,
-      introspection: true,
-      debug: true,
+      // Playground/introspection/debug expõem todo o schema (incluindo a
+      // superfície de auth) e detalhes internos de erro para reconhecimento
+      // de um atacante — habilitados só fora de produção.
+      playground: process.env.NODE_ENV !== 'production',
+      introspection: process.env.NODE_ENV !== 'production',
+      debug: process.env.NODE_ENV !== 'production',
       sortSchema: true,
     }),
     AuthModule,
@@ -145,6 +151,10 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
     GraphQLAppModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: GraphQLThrottleGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

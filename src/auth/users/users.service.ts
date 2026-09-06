@@ -65,7 +65,10 @@ export class UserService {
     string,
     { email: string; code: string; expiresAt: number; used: boolean; attempts: number }
   >();
-  private _loginAttempts = new Map<string, { attempts: number; blockedUntil: number }>();
+  private _loginAttempts = new Map<
+    string,
+    { attempts: number; blockedUntil: number; lastAttemptAt: number }
+  >();
 
   constructor(
     private prisma: PrismaService,
@@ -99,9 +102,10 @@ export class UserService {
     const now = Date.now();
     let entry = this._loginAttempts.get(email);
     if (!entry || entry.blockedUntil <= now) {
-      entry = { attempts: 0, blockedUntil: 0 };
+      entry = { attempts: 0, blockedUntil: 0, lastAttemptAt: now };
     }
     entry.attempts += 1;
+    entry.lastAttemptAt = now;
     if (entry.attempts >= LOGIN_MAX_ATTEMPTS) {
       entry.blockedUntil = now + LOGIN_BLOCK_MINUTES * 60 * 1000;
       entry.attempts = 0;
@@ -132,6 +136,32 @@ export class UserService {
 
     if (cleanedCount > 0) {
       this.logger.log(`Cleaned ${cleanedCount} expired password reset tokens`);
+    }
+
+    this.cleanupStaleLoginAttempts();
+  }
+
+  // _loginAttempts nunca era limpo: como recordFailedLogin() roda até para
+  // emails que não existem, um atacante conseguia inflar esse Map
+  // indefinidamente (um entry por email tentado) só martelando o login com
+  // emails inventados — memory-exhaustion DoS. Purga entries sem atividade
+  // recente e sem bloqueio ativo.
+  private cleanupStaleLoginAttempts(): void {
+    const now = Date.now();
+    const staleAfterMs = LOGIN_BLOCK_MINUTES * 60 * 1000;
+    let cleanedCount = 0;
+
+    for (const [email, entry] of this._loginAttempts.entries()) {
+      const isBlocked = entry.blockedUntil > now;
+      const isStale = now - entry.lastAttemptAt > staleAfterMs;
+      if (!isBlocked && isStale) {
+        this._loginAttempts.delete(email);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      this.logger.log(`Cleaned ${cleanedCount} stale login-attempt entries`);
     }
   }
 
@@ -1102,6 +1132,7 @@ export class UserService {
             grayColor: true,
             radius: true,
             scaling: true,
+            panelBackground: true,
             language: true,
             createdAt: true,
             updatedAt: true,
@@ -1121,22 +1152,35 @@ export class UserService {
         },
       },
     });
+
+    // Mensagem e status idênticos para usuário inexistente, senha errada e
+    // conta inativa — evita que um atacante enumere quais emails têm conta
+    // (e se a conta está ativa) só pela resposta do login. Mesmo princípio
+    // já aplicado em forgotPass(), que sempre retorna sucesso independente
+    // do email existir.
+    const invalidCredentials = () =>
+      new UnauthorizedException('Invalid credentials');
+
     if (!user) {
       this.recordFailedLogin(email);
-      throw new NotFoundException('User not found');
+      throw invalidCredentials();
     }
 
     // Verificar se o usuário está ativo
     if (!user.isActive) {
       this.recordFailedLogin(email);
-      throw new UnauthorizedException('Account is not active. Please contact support.');
+      throw invalidCredentials();
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       this.recordFailedLogin(email);
-      throw new UnauthorizedException('Invalid credentials');
+      throw invalidCredentials();
     }
+
+    // Senha correta: zera o contador de tentativas falhas deste email (antes
+    // ficava preso até expirar ou até o próximo bloqueio resetá-lo sozinho).
+    this._loginAttempts.delete(email);
 
     // Histórico de login e sessão ativa são gravados em AuthService.login(),
     // não aqui — aqui a senha pode ter batido mas o 2FA ainda pode ser
@@ -1332,23 +1376,15 @@ export class UserService {
   }
 
   async sendChangePasswordCode(email: string) {
-    console.log('UserService: sendChangePasswordCode called with email:', email);
-
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },
     });
     if (!user) {
-      console.log('UserService: User not found for email:', email);
       throw new NotFoundException('User not found');
     }
 
-    console.log('UserService: Found user:', { id: user.id, email: user.email });
-
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiryTime = new Date(Date.now() + CHANGE_PASSWORD_CODE_EXPIRY_MINUTES * 60 * 1000);
-
-    console.log('UserService: Generated code:', code);
-    console.log('UserService: Code expiry time:', expiryTime);
 
     await this.prisma.verificationCode.create({
       data: {
@@ -1598,7 +1634,6 @@ export class UserService {
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    this.logger.log(`Generated code: ${code}`);
 
     const context = {
       FullName: user.fullName,
@@ -1619,9 +1654,13 @@ export class UserService {
       );
     } catch (error) {
       this.logger.error(`Failed to send email for login code: ${error.message}`);
-      // Em desenvolvimento, podemos continuar sem enviar o email
-      // Em produção, você pode querer tratar isso de forma diferente
-      console.log(`DEVELOPMENT: Login code for ${user.email} is: ${code}`);
+      // Fallback só em desenvolvimento — em produção isso escreveria o
+      // código de 2FA em texto puro no log a cada falha de envio de email
+      // (ex: uma instabilidade no provedor de email vira um jeito de
+      // qualquer um com acesso ao log completar o 2FA de qualquer usuário)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`DEVELOPMENT: Login code for ${user.email} is: ${code}`);
+      }
     }
 
     this._loginCodes.set(loginId, {
@@ -1632,18 +1671,17 @@ export class UserService {
       attempts: 0,
     });
 
-    this.logger.log(`Login code stored - loginId: ${loginId}, code: ${code}`);
+    this.logger.log(`Login code stored - loginId: ${loginId}`);
     this.logger.log(`Total login codes in memory: ${this._loginCodes.size}`);
 
     return true;
   }
 
   async verifyLoginCode(loginId: string, code: string) {
-    this.logger.log(`Verifying login code - loginId: ${loginId}, code: ${code}`);
-    this.logger.log(`Available login codes: ${Array.from(this._loginCodes.keys()).join(', ')}`);
+    this.logger.log(`Verifying login code - loginId: ${loginId}`);
 
     const entry = this._loginCodes.get(loginId);
-    this.logger.log(`Found entry: ${entry ? JSON.stringify(entry) : 'null'}`);
+    this.logger.log(`Found entry: ${entry ? { email: entry.email, used: entry.used, attempts: entry.attempts } : 'null'}`);
 
     if (!entry || entry.used) {
       this.logger.error(
