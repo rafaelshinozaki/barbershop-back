@@ -407,6 +407,75 @@ export class BarbershopProductType {
 }
 
 @ObjectType()
+export class InventoryItemType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int)
+  productId: number;
+
+  @Field(() => BarbershopProductType, { nullable: true })
+  product?: BarbershopProductType;
+
+  @Field(() => Float)
+  quantity: number;
+
+  @Field()
+  unit: string;
+
+  @Field(() => Float, { nullable: true })
+  minQuantity?: number;
+
+  @Field({ nullable: true })
+  lastCountedAt?: string;
+
+  @Field({ nullable: true })
+  location?: string;
+
+  @Field()
+  createdAt: string;
+
+  @Field()
+  updatedAt: string;
+}
+
+@ObjectType()
+export class InventoryMovementType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  inventoryItemId: number;
+
+  @Field()
+  movementType: string;
+
+  @Field(() => Float)
+  quantityChange: number;
+
+  @Field(() => Float)
+  quantityBefore: number;
+
+  @Field(() => Float)
+  quantityAfter: number;
+
+  @Field({ nullable: true })
+  referenceType?: string;
+
+  @Field({ nullable: true })
+  referenceId?: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
 export class AppointmentServiceType {
   @Field(() => Int)
   id: number;

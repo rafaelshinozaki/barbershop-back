@@ -37,6 +37,13 @@ input AddressInput {
   zipcode: String
 }
 
+input AdjustInventoryInput {
+  movementType: String! = "ADJUSTMENT"
+  notes: String
+  productId: Int!
+  quantityChange: Float!
+}
+
 input AdminNotificationPreferenceInput {
   instabilityEmail: Boolean
   instabilityInApp: Boolean
@@ -635,6 +642,33 @@ type GeographicAnalysis {
   states: ChartData!
 }
 
+type InventoryItemType {
+  barbershopId: Int!
+  createdAt: String!
+  id: Int!
+  lastCountedAt: String
+  location: String
+  minQuantity: Float
+  product: BarbershopProductType
+  productId: Int!
+  quantity: Float!
+  unit: String!
+  updatedAt: String!
+}
+
+type InventoryMovementType {
+  createdAt: String!
+  id: Int!
+  inventoryItemId: Int!
+  movementType: String!
+  notes: String
+  quantityAfter: Float!
+  quantityBefore: Float!
+  quantityChange: Float!
+  referenceId: String
+  referenceType: String
+}
+
 type LoginHistory {
   browser: String!
   createdAt: String!
@@ -668,6 +702,7 @@ type MonthlyRevenueItem {
 }
 
 type Mutation {
+  adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelSubscription: Boolean!
@@ -751,6 +786,7 @@ type Mutation {
   updateBarbershopService(barbershopId: Int!, id: Int!, input: UpdateBarbershopServiceInput!): BarbershopServiceType!
   updateCoupon(data: UpdateCouponInput!, id: Float!): Coupon!
   updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
+  updateInventoryItem(barbershopId: Int!, input: UpdateInventoryItemInput!, productId: Int!): InventoryItemType!
   updateNetwork(input: UpdateNetworkInput!): Network!
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
@@ -1018,6 +1054,8 @@ type Query {
   getPlanById(id: Int!): Plan
   getUserPhotoDownloadUrl: String
   getUsers: [User!]!
+  inventoryItems(barbershopId: Int!): [InventoryItemType!]!
+  inventoryMovements(barbershopId: Int!, productId: Int!): [InventoryMovementType!]!
   latestPendingPayment: Payment
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   me: User!
@@ -1291,6 +1329,11 @@ input UpdateCustomerInput {
   name: String
   notes: String
   phone: String
+}
+
+input UpdateInventoryItemInput {
+  location: String
+  minQuantity: Float
 }
 
 input UpdateNetworkInput {

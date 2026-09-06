@@ -411,6 +411,34 @@ export class UpdateBarbershopProductInput {
   isActive?: boolean;
 }
 
+// ============ Inventory ============
+@InputType()
+export class AdjustInventoryInput {
+  @Field(() => Int)
+  productId: number;
+
+  // Positivo para entrada (compra/ajuste pra cima), negativo para saída
+  // (perda/ajuste pra baixo). Vendas debitam o estoque automaticamente
+  // via createSale — não precisa passar por aqui.
+  @Field(() => Float)
+  quantityChange: number;
+
+  @Field({ defaultValue: 'ADJUSTMENT' })
+  movementType?: string; // PURCHASE, ADJUSTMENT, LOSS, TRANSFER
+
+  @Field({ nullable: true })
+  notes?: string;
+}
+
+@InputType()
+export class UpdateInventoryItemInput {
+  @Field(() => Float, { nullable: true })
+  minQuantity?: number;
+
+  @Field({ nullable: true })
+  location?: string;
+}
+
 // ============ Appointment ============
 @InputType()
 export class AppointmentServiceInput {

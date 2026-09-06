@@ -802,6 +802,119 @@ export class BarbershopService {
     await this.prisma.barbershopProduct.delete({ where: { id: productId } });
   }
 
+  // ============ INVENTORY ============
+
+  async getInventory(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.inventoryItem.findMany({
+      where: { barbershopId },
+      include: { product: { include: { category: true } } },
+      orderBy: { product: { name: 'asc' } },
+    });
+  }
+
+  /**
+   * Ajuste manual de estoque (compra, contagem, perda...). Diferente da
+   * baixa automática de venda (ver createSale), aqui bloqueamos o saldo
+   * ficar negativo — é entrada manual, então um erro de digitação não deve
+   * silenciosamente deixar o estoque errado.
+   */
+  async adjustInventory(
+    userId: number,
+    barbershopId: number,
+    data: { productId: number; quantityChange: number; movementType?: string; notes?: string },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const product = await this.prisma.barbershopProduct.findFirst({
+      where: { id: data.productId, barbershopId },
+    });
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado nesta barbearia');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.inventoryItem.findUnique({
+        where: { barbershopId_productId: { barbershopId, productId: data.productId } },
+      });
+      const quantityBefore = existing ? Number(existing.quantity) : 0;
+      const quantityAfter = quantityBefore + data.quantityChange;
+      if (quantityAfter < 0) {
+        throw new BadRequestException('Estoque não pode ficar negativo');
+      }
+      const item = existing
+        ? await tx.inventoryItem.update({
+            where: { id: existing.id },
+            data: { quantity: quantityAfter, unit: product.unit },
+          })
+        : await tx.inventoryItem.create({
+            data: {
+              barbershopId,
+              productId: data.productId,
+              quantity: quantityAfter,
+              unit: product.unit,
+            },
+          });
+      await tx.inventoryMovement.create({
+        data: {
+          inventoryItemId: item.id,
+          movementType: data.movementType ?? 'ADJUSTMENT',
+          quantityChange: data.quantityChange,
+          quantityBefore,
+          quantityAfter,
+          referenceType: 'MANUAL',
+          notes: data.notes,
+        },
+      });
+      return tx.inventoryItem.findUnique({
+        where: { id: item.id },
+        include: { product: { include: { category: true } } },
+      });
+    });
+  }
+
+  async updateInventoryItem(
+    userId: number,
+    barbershopId: number,
+    productId: number,
+    data: { minQuantity?: number; location?: string },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const product = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+    });
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado nesta barbearia');
+    }
+    return this.prisma.inventoryItem.upsert({
+      where: { barbershopId_productId: { barbershopId, productId } },
+      create: {
+        barbershopId,
+        productId,
+        quantity: 0,
+        unit: product.unit,
+        minQuantity: data.minQuantity,
+        location: data.location,
+      },
+      update: {
+        ...(data.minQuantity !== undefined && { minQuantity: data.minQuantity }),
+        ...(data.location !== undefined && { location: data.location || null }),
+      },
+      include: { product: { include: { category: true } } },
+    });
+  }
+
+  async getInventoryMovements(userId: number, barbershopId: number, productId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const item = await this.prisma.inventoryItem.findUnique({
+      where: { barbershopId_productId: { barbershopId, productId } },
+    });
+    if (!item) return [];
+    return this.prisma.inventoryMovement.findMany({
+      where: { inventoryItemId: item.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
   // ============ BARBER SCHEDULE ============
 
   async setBarberSchedule(
@@ -1264,6 +1377,48 @@ export class BarbershopService {
           notes: item.notes,
         })),
       });
+
+      // Baixa automática de estoque para itens de produto. Diferente do
+      // ajuste manual (adjustInventory), aqui NÃO bloqueamos saldo negativo:
+      // a venda já aconteceu e o caixa não pode travar por causa de estoque
+      // desatualizado — o item simplesmente fica negativo, sinalizando que
+      // a contagem física precisa ser conferida.
+      for (const item of data.items) {
+        if (item.itemType !== 'PRODUCT' || !item.productId) continue;
+        const product = await tx.barbershopProduct.findUnique({ where: { id: item.productId } });
+        if (!product) continue;
+        const existing = await tx.inventoryItem.findUnique({
+          where: { barbershopId_productId: { barbershopId, productId: item.productId } },
+        });
+        const quantityBefore = existing ? Number(existing.quantity) : 0;
+        const quantityChange = -item.quantity;
+        const quantityAfter = quantityBefore + quantityChange;
+        const inventoryItem = existing
+          ? await tx.inventoryItem.update({
+              where: { id: existing.id },
+              data: { quantity: quantityAfter },
+            })
+          : await tx.inventoryItem.create({
+              data: {
+                barbershopId,
+                productId: item.productId,
+                quantity: quantityAfter,
+                unit: product.unit,
+              },
+            });
+        await tx.inventoryMovement.create({
+          data: {
+            inventoryItemId: inventoryItem.id,
+            movementType: 'SALE',
+            quantityChange,
+            quantityBefore,
+            quantityAfter,
+            referenceType: 'SALE',
+            referenceId: String(sale.id),
+          },
+        });
+      }
+
       return tx.sale.findUnique({
         where: { id: sale.id },
         include: { items: true, customer: true, barber: true },

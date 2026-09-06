@@ -10,6 +10,8 @@ import {
   BarbershopServiceType,
   ProductCategoryType,
   BarbershopProductType,
+  InventoryItemType,
+  InventoryMovementType,
   BarberScheduleType,
   BarberTimeOffType,
   Appointment,
@@ -30,6 +32,8 @@ import {
   UpdateProductCategoryInput,
   CreateBarbershopProductInput,
   UpdateBarbershopProductInput,
+  AdjustInventoryInput,
+  UpdateInventoryItemInput,
   CreateBarberScheduleInput,
   UpdateBarberScheduleInput,
   CreateBarberTimeOffInput,
@@ -409,6 +413,48 @@ export class BarbershopResolver {
       data: { imageKey },
     });
     return uploadUrl;
+  }
+
+  // ============ INVENTORY ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [InventoryItemType])
+  async inventoryItems(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getInventory(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => InventoryItemType)
+  async adjustInventory(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: AdjustInventoryInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.adjustInventory(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => InventoryItemType)
+  async updateInventoryItem(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('productId', { type: () => Int }) productId: number,
+    @Args('input') input: UpdateInventoryItemInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateInventoryItem(user.id, barbershopId, productId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [InventoryMovementType])
+  async inventoryMovements(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('productId', { type: () => Int }) productId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getInventoryMovements(user.id, barbershopId, productId);
   }
 
   // ============ BARBERSHOP PHOTO ============
