@@ -50,6 +50,7 @@ model User {
   notifications       UserNotification[]
   userSystemConfig    UserSystemConfig?
   verificationCodes   VerificationCode[]
+  passwordResetTokens PasswordResetToken[]
   barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
   barberProfile      Barber?
   networksOwned      Network[]     @relation("NetworkOwner")
@@ -57,6 +58,16 @@ model User {
   acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
 
   @@unique([email, provider])
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model VerificationCode {

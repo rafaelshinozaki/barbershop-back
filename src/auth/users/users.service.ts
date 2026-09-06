@@ -76,7 +76,7 @@ export class UserService {
     const hasUpperCase = (password: string) => /[A-Z]/.test(password);
     const hasLowerCase = (password: string) => /[a-z]/.test(password);
     const hasNumber = (password: string) => /\d/.test(password);
-    const hasMinLength = (password: string) => password.length > 8;
+    const hasMinLength = (password: string) => password.length >= 8;
 
     if (
       !hasSpecialCharacter(password) ||
@@ -819,164 +819,99 @@ export class UserService {
     };
   }
 
-  async forgotPasswordByEmail(email: string, password: string) {
-    this.logger.log(`Forgot password request for email: ${email}`);
-
-    const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
-    });
-
-    if (!user) {
-      this.logger.warn(`User with email: ${email} not found`);
-      throw new NotFoundException('User not found');
-    }
-
-    this.validatePassword(password);
-
-    const isSame = await bcrypt.compare(password, user.password);
-    if (isSame) {
-      throw new BadRequestException('New password must be different from the current password');
-    }
-
-    const newPassword = await bcrypt.hash(password, 10);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { password: newPassword },
-    });
-
-    this.logger.log(`Password for user with email: ${email} has been updated`);
-
-    const context = {
-      FullName: user.fullName,
-      AppName: 'Barbershop',
-      SupportEmail: 'suporte@barbershop.com.br',
-      Year: new Date().getFullYear(),
-    };
-
-    await this.emailService.sendTemplateEmail(
-      user.id,
-      'password_changed',
-      context,
-      'Senha Alterada',
-      'password-changed',
-      email,
-    );
-
-    // expire all pending password recovery links for this email
-    for (const key of Array.from(this._temp)) {
-      if (key.startsWith(`${email}.`) && !key.includes('.change.')) {
-        this._temp.delete(key);
-      }
-    }
-  }
-
   async forgotPass(forgotPass: any) {
-    this.logger.log(`Password reset`);
+    this.logger.log('Password reset requested');
 
     const user = await this.prisma.user.findFirst({
       where: { email: forgotPass.email, provider: 'local' },
     });
 
+    // Deliberately do not reveal whether the email exists or whether sending
+    // the email succeeded - both cases return true identically, so this
+    // endpoint can't be used to enumerate registered accounts. Any real
+    // failure is logged server-side instead of surfaced to the caller.
     if (!user) {
-      throw new NotFoundException('User not found');
+      this.logger.warn('Password reset requested for an email with no matching account');
+      return true;
     }
 
-    const token = randomUUID();
-    const expiryTime = Date.now() + 2 * 60 * 60 * 1000; // 2 horas de expiração
+    try {
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 horas de expiração
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-    const resetURL = `${frontendUrl}/forgot-password/${token}?email=${forgotPass.email}`;
-    console.log('UserService: Generated reset URL:', resetURL);
+      await this.prisma.passwordResetToken.create({
+        data: { token, userId: user.id, expiresAt },
+      });
 
-    const context = {
-      FullName: user.fullName,
-      AppName: 'Barbershop - ' + token,
-      // AppName: 'Barbershop',
-      ResetURL: resetURL,
-      ExpirationHours: 2,
-      SupportEmail: 'suporte@barbershop.com.br',
-      Year: new Date().getFullYear(),
-    };
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      const resetURL = `${frontendUrl}/forgot-password/${token}?email=${forgotPass.email}`;
 
-    await this.emailService.sendTemplateEmail(
-      user.id,
-      'password_reset',
-      context,
-      'Redefinição de Senha',
-      'password-reset',
-      forgotPass.email,
-    );
+      const context = {
+        FullName: user.fullName,
+        AppName: 'Barbershop',
+        ResetURL: resetURL,
+        ExpirationHours: 2,
+        SupportEmail: 'suporte@barbershop.com.br',
+        Year: new Date().getFullYear(),
+      };
 
-    const tokenKey = `${forgotPass.email}.${token}`;
-    this._temp.add(tokenKey);
-    this._tempExpiry.set(tokenKey, expiryTime);
-
-    console.log('UserService: Token stored:', tokenKey);
-    console.log('UserService: Token expiry time:', expiryTime);
-    console.log('UserService: Current tokens in _temp:', Array.from(this._temp));
+      await this.emailService.sendTemplateEmail(
+        user.id,
+        'password_reset',
+        context,
+        'Redefinição de Senha',
+        'password-reset',
+        forgotPass.email,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send password reset email: ${error}`);
+    }
 
     return true;
   }
 
   async forgotPassCheck(data: { token: string; email: string }) {
-    console.log('UserService: forgotPassCheck called with data:', data);
-    const tokenKey = `${data.email}.${data.token}`;
-    console.log('UserService: Token key:', tokenKey);
-    console.log('UserService: Current tokens in _temp:', Array.from(this._temp));
-    console.log('UserService: Current expiry times:', Array.from(this._tempExpiry.entries()));
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { token: data.token },
+      include: { user: true },
+    });
 
-    // Verificar se o token existe e não expirou
-    if (this._temp.has(tokenKey)) {
-      console.log('UserService: Token found in _temp');
-      const expiryTime = this._tempExpiry.get(tokenKey);
-      console.log('UserService: Token expiry time:', expiryTime);
-      console.log('UserService: Current time:', Date.now());
-
-      if (expiryTime && Date.now() < expiryTime) {
-        // Token válido e não expirado
-        console.log('UserService: Token is valid and not expired');
-        return true;
-      } else {
-        // Token expirado, remover
-        console.log('UserService: Token is expired, removing');
-        this._temp.delete(tokenKey);
-        this._tempExpiry.delete(tokenKey);
-        return false;
-      }
+    if (!record || record.used || record.user.email !== data.email) {
+      return false;
     }
 
-    // Token não encontrado, não deletar nada
-    console.log('UserService: Token not found in _temp');
-    return false;
+    if (record.expiresAt < new Date()) {
+      await this.prisma.passwordResetToken.update({
+        where: { id: record.id },
+        data: { used: true },
+      });
+      return false;
+    }
+
+    return true;
   }
 
   async resetPasswordByToken(email: string, token: string, newPassword: string) {
-    this.logger.log(`Password reset by token for email: ${email}`);
+    this.logger.log('Password reset by token requested');
 
-    const tokenKey = `${email}.${token}`;
-
-    // Verificar se o token é válido e não expirou
-    if (!this._temp.has(tokenKey)) {
-      throw new UnauthorizedException('Invalid or expired token');
-    }
-
-    const expiryTime = this._tempExpiry.get(tokenKey);
-    if (!expiryTime || Date.now() >= expiryTime) {
-      // Token expirado, remover
-      this._temp.delete(tokenKey);
-      this._tempExpiry.delete(tokenKey);
-      throw new UnauthorizedException('Invalid or expired token');
-    }
-
-    // Buscar o usuário
-    const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { token },
+      include: { user: true },
     });
 
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (!record || record.used || record.user.email !== email) {
+      throw new UnauthorizedException('Invalid or expired token');
     }
+
+    if (record.expiresAt < new Date()) {
+      await this.prisma.passwordResetToken.update({
+        where: { id: record.id },
+        data: { used: true },
+      });
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+
+    const user = record.user;
 
     // Validar a nova senha
     this.validatePassword(newPassword);
@@ -998,34 +933,34 @@ export class UserService {
 
     this.logger.log(`Password for user with email: ${email} has been updated`);
 
-    // Remover o token usado
-    this._temp.delete(tokenKey);
-    this._tempExpiry.delete(tokenKey);
+    // Marcar o token usado e invalidar todos os outros tokens pendentes deste usuário
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, used: false },
+      data: { used: true },
+    });
 
-    // Expirar todos os outros tokens pendentes para este email
-    for (const key of Array.from(this._temp)) {
-      if (key.startsWith(`${email}.`) && !key.includes('.change.')) {
-        this._temp.delete(key);
-        this._tempExpiry.delete(key);
-      }
+    // Enviar email de confirmação - a senha já foi trocada com sucesso acima,
+    // então uma falha aqui (ex: Mailgun) não deve fazer a mutation inteira
+    // parecer que falhou para quem está usando o link de reset.
+    try {
+      const context = {
+        FullName: user.fullName,
+        AppName: 'Barbershop',
+        SupportEmail: 'suporte@barbershop.com.br',
+        Year: new Date().getFullYear(),
+      };
+
+      await this.emailService.sendTemplateEmail(
+        user.id,
+        'password_changed',
+        context,
+        'Senha Alterada',
+        'password-changed',
+        user.email,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send password changed confirmation email: ${error}`);
     }
-
-    // Enviar email de confirmação
-    const context = {
-      FullName: user.fullName,
-      AppName: 'Barbershop',
-      SupportEmail: 'suporte@barbershop.com.br',
-      Year: new Date().getFullYear(),
-    };
-
-    await this.emailService.sendTemplateEmail(
-      user.id,
-      'password_changed',
-      context,
-      'Senha Alterada',
-      'password-changed',
-      user.email,
-    );
   }
 
   async resetPassword(userId: number, newPassword: string) {
@@ -1057,12 +992,10 @@ export class UserService {
     this.logger.log(`Password for user with id: ${userId} has been updated`);
 
     // expire all pending password recovery links for this user
-    for (const key of Array.from(this._temp)) {
-      if (key.startsWith(`${user.email}.`) && !key.includes('.change.')) {
-        this._temp.delete(key);
-        this._tempExpiry.delete(key);
-      }
-    }
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, used: false },
+      data: { used: true },
+    });
 
     const context = {
       FullName: user.fullName,

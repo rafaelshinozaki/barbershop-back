@@ -16,7 +16,6 @@ import {
   Req,
 } from '@nestjs/common';
 import { UserService } from './users.service';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 import { UserDTO } from './dto/user.dto';
@@ -35,7 +34,6 @@ import { RolesGuard } from '../guards/roles.guard';
 import { TwoFactorDto } from './dto/two-factor.dto';
 import { Request } from 'express';
 import {
-  ThrottlePasswordReset,
   ThrottleEmail,
   ThrottleAuth,
 } from '@/common/decorators/throttle.decorator';
@@ -240,18 +238,6 @@ export class UserController {
     return this.userService.changeUserPlan(userId, plan);
   }
 
-  @PublicRoute()
-  @ThrottlePasswordReset()
-  @ApiOperation({ summary: 'Forgot password' })
-  @ApiResponse({ status: 200, description: 'Password reset email sent' })
-  @Post('forgot-password')
-  forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.userService.forgotPasswordByEmail(
-      forgotPasswordDto.email,
-      forgotPasswordDto.password,
-    );
-  }
-
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update user system config' })
   @ApiResponse({ status: 200, description: 'User system config updated' })
@@ -267,24 +253,6 @@ export class UserController {
         ? 'User system config updated successfully'
         : 'Failed to update user system config',
     };
-  }
-
-  @PublicRoute()
-  @ThrottlePasswordReset()
-  @ApiOperation({ summary: 'Forgot password step 1' })
-  @ApiResponse({ status: 200, description: 'Password reset email sent' })
-  @Post('forgot-pass')
-  forgotPass(@Body() forgotPass: any) {
-    return this.userService.forgotPass(forgotPass);
-  }
-
-  @PublicRoute()
-  @ThrottleAuth()
-  @ApiOperation({ summary: 'Forgot password step 2' })
-  @ApiResponse({ status: 200, description: 'Password reset token verified' })
-  @Post('forgot-pass-check')
-  forgotPassCheck(@Body() data: { token: string; email: string }) {
-    return this.userService.forgotPassCheck(data);
   }
 
   @UseGuards(JwtAuthGuard)
