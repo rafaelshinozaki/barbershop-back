@@ -112,7 +112,7 @@ type BackofficeDashboard {
 type BackofficeStats {
   activeUsers: Int!
   newUsersThisMonth: Int!
-  revenue: Int!
+  revenue: Float!
   totalUsers: Int!
 }
 

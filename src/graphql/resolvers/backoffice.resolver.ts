@@ -572,113 +572,55 @@ export class BackofficeResolver {
   async allCompletedPayments(
     @Args('filters') filters: CompletedPaymentsFilters,
   ): Promise<PaginatedCompletedPayments> {
-    this.logger.log(
-      `Fetching all completed payments for admin with filters:`,
-      JSON.stringify(filters, null, 2),
-    );
-
     try {
       const { page = 1, limit = 10 } = filters;
       const skip = (page - 1) * limit;
 
-      this.logger.log(`Pagination: page=${page}, limit=${limit}, skip=${skip}`);
-
-      // Construir where clause baseada nos filtros - versão simplificada
       const where: any = {
-        status: PAGAMENTO_STATUS.COMPLETED,
+        status: filters.status || PAGAMENTO_STATUS.COMPLETED,
       };
 
-      this.logger.log('Using simplified where clause:', JSON.stringify(where, null, 2));
+      if (filters.paymentDateMonth) {
+        const [year, month] = filters.paymentDateMonth.split('-').map(Number);
+        where.paymentDate = {
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month, 0, 23, 59, 59),
+        };
+      }
 
-      // Log para debug
-      this.logger.log('Filtro where para completed payments:', JSON.stringify(where, null, 2));
+      if (filters.nextPaymentDateMonth) {
+        const [year, month] = filters.nextPaymentDateMonth.split('-').map(Number);
+        where.nextPaymentDate = {
+          gte: new Date(year, month - 1, 1),
+          lte: new Date(year, month, 0, 23, 59, 59),
+        };
+      }
 
-      // Comentando temporariamente todos os filtros para testar
-      // Filtro por data do pagamento (mês/ano)
-      // if (filters.paymentDateMonth) {
-      //   this.logger.log(`Applying paymentDateMonth filter: ${filters.paymentDateMonth}`);
-      //   const [year, month] = filters.paymentDateMonth.split('-');
-      //   const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-      //   const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
+      if (filters.paymentMethod) {
+        where.paymentMethod = { contains: filters.paymentMethod, mode: 'insensitive' };
+      }
 
-      //   where.paymentDate = {
-      //     gte: startDate,
-      //     lte: endDate,
-      //   };
-      // }
-
-      // Filtro por próximo pagamento (mês/ano)
-      // if (filters.nextPaymentDateMonth) {
-      //   this.logger.log(`Applying nextPaymentDateMonth filter: ${filters.nextPaymentDateMonth}`);
-      //   const [year, month] = filters.nextPaymentDateMonth.split('-');
-      //   const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-      //   const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
-
-      //   where.nextPaymentDate = {
-      //     gte: startDate,
-      //     lte: endDate,
-      //   };
-      // }
-
-      // Filtro por status
-      // if (filters.status) {
-      //   this.logger.log(`Applying status filter: ${filters.status}`);
-      //   where.status = filters.status;
-      // }
-
-      // Filtro por método de pagamento
-      // if (filters.paymentMethod) {
-      //   this.logger.log(`Applying paymentMethod filter: ${filters.paymentMethod}`);
-      //   where.paymentMethod = filters.paymentMethod;
-      // }
-
-      this.logger.log('Executing Prisma query with where clause:', JSON.stringify(where, null, 2));
-
-      // Primeiro, vamos testar uma query mais simples
-      this.logger.log('Testing simple query first...');
-
-      try {
-        const simplePayments = await this.prisma.payment.findMany({
-          where: { status: PAGAMENTO_STATUS.COMPLETED },
-          take: 5,
-          include: {
-            subscription: {
-              include: {
-                user: true,
-                plan: true,
-              },
-            },
+      if (filters.user) {
+        where.subscription = {
+          ...where.subscription,
+          user: {
+            OR: [
+              { fullName: { contains: filters.user, mode: 'insensitive' } },
+              { email: { contains: filters.user, mode: 'insensitive' } },
+            ],
           },
-        });
+        };
+      }
 
-        this.logger.log(`Simple query found ${simplePayments.length} payments`);
-
-        // Vamos verificar se há planos na base de dados
-        const plans = await this.prisma.plan.findMany();
-        this.logger.log(`Available plans: ${plans.map((p) => p.name).join(', ')}`);
-
-        if (filters.plan) {
-          const planExists = plans.find((p) => p.name === filters.plan);
-          this.logger.log(`Plan '${filters.plan}' exists: ${!!planExists}`);
-        }
-      } catch (simpleError) {
-        this.logger.error('Error in simple query:', simpleError);
-        throw new Error('Database connection issue');
+      if (filters.plan) {
+        where.subscription = {
+          ...where.subscription,
+          plan: { name: { contains: filters.plan, mode: 'insensitive' } },
+        };
       }
 
       let payments, total;
       try {
-        // Vamos testar uma query ainda mais simples
-        this.logger.log('Testing very simple query...');
-
-        const testPayments = await this.prisma.payment.findMany({
-          where: { status: PAGAMENTO_STATUS.COMPLETED },
-          take: 1,
-        });
-
-        this.logger.log(`Test query found ${testPayments.length} payments`);
-
-        // Agora vamos testar a query principal
         [payments, total] = await Promise.all([
           this.prisma.payment.findMany({
             where,
@@ -712,10 +654,6 @@ export class BackofficeResolver {
           }),
           this.prisma.payment.count({ where }),
         ]);
-
-        this.logger.log(
-          `Query executed successfully. Found ${payments.length} payments, total: ${total}`,
-        );
       } catch (queryError) {
         this.logger.error('Error in main query:', queryError.message);
         this.logger.error('Error stack:', queryError.stack?.substring(0, 500));

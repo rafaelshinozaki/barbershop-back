@@ -1,4 +1,4 @@
-import { ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
+import { ObjectType, Field, Int, Float, registerEnumType } from '@nestjs/graphql';
 import { UserRole, MembershipStatus } from './enums';
 
 export enum UserStatus {
@@ -22,7 +22,7 @@ export class BackofficeStats {
   @Field(() => Int)
   newUsersThisMonth: number;
 
-  @Field(() => Int)
+  @Field(() => Float)
   revenue: number;
 }
 

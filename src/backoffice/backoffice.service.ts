@@ -2,12 +2,29 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartLogger } from '../common/logger.util';
 import { EmailService } from '../email/email.service';
+import { PAGAMENTO_STATUS } from '../common/contants';
+
+const ROLE_NAME_TO_ENUM: Record<string, string> = {
+  SystemAdmin: 'SYSTEM_ADMIN',
+  SystemManager: 'SYSTEM_MANAGER',
+  BarbershopOwner: 'BARBERSHOP_OWNER',
+  BarbershopManager: 'BARBERSHOP_MANAGER',
+  BarbershopEmployee: 'BARBERSHOP_EMPLOYEE',
+};
 
 @Injectable()
 export class BackofficeService {
   private readonly logger = new SmartLogger('BackofficeService');
 
   constructor(private prisma: PrismaService, private emailService: EmailService) {}
+
+  // Roles vindas de dados corrompidos/nulos caem no `fallback` em vez de quebrar o gráfico/enum
+  private mapRoleNameToEnum(roleName: string | undefined | null, fallback: string): string {
+    const mapped = roleName ? ROLE_NAME_TO_ENUM[roleName] : undefined;
+    if (mapped) return mapped;
+    this.logger.warn(`Unrecognized or missing role name "${roleName}", defaulting to ${fallback}`);
+    return fallback;
+  }
 
   async getStats() {
     const [totalUsers, activeUsers, newUsersThisMonth, totalRevenue] = await Promise.all([
@@ -42,7 +59,7 @@ export class BackofficeService {
         },
       });
     } catch (e) {
-      console.error('[BackofficeService] Error in user findMany:', e);
+      this.logger.error('Error fetching users for growth chart:', e);
     }
 
     // Agrupar por mês
@@ -84,9 +101,22 @@ export class BackofficeService {
       monthlyValues.push(monthlyStats.get(key) || 0);
     }
 
-    // Weekly (dummy data, but always return structure)
-    const weeklyLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weeklyValues = [0, 0, 0, 0, 0, 0, 0];
+    // Weekly: contagem real dos últimos 7 dias (já incluídos em `users`, buscado desde 6 meses atrás)
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weeklyLabels: string[] = [];
+    const weeklyValues: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const count = users.filter(
+        (u) =>
+          u.createdAt.getFullYear() === date.getFullYear() &&
+          u.createdAt.getMonth() === date.getMonth() &&
+          u.createdAt.getDate() === date.getDate(),
+      ).length;
+      weeklyLabels.push(dayNames[date.getDay()]);
+      weeklyValues.push(count);
+    }
 
     return {
       monthly: { labels: monthlyLabels, data: monthlyValues },
@@ -95,10 +125,7 @@ export class BackofficeService {
   }
 
   async getRoleDistribution() {
-    console.log('[BackofficeService] getRoleDistribution called');
-
     try {
-      // Primeiro, buscar todos os usuários com suas roles
       const users = await this.prisma.user.findMany({
         where: {
           deleted_at: null,
@@ -108,49 +135,18 @@ export class BackofficeService {
         },
       });
 
-      console.log('[BackofficeService] Found users:', users.length);
-
-      // Agrupar manualmente
       const roleCounts = new Map<string, number>();
-      const roleEnumSummary = {};
-
       users.forEach((user) => {
-        // Map role names to GraphQL enum values
-        let roleEnum: string;
-        switch (user.role?.name) {
-          case 'SystemAdmin':
-            roleEnum = 'SYSTEM_ADMIN';
-            break;
-          case 'SystemManager':
-            roleEnum = 'SYSTEM_MANAGER';
-            break;
-          case 'BarbershopOwner':
-            roleEnum = 'BARBERSHOP_OWNER';
-            break;
-          case 'BarbershopManager':
-            roleEnum = 'BARBERSHOP_MANAGER';
-            break;
-          case 'BarbershopEmployee':
-            roleEnum = 'BARBERSHOP_EMPLOYEE';
-            break;
-          default:
-            roleEnum = 'BARBERSHOP_OWNER';
-            break;
-        }
+        const roleEnum = this.mapRoleNameToEnum(user.role?.name, 'UNKNOWN');
         roleCounts.set(roleEnum, (roleCounts.get(roleEnum) || 0) + 1);
-        roleEnumSummary[roleEnum] = (roleEnumSummary[roleEnum] || 0) + 1;
       });
-
-      this.logger.log('Processed users by roleEnum:', roleEnumSummary);
 
       const labels = Array.from(roleCounts.keys());
       const data = Array.from(roleCounts.values());
 
-      console.log('[BackofficeService] Role distribution result:', { labels, data });
-
       return { roles: { labels, data } };
     } catch (error) {
-      console.error('[BackofficeService] Error in getRoleDistribution:', error);
+      this.logger.error('Error in getRoleDistribution:', error);
       throw error;
     }
   }
@@ -163,35 +159,41 @@ export class BackofficeService {
       },
     });
 
-    const labels = statusStats.map((stat) => (stat.isActive ? 'Ativo' : 'Inativo'));
+    const labels = statusStats.map((stat) => (stat.isActive ? 'ACTIVE' : 'INACTIVE'));
     const data = statusStats.map((stat) => stat._count.id);
 
     return { status: { labels, data } };
   }
 
   async getPlanDistribution() {
-    const planStats = await this.prisma.user.groupBy({
-      by: ['membership'],
-      _count: {
-        id: true,
+    // `User.membership` é um campo legado que nunca é atualizado quando uma
+    // assinatura é criada/trocada (fica sempre 'FREE' no seed) — a fonte real
+    // do plano atual do usuário é a assinatura mais recente dele.
+    const users = await this.prisma.user.findMany({
+      where: {
+        deleted_at: null,
+      },
+      select: {
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { plan: { select: { name: true } } },
+        },
       },
     });
 
-    const labels = planStats.map((stat) => {
-      switch (stat.membership) {
-        case 'FREE':
-          return 'Basic';
-        case 'MEDIUM':
-          return 'Medium';
-        case 'PREMIUM':
-          return 'Premium';
-        default:
-          return stat.membership;
-      }
+    const planCounts = new Map<string, number>();
+    users.forEach((user) => {
+      const planName = user.subscriptions[0]?.plan.name || 'Basic';
+      planCounts.set(planName, (planCounts.get(planName) || 0) + 1);
     });
-    const data = planStats.map((stat) => stat._count.id);
 
-    return { plans: { labels, data } };
+    return {
+      plans: {
+        labels: Array.from(planCounts.keys()),
+        data: Array.from(planCounts.values()),
+      },
+    };
   }
 
   private async getTotalUsers(): Promise<number> {
@@ -232,7 +234,7 @@ export class BackofficeService {
   private async getTotalRevenue(): Promise<number> {
     const payments = await this.prisma.payment.findMany({
       where: {
-        status: 'completed',
+        status: PAGAMENTO_STATUS.COMPLETED,
       },
       select: {
         amount: true,
@@ -711,31 +713,10 @@ export class BackofficeService {
         else if (age > 65) ageRange = '65+';
       }
 
-      // Debug log para role
-      console.log(`[BackofficeService] User ${user.id} role:`, user.role?.name);
-
-      // Map role names to GraphQL enum values
-      let roleEnum: string;
-      switch (user.role?.name) {
-        case 'SystemAdmin':
-          roleEnum = 'SYSTEM_ADMIN';
-          break;
-        case 'SystemManager':
-          roleEnum = 'SYSTEM_MANAGER';
-          break;
-        case 'BarbershopOwner':
-          roleEnum = 'BARBERSHOP_OWNER';
-          break;
-        case 'BarbershopEmployee':
-          roleEnum = 'BARBERSHOP_EMPLOYEE';
-          break;
-        case 'BarbershopManager':
-          roleEnum = 'BARBERSHOP_MANAGER';
-          break;
-        default:
-          roleEnum = 'BARBERSHOP_OWNER';
-          break;
-      }
+      // DetailedUser.role é um enum GraphQL estrito (UserRole), então o
+      // fallback aqui precisa ser um membro válido do enum, diferente do
+      // 'UNKNOWN' usado em getRoleDistribution (que só popula labels de um gráfico)
+      const roleEnum = this.mapRoleNameToEnum(user.role?.name, 'BARBERSHOP_OWNER');
 
       return {
         id: user.id,

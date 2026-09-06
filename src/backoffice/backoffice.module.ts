@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BackofficeController } from './backoffice.controller';
 import { BackofficeService } from './backoffice.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 
+// Todos os endpoints REST deste módulo foram migrados para GraphQL
+// (ver src/graphql/resolvers/backoffice.resolver.ts); o controller
+// REST vazio foi removido.
 @Module({
   imports: [
     PrismaModule,
@@ -21,7 +23,6 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [BackofficeController],
   providers: [BackofficeService],
   exports: [BackofficeService],
 })
