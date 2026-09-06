@@ -588,71 +588,140 @@ export class UserService {
     }) as unknown as Promise<UserDTO | null>;
   }
 
-  async findOrCreateSocialUser(email: string, name: string, provider: string): Promise<UserDTO> {
-    let user = await this.prisma.user.findFirst({
-      where: { email, provider },
+  private readonly socialUserSelect = {
+    id: true,
+    email: true,
+    fullName: true,
+    phone: true,
+    idDocNumber: true,
+    gender: true,
+    birthdate: true,
+    company: true,
+    professionalSegment: true,
+    knowledgeApp: true,
+    readTerms: true,
+    membership: true,
+    isActive: true,
+    photoKey: true,
+    twoFactorEnabled: true,
+    provider: true,
+    role: {
       select: {
         id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        idDocNumber: true,
-        gender: true,
-        birthdate: true,
-        company: true,
-        professionalSegment: true,
-        knowledgeApp: true,
-        readTerms: true,
-        membership: true,
-        isActive: true,
-        photoKey: true,
-        twoFactorEnabled: true,
-        provider: true,
-        role: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        address: {
-          select: {
-            street: true,
-            city: true,
-            neighborhood: true,
-            zipcode: true,
-            state: true,
-            country: true,
-          },
-        },
-        userSystemConfig: {
-          select: {
-            theme: true,
-            accentColor: true,
-            grayColor: true,
-            radius: true,
-            scaling: true,
-            language: true,
-          },
-        },
-        notificationPreference: {
-          select: {
-            newsEmail: true,
-            newsInApp: true,
-            promotionsEmail: true,
-            promotionsInApp: true,
-            instabilityEmail: true,
-            instabilityInApp: true,
-            securityEmail: true,
-            securityInApp: true,
-          },
-        },
-        subscriptions: {
-          where: { status: PLANO_STATUS.ACTIVE },
-          select: { status: true, plan: { select: { name: true } } },
-          take: 1,
-        },
+        name: true,
       },
+    },
+    address: {
+      select: {
+        street: true,
+        city: true,
+        neighborhood: true,
+        zipcode: true,
+        state: true,
+        country: true,
+      },
+    },
+    userSystemConfig: {
+      select: {
+        theme: true,
+        accentColor: true,
+        grayColor: true,
+        radius: true,
+        scaling: true,
+        language: true,
+      },
+    },
+    notificationPreference: {
+      select: {
+        newsEmail: true,
+        newsInApp: true,
+        promotionsEmail: true,
+        promotionsInApp: true,
+        instabilityEmail: true,
+        instabilityInApp: true,
+        securityEmail: true,
+        securityInApp: true,
+      },
+    },
+    subscriptions: {
+      where: { status: PLANO_STATUS.ACTIVE },
+      select: { status: true, plan: { select: { name: true } } },
+      take: 1,
+    },
+  } as const;
+
+  // Contas conectadas a este usuário (Google/Facebook/Apple, além da senha).
+  async getLinkedSocialAccounts(userId: number) {
+    return this.prisma.linkedSocialAccount.findMany({
+      where: { userId },
+      select: { provider: true, providerEmail: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
     });
+  }
+
+  async unlinkSocialAccount(userId: number, provider: string) {
+    await this.prisma.linkedSocialAccount.deleteMany({ where: { userId, provider } });
+  }
+
+  // Chamado quando o usuário JÁ está logado (por senha ou outro provider) e
+  // clica em "conectar" um novo método — diferente de findOrCreateSocialUser,
+  // que é o fluxo de login/cadastro sem sessão ativa.
+  async linkSocialAccountToUser(
+    userId: number,
+    email: string,
+    provider: string,
+  ): Promise<{
+    ok: boolean;
+    reason?: 'already_linked_elsewhere' | 'email_belongs_to_another_account';
+  }> {
+    const existingLink = await this.prisma.linkedSocialAccount.findUnique({
+      where: { provider_providerEmail: { provider, providerEmail: email } },
+    });
+    if (existingLink) {
+      if (existingLink.userId === userId) return { ok: true };
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+
+    const otherUserWithEmail = await this.prisma.user.findFirst({
+      where: { email, NOT: { id: userId } },
+    });
+    if (otherUserWithEmail) {
+      return { ok: false, reason: 'email_belongs_to_another_account' };
+    }
+
+    await this.prisma.linkedSocialAccount.upsert({
+      where: { userId_provider: { userId, provider } },
+      create: { userId, provider, providerEmail: email },
+      update: { providerEmail: email },
+    });
+    return { ok: true };
+  }
+
+  async findOrCreateSocialUser(email: string, name: string, provider: string): Promise<UserDTO> {
+    // 1. Esse provider+email já está linkado a uma conta? Login direto nela.
+    const existingLink = await this.prisma.linkedSocialAccount.findUnique({
+      where: { provider_providerEmail: { provider, providerEmail: email } },
+    });
+
+    let user = existingLink
+      ? await this.prisma.user.findUnique({ where: { id: existingLink.userId }, select: this.socialUserSelect })
+      : await this.prisma.user.findFirst({
+          where: { email },
+          orderBy: { createdAt: 'asc' },
+          select: this.socialUserSelect,
+        });
+
+    if (user && !existingLink) {
+      // Já existe uma conta com esse email (criada por senha ou por outro
+      // provider) — conecta este novo método a ela em vez de criar uma
+      // segunda conta desconectada com o mesmo email.
+      await this.prisma.linkedSocialAccount
+        .create({ data: { userId: user.id, provider, providerEmail: email } })
+        .catch(() => {
+          // condição de corrida rara (duas requisições simultâneas linkando o
+          // mesmo provider+email) — a outra já deve ter criado, segue o login
+        });
+    }
 
     if (!user) {
       const userRole = await this.prisma.role.findFirst({
@@ -737,6 +806,10 @@ export class UserService {
             take: 1,
           },
         },
+      });
+
+      await this.prisma.linkedSocialAccount.create({
+        data: { userId: user.id, provider, providerEmail: email },
       });
 
       // Enviar email de boas-vindas para usuários sociais recém-criados

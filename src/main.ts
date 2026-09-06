@@ -8,7 +8,7 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
-import { json } from 'express';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -32,6 +32,11 @@ async function bootstrap() {
       },
     }),
   );
+  // A Apple chama de volta os callbacks (/auth/apple/redirect e
+  // /client-auth/apple/redirect) via POST com response_mode=form_post
+  // (application/x-www-form-urlencoded) — sem isso o passport-apple não
+  // encontra nem o "code" nem o "user" que a Apple manda no corpo.
+  app.use(urlencoded({ extended: true }));
 
   // Security Headers with Helmet
   app.use(

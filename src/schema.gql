@@ -322,6 +322,12 @@ type ClientHistoryEntryType {
   type: String!
 }
 
+type ClientLinkedSocialAccountType {
+  createdAt: String!
+  provider: String!
+  providerEmail: String!
+}
+
 input ClientLoginInput {
   email: String!
   password: String!
@@ -838,6 +844,12 @@ type InventoryMovementType {
   referenceType: String
 }
 
+type LinkedSocialAccountType {
+  createdAt: String!
+  provider: String!
+  providerEmail: String!
+}
+
 type LoginHistory {
   browser: String!
   createdAt: String!
@@ -967,6 +979,8 @@ type Mutation {
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
+  unlinkClientSocialAccount(provider: String!): Boolean!
+  unlinkSocialAccount(provider: String!): Boolean!
   updateAppointment(barbershopId: Int!, id: Int!, input: UpdateAppointmentInput!): Appointment!
   updateBarber(barbershopId: Int!, id: Int!, input: UpdateBarberInput!): Barber!
   updateBarberSchedule(id: Int!, input: UpdateBarberScheduleInput!): BarberScheduleType!
@@ -1245,6 +1259,7 @@ type Query {
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
+  clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
   clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
@@ -1270,6 +1285,7 @@ type Query {
   inventoryItems(barbershopId: Int!): [InventoryItemType!]!
   inventoryMovements(barbershopId: Int!, productId: Int!): [InventoryMovementType!]!
   latestPendingPayment: Payment
+  linkedSocialAccounts: [LinkedSocialAccountType!]!
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   me: User!
   myBarbershops: [Barbershop!]!

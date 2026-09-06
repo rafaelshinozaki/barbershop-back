@@ -100,6 +100,11 @@ export class ClientAuthService {
     if (!account) {
       throw new UnauthorizedException('Email ou senha inválidos.');
     }
+    if (!account.password) {
+      throw new UnauthorizedException(
+        'Esta conta usa login social. Entre com Google, Facebook ou Apple.',
+      );
+    }
     const matches = await bcrypt.compare(password, account.password);
     if (!matches) {
       throw new UnauthorizedException('Email ou senha inválidos.');
@@ -108,6 +113,90 @@ export class ClientAuthService {
     await this.linkExistingCustomers(account.id, account.email, account.phone);
 
     return account;
+  }
+
+  // Login/cadastro social (Google/Facebook/Apple) sem sessão ativa — mesma
+  // lógica de "achar ou criar" da conta de staff (ver UserService), adaptada
+  // para ClientAccount: se o provider+email já está linkado, entra direto;
+  // se já existe uma conta com esse email (senha ou outro provider), conecta
+  // este método a ela em vez de criar uma segunda conta; senão cria nova.
+  async findOrCreateSocialAccount(email: string, name: string, provider: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingLink = await this.prisma.clientLinkedSocialAccount.findUnique({
+      where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
+    });
+
+    let account = existingLink
+      ? await this.prisma.clientAccount.findUnique({ where: { id: existingLink.clientAccountId } })
+      : await this.prisma.clientAccount.findFirst({
+          where: { email: normalizedEmail },
+          orderBy: { createdAt: 'asc' },
+        });
+
+    if (account && !existingLink) {
+      await this.prisma.clientLinkedSocialAccount
+        .create({ data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail } })
+        .catch(() => {});
+    }
+
+    if (!account) {
+      account = await this.prisma.clientAccount.create({
+        data: { email: normalizedEmail, name: name || normalizedEmail.split('@')[0], password: null },
+      });
+      await this.prisma.clientLinkedSocialAccount.create({
+        data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail },
+      });
+    }
+
+    await this.linkExistingCustomers(account.id, normalizedEmail, account.phone);
+    return account;
+  }
+
+  async getLinkedSocialAccounts(clientAccountId: number) {
+    return this.prisma.clientLinkedSocialAccount.findMany({
+      where: { clientAccountId },
+      select: { provider: true, providerEmail: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async unlinkSocialAccount(clientAccountId: number, provider: string) {
+    await this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId, provider } });
+  }
+
+  // Chamado quando o cliente JÁ está logado e clica em "conectar" um novo
+  // método a partir da página de conta.
+  async linkSocialAccountToClient(
+    clientAccountId: number,
+    email: string,
+    provider: string,
+  ): Promise<{
+    ok: boolean;
+    reason?: 'already_linked_elsewhere' | 'email_belongs_to_another_account';
+  }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingLink = await this.prisma.clientLinkedSocialAccount.findUnique({
+      where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
+    });
+    if (existingLink) {
+      if (existingLink.clientAccountId === clientAccountId) return { ok: true };
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+
+    const otherAccountWithEmail = await this.prisma.clientAccount.findFirst({
+      where: { email: normalizedEmail, NOT: { id: clientAccountId } },
+    });
+    if (otherAccountWithEmail) {
+      return { ok: false, reason: 'email_belongs_to_another_account' };
+    }
+
+    await this.prisma.clientLinkedSocialAccount.upsert({
+      where: { clientAccountId_provider: { clientAccountId, provider } },
+      create: { clientAccountId, provider, providerEmail: normalizedEmail },
+      update: { providerEmail: normalizedEmail },
+    });
+    return { ok: true };
   }
 
   issueCookie(account: { id: number; email: string }, res: Response) {

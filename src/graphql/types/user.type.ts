@@ -3,6 +3,18 @@ import { NotificationPreference } from './notification.type';
 import { UserRole, MembershipStatus } from './enums';
 
 @ObjectType()
+export class LinkedSocialAccountType {
+  @Field()
+  provider: string;
+
+  @Field()
+  providerEmail: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
 export class UserSystemConfig {
   @Field(() => Int)
   id: number;

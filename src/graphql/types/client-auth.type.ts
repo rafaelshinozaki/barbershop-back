@@ -47,3 +47,15 @@ export class ClientHistoryEntryType {
   @Field({ nullable: true })
   currency?: string;
 }
+
+@ObjectType()
+export class ClientLinkedSocialAccountType {
+  @Field()
+  provider: string;
+
+  @Field()
+  providerEmail: string;
+
+  @Field()
+  createdAt: string;
+}

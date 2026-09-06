@@ -5,6 +5,8 @@ import { AuthController } from './auth.controller';
 import { UserModule } from './users/users.module';
 import { LocalStrategy } from './strategies/local.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { FacebookStrategy } from './strategies/facebook.strategy';
+import { AppleStrategy } from './strategies/apple.strategy';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -13,6 +15,8 @@ import { RolesGuard } from './guards/roles.guard';
 import { SubscriptionGuard } from './guards/subscription.guard';
 import { PassportModule } from '@nestjs/passport';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { FacebookAuthGuard } from './guards/facebook-auth.guard';
+import { AppleAuthGuard } from './guards/apple-auth.guard';
 import { EmailModule } from '@/email/email.module';
 import { IpLocationService } from '@/common/ip-location.service';
 
@@ -38,6 +42,10 @@ import { IpLocationService } from '@/common/ip-location.service';
     JwtStrategy,
     GoogleStrategy,
     GoogleAuthGuard,
+    FacebookStrategy,
+    FacebookAuthGuard,
+    AppleStrategy,
+    AppleAuthGuard,
     RolesGuard,
     SubscriptionGuard,
     IpLocationService,

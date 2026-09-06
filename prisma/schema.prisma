@@ -59,8 +59,28 @@ model User {
   cashSessionsOpened     CashSession[]    @relation("CashSessionOpenedBy")
   cashSessionsClosed     CashSession[]    @relation("CashSessionClosedBy")
   expensesCreated        Expense[]        @relation("ExpenseCreatedBy")
+  linkedSocialAccounts   LinkedSocialAccount[]
 
   @@unique([email, provider])
+}
+
+// Métodos de login social adicionais conectados a uma conta (além do
+// provider "principal" gravado em User.provider, que continua sendo o que
+// criou a conta originalmente). Permite a mesma conta entrar tanto por
+// senha quanto por Google/Facebook/Apple, em vez de criar um User separado
+// por provider — antes disso, logar com um método diferente do original
+// (mesmo email) criava silenciosamente uma segunda conta desconectada.
+model LinkedSocialAccount {
+  id            Int      @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  userId        Int
+  provider      String   // google, facebook, apple
+  providerEmail String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@unique([provider, providerEmail])
+  @@index([userId])
 }
 
 model PasswordResetToken {
@@ -449,16 +469,30 @@ model Customer {
 // Network que frequenta; esta conta é o que liga esses registros entre si
 // para dar histórico e favoritos cross-negócio.
 model ClientAccount {
-  id        Int              @id @default(autoincrement())
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  email     String           @unique
-  password  String
-  name      String
-  phone     String?
-  avatarUrl String?
-  customers Customer[]
-  favorites ClientFavorite[]
+  id                   Int                         @id @default(autoincrement())
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  email                String                      @unique
+  password             String?                     // opcional — contas criadas só via login social não têm senha
+  name                 String
+  phone                String?
+  avatarUrl            String?
+  customers            Customer[]
+  favorites            ClientFavorite[]
+  linkedSocialAccounts ClientLinkedSocialAccount[]
+}
+
+model ClientLinkedSocialAccount {
+  id              Int           @id @default(autoincrement())
+  createdAt       DateTime      @default(now())
+  clientAccountId Int
+  provider        String // google, facebook, apple
+  providerEmail   String
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([clientAccountId, provider])
+  @@unique([provider, providerEmail])
+  @@index([clientAccountId])
 }
 
 model ClientFavorite {

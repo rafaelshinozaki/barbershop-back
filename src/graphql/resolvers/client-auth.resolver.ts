@@ -3,7 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { ClientAuthService } from '@/client-auth/client-auth.service';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
-import { ClientAccountType, ClientHistoryEntryType } from '../types/client-auth.type';
+import { ClientAccountType, ClientHistoryEntryType, ClientLinkedSocialAccountType } from '../types/client-auth.type';
 import { Network } from '../types/barbershop.type';
 import { ClientSignupInput, ClientLoginInput } from '../dto/client-auth.dto';
 
@@ -75,5 +75,19 @@ export class ClientAuthResolver {
   @Query(() => [Network])
   async searchNetworks(@Args('query') query: string) {
     return this.clientAuthService.searchNetworks(query);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => [ClientLinkedSocialAccountType])
+  async clientLinkedSocialAccounts(@CurrentClient() client: CurrentClientUser) {
+    const accounts = await this.clientAuthService.getLinkedSocialAccounts(client.id);
+    return accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() }));
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async unlinkClientSocialAccount(@CurrentClient() client: CurrentClientUser, @Args('provider') provider: string) {
+    await this.clientAuthService.unlinkSocialAccount(client.id, provider);
+    return true;
   }
 }

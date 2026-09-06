@@ -110,6 +110,9 @@ importers:
       joi:
         specifier: ^17.13.1
         version: 17.13.3
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
       mailgun.js:
         specifier: ^12.0.2
         version: 12.0.3
@@ -128,6 +131,12 @@ importers:
       passport:
         specifier: ^0.6.0
         version: 0.6.0
+      passport-apple:
+        specifier: ^2.0.2
+        version: 2.0.2
+      passport-facebook:
+        specifier: ^3.0.0
+        version: 3.0.0
       passport-google-oauth20:
         specifier: ^2.0.0
         version: 2.0.0
@@ -192,9 +201,18 @@ importers:
       '@types/jest':
         specifier: 28.1.4
         version: 28.1.4
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/node':
         specifier: ^16.0.0
         version: 16.18.126
+      '@types/passport-apple':
+        specifier: ^2.0.3
+        version: 2.0.3
+      '@types/passport-facebook':
+        specifier: ^3.0.4
+        version: 3.0.4
       '@types/passport-google-oauth20':
         specifier: ^2.0.9
         version: 2.0.16
@@ -1710,6 +1728,12 @@ packages:
 
   '@types/parse-json@4.0.2':
     resolution: {integrity: sha512-dISoDXWWQwUquiKsyZ4Ng+HX2KsPL7LyHKHQwgGFEA3IaKac4Obd+h2a/a6waisAoepJlBcx9paWqjA8/HVjCw==}
+
+  '@types/passport-apple@2.0.3':
+    resolution: {integrity: sha512-XncceSuR57+/tz3PmjDG3Tm6+mW7qTYxbILnNRo6Wu5wIZ60Yvlp/LYR6GAMWhWcGtdkXDSAzAYmuBD+duve2Q==}
+
+  '@types/passport-facebook@3.0.4':
+    resolution: {integrity: sha512-dZ7/758O0b7s2EyRUZJ24X93k8Nncm5UXLQPYg9bBJNE5ZwvD314QfDFYl0i4DlIPLcYGWkJ5Et0DXt6DAk71A==}
 
   '@types/passport-google-oauth20@2.0.16':
     resolution: {integrity: sha512-ayXK2CJ7uVieqhYOc6k/pIr5pcQxOLB6kBev+QUGS7oEZeTgIs1odDobXRqgfBPvXzl0wXCQHftV5220czZCPA==}
@@ -3487,6 +3511,10 @@ packages:
     resolution: {integrity: sha512-PRp66vJ865SSqOlgqS8hujT5U4AOgMfhrwYIuIhfKaoSCZcirrmASQr8CX7cUg+RMih+hgznrjp99o+W4pJLHQ==}
     engines: {node: '>=12', npm: '>=6'}
 
+  jsonwebtoken@9.0.3:
+    resolution: {integrity: sha512-MT/xP0CrubFRNLNKvxJ2BYfy53Zkm++5bX9dtuPbqAeQpTVe0MQTFhao8+Cp//EmJp244xt6Drw/GVEGCUj40g==}
+    engines: {node: '>=12', npm: '>=6'}
+
   jstransformer@1.0.0:
     resolution: {integrity: sha512-C9YK3Rf8q6VAPDCCU9fnqo3mAfOH6vUGnMcP4AQAYIEpWtfGLpwOTmZ+igtdK5y+VvI2n3CyYSzy4Qh34eq24A==}
 
@@ -3498,8 +3526,14 @@ packages:
   jwa@1.4.2:
     resolution: {integrity: sha512-eeH5JO+21J78qMvTIDdBXidBd6nG2kZjg5Ohz/1fpa28Z4CcsWUzJ1ZZyFq/3z3N17aZy+ZuBoHljASbL1WfOw==}
 
+  jwa@2.0.1:
+    resolution: {integrity: sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==}
+
   jws@3.2.2:
     resolution: {integrity: sha512-YHlZCB6lMTllWDtSPHz/ZXTsi8S00usEV6v1tjq8tOUZzw7DpSDWVXjXDre6ed1w/pd495ODpHZYSdkRTsa0HA==}
+
+  jws@4.0.1:
+    resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -4064,6 +4098,13 @@ packages:
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
+
+  passport-apple@2.0.2:
+    resolution: {integrity: sha512-JRXomYvirWeIq11pa/SwhXXxekFWoukMcQu45BDl3Kw5WobtWF0iw99vpkBwPEpdaou0DDSq4udxR34T6eZkdw==}
+
+  passport-facebook@3.0.0:
+    resolution: {integrity: sha512-K/qNzuFsFISYAyC1Nma4qgY/12V3RSLFdFVsPKXiKZt434wOvthFW1p7zKa1iQihQMRhaWorVE1o3Vi1o+ZgeQ==}
+    engines: {node: '>= 0.4.0'}
 
   passport-google-oauth20@2.0.0:
     resolution: {integrity: sha512-KSk6IJ15RoxuGq7D1UKK/8qKhNfzbLeLrG3gkLZ7p4A6DBCcv7xpyQwuXtWdpyR0+E0mwkpjY1VfPOhxQrKzdQ==}
@@ -7199,6 +7240,17 @@ snapshots:
 
   '@types/parse-json@4.0.2': {}
 
+  '@types/passport-apple@2.0.3':
+    dependencies:
+      '@types/express': 4.17.23
+      '@types/passport-oauth2': 1.8.0
+
+  '@types/passport-facebook@3.0.4':
+    dependencies:
+      '@types/express': 4.17.23
+      '@types/passport': 1.0.17
+      '@types/passport-oauth2': 1.8.0
+
   '@types/passport-google-oauth20@2.0.16':
     dependencies:
       '@types/express': 4.17.23
@@ -9532,6 +9584,19 @@ snapshots:
       ms: 2.1.3
       semver: 7.7.2
 
+  jsonwebtoken@9.0.3:
+    dependencies:
+      jws: 4.0.1
+      lodash.includes: 4.3.0
+      lodash.isboolean: 3.0.3
+      lodash.isinteger: 4.0.4
+      lodash.isnumber: 3.0.3
+      lodash.isplainobject: 4.0.6
+      lodash.isstring: 4.0.1
+      lodash.once: 4.1.1
+      ms: 2.1.3
+      semver: 7.7.2
+
   jstransformer@1.0.0:
     dependencies:
       is-promise: 2.2.2
@@ -9555,9 +9620,20 @@ snapshots:
       ecdsa-sig-formatter: 1.0.11
       safe-buffer: 5.2.1
 
+  jwa@2.0.1:
+    dependencies:
+      buffer-equal-constant-time: 1.0.1
+      ecdsa-sig-formatter: 1.0.11
+      safe-buffer: 5.2.1
+
   jws@3.2.2:
     dependencies:
       jwa: 1.4.2
+      safe-buffer: 5.2.1
+
+  jws@4.0.1:
+    dependencies:
+      jwa: 2.0.1
       safe-buffer: 5.2.1
 
   keyv@4.5.4:
@@ -10337,13 +10413,22 @@ snapshots:
 
   parseurl@1.3.3: {}
 
+  passport-apple@2.0.2:
+    dependencies:
+      jsonwebtoken: 9.0.3
+      passport-oauth2: 1.8.0
+
+  passport-facebook@3.0.0:
+    dependencies:
+      passport-oauth2: 1.8.0
+
   passport-google-oauth20@2.0.0:
     dependencies:
       passport-oauth2: 1.8.0
 
   passport-jwt@4.0.1:
     dependencies:
-      jsonwebtoken: 9.0.2
+      jsonwebtoken: 9.0.3
       passport-strategy: 1.0.0
 
   passport-local@1.0.0:

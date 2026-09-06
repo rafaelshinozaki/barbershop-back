@@ -1,11 +1,11 @@
-import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards, UseFilters } from '@nestjs/common';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { UserService } from '../../auth/users/users.service';
 import { BarbershopService } from '../../barbershop/barbershop.service';
-import { User } from '../types/user.type';
+import { User, LinkedSocialAccountType } from '../types/user.type';
 import { Role } from '../../auth/interfaces/roles';
 import {
   LoginInput,
@@ -214,6 +214,20 @@ export class AuthResolver {
   async logoutOtherSessions(@CurrentUser() user: UserDTO, @Context() context: any) {
     const { req } = context;
     await this.authService.logoutOtherSessions(user, req);
+    return true;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [LinkedSocialAccountType])
+  async linkedSocialAccounts(@CurrentUser() user: UserDTO) {
+    const accounts = await this.userService.getLinkedSocialAccounts(user.id);
+    return accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() }));
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async unlinkSocialAccount(@CurrentUser() user: UserDTO, @Args('provider') provider: string) {
+    await this.userService.unlinkSocialAccount(user.id, provider);
     return true;
   }
 
