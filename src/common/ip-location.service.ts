@@ -74,27 +74,34 @@ export class IpLocationService {
    * Verifica se é um IP local
    */
   private isLocalIp(ip: string): boolean {
+    // Node/Express frequentemente reportam o loopback IPv6 (`::1`) ou um
+    // IPv4 mapeado em IPv6 (`::ffff:x.x.x.x`) em vez do IPv4 puro —
+    // normaliza antes de comparar, senão cai no fallback de API externa e
+    // sempre resolve como "Unknown" para conexões locais.
+    const normalized = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    if (normalized === '::1') return true;
+
     return (
-      ip === '127.0.0.1' ||
-      ip === 'localhost' ||
-      ip.startsWith('192.168.') ||
-      ip.startsWith('10.') ||
-      ip.startsWith('172.16.') ||
-      ip.startsWith('172.17.') ||
-      ip.startsWith('172.18.') ||
-      ip.startsWith('172.19.') ||
-      ip.startsWith('172.20.') ||
-      ip.startsWith('172.21.') ||
-      ip.startsWith('172.22.') ||
-      ip.startsWith('172.23.') ||
-      ip.startsWith('172.24.') ||
-      ip.startsWith('172.25.') ||
-      ip.startsWith('172.26.') ||
-      ip.startsWith('172.27.') ||
-      ip.startsWith('172.28.') ||
-      ip.startsWith('172.29.') ||
-      ip.startsWith('172.30.') ||
-      ip.startsWith('172.31.')
+      normalized === '127.0.0.1' ||
+      normalized === 'localhost' ||
+      normalized.startsWith('192.168.') ||
+      normalized.startsWith('10.') ||
+      normalized.startsWith('172.16.') ||
+      normalized.startsWith('172.17.') ||
+      normalized.startsWith('172.18.') ||
+      normalized.startsWith('172.19.') ||
+      normalized.startsWith('172.20.') ||
+      normalized.startsWith('172.21.') ||
+      normalized.startsWith('172.22.') ||
+      normalized.startsWith('172.23.') ||
+      normalized.startsWith('172.24.') ||
+      normalized.startsWith('172.25.') ||
+      normalized.startsWith('172.26.') ||
+      normalized.startsWith('172.27.') ||
+      normalized.startsWith('172.28.') ||
+      normalized.startsWith('172.29.') ||
+      normalized.startsWith('172.30.') ||
+      normalized.startsWith('172.31.')
     );
   }
 

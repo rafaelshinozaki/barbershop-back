@@ -30,4 +30,6 @@ export class UserDTO {
   photoKey?: string;
   role?: { id: number; name: string };
   stripeCustomerId?: string;
+  /** Identificador da sessão atual (do JWT) — usado para distinguir "esta sessão" das demais, nunca o IP */
+  sessionToken?: string;
 }

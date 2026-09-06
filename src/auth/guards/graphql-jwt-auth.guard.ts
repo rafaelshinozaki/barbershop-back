@@ -59,6 +59,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       }) as {
         userId: number;
         email: string;
+        sessionToken?: string;
       };
 
       this.logger.log('JWT decoded successfully', {
@@ -79,8 +80,20 @@ export class GraphQLJwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found');
       }
 
+      // A sessão precisa ter uma ActiveSession correspondente — é isso que
+      // faz "Terminar sessão"/"Sair de outras sessões" realmente revogar o
+      // acesso, e não só remover uma linha decorativa da lista.
+      if (decoded.sessionToken) {
+        const activeSession = await this.prisma.activeSession.findUnique({
+          where: { sessionToken: decoded.sessionToken },
+        });
+        if (!activeSession) {
+          throw new UnauthorizedException('Session has been terminated');
+        }
+      }
+
       // Attach user to request for use in resolvers
-      req.user = user;
+      req.user = { ...user, sessionToken: decoded.sessionToken };
       this.logger.log('User attached to request', {
         userId: user.id,
         email: user.email,

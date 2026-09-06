@@ -4,7 +4,6 @@ import {
   Mutation,
   Args,
   Int,
-  Context,
   ResolveField,
   Parent,
 } from '@nestjs/graphql';
@@ -13,7 +12,6 @@ import { UserService } from '../../auth/users/users.service';
 import { User, UserSystemConfig, Address } from '../types/user.type';
 import {
   LoginHistory,
-  ActiveSession,
   PaginatedLoginHistory,
   PaginatedActiveSessions,
 } from '../types/notification.type';
@@ -333,15 +331,8 @@ export class UserResolver {
     @CurrentUser() user: UserDTO,
     @Args('page', { type: () => Int, defaultValue: 1 }) page: number,
     @Args('limit', { type: () => Int, defaultValue: 10 }) limit: number,
-    @Context() context: any,
   ) {
-    return this.userService.getActiveSessions(user.id, page, limit, context.req);
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard)
-  @Query(() => [ActiveSession])
-  async sessions(@CurrentUser() user: UserDTO) {
-    return this.userService.getAllSessions(user.id);
+    return this.userService.getActiveSessions(user.id, page, limit, user.sessionToken);
   }
 
   // Só admin/manager de sistema — mesmo problema do REST GET /user/:userId
@@ -492,6 +483,6 @@ export class UserResolver {
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async terminateSession(@CurrentUser() user: UserDTO, @Args('sessionId') sessionId: string) {
-    return this.userService.terminateSession(user.id, parseInt(sessionId), '127.0.0.1');
+    return this.userService.terminateSession(user.id, parseInt(sessionId), user.sessionToken);
   }
 }

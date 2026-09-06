@@ -10,21 +10,6 @@ export class LoginInput {
   @Field()
   @IsString()
   password: string;
-
-  @Field({ nullable: true })
-  deviceType?: string;
-
-  @Field({ nullable: true })
-  browser?: string;
-
-  @Field({ nullable: true })
-  os?: string;
-
-  @Field({ nullable: true })
-  ip?: string;
-
-  @Field({ nullable: true })
-  location?: string;
 }
 
 @InputType()

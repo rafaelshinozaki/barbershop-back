@@ -13,7 +13,6 @@ import {
   Query,
   Patch,
   Delete,
-  Req,
 } from '@nestjs/common';
 import { UserService } from './users.service';
 import { UserDTO } from './dto/user.dto';
@@ -28,7 +27,6 @@ import { CurrentUser } from '../current-user.decorator';
 import { Roles } from '../roles.decorator';
 import { Role } from '../interfaces/roles';
 import { RolesGuard } from '../guards/roles.guard';
-import { Request } from 'express';
 import { ThrottleAuth } from '@/common/decorators/throttle.decorator';
 
 @ApiTags('user')
@@ -68,35 +66,13 @@ export class UserController {
     return this.userService.getLoginHistory(user.id, pageNumber, limitNumber);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'List active sessions of current user' })
-  @ApiResponse({ status: 200, description: 'Active sessions list' })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10)' })
-  @Get('active-sessions')
-  getActiveSessions(
-    @CurrentUser() user: UserDTO,
-    @Query('page') page = '1',
-    @Query('limit') limit = '10',
-    @Req() req: Request,
-  ) {
-    const pageNumber = parseInt(page as any, 10) || 1;
-    const limitNumber = parseInt(limit as any, 10) || 10;
-
-    // Obter o IP atual
-    const forwarded = req.headers['x-forwarded-for'];
-    const currentIp = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
-
-    return this.userService.getActiveSessions(user.id, pageNumber, limitNumber, currentIp);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'List all sessions of current user' })
-  @ApiResponse({ status: 200, description: 'Sessions list' })
-  @Get('sessions')
-  getSessions(@CurrentUser() user: UserDTO) {
-    return this.userService.getAllSessions(user.id);
-  }
+  // GET /user/active-sessions e GET /user/sessions existiam aqui como
+  // réplicas REST da query GraphQL activeSessions (a única realmente usada
+  // pelo frontend, ver ActiveSessions.tsx) — ambas confirmadas sem nenhum
+  // chamador no frontend via grep. A de active-sessions também identificava
+  // "sessão atual" pelo IP, o mesmo bug corrigido no resolver GraphQL; a de
+  // sessions chamava um getAllSessions() removido (dedup por timestamp
+  // exato entre duas linhas criadas em inserts separados — nunca batia).
 
   @UseGuards(JwtAuthGuard)
   @Post('me/photo-url')
@@ -275,11 +251,8 @@ export class UserController {
   async terminateSession(
     @CurrentUser() user: UserDTO,
     @Param('sessionId', ParseIntPipe) sessionId: number,
-    @Req() req: Request,
   ) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const currentIp = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
-    await this.userService.terminateSession(user.id, sessionId, currentIp);
+    await this.userService.terminateSession(user.id, sessionId, user.sessionToken);
     return { success: true };
   }
 }

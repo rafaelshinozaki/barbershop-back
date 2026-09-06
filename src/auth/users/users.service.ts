@@ -1015,15 +1015,7 @@ export class UserService {
     );
   }
 
-  async verifyUser(
-    email: string,
-    password: string,
-    deviceType?: string,
-    browser?: string,
-    os?: string,
-    ip?: string,
-    location?: string,
-  ) {
+  async verifyUser(email: string, password: string) {
     this.logger.log(`Verifying user with email: ${email}`);
     const attempt = this._loginAttempts.get(email);
     if (attempt && attempt.blockedUntil > Date.now()) {
@@ -1119,19 +1111,13 @@ export class UserService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Gravar histórico de login
-    await this.prisma.loginHistory.create({
-      data: {
-        userId: user.id,
-        deviceType: deviceType || 'Unknown',
-        browser: browser || 'Unknown',
-        os: os || 'Unknown',
-        ip: ip || 'Unknown',
-        location: location || 'Unknown',
-      },
-    });
-
-    // Aqui você pode adicionar lógica para sessões ativas, se necessário
+    // Histórico de login e sessão ativa são gravados em AuthService.login(),
+    // não aqui — aqui a senha pode ter batido mas o 2FA ainda pode ser
+    // exigido e nunca completado, e os únicos dados disponíveis nesse ponto
+    // seriam os que o cliente mandar (não confiável para um registro de
+    // auditoria). AuthService.login() deriva tudo no servidor (IP real via
+    // x-forwarded-for, User-Agent real) e só roda quando o login realmente
+    // se completa.
 
     return user;
   }
@@ -1186,7 +1172,7 @@ export class UserService {
     userId: number,
     page = 1,
     limit = 10,
-    currentIp?: string,
+    currentSessionToken?: string,
   ): Promise<{
     data: any[];
     total: number;
@@ -1207,10 +1193,11 @@ export class UserService {
       }),
     ]);
 
-    // Adiciona isCurrent baseado no IP atual, se fornecido
+    // Adiciona isCurrent baseado no sessionToken atual — nunca o IP, que
+    // pode ser compartilhado por várias sessões/dispositivos diferentes.
     const data = sessions.map((session) => ({
       ...session,
-      isCurrent: currentIp ? session.ip === currentIp : false,
+      isCurrent: currentSessionToken ? session.sessionToken === currentSessionToken : false,
     }));
 
     return {
@@ -1222,7 +1209,15 @@ export class UserService {
     };
   }
 
-  async terminateSession(userId: number, sessionId: number, currentIp: string): Promise<void> {
+  async findActiveSessionByToken(sessionToken: string) {
+    return this.prisma.activeSession.findUnique({ where: { sessionToken } });
+  }
+
+  async terminateSession(
+    userId: number,
+    sessionId: number,
+    currentSessionToken: string,
+  ): Promise<boolean> {
     // Buscar a sessão
     const session = await (this.prisma as any).activeSession?.findFirst({
       where: { id: sessionId, userId },
@@ -1232,49 +1227,20 @@ export class UserService {
       throw new NotFoundException('Session not found');
     }
 
-    // Verificar se não é a sessão atual
-    if (session.ip === currentIp) {
+    // Verificar se não é a sessão atual (por sessionToken, não IP)
+    if (session.sessionToken === currentSessionToken) {
       throw new BadRequestException('Cannot terminate current session');
     }
 
-    // Remover a sessão
+    // Remover a sessão — como o guard de autenticação verifica se a
+    // ActiveSession ainda existe a cada requisição, isso revoga o acesso de
+    // verdade, não é só uma remoção decorativa da lista.
     await (this.prisma as any).activeSession?.delete({
       where: { id: sessionId },
     });
 
     this.logger.log(`Session ${sessionId} terminated for user ${userId}`);
-  }
-
-  async getAllSessions(userId: number) {
-    const [history, active] = await this.prisma.$transaction([
-      (this.prisma as any).loginHistory?.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-      }),
-      (this.prisma as any).activeSession?.findMany({
-        where: { userId },
-      }),
-    ]);
-
-    const activeSet = new Set(
-      active.map(
-        (a) =>
-          `${a.deviceType}|${a.browser}|${a.os}|${a.ip}|${a.location}|${a.createdAt.toISOString()}`,
-      ),
-    );
-
-    const activeHistory = [] as typeof history;
-    const inactiveHistory = [] as typeof history;
-
-    for (const session of history) {
-      const key = `${session.deviceType}|${session.browser}|${session.os}|${session.ip}|${
-        session.location
-      }|${session.createdAt.toISOString()}`;
-      if (activeSet.has(key)) activeHistory.push(session);
-      else inactiveHistory.push(session);
-    }
-
-    return { active: activeHistory, inactive: inactiveHistory };
+    return true;
   }
 
   async updateUserSystemConfig(

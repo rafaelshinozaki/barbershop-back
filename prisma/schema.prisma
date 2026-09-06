@@ -240,15 +240,16 @@ model LoginHistory {
 }
 
 model ActiveSession {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  deviceType String
-  browser    String
-  os         String
-  ip         String
-  location   String
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  sessionToken String   @unique
+  deviceType   String
+  browser      String
+  os           String
+  ip           String
+  location     String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
 }
 
 model UserNotification {

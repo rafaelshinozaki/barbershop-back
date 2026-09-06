@@ -22,7 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate({ userId }: TokenPayload, req: Request) {
+  async validate({ userId, sessionToken }: TokenPayload, req: Request) {
     // Verificar se o token foi invalidado
     const token = req.cookies?.Authentication;
     if (token) {
@@ -49,6 +49,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
     }
 
-    return user;
+    // A sessão precisa ter uma ActiveSession correspondente — é isso que faz
+    // "Terminar sessão"/"Sair de outras sessões" realmente revogar o acesso,
+    // e não só remover uma linha decorativa da lista.
+    if (sessionToken) {
+      const activeSession = await this.userService.findActiveSessionByToken(sessionToken);
+      if (!activeSession) {
+        throw new UnauthorizedException('Session has been terminated');
+      }
+    }
+
+    return { ...user, sessionToken };
   }
 }

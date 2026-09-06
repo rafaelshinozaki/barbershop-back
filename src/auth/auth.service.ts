@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
 import * as https from 'https';
+import { randomUUID } from 'crypto';
 import { TokenPayload } from './interfaces/token-payload.interface';
 import { UserDTO } from './users/dto/user.dto';
 import { IpLocationService } from '@/common/ip-location.service';
@@ -36,7 +37,8 @@ export class AuthService {
   }
 
   async login(user: UserDTO, req: Request, res: Response) {
-    const token = this.jwtService.sign({ userId: user.id, email: user.email });
+    const sessionToken = randomUUID();
+    const token = this.jwtService.sign({ userId: user.id, email: user.email, sessionToken });
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
 
@@ -53,7 +55,7 @@ export class AuthService {
     });
 
     await (this.prisma as any).activeSession?.create({
-      data: { userId: user.id, deviceType, browser, os, ip, location },
+      data: { userId: user.id, sessionToken, deviceType, browser, os, ip, location },
     });
 
     if (!existing) {
@@ -101,12 +103,12 @@ export class AuthService {
   }
 
   async logout(user: UserDTO, req: Request, res: Response) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
+    // Encerra só a sessão do token atual — IP não identifica uma sessão
+    // específica (várias podem compartilhar IP atrás de NAT/rede local).
     await (this.prisma as any).activeSession?.deleteMany({
-      where: { userId: user.id, ip },
+      where: { userId: user.id, sessionToken: user.sessionToken },
     });
-    
+
     // Limpar cookie com as mesmas configurações usadas na criação
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
     res.clearCookie('Authentication', {
@@ -118,28 +120,23 @@ export class AuthService {
   }
 
   async logoutOtherSessions(user: UserDTO, req: Request) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
-
-    // Buscar todas as sessões ativas do usuário exceto a atual
+    // Buscar todas as sessões ativas do usuário exceto a atual (por
+    // sessionToken, não por IP — várias sessões podem compartilhar IP)
     const otherSessions = await (this.prisma as any).activeSession?.findMany({
       where: {
         userId: user.id,
-        NOT: { ip },
+        NOT: { sessionToken: user.sessionToken },
       },
     });
 
     // Invalidar tokens de outras sessões
     if (otherSessions.length > 0) {
-      // Gerar um timestamp único para invalidar tokens
-      const invalidationTimestamp = new Date().toISOString();
-
-      // Armazenar o timestamp de invalidação para o usuário
-      // Vamos usar o campo updatedAt como indicador de invalidação
+      // Armazenar um indicador de invalidação para o usuário — usamos o
+      // campo updatedAt; ver JwtStrategy.validate() para onde isso é checado
       await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          updatedAt: new Date(), // Isso vai servir como indicador de invalidação
+          updatedAt: new Date(),
         },
       });
 
@@ -147,12 +144,12 @@ export class AuthService {
       await (this.prisma as any).activeSession?.deleteMany({
         where: {
           userId: user.id,
-          NOT: { ip },
+          NOT: { sessionToken: user.sessionToken },
         },
       });
 
       // Log da ação
-      console.log(`Invalidated ${otherSessions.length} sessions for user ${user.id} from IP ${ip}`);
+      console.log(`Invalidated ${otherSessions.length} sessions for user ${user.id}`);
     }
   }
 

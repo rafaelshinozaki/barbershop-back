@@ -653,12 +653,7 @@ type LoginHistory {
 }
 
 input LoginInput {
-  browser: String
-  deviceType: String
   email: String!
-  ip: String
-  location: String
-  os: String
   password: String!
 }
 
@@ -1035,7 +1030,6 @@ type Query {
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   roleDistribution: RoleDistribution!
-  sessions: [ActiveSession!]!
   statusDistribution: StatusDistribution!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!

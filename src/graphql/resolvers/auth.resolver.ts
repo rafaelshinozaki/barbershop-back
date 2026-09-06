@@ -90,15 +90,7 @@ export class AuthResolver {
     const { req, res } = context;
     this.logger.log('Login attempt for email', loginInput.email);
 
-    const dbUser = await this.userService.verifyUser(
-      loginInput.email,
-      loginInput.password,
-      loginInput.deviceType,
-      loginInput.browser,
-      loginInput.os,
-      loginInput.ip,
-      loginInput.location,
-    );
+    const dbUser = await this.userService.verifyUser(loginInput.email, loginInput.password);
 
     this.logger.log('User verified, twoFactorEnabled', dbUser.twoFactorEnabled);
 
