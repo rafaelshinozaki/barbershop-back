@@ -99,15 +99,20 @@ export class NotificationsResolver {
     @CurrentUser() user: UserDTO,
     @Args('title') title: string,
     @Args('message') message: string,
-    @Args('type', { defaultValue: 'info' }) type: string,
+    @Args('type', { type: () => NotificationType, defaultValue: NotificationType.INFO })
+    type: NotificationType,
     @Args('userId', { type: () => Int, nullable: true }) userId?: number,
+    @Args('actionUrl', { nullable: true }) actionUrl?: string,
+    @Args('actionText', { nullable: true }) actionText?: string,
   ) {
     this.logger.log(`createNotification called by user ${user.id} for user ${userId || user.id}`);
     const createDto: CreateNotificationDto = {
       title,
       message,
-      type: type as NotificationType,
+      type,
       userId: userId || user.id,
+      actionUrl,
+      actionText,
     };
     const result = await this.notificationsService.createNotification(createDto);
     this.logger.log(`createNotification completed, created notification ${result.id}`);
@@ -121,8 +126,11 @@ export class NotificationsResolver {
     @CurrentUser() user: UserDTO,
     @Args('title') title: string,
     @Args('message') message: string,
-    @Args('type', { defaultValue: 'info' }) type: string,
+    @Args('type', { type: () => NotificationType, defaultValue: NotificationType.INFO })
+    type: NotificationType,
     @Args('userIds', { type: () => [Int] }) userIds: number[],
+    @Args('actionUrl', { nullable: true }) actionUrl?: string,
+    @Args('actionText', { nullable: true }) actionText?: string,
   ) {
     this.logger.log(
       `createBatchNotifications called by user ${user.id} for ${userIds.length} users`,
@@ -130,7 +138,9 @@ export class NotificationsResolver {
     const createDto = {
       title,
       message,
-      type: type as NotificationType,
+      type,
+      actionUrl,
+      actionText,
     };
     const result = await this.notificationsService.createNotificationsForUsers(userIds, createDto);
     this.logger.log(`createBatchNotifications completed, created ${result.count} notifications`);

@@ -1,17 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { SmartLogger } from '../common/logger.util';
 
-export interface UpdateNotificationDto {
-  isRead?: boolean;
-  isNew?: boolean;
-}
-
 @Injectable()
 export class NotificationsService {
-  private readonly logger = new Logger(NotificationsService.name);
-  private readonly smartLogger = new SmartLogger('NotificationsService');
+  private readonly logger = new SmartLogger('NotificationsService');
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -145,7 +139,7 @@ export class NotificationsService {
   }
 
   async getNotificationCount(userId: number) {
-    this.smartLogger.log(`Getting notification count for user ${userId}`);
+    this.logger.log(`Getting notification count for user ${userId}`);
     try {
       const [unreadCount, newCount] = await Promise.all([
         this.prisma.userNotification.count({
@@ -162,10 +156,10 @@ export class NotificationsService {
         }),
       ]);
 
-      this.smartLogger.log(`User ${userId}: unread=${unreadCount}, new=${newCount}`);
+      this.logger.log(`User ${userId}: unread=${unreadCount}, new=${newCount}`);
       return { unreadCount, newCount };
     } catch (error) {
-      this.smartLogger.error(`Error getting notification count`, error);
+      this.logger.error(`Error getting notification count: ${error.message}`);
       throw error;
     }
   }
@@ -211,24 +205,6 @@ export class NotificationsService {
     }
   }
 
-  // Método para criar notificação para todos os usuários ativos
-  async createNotificationForAllActiveUsers(data: Omit<CreateNotificationDto, 'userId'>) {
-    this.logger.log(`Creating notifications for all active users: ${data.title}`);
-    try {
-      // Buscar todos os usuários ativos
-      const activeUsers = await this.prisma.user.findMany({
-        where: { isActive: true },
-        select: { id: true },
-      });
-      const userIds = activeUsers.map((user) => user.id);
-      this.logger.log(`Found ${userIds.length} active users`);
-      return this.createNotificationsForUsers(userIds, data);
-    } catch (error) {
-      this.logger.error(`Error creating notifications for all users: ${error.message}`);
-      throw error;
-    }
-  }
-
   // Método para buscar todas as notificações com dados dos usuários (admin)
   async getAllNotificationsWithUser(limit = 100) {
     this.logger.log(`Getting all notifications with user data, limit: ${limit}`);
@@ -253,12 +229,15 @@ export class NotificationsService {
         take: limit,
       });
 
-      // Transformar o objeto role para string (nome) para compatibilizar com o GraphQL
+      // Transformar o objeto role para string (nome) para compatibilizar com o GraphQL;
+      // NotificationUser.role é nullable, então uma role ausente/corrompida fica null
+      // em vez de ser mascarada como um valor real (ver bug equivalente já corrigido
+      // em BackofficeService.getRoleDistribution)
       const transformedResult = result.map((notification) => ({
         ...notification,
         user: {
           ...notification.user,
-          role: notification.user.role?.name || 'BarbershopOwner',
+          role: notification.user.role?.name || null,
         },
       }));
 

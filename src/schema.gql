@@ -685,10 +685,10 @@ type Mutation {
   createBarbershop(input: CreateBarbershopInput!): Barbershop!
   createBarbershopProduct(barbershopId: Int!, input: CreateBarbershopProductInput!): BarbershopProductType!
   createBarbershopService(barbershopId: Int!, input: CreateBarbershopServiceInput!): BarbershopServiceType!
-  createBatchNotifications(message: String!, title: String!, type: String! = "info", userIds: [Int!]!): CommonResponse!
+  createBatchNotifications(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userIds: [Int!]!): CommonResponse!
   createCoupon(data: CreateCouponInput!): Coupon!
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
-  createNotification(message: String!, title: String!, type: String! = "info", userId: Int): UserNotification!
+  createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
