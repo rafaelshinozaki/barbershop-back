@@ -782,3 +782,16 @@ export class SignConsentFormInput {
   @Field()
   signatureName: string;
 }
+
+// ============ Commission ============
+@InputType()
+export class SetCommissionRuleInput {
+  @Field(() => Int, { nullable: true })
+  barberId?: number;
+
+  @Field({ nullable: true, defaultValue: 'ALL' })
+  itemType?: string;
+
+  @Field(() => Float)
+  percentage: number;
+}

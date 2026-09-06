@@ -946,6 +946,60 @@ export class ConsentFormType {
   createdAt: string;
 }
 
+@ObjectType()
+export class CommissionRuleType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int, { nullable: true })
+  barberId?: number;
+
+  @Field({ nullable: true })
+  barberName?: string;
+
+  @Field()
+  itemType: string;
+
+  @Field(() => Float)
+  percentage: number;
+}
+
+@ObjectType()
+export class CommissionReportRow {
+  @Field(() => Int)
+  barberId: number;
+
+  @Field()
+  barberName: string;
+
+  @Field(() => Float)
+  totalServiceSales: number;
+
+  @Field(() => Float)
+  totalProductSales: number;
+
+  @Field(() => Float)
+  serviceCommission: number;
+
+  @Field(() => Float)
+  productCommission: number;
+
+  @Field(() => Float)
+  totalCommission: number;
+}
+
+@ObjectType()
+export class CommissionReportType {
+  @Field(() => [CommissionReportRow])
+  rows: CommissionReportRow[];
+
+  @Field(() => Float)
+  totalCommission: number;
+}
+
 // Type aliases for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
 export const BarberSchedule = BarberScheduleType;

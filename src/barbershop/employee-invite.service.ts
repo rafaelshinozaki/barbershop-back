@@ -63,6 +63,7 @@ export class EmployeeInviteService {
    */
   async createInvite(userId: number, input: CreateEmployeeInviteInput) {
     await this.barbershopService.verifyBarbershopAccess(userId, input.barbershopId);
+    await this.barbershopService.ensureBarberLimitNotExceeded(input.barbershopId);
 
     const email = input.email.toLowerCase().trim();
     if (!email) {

@@ -11,6 +11,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import {
   planIncludesModule,
   getModulesForPlanName,
+  getPlanLimits,
   BarbershopModule,
 } from './barbershop-plan.constants';
 import { PLANO_STATUS } from '../common/contants';
@@ -72,15 +73,54 @@ export class BarbershopService {
     module: BarbershopModule,
   ): Promise<boolean> {
     const plan = await this.getBarbershopPlan(barbershopId);
-    if (!plan) return false;
-    return planIncludesModule(plan.name, module);
+    // Sem assinatura ativa = tratado como plano Basic, não como zero acesso —
+    // precisa ficar consistente com getAvailableModules().
+    return planIncludesModule(plan?.name ?? '', module);
+  }
+
+  /** Lança ForbiddenException se o plano da barbearia não incluir o módulo. */
+  private async ensureModuleAccess(barbershopId: number, module: BarbershopModule) {
+    const allowed = await this.canAccessModule(barbershopId, module);
+    if (!allowed) {
+      throw new ForbiddenException(
+        `Este recurso não está disponível no seu plano atual. Faça upgrade para acessá-lo.`,
+      );
+    }
   }
 
   /** Retorna os módulos disponíveis para a barbearia conforme o plano do dono. */
   async getAvailableModules(barbershopId: number): Promise<string[]> {
     const plan = await this.getBarbershopPlan(barbershopId);
-    if (!plan) return getModulesForPlanName(''); // básico quando sem assinatura
-    return getModulesForPlanName(plan.name);
+    return getModulesForPlanName(plan?.name ?? '');
+  }
+
+  /** Retorna os limites numéricos (unidades, profissionais) do plano do dono. */
+  async getPlanLimitsForBarbershop(barbershopId: number) {
+    const plan = await this.getBarbershopPlan(barbershopId);
+    return getPlanLimits(plan?.name ?? '');
+  }
+
+  /** Retorna os limites numéricos do plano de um usuário dono de rede (para criar unidade nova). */
+  private async getPlanLimitsForOwner(ownerUserId: number) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: { userId: ownerUserId, status: PLANO_STATUS.ACTIVE },
+      orderBy: { startSubDate: 'desc' },
+      include: { plan: true },
+    });
+    return getPlanLimits(subscription?.plan?.name ?? '');
+  }
+
+  /** Lança BadRequestException se a unidade já estiver no limite de profissionais do plano. */
+  async ensureBarberLimitNotExceeded(barbershopId: number) {
+    const limits = await this.getPlanLimitsForBarbershop(barbershopId);
+    const currentCount = await this.prisma.barber.count({
+      where: { barbershopId, isActive: true },
+    });
+    if (currentCount >= limits.maxBarbersPerShop) {
+      throw new BadRequestException(
+        `Seu plano permite no máximo ${limits.maxBarbersPerShop} profissional(is) por unidade. Faça upgrade para adicionar mais.`,
+      );
+    }
   }
 
   private async ensureBarbershopAccess(userId: number, barbershopId: number) {
@@ -338,6 +378,13 @@ export class BarbershopService {
       throw new BadRequestException('Já existe uma barbearia com este slug');
     }
     const network = await this.findOrCreateNetwork(userId);
+    const limits = await this.getPlanLimitsForOwner(userId);
+    const currentCount = await this.prisma.barbershop.count({ where: { networkId: network.id } });
+    if (currentCount >= limits.maxBarbershops) {
+      throw new BadRequestException(
+        `Seu plano permite no máximo ${limits.maxBarbershops} unidade(s). Faça upgrade para cadastrar mais.`,
+      );
+    }
     const barbershop = await this.prisma.barbershop.create({
       data: {
         ...data,
@@ -535,6 +582,7 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarberLimitNotExceeded(barbershopId);
 
     const phone = data.phone.trim();
     const existingByPhone = await this.prisma.barber.findFirst({
@@ -813,6 +861,7 @@ export class BarbershopService {
 
   async getInventory(userId: number, barbershopId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'inventory');
     return this.prisma.inventoryItem.findMany({
       where: { barbershopId },
       include: { product: { include: { category: true } } },
@@ -832,6 +881,7 @@ export class BarbershopService {
     data: { productId: number; quantityChange: number; movementType?: string; notes?: string },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'inventory');
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: data.productId, barbershopId },
     });
@@ -885,6 +935,7 @@ export class BarbershopService {
     data: { minQuantity?: number; location?: string },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'inventory');
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: productId, barbershopId },
     });
@@ -911,6 +962,7 @@ export class BarbershopService {
 
   async getInventoryMovements(userId: number, barbershopId: number, productId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'inventory');
     const item = await this.prisma.inventoryItem.findUnique({
       where: { barbershopId_productId: { barbershopId, productId } },
     });
@@ -1889,6 +1941,7 @@ export class BarbershopService {
     data: { serviceId: number; name: string; totalSessions: number; price: number },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'packages');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
     });
@@ -1948,6 +2001,7 @@ export class BarbershopService {
     data: { customerId: number; servicePackageId: number },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'packages');
     const pkg = await this.prisma.servicePackage.findFirst({
       where: { id: data.servicePackageId, barbershopId, isActive: true },
     });
@@ -2004,6 +2058,7 @@ export class BarbershopService {
     data: { customerId: number; formType: string; category?: string; answers?: string; expiresAt?: string },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'packages');
     return this.prisma.consentForm.create({
       data: {
         barbershopId,
@@ -2045,5 +2100,136 @@ export class BarbershopService {
     if (!form) throw new NotFoundException('Ficha não encontrada');
     await this.prisma.consentForm.delete({ where: { id } });
     return true;
+  }
+
+  // ============ COMISSÃO ============
+
+  async getCommissionRules(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const rules = await this.prisma.commissionRule.findMany({
+      where: { barbershopId },
+      include: { barber: true },
+      orderBy: [{ barberId: 'asc' }, { itemType: 'asc' }],
+    });
+    return rules.map((r) => ({ ...r, barberName: r.barber?.name ?? null }));
+  }
+
+  async setCommissionRule(
+    userId: number,
+    barbershopId: number,
+    data: { barberId?: number; itemType?: string; percentage: number },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const itemType = data.itemType ?? 'ALL';
+    if (data.barberId) {
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: data.barberId, barbershopId },
+      });
+      if (!barber) throw new NotFoundException('Profissional não encontrado');
+    }
+    // Upsert manual: a chave única usa barberId nullable, que o Prisma não aceita
+    // direto em upsert.where com null — resolvemos com findFirst + create/update.
+    const existing = await this.prisma.commissionRule.findFirst({
+      where: { barbershopId, barberId: data.barberId ?? null, itemType },
+    });
+    const rule = existing
+      ? await this.prisma.commissionRule.update({
+          where: { id: existing.id },
+          data: { percentage: new Decimal(data.percentage) },
+          include: { barber: true },
+        })
+      : await this.prisma.commissionRule.create({
+          data: {
+            barbershopId,
+            barberId: data.barberId,
+            itemType,
+            percentage: new Decimal(data.percentage),
+          },
+          include: { barber: true },
+        });
+    return { ...rule, barberName: rule.barber?.name ?? null };
+  }
+
+  async deleteCommissionRule(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const rule = await this.prisma.commissionRule.findFirst({ where: { id, barbershopId } });
+    if (!rule) throw new NotFoundException('Regra de comissão não encontrada');
+    await this.prisma.commissionRule.delete({ where: { id } });
+    return true;
+  }
+
+  async getCommissionReport(userId: number, barbershopId: number, from: Date, to: Date) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const [rules, sales, barbers] = await Promise.all([
+      this.prisma.commissionRule.findMany({ where: { barbershopId } }),
+      this.prisma.sale.findMany({
+        where: {
+          barbershopId,
+          paymentStatus: 'PAID',
+          barberId: { not: null },
+          createdAt: { gte: from, lte: to },
+        },
+        include: { items: true },
+      }),
+      this.prisma.barber.findMany({ where: { barbershopId } }),
+    ]);
+    const barberNameMap = new Map(barbers.map((b) => [b.id, b.name]));
+
+    const resolvePercentage = (barberId: number, itemType: string): number => {
+      const exact = rules.find((r) => r.barberId === barberId && r.itemType === itemType);
+      if (exact) return Number(exact.percentage);
+      const barberAll = rules.find((r) => r.barberId === barberId && r.itemType === 'ALL');
+      if (barberAll) return Number(barberAll.percentage);
+      const shopType = rules.find((r) => r.barberId == null && r.itemType === itemType);
+      if (shopType) return Number(shopType.percentage);
+      const shopAll = rules.find((r) => r.barberId == null && r.itemType === 'ALL');
+      if (shopAll) return Number(shopAll.percentage);
+      return 0;
+    };
+
+    const byBarber = new Map<
+      number,
+      { totalServiceSales: number; totalProductSales: number; serviceCommission: number; productCommission: number }
+    >();
+
+    for (const sale of sales) {
+      const barberId = sale.barberId as number;
+      if (!byBarber.has(barberId)) {
+        byBarber.set(barberId, {
+          totalServiceSales: 0,
+          totalProductSales: 0,
+          serviceCommission: 0,
+          productCommission: 0,
+        });
+      }
+      const acc = byBarber.get(barberId)!;
+      for (const item of sale.items) {
+        const total = Number(item.totalPrice);
+        const pct = resolvePercentage(barberId, item.itemType);
+        if (item.itemType === 'PRODUCT') {
+          acc.totalProductSales += total;
+          acc.productCommission += (total * pct) / 100;
+        } else {
+          acc.totalServiceSales += total;
+          acc.serviceCommission += (total * pct) / 100;
+        }
+      }
+    }
+
+    const rows = Array.from(byBarber.entries()).map(([barberId, acc]) => ({
+      barberId,
+      barberName: barberNameMap.get(barberId) ?? `#${barberId}`,
+      totalServiceSales: acc.totalServiceSales,
+      totalProductSales: acc.totalProductSales,
+      serviceCommission: acc.serviceCommission,
+      productCommission: acc.productCommission,
+      totalCommission: acc.serviceCommission + acc.productCommission,
+    }));
+    rows.sort((a, b) => b.totalCommission - a.totalCommission);
+
+    return {
+      rows,
+      totalCommission: rows.reduce((sum, r) => sum + r.totalCommission, 0),
+    };
   }
 }

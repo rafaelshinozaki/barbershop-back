@@ -392,6 +392,7 @@ model Barbershop {
   servicePackages ServicePackage[]
   clientPackages  ClientPackage[]
   consentForms    ConsentForm[]
+  commissionRules CommissionRule[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -462,6 +463,7 @@ model Barber {
   serviceHistory ServiceHistory[]
   sales          Sale[]
   walkIns        WalkIn[]
+  commissionRules CommissionRule[]
 
   @@index([barbershopId])
   @@index([userId])
@@ -578,6 +580,7 @@ model Appointment {
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
+  reminderSentAt DateTime?
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -592,6 +595,7 @@ model Appointment {
   @@index([barbershopId, customerId, startAt])
   @@index([barbershopId, resourceId, startAt])
   @@index([status])
+  @@index([status, reminderSentAt, startAt])
 }
 
 model AppointmentService {
@@ -864,4 +868,21 @@ model ConsentForm {
   @@index([barbershopId])
   @@index([customerId])
   @@index([barbershopId, customerId, formType])
+}
+
+// ============ COMISSÃO ============
+
+model CommissionRule {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  barbershopId Int
+  barberId     Int?     // null = regra padrão da unidade, aplicada a quem não tem regra própria
+  itemType     String   @default("ALL") // SERVICE, PRODUCT, ALL
+  percentage   Decimal
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  barber       Barber?    @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@unique([barbershopId, barberId, itemType])
+  @@index([barbershopId])
 }

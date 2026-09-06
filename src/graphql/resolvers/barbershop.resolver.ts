@@ -25,6 +25,8 @@ import {
   ServicePackageType,
   ClientPackageType,
   ConsentFormType,
+  CommissionRuleType,
+  CommissionReportType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -62,6 +64,7 @@ import {
   PurchaseClientPackageInput,
   CreateConsentFormInput,
   SignConsentFormInput,
+  SetCommissionRuleInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -1030,5 +1033,47 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.deleteConsentForm(user.id, barbershopId, id);
+  }
+
+  // ============ COMISSÃO ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [CommissionRuleType])
+  async commissionRules(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCommissionRules(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => CommissionRuleType)
+  async setCommissionRule(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: SetCommissionRuleInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.setCommissionRule(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteCommissionRule(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteCommissionRule(user.id, barbershopId, id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CommissionReportType)
+  async commissionReport(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('from') from: string,
+    @Args('to') to: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCommissionReport(user.id, barbershopId, new Date(from), new Date(to));
   }
 }

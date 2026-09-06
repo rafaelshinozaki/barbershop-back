@@ -320,6 +320,30 @@ input CloseCashSessionInput {
   notes: String
 }
 
+type CommissionReportRow {
+  barberId: Int!
+  barberName: String!
+  productCommission: Float!
+  serviceCommission: Float!
+  totalCommission: Float!
+  totalProductSales: Float!
+  totalServiceSales: Float!
+}
+
+type CommissionReportType {
+  rows: [CommissionReportRow!]!
+  totalCommission: Float!
+}
+
+type CommissionRuleType {
+  barberId: Int
+  barberName: String
+  barbershopId: Int!
+  id: Int!
+  itemType: String!
+  percentage: Float!
+}
+
 type CommonResponse {
   count: Int!
 }
@@ -858,6 +882,7 @@ type Mutation {
   deleteBarbershop(id: Int!): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
+  deleteCommissionRule(barbershopId: Int!, id: Int!): Boolean!
   deleteConsentForm(barbershopId: Int!, id: Int!): Boolean!
   deleteCoupon(id: Float!): DeleteCouponResponse!
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
@@ -897,6 +922,7 @@ type Mutation {
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
+  setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -1181,6 +1207,8 @@ type Query {
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
+  commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
+  commissionRules(barbershopId: Int!): [CommissionRuleType!]!
   companyAnalysis: CompanyAnalysis!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
   couponStats(id: Float!): CouponStats!
@@ -1329,6 +1357,12 @@ type ServicePackageType {
   serviceName: String
   totalSessions: Int!
   updatedAt: String!
+}
+
+input SetCommissionRuleInput {
+  barberId: Int
+  itemType: String = "ALL"
+  percentage: Float!
 }
 
 type SetupIntent {

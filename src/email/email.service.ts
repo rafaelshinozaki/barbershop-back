@@ -26,15 +26,44 @@ export class EmailService {
     meta: string, // string genérica só para log
     to: string, // ex: 'rafaelsinosak@gmail.com'
   ) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: { userSystemConfig: { select: { language: true } } },
+    });
+    const lang = user?.userSystemConfig?.language?.toLowerCase() || 'pt';
+    return this.renderAndSend(userId, template, context, subject, meta, to, lang);
+  }
+
+  /**
+   * Igual a sendTemplateEmail, mas para destinatários sem conta de usuário
+   * (ex.: cliente final recebendo lembrete de agendamento) — recebe o idioma
+   * diretamente em vez de buscar em UserSystemConfig, e loga contra o
+   * userId informado (normalmente o dono da barbearia) só para auditoria.
+   */
+  async sendCustomerEmail(
+    loggedAgainstUserId: number,
+    template: string,
+    context: Record<string, any>,
+    subject: string,
+    meta: string,
+    to: string,
+    lang: string = 'pt',
+  ) {
+    return this.renderAndSend(loggedAgainstUserId, template, context, subject, meta, to, lang);
+  }
+
+  private async renderAndSend(
+    userId: number,
+    template: string,
+    context: Record<string, any>,
+    subject: string,
+    meta: string,
+    to: string,
+    lang: string,
+  ) {
     this.logger.log(`Enviando email (${template}) para [${to}]`);
 
     try {
-      const user = await this.prisma.user.findFirst({
-        where: { id: userId },
-        select: { userSystemConfig: { select: { language: true } } },
-      });
-      const lang = user?.userSystemConfig?.language?.toLowerCase() || 'pt';
-
       let templatePath = path.join(__dirname, 'templates', lang, `${template}.hbs`);
       try {
         await fs.access(templatePath);

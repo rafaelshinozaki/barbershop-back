@@ -12,6 +12,8 @@ export type BarbershopModule =
   | 'cashFlow'
   | 'reports'
   | 'settings'
+  | 'inventory'
+  | 'packages' // pacotes de sessão + ficha de anamnese/consentimento
 
 /** Planos (por nome no BD). Basic/Standard = Basic e Standard do seed; Premium = Premium */
 const PLAN_TIERS = {
@@ -23,7 +25,7 @@ const PLAN_TIERS = {
 /** Módulos incluídos em cada tier */
 const MODULES_BY_TIER: Record<string, BarbershopModule[]> = {
   BASIC: ['clients', 'queue', 'cuts', 'barbers'],
-  MEDIUM: ['clients', 'queue', 'cuts', 'barbers', 'appointments', 'products'],
+  MEDIUM: ['clients', 'queue', 'cuts', 'barbers', 'appointments', 'products', 'inventory'],
   PREMIUM: [
     'clients',
     'queue',
@@ -34,7 +36,33 @@ const MODULES_BY_TIER: Record<string, BarbershopModule[]> = {
     'cashFlow',
     'reports',
     'settings',
+    'inventory',
+    'packages',
   ],
+}
+
+/** Limites numéricos por tier — ver seção "Rede & assinatura" da spec do produto */
+export interface PlanLimits {
+  maxBarbershops: number
+  maxBarbersPerShop: number
+}
+
+const LIMITS_BY_TIER: Record<string, PlanLimits> = {
+  BASIC: { maxBarbershops: 1, maxBarbersPerShop: 3 },
+  MEDIUM: { maxBarbershops: 3, maxBarbersPerShop: 10 },
+  PREMIUM: { maxBarbershops: Infinity, maxBarbersPerShop: Infinity },
+}
+
+function resolveTier(planName: string): 'BASIC' | 'MEDIUM' | 'PREMIUM' {
+  const name = planName?.trim() || ''
+  if (PLAN_TIERS.PREMIUM.some((p) => p.toLowerCase() === name.toLowerCase())) return 'PREMIUM'
+  if (PLAN_TIERS.MEDIUM.some((p) => p.toLowerCase() === name.toLowerCase())) return 'MEDIUM'
+  return 'BASIC'
+}
+
+/** Retorna os limites numéricos (nº de unidades, nº de profissionais por unidade) para um plano. */
+export function getPlanLimits(planName: string): PlanLimits {
+  return LIMITS_BY_TIER[resolveTier(planName)]
 }
 
 /** Planos considerados para barbearia (nome exato no Plan) */
@@ -45,17 +73,7 @@ export const BARBERSHOP_PLAN_NAMES = ['Basic', 'Standard', 'Medium', 'Premium'] 
  * Planos não reconhecidos retornam módulos básicos (clients, queue, cuts, barbers).
  */
 export function getModulesForPlanName(planName: string): BarbershopModule[] {
-  const name = planName?.trim() || ''
-  if (PLAN_TIERS.PREMIUM.some((p) => p.toLowerCase() === name.toLowerCase())) {
-    return MODULES_BY_TIER.PREMIUM
-  }
-  if (PLAN_TIERS.MEDIUM.some((p) => p.toLowerCase() === name.toLowerCase())) {
-    return MODULES_BY_TIER.MEDIUM
-  }
-  if (PLAN_TIERS.BASIC.some((p) => p.toLowerCase() === name.toLowerCase())) {
-    return MODULES_BY_TIER.BASIC
-  }
-  return MODULES_BY_TIER.BASIC
+  return MODULES_BY_TIER[resolveTier(planName)]
 }
 
 /**

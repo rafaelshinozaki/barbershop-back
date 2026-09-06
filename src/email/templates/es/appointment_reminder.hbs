@@ -1,0 +1,49 @@
+{{!-- src/email/templates/es/appointment_reminder.hbs --}}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recordatorio de cita — {{BarbershopName}}</title>
+  <style>
+    body, p, h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
+    .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .header { background-color: #000; color: #ffffff; padding: 20px; text-align: center; }
+    .header h1 { font-size: 22px; font-weight: normal; }
+    .content { padding: 30px 20px; }
+    .content h2 { font-size: 20px; margin-bottom: 20px; color: #000; }
+    .content p { font-size: 16px; margin-bottom: 16px; }
+    .details { background-color: #f4f4f4; border-radius: 6px; padding: 16px 20px; margin: 20px 0; }
+    .details p { margin-bottom: 8px; font-size: 15px; }
+    .details strong { color: #000; }
+    .footer { background-color: #f4f4f4; color: #777777; text-align: center; padding: 20px; font-size: 14px; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; border-radius: 0; }
+      .content { padding: 20px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{BarbershopName}}</h1>
+    </div>
+    <div class="content">
+      <h2>¡Hola, {{CustomerName}}!</h2>
+      <p>Te recordamos tu próxima cita:</p>
+      <div class="details">
+        <p><strong>Servicio:</strong> {{ServiceNames}}</p>
+        <p><strong>Fecha:</strong> {{AppointmentDate}}</p>
+        <p><strong>Hora:</strong> {{AppointmentTime}}</p>
+        <p><strong>Ubicación:</strong> {{BarbershopAddress}}</p>
+      </div>
+      <p>¿Necesitas reprogramar o cancelar? Llámanos al {{BarbershopPhone}}.</p>
+      <p>¡Nos vemos pronto!</p>
+    </div>
+    <div class="footer">
+      <p>&copy; {{Year}} {{BarbershopName}}.</p>
+    </div>
+  </div>
+</body>
+</html>
