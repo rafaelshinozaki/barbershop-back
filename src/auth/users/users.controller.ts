@@ -16,11 +16,8 @@ import {
   Req,
 } from '@nestjs/common';
 import { UserService } from './users.service';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { VerifyCodeDto } from './dto/verify-code.dto';
 import { UserDTO } from './dto/user.dto';
 import { UserSystemConfigDTO } from './dto/userSystemConfig.dto';
-import { CheckPasswordDto } from './dto/check-password.dto';
 import { ApiTags, ApiCookieAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
 import { PublicRoute, MEMBERSHIP_STATUS } from '@/common';
@@ -31,12 +28,8 @@ import { CurrentUser } from '../current-user.decorator';
 import { Roles } from '../roles.decorator';
 import { Role } from '../interfaces/roles';
 import { RolesGuard } from '../guards/roles.guard';
-import { TwoFactorDto } from './dto/two-factor.dto';
 import { Request } from 'express';
-import {
-  ThrottleEmail,
-  ThrottleAuth,
-} from '@/common/decorators/throttle.decorator';
+import { ThrottleAuth } from '@/common/decorators/throttle.decorator';
 
 @ApiTags('user')
 @ApiCookieAuth()
@@ -255,72 +248,15 @@ export class UserController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Check password' })
-  @ApiResponse({ status: 200, description: 'Password checked' })
-  @Post('check-password')
-  checkPassword(@Body() dto: CheckPasswordDto) {
-    return this.userService.isPasswordValid(dto.email, dto.password);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ThrottleEmail()
-  @ApiOperation({ summary: 'Request password change' })
-  @ApiResponse({ status: 200, description: 'Password change code sent' })
-  @Post('change-password-request')
-  changePasswordRequest(@CurrentUser() user: UserDTO) {
-    return this.userService.sendChangePasswordCode(user.email);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ThrottleAuth()
-  @ApiOperation({ summary: 'Verify change password code' })
-  @ApiResponse({ status: 200, description: 'Change password code verified' })
-  @Post('verify-change-password')
-  verifyChangePassword(@CurrentUser() user: UserDTO, @Body() verifyCodeDto: VerifyCodeDto) {
-    return this.userService.verifyChangePasswordCode(user.id, verifyCodeDto.code, true);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ThrottleAuth()
-  @ApiOperation({ summary: 'Change password' })
-  @ApiResponse({ status: 200, description: 'Password changed' })
-  @Post('change-password')
-  changePassword(@CurrentUser() user: UserDTO, @Body() changePasswordDto: ChangePasswordDto) {
-    return this.userService.changePassword(
-      user.id,
-      user.email,
-      changePasswordDto.oldPassword,
-      changePasswordDto.newPassword,
-      changePasswordDto.code,
-    );
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Set two factor authentication' })
-  @ApiResponse({ status: 200, description: 'Two factor authentication set' })
-  @Post('two-factor')
-  setTwoFactor(@CurrentUser() user: UserDTO, @Body() twoFactorDto: TwoFactorDto) {
-    return this.userService.setTwoFactor(user.id, twoFactorDto.enabled);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ThrottleEmail()
-  @ApiOperation({ summary: 'Request two factor code' })
-  @ApiResponse({ status: 200, description: 'Two factor code sent' })
-  @Post('two-factor-request')
-  requestTwoFactor(@CurrentUser() user: UserDTO) {
-    return this.userService.sendTwoFactorCode(user);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ThrottleAuth()
-  @ApiOperation({ summary: 'Verify two factor code' })
-  @ApiResponse({ status: 200, description: 'Two factor code verified' })
-  @Post('two-factor-verify')
-  verifyTwoFactor(@CurrentUser() user: UserDTO, @Body() verifyCodeDto: VerifyCodeDto) {
-    return this.userService.verifyTwoFactorCode(user.email, verifyCodeDto.code);
-  }
+  // check-password, change-password-request, verify-change-password,
+  // change-password, two-factor, two-factor-request e two-factor-verify
+  // existiam aqui como réplicas REST das mutations GraphQL equivalentes
+  // (checkPassword, requestChangePasswordCode, verifyChangePasswordCode,
+  // changePassword/resetPasswordWithCode, setTwoFactor, requestTwoFactorCode).
+  // Confirmado via grep que o frontend não chama nenhuma delas (os helpers em
+  // services/nestjs/user/index.ts que apontavam pra cá também eram código
+  // morto, com URLs que nem batiam com as rotas reais aqui). Removidas —
+  // mesmo padrão de sobra de migração REST→GraphQL já visto no forgot-password.
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)

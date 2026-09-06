@@ -2,20 +2,6 @@
 import { IsString, IsEmail } from 'class-validator';
 import { InputType, Field } from '@nestjs/graphql';
 
-export class ChangePasswordDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  oldPassword: string;
-
-  @IsString()
-  newPassword: string;
-
-  @IsString()
-  code: string;
-}
-
 @InputType()
 export class ChangePasswordInput {
   @Field()

@@ -14,7 +14,6 @@ import {
   ForgotPasswordInput,
   ForgotPasswordCheckInput,
   ResetPasswordInput,
-  ChangePasswordInput,
   TwoFactorInput,
   RequestChangePasswordCodeInput,
   VerifyChangePasswordCodeInput,
@@ -253,39 +252,47 @@ export class AuthResolver {
     return true;
   }
 
+  // Havia uma segunda mutation `changePassword` aqui que enviava um código
+  // real por e-mail e, na sequência, tentava consumi-lo com o literal fixo
+  // '123456' em vez do código que o usuário digitou — nunca poderia
+  // funcionar de verdade. Como `changePassword` também é definida em
+  // UserResolver (essa sim recebendo o código real do cliente e sendo a
+  // única registrada no schema — mesmo conflito silencioso já visto em `me`,
+  // ver comentário abaixo), essa versão aqui nunca era servida. Removida.
+
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   @ThrottleEmail()
-  async changePassword(
-    @Args('input') changePasswordInput: ChangePasswordInput,
-    @CurrentUser() user: UserDTO,
-  ) {
-    const isValid = await this.userService.isPasswordValid(
-      user.email,
-      changePasswordInput.currentPassword,
-    );
-    if (!isValid) {
-      throw new Error('Current password is incorrect');
-    }
-
-    await this.userService.sendChangePasswordCode(user.email);
-
-    const verificationCode = '123456';
-
-    await this.userService.changePassword(
-      user.id,
-      user.email,
-      changePasswordInput.currentPassword,
-      changePasswordInput.newPassword,
-      verificationCode,
-    );
+  async requestTwoFactorCode(@CurrentUser() user: UserDTO) {
+    await this.userService.sendTwoFactorCode(user);
     return true;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
+  @ThrottleAuth()
   async setTwoFactor(@Args('input') twoFactorInput: TwoFactorInput, @CurrentUser() user: UserDTO) {
-    await this.userService.setTwoFactor(user.id, twoFactorInput.enabled);
+    if (twoFactorInput.enabled) {
+      // Ativar exige prova de posse do e-mail: código enviado por requestTwoFactorCode.
+      if (!twoFactorInput.code) {
+        throw new Error('Verification code is required to enable two-factor authentication');
+      }
+      await this.userService.verifyTwoFactorCode(user.email, twoFactorInput.code);
+      return true;
+    }
+
+    // Desativar remove uma camada de segurança da conta — exige reautenticação com a senha atual.
+    if (!twoFactorInput.currentPassword) {
+      throw new Error('Current password is required to disable two-factor authentication');
+    }
+    const isValid = await this.userService.isPasswordValid(
+      user.email,
+      twoFactorInput.currentPassword,
+    );
+    if (!isValid) {
+      throw new Error('Current password is incorrect');
+    }
+    await this.userService.setTwoFactor(user.id, false);
     return true;
   }
 
@@ -330,6 +337,7 @@ export class AuthResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
+  @ThrottleAuth()
   async checkPassword(@Args('input') input: CheckPasswordInput, @CurrentUser() user: UserDTO) {
     const isValid = await this.userService.isPasswordValid(user.email, input.password);
     return isValid;

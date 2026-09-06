@@ -23,3 +23,4 @@ export const TWO_FACTOR_CODE_EXPIRY_MINUTES = 5;
 export const CHANGE_PASSWORD_MAX_ATTEMPTS = 6;
 export const LOGIN_MAX_ATTEMPTS = 5;
 export const LOGIN_BLOCK_MINUTES = 15;
+export const LOGIN_CODE_MAX_ATTEMPTS = 6;

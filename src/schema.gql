@@ -744,6 +744,7 @@ type Mutation {
   removeUserPhoto: Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
+  requestTwoFactorCode: Boolean!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
@@ -1173,6 +1174,8 @@ type SubscriptionResponse {
 }
 
 input TwoFactorInput {
+  code: String
+  currentPassword: String
   enabled: Boolean!
 }
 
@@ -1369,7 +1372,6 @@ input UpdateUserInput {
   professionalSegment: String
   state: String
   street: String
-  twoFactorEnabled: Boolean
   zipcode: String
 }
 

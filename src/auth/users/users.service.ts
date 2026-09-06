@@ -30,6 +30,7 @@ import {
   CHANGE_PASSWORD_MAX_ATTEMPTS,
   LOGIN_MAX_ATTEMPTS,
   LOGIN_BLOCK_MINUTES,
+  LOGIN_CODE_MAX_ATTEMPTS,
 } from '@/common';
 import { randomUUID } from 'crypto';
 
@@ -57,7 +58,7 @@ export class UserService {
   private _tempExpiry = new Map<string, number>();
   private _loginCodes = new Map<
     string,
-    { email: string; code: string; expiresAt: number; used: boolean }
+    { email: string; code: string; expiresAt: number; used: boolean; attempts: number }
   >();
   private _loginAttempts = new Map<string, { attempts: number; blockedUntil: number }>();
 
@@ -1373,16 +1374,21 @@ export class UserService {
       Year: new Date().getFullYear(),
     };
 
-    await this.emailService.sendTemplateEmail(
-      user.id,
-      'verification_code',
-      context,
-      'Código de verificação',
-      'change-password-code',
-      email,
-    );
+    try {
+      await this.emailService.sendTemplateEmail(
+        user.id,
+        'verification_code',
+        context,
+        'Código de verificação',
+        'change-password-code',
+        email,
+      );
+      console.log('UserService: Verification code email sent');
+    } catch (error) {
+      this.logger.error(`Failed to send email for change-password code: ${error.message}`);
+      console.log(`DEVELOPMENT: Change-password code for ${email} is: ${code}`);
+    }
 
-    console.log('UserService: Verification code email sent');
     return true;
   }
 
@@ -1549,14 +1555,19 @@ export class UserService {
       Year: new Date().getFullYear(),
     };
 
-    await this.emailService.sendTemplateEmail(
-      user.id,
-      'verification_code',
-      context,
-      'Código de verificação',
-      'enable-2fa',
-      user.email,
-    );
+    try {
+      await this.emailService.sendTemplateEmail(
+        user.id,
+        'verification_code',
+        context,
+        'Código de verificação',
+        'enable-2fa',
+        user.email,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send email for two-factor code: ${error.message}`);
+      console.log(`DEVELOPMENT: Two-factor enable code for ${user.email} is: ${code}`);
+    }
 
     this._temp.add(`${user.email}.enable2fa.${code}`);
 
@@ -1624,6 +1635,7 @@ export class UserService {
       code,
       expiresAt: Date.now() + TWO_FACTOR_CODE_EXPIRY_MINUTES * 60 * 1000,
       used: false,
+      attempts: 0,
     });
 
     this.logger.log(`Login code stored - loginId: ${loginId}, code: ${code}`);
@@ -1639,17 +1651,27 @@ export class UserService {
     const entry = this._loginCodes.get(loginId);
     this.logger.log(`Found entry: ${entry ? JSON.stringify(entry) : 'null'}`);
 
-    if (!entry || entry.code !== code || entry.used) {
+    if (!entry || entry.used) {
       this.logger.error(
-        `Invalid verification code - entry exists: ${!!entry}, code matches: ${
-          entry?.code === code
-        }, used: ${entry?.used}`,
+        `Invalid verification code - entry exists: ${!!entry}, used: ${entry?.used}`,
       );
       throw new UnauthorizedException('Invalid verification code');
     }
     if (entry.expiresAt < Date.now()) {
       this._loginCodes.delete(loginId);
       throw new UnauthorizedException('Invalid or expired verification code');
+    }
+    if (entry.code !== code) {
+      entry.attempts += 1;
+      this.logger.error(
+        `Invalid verification code - code mismatch, attempts: ${entry.attempts}`,
+      );
+      if (entry.attempts >= LOGIN_CODE_MAX_ATTEMPTS) {
+        this._loginCodes.delete(loginId);
+        throw new UnauthorizedException('Invalid or expired verification code');
+      }
+      this._loginCodes.set(loginId, entry);
+      throw new UnauthorizedException('Invalid verification code');
     }
     const { email } = entry;
     const user = await this.prisma.user.findFirst({

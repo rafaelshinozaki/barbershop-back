@@ -216,21 +216,22 @@ export class ForgotPasswordInput {
 }
 
 @InputType()
-export class ChangePasswordInput {
-  @Field()
-  @IsString()
-  currentPassword: string;
-
-  @Field()
-  @IsString()
-  newPassword: string;
-}
-
-@InputType()
 export class TwoFactorInput {
   @Field()
   @IsBoolean()
   enabled: boolean;
+
+  /** Obrigatório quando enabled=true — código enviado por sendTwoFactorCode */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  /** Obrigatório quando enabled=false — reautentica antes de remover o 2FA */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  currentPassword?: string;
 }
 
 @InputType()

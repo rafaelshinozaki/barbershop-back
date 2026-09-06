@@ -166,7 +166,9 @@ export class UserResolver {
     if (input.professionalSegment !== undefined)
       updateData.professionalSegment = input.professionalSegment;
     if (input.knowledgeApp !== undefined) updateData.knowledgeApp = input.knowledgeApp;
-    if (input.twoFactorEnabled !== undefined) updateData.twoFactorEnabled = input.twoFactorEnabled;
+    // twoFactorEnabled não é aceito aqui de propósito — precisa passar por
+    // setTwoFactor, que exige código de verificação (ativar) ou senha atual
+    // (desativar); ver AuthResolver.setTwoFactor.
 
     // Campos de endereço
     if (
