@@ -134,6 +134,7 @@ export class BarbershopService {
       name: string;
       logoUrl: string;
       logoKey: string;
+      currency: string;
       city: string;
       description: string;
       mission: string;
@@ -161,6 +162,7 @@ export class BarbershopService {
         totalServicesDone: 0,
         totalProductsSold: 0,
         revenueThisMonth: 0,
+        currency: 'BRL',
         monthlyRevenue: [],
         recentEvents: [],
       };
@@ -302,6 +304,7 @@ export class BarbershopService {
       totalServicesDone,
       totalProductsSold,
       revenueThisMonth,
+      currency: barbershops[0].currency,
       monthlyRevenue,
       recentEvents,
     };
@@ -324,6 +327,7 @@ export class BarbershopService {
       phone: string;
       email: string;
       timezone?: string;
+      currency?: string;
       businessHours?: string;
     },
   ) {
@@ -338,6 +342,7 @@ export class BarbershopService {
       data: {
         ...data,
         timezone: data.timezone ?? 'America/Sao_Paulo',
+        currency: data.currency ?? network.currency,
         networkId: network.id,
         ownerUserId: userId,
       },
@@ -408,6 +413,7 @@ export class BarbershopService {
       phone: string;
       email: string;
       timezone: string;
+      currency: string;
       businessHours: string;
       isActive: boolean;
     }>,

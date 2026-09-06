@@ -339,6 +339,7 @@ model Network {
   name           String?
   logoUrl        String?
   logoKey        String?      // S3 key for franchise logo (separate bucket path from user photos)
+  currency       String       @default("BRL") // ISO 4217 — moeda usada por padrão nas unidades desta rede
   city           String?
   description    String?
   mission        String?
@@ -368,6 +369,7 @@ model Barbershop {
   email          String
   photoKey       String?
   timezone       String    @default("America/Sao_Paulo")
+  currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
   isActive       Boolean   @default(true)
   networkId      Int

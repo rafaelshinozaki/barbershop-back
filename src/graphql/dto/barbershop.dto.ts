@@ -40,6 +40,9 @@ export class CreateBarbershopInput {
   timezone?: string;
 
   @Field({ nullable: true })
+  currency?: string;
+
+  @Field({ nullable: true })
   businessHours?: string;
 }
 
@@ -79,6 +82,9 @@ export class UpdateBarbershopInput {
   timezone?: string;
 
   @Field({ nullable: true })
+  currency?: string;
+
+  @Field({ nullable: true })
   businessHours?: string;
 
   @Field({ nullable: true })
@@ -93,6 +99,9 @@ export class UpdateNetworkInput {
 
   @Field({ nullable: true })
   logoUrl?: string;
+
+  @Field({ nullable: true })
+  currency?: string;
 
   @Field({ nullable: true })
   city?: string;

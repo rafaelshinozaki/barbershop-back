@@ -11,6 +11,9 @@ export class Network {
   @Field({ nullable: true })
   logoUrl?: string;
 
+  @Field()
+  currency: string;
+
   @Field({ nullable: true })
   city?: string;
 
@@ -92,6 +95,9 @@ export class NetworkDashboardStats {
   @Field(() => Float)
   revenueThisMonth: number;
 
+  @Field()
+  currency: string;
+
   @Field(() => [MonthlyRevenueItem])
   monthlyRevenue: MonthlyRevenueItem[];
 
@@ -136,6 +142,9 @@ export class Barbershop {
 
   @Field()
   timezone: string;
+
+  @Field()
+  currency: string;
 
   @Field({ nullable: true })
   businessHours?: string;
