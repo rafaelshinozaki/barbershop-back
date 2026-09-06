@@ -21,6 +21,10 @@ import {
   WalkIn,
   ServiceHistory,
   Sale,
+  ResourceType,
+  ServicePackageType,
+  ClientPackageType,
+  ConsentFormType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -51,6 +55,13 @@ import {
   CreateSaleItemInput,
   UpdateSaleInput,
   UpdateNetworkInput,
+  CreateResourceInput,
+  UpdateResourceInput,
+  CreateServicePackageInput,
+  UpdateServicePackageInput,
+  PurchaseClientPackageInput,
+  CreateConsentFormInput,
+  SignConsentFormInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -860,5 +871,164 @@ export class BarbershopResolver {
       to: endAt ? new Date(endAt) : undefined,
       customerId,
     });
+  }
+
+  // ============ RESOURCES ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ResourceType])
+  async resources(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getResources(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ResourceType)
+  async createResource(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateResourceInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createResource(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ResourceType)
+  async updateResource(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: UpdateResourceInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateResource(user.id, barbershopId, id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteResource(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteResource(user.id, barbershopId, id);
+  }
+
+  // ============ PACOTES DE SESSÃO ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ServicePackageType])
+  async servicePackages(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getServicePackages(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ServicePackageType)
+  async createServicePackage(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateServicePackageInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createServicePackage(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ServicePackageType)
+  async updateServicePackage(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: UpdateServicePackageInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateServicePackage(user.id, barbershopId, id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteServicePackage(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteServicePackage(user.id, barbershopId, id);
+  }
+
+  // ============ PACOTES DO CLIENTE ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ClientPackageType])
+  async clientPackages(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getClientPackages(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ClientPackageType)
+  async purchaseClientPackage(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: PurchaseClientPackageInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.purchaseClientPackage(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ClientPackageType)
+  async debitClientPackageSession(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.debitClientPackageSession(user.id, barbershopId, id);
+  }
+
+  // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ConsentFormType])
+  async consentForms(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getConsentForms(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ConsentFormType)
+  async createConsentForm(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateConsentFormInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createConsentForm(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ConsentFormType)
+  async signConsentForm(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: SignConsentFormInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.signConsentForm(user.id, barbershopId, id, input.signatureName);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteConsentForm(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteConsentForm(user.id, barbershopId, id);
   }
 }

@@ -530,6 +530,7 @@ export class BarbershopService {
       email?: string;
       avatarUrl?: string;
       specialization?: string;
+      specialties?: string[];
       hireDate?: Date;
     },
   ) {
@@ -573,7 +574,7 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     barberId: number,
-    data: Partial<{ name: string; phone: string; email: string; avatarUrl: string; specialization: string; isActive: boolean }>,
+    data: Partial<{ name: string; phone: string; email: string; avatarUrl: string; specialization: string; specialties: string[]; isActive: boolean }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const barber = await this.prisma.barber.findFirst({
@@ -1056,12 +1057,35 @@ export class BarbershopService {
 
   // ============ APPOINTMENTS ============
 
+  private async ensureResourceAvailable(
+    barbershopId: number,
+    resourceId: number,
+    startAt: Date,
+    endAt: Date,
+    excludeAppointmentId?: number,
+  ) {
+    const conflict = await this.prisma.appointment.findFirst({
+      where: {
+        barbershopId,
+        resourceId,
+        id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+    });
+    if (conflict) {
+      throw new BadRequestException('Recurso já reservado nesse horário');
+    }
+  }
+
   async createAppointment(
     userId: number,
     barbershopId: number,
     data: {
       customerId: number;
       barberId: number;
+      resourceId?: number;
       startAt: Date;
       endAt: Date;
       status?: string;
@@ -1071,6 +1095,9 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    if (data.resourceId) {
+      await this.ensureResourceAvailable(barbershopId, data.resourceId, data.startAt, data.endAt);
+    }
     const { services, ...appointmentData } = data;
     return this.prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.create({
@@ -1178,6 +1205,7 @@ export class BarbershopService {
     data: Partial<{
       customerId: number;
       barberId: number;
+      resourceId: number;
       startAt: Date;
       endAt: Date;
       notes: string;
@@ -1189,6 +1217,16 @@ export class BarbershopService {
       where: { id: appointmentId, barbershopId },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    const resourceId = data.resourceId ?? appointment.resourceId ?? undefined;
+    if (resourceId) {
+      await this.ensureResourceAvailable(
+        barbershopId,
+        resourceId,
+        data.startAt ?? appointment.startAt,
+        data.endAt ?? appointment.endAt,
+        appointmentId,
+      );
+    }
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data,
@@ -1794,5 +1832,218 @@ export class BarbershopService {
         data: sortedDays.map((d) => byDay.get(d) ?? 0),
       },
     };
+  }
+
+  // ============ RESOURCES ============
+
+  async getResources(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.resource.findMany({
+      where: { barbershopId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createResource(userId: number, barbershopId: number, data: { name: string; type?: string }) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.resource.create({
+      data: { barbershopId, name: data.name, type: data.type ?? 'ROOM' },
+    });
+  }
+
+  async updateResource(
+    userId: number,
+    barbershopId: number,
+    resourceId: number,
+    data: Partial<{ name: string; type: string; isActive: boolean }>,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const resource = await this.prisma.resource.findFirst({ where: { id: resourceId, barbershopId } });
+    if (!resource) throw new NotFoundException('Recurso não encontrado');
+    return this.prisma.resource.update({ where: { id: resourceId }, data });
+  }
+
+  async deleteResource(userId: number, barbershopId: number, resourceId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const resource = await this.prisma.resource.findFirst({ where: { id: resourceId, barbershopId } });
+    if (!resource) throw new NotFoundException('Recurso não encontrado');
+    await this.prisma.resource.delete({ where: { id: resourceId } });
+    return true;
+  }
+
+  // ============ PACOTES DE SESSÃO ============
+
+  async getServicePackages(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const packages = await this.prisma.servicePackage.findMany({
+      where: { barbershopId },
+      include: { service: true },
+      orderBy: { name: 'asc' },
+    });
+    return packages.map((p) => ({ ...p, serviceName: p.service?.name ?? null }));
+  }
+
+  async createServicePackage(
+    userId: number,
+    barbershopId: number,
+    data: { serviceId: number; name: string; totalSessions: number; price: number },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const service = await this.prisma.barbershopService.findFirst({
+      where: { id: data.serviceId, barbershopId },
+    });
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+    const pkg = await this.prisma.servicePackage.create({
+      data: {
+        barbershopId,
+        serviceId: data.serviceId,
+        name: data.name,
+        totalSessions: data.totalSessions,
+        price: new Decimal(data.price),
+      },
+      include: { service: true },
+    });
+    return { ...pkg, serviceName: pkg.service?.name ?? null };
+  }
+
+  async updateServicePackage(
+    userId: number,
+    barbershopId: number,
+    id: number,
+    data: Partial<{ name: string; totalSessions: number; price: number; isActive: boolean }>,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
+    if (!pkg) throw new NotFoundException('Pacote não encontrado');
+    const { price, ...rest } = data;
+    const updated = await this.prisma.servicePackage.update({
+      where: { id },
+      data: { ...rest, price: price != null ? new Decimal(price) : undefined },
+      include: { service: true },
+    });
+    return { ...updated, serviceName: updated.service?.name ?? null };
+  }
+
+  async deleteServicePackage(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
+    if (!pkg) throw new NotFoundException('Pacote não encontrado');
+    await this.prisma.servicePackage.update({ where: { id }, data: { isActive: false } });
+    return true;
+  }
+
+  // ============ PACOTES DO CLIENTE ============
+
+  private toClientPackageResult(cp: any) {
+    return {
+      ...cp,
+      servicePackageName: cp.servicePackage?.name ?? null,
+      serviceName: cp.servicePackage?.service?.name ?? null,
+    };
+  }
+
+  async purchaseClientPackage(
+    userId: number,
+    barbershopId: number,
+    data: { customerId: number; servicePackageId: number },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const pkg = await this.prisma.servicePackage.findFirst({
+      where: { id: data.servicePackageId, barbershopId, isActive: true },
+    });
+    if (!pkg) throw new NotFoundException('Pacote não encontrado');
+    const clientPackage = await this.prisma.clientPackage.create({
+      data: {
+        barbershopId,
+        customerId: data.customerId,
+        servicePackageId: pkg.id,
+        totalSessions: pkg.totalSessions,
+      },
+      include: { servicePackage: { include: { service: true } } },
+    });
+    return this.toClientPackageResult(clientPackage);
+  }
+
+  async getClientPackages(userId: number, barbershopId: number, customerId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const packages = await this.prisma.clientPackage.findMany({
+      where: { barbershopId, customerId },
+      include: { servicePackage: { include: { service: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return packages.map((p) => this.toClientPackageResult(p));
+  }
+
+  async debitClientPackageSession(userId: number, barbershopId: number, clientPackageId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const clientPackage = await this.prisma.clientPackage.findFirst({
+      where: { id: clientPackageId, barbershopId },
+    });
+    if (!clientPackage) throw new NotFoundException('Pacote do cliente não encontrado');
+    if (clientPackage.status !== 'ACTIVE') {
+      throw new BadRequestException('Pacote não está ativo');
+    }
+    if (clientPackage.usedSessions >= clientPackage.totalSessions) {
+      throw new BadRequestException('Pacote não tem sessões restantes');
+    }
+    const usedSessions = clientPackage.usedSessions + 1;
+    const status = usedSessions >= clientPackage.totalSessions ? 'COMPLETED' : 'ACTIVE';
+    const updated = await this.prisma.clientPackage.update({
+      where: { id: clientPackageId },
+      data: { usedSessions, status },
+      include: { servicePackage: { include: { service: true } } },
+    });
+    return this.toClientPackageResult(updated);
+  }
+
+  // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
+
+  async createConsentForm(
+    userId: number,
+    barbershopId: number,
+    data: { customerId: number; formType: string; category?: string; answers?: string; expiresAt?: string },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.consentForm.create({
+      data: {
+        barbershopId,
+        customerId: data.customerId,
+        formType: data.formType,
+        category: data.category,
+        answers: data.answers,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+      },
+    });
+  }
+
+  async getConsentForms(userId: number, barbershopId: number, customerId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const forms = await this.prisma.consentForm.findMany({
+      where: { barbershopId, customerId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const now = new Date();
+    return forms.map((f) => ({
+      ...f,
+      status: f.status === 'SIGNED' && f.expiresAt && f.expiresAt < now ? 'EXPIRED' : f.status,
+    }));
+  }
+
+  async signConsentForm(userId: number, barbershopId: number, id: number, signatureName: string) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
+    if (!form) throw new NotFoundException('Ficha não encontrada');
+    return this.prisma.consentForm.update({
+      where: { id },
+      data: { signatureName, signedAt: new Date(), status: 'SIGNED' },
+    });
+  }
+
+  async deleteConsentForm(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
+    if (!form) throw new NotFoundException('Ficha não encontrada');
+    await this.prisma.consentForm.delete({ where: { id } });
+    return true;
   }
 }

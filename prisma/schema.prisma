@@ -388,11 +388,30 @@ model Barbershop {
   employeeInvites EmployeeInvite[]
   cashSessions   CashSession[]
   expenses       Expense[]
+  resources      Resource[]
+  servicePackages ServicePackage[]
+  clientPackages  ClientPackage[]
+  consentForms    ConsentForm[]
 
   @@index([networkId])
   @@index([ownerUserId])
   @@index([isActive])
   @@index([slug])
+}
+
+model Resource {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  barbershopId Int
+  name         String
+  type         String   @default("ROOM") // CHAIR, ROOM, STATION, BED
+  isActive     Boolean  @default(true)
+  barbershop   Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, isActive])
 }
 
 model Customer {
@@ -411,6 +430,8 @@ model Customer {
   serviceHistory ServiceHistory[]
   sales          Sale[]
   walkIns        WalkIn[]
+  packages       ClientPackage[]
+  consentForms   ConsentForm[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -429,6 +450,7 @@ model Barber {
   email          String?
   avatarUrl      String?
   specialization String?
+  specialties    String[]         @default([]) // categorias estruturadas: HAIR, BEARD, NAILS, SKIN, BROWS_LASHES, MASSAGE, MAKEUP, WELLNESS, WAXING
   isActive       Boolean          @default(true)
   hireDate       DateTime?
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -495,6 +517,7 @@ model BarbershopService {
   walkInServices   WalkInService[]
   serviceHistory   ServiceHistory[]
   saleItems        SaleItem[]
+  packages         ServicePackage[]
 
   @@index([barbershopId])
   @@index([barbershopId, isActive])
@@ -549,6 +572,7 @@ model Appointment {
   barbershopId Int
   customerId   Int
   barberId     Int
+  resourceId   Int?
   startAt      DateTime
   endAt        DateTime
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
@@ -557,6 +581,7 @@ model Appointment {
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  resource     Resource?      @relation(fields: [resourceId], references: [id])
   services     AppointmentService[]
   serviceHistory ServiceHistory[]
   sale         Sale?
@@ -565,6 +590,7 @@ model Appointment {
   @@index([barbershopId, startAt])
   @@index([barbershopId, barberId, startAt])
   @@index([barbershopId, customerId, startAt])
+  @@index([barbershopId, resourceId, startAt])
   @@index([status])
 }
 
@@ -776,4 +802,66 @@ model InventoryMovement {
   @@index([inventoryItemId])
   @@index([inventoryItemId, createdAt])
   @@index([referenceType, referenceId])
+}
+
+// ============ PACOTES DE SESSÃO ============
+
+model ServicePackage {
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  barbershopId   Int
+  serviceId      Int
+  name           String
+  totalSessions  Int
+  price          Decimal
+  isActive       Boolean  @default(true)
+  barbershop     Barbershop        @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  clientPackages ClientPackage[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, isActive])
+}
+
+model ClientPackage {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  barbershopId     Int
+  customerId       Int
+  servicePackageId Int
+  totalSessions    Int      // copiado da oferta no momento da compra
+  usedSessions     Int      @default(0)
+  status           String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  barbershop       Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id])
+
+  @@index([barbershopId])
+  @@index([customerId])
+  @@index([barbershopId, status])
+}
+
+// ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
+
+model ConsentForm {
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  barbershopId  Int
+  customerId    Int
+  formType      String    // ANAMNESIS, ALLERGY_TEST, PHOTO_CONSENT, GENERAL
+  category      String?   // categoria de serviço a que se aplica, ex.: BROWS_LASHES
+  answers       String?   // JSON livre com as respostas do formulário
+  signatureName String?
+  signedAt      DateTime?
+  expiresAt     DateTime? // ex.: teste de alergia válido por 48h antes do serviço
+  status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED
+  barbershop    Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer      Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
+  @@index([customerId])
+  @@index([barbershopId, customerId, formType])
 }

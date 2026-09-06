@@ -86,6 +86,7 @@ type Appointment {
   endAt: String!
   id: Int!
   notes: String
+  resourceId: Int
   services: [AppointmentServiceType!]
   source: String!
   startAt: String!
@@ -134,6 +135,7 @@ type Barber {
   name: String!
   phone: String!
   specialization: String
+  specialties: [String!]!
   staffType: String
   updatedAt: String!
   userId: Int
@@ -300,6 +302,19 @@ input CheckPasswordInput {
   password: String!
 }
 
+type ClientPackageType {
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int!
+  id: Int!
+  serviceName: String
+  servicePackageId: Int!
+  servicePackageName: String
+  status: String!
+  totalSessions: Int!
+  usedSessions: Int!
+}
+
 input CloseCashSessionInput {
   countedBalance: Float!
   notes: String
@@ -347,6 +362,20 @@ input CompletedPaymentsFilters {
 type ConfirmPaymentIntentResponse {
   subscription: SubscriptionResponse
   success: Boolean!
+}
+
+type ConsentFormType {
+  answers: String
+  barbershopId: Int!
+  category: String
+  createdAt: String!
+  customerId: Int!
+  expiresAt: String
+  formType: String!
+  id: Int!
+  signatureName: String
+  signedAt: String
+  status: String!
 }
 
 type Coupon {
@@ -397,6 +426,7 @@ input CreateAppointmentInput {
   customerId: Int!
   endAt: String!
   notes: String
+  resourceId: Int
   services: [AppointmentServiceInput!]!
   source: String = "PHONE"
   startAt: String!
@@ -410,6 +440,7 @@ input CreateBarberInput {
   name: String!
   phone: String!
   specialization: String
+  specialties: [String!]
   userId: Float
 }
 
@@ -469,6 +500,14 @@ input CreateBarbershopServiceInput {
   price: Float!
 }
 
+input CreateConsentFormInput {
+  answers: String
+  category: String
+  customerId: Int!
+  expiresAt: String
+  formType: String!
+}
+
 input CreateCouponInput {
   applicablePlans: String
   code: String!
@@ -521,6 +560,11 @@ input CreateProductCategoryInput {
   name: String!
 }
 
+input CreateResourceInput {
+  name: String!
+  type: String = "ROOM"
+}
+
 input CreateSaleInput {
   appointmentId: Int
   barberId: Int
@@ -544,6 +588,13 @@ input CreateSaleItemInput {
   serviceId: Int
   totalPrice: Float!
   unitPrice: Float!
+}
+
+input CreateServicePackageInput {
+  name: String!
+  price: Float!
+  serviceId: Int!
+  totalSessions: Int!
 }
 
 input CreateSubscriptionInput {
@@ -784,6 +835,7 @@ type Mutation {
   createBarbershopProduct(barbershopId: Int!, input: CreateBarbershopProductInput!): BarbershopProductType!
   createBarbershopService(barbershopId: Int!, input: CreateBarbershopServiceInput!): BarbershopServiceType!
   createBatchNotifications(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userIds: [Int!]!): CommonResponse!
+  createConsentForm(barbershopId: Int!, input: CreateConsentFormInput!): ConsentFormType!
   createCoupon(data: CreateCouponInput!): Coupon!
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
   createExpense(barbershopId: Int!, input: CreateExpenseInput!): ExpenseType!
@@ -791,11 +843,14 @@ type Mutation {
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
+  createResource(barbershopId: Int!, input: CreateResourceInput!): ResourceType!
   createSale(barbershopId: Int!, input: CreateSaleInput!): Sale!
+  createServicePackage(barbershopId: Int!, input: CreateServicePackageInput!): ServicePackageType!
   createSetupIntent: SetupIntent!
   createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
   createUser(input: CreateUserInput!): User!
   createWalkIn(barbershopId: Int!, input: CreateWalkInInput!): WalkIn!
+  debitClientPackageSession(barbershopId: Int!, id: Int!): ClientPackageType!
   deleteAppointment(barbershopId: Int!, id: Int!): Boolean!
   deleteBarber(barbershopId: Int!, id: Int!): Boolean!
   deleteBarberSchedule(id: Int!): Boolean!
@@ -803,13 +858,16 @@ type Mutation {
   deleteBarbershop(id: Int!): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
+  deleteConsentForm(barbershopId: Int!, id: Int!): Boolean!
   deleteCoupon(id: Float!): DeleteCouponResponse!
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
   deleteExpense(barbershopId: Int!, id: Int!): Boolean!
   deleteNotification(id: Int!): CommonResponse!
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
   deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
+  deleteResource(barbershopId: Int!, id: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
+  deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
@@ -826,6 +884,7 @@ type Mutation {
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
+  purchaseClientPackage(barbershopId: Int!, input: PurchaseClientPackageInput!): ClientPackageType!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeNetworkLogo: Boolean!
@@ -841,6 +900,7 @@ type Mutation {
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
+  signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
@@ -857,7 +917,9 @@ type Mutation {
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
   updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
+  updateResource(barbershopId: Int!, id: Int!, input: UpdateResourceInput!): ResourceType!
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
+  updateServicePackage(barbershopId: Int!, id: Int!, input: UpdateServicePackageInput!): ServicePackageType!
   updateUser(input: UpdateUserByAdminInput!): Boolean!
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserRole(role: String!, userId: Int!): User!
@@ -1091,6 +1153,11 @@ type ProfessionalSegmentAnalysis {
   segments: ChartData!
 }
 
+input PurchaseClientPackageInput {
+  customerId: Int!
+  servicePackageId: Int!
+}
+
 type Query {
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
@@ -1113,7 +1180,9 @@ type Query {
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
+  clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   companyAnalysis: CompanyAnalysis!
+  consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
   couponStats(id: Float!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
@@ -1151,7 +1220,9 @@ type Query {
   planDistribution: PlanDistribution!
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   recurringPaymentsStats: UserRecurringPaymentsStats!
+  resources(barbershopId: Int!): [ResourceType!]!
   roleDistribution: RoleDistribution!
+  servicePackages(barbershopId: Int!): [ServicePackageType!]!
   statusDistribution: StatusDistribution!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!
@@ -1173,6 +1244,16 @@ input ResetPasswordWithCodeInput {
   code: String!
   currentPassword: String!
   newPassword: String!
+}
+
+type ResourceType {
+  barbershopId: Int!
+  createdAt: String!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  type: String!
+  updatedAt: String!
 }
 
 type RoleDistribution {
@@ -1237,9 +1318,26 @@ type ServiceHistory {
   walkInId: Int
 }
 
+type ServicePackageType {
+  barbershopId: Int!
+  createdAt: String!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  price: Float!
+  serviceId: Int!
+  serviceName: String
+  totalSessions: Int!
+  updatedAt: String!
+}
+
 type SetupIntent {
   client_secret: String!
   id: String!
+}
+
+input SignConsentFormInput {
+  signatureName: String!
 }
 
 input SocialSignupInput {
@@ -1323,6 +1421,7 @@ input UpdateAppointmentInput {
   customerId: Int
   endAt: String
   notes: String
+  resourceId: Int
   startAt: String
   status: String
 }
@@ -1335,6 +1434,7 @@ input UpdateBarberInput {
   name: String
   phone: String
   specialization: String
+  specialties: [String!]
   userId: Float
 }
 
@@ -1450,6 +1550,12 @@ input UpdateProductCategoryInput {
   name: String
 }
 
+input UpdateResourceInput {
+  isActive: Boolean
+  name: String
+  type: String
+}
+
 input UpdateSaleInput {
   barberId: Int
   customerId: Int
@@ -1461,6 +1567,13 @@ input UpdateSaleInput {
   subtotal: Float
   taxAmount: Float
   total: Float
+}
+
+input UpdateServicePackageInput {
+  isActive: Boolean
+  name: String
+  price: Float
+  totalSessions: Int
 }
 
 input UpdateUserByAdminInput {

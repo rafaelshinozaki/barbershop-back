@@ -180,6 +180,9 @@ export class CreateBarberInput {
   @Field({ nullable: true })
   specialization?: string;
 
+  @Field(() => [String!], { nullable: true })
+  specialties?: string[];
+
   @Field({ nullable: true })
   hireDate?: string;
 
@@ -203,6 +206,9 @@ export class UpdateBarberInput {
 
   @Field({ nullable: true })
   specialization?: string;
+
+  @Field(() => [String!], { nullable: true })
+  specialties?: string[];
 
   @Field({ nullable: true })
   hireDate?: string;
@@ -509,6 +515,9 @@ export class CreateAppointmentInput {
   @Field(() => Int)
   barberId: number;
 
+  @Field(() => Int, { nullable: true })
+  resourceId?: number;
+
   @Field()
   startAt: string;
 
@@ -532,6 +541,9 @@ export class UpdateAppointmentInput {
 
   @Field(() => Int, { nullable: true })
   barberId?: number;
+
+  @Field(() => Int, { nullable: true })
+  resourceId?: number;
 
   @Field({ nullable: true })
   startAt?: string;
@@ -683,3 +695,90 @@ export const UpdateServiceInput = UpdateBarbershopServiceInput;
 export const CreateProductInput = CreateBarbershopProductInput;
 export const UpdateProductInput = UpdateBarbershopProductInput;
 export const CreateWalkInServiceInput = WalkInServiceInput;
+
+// ============ Resource ============
+@InputType()
+export class CreateResourceInput {
+  @Field()
+  name: string;
+
+  @Field({ nullable: true, defaultValue: 'ROOM' })
+  type?: string;
+}
+
+@InputType()
+export class UpdateResourceInput {
+  @Field({ nullable: true })
+  name?: string;
+
+  @Field({ nullable: true })
+  type?: string;
+
+  @Field({ nullable: true })
+  isActive?: boolean;
+}
+
+// ============ Service Package ============
+@InputType()
+export class CreateServicePackageInput {
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field()
+  name: string;
+
+  @Field(() => Int)
+  totalSessions: number;
+
+  @Field(() => Float)
+  price: number;
+}
+
+@InputType()
+export class UpdateServicePackageInput {
+  @Field({ nullable: true })
+  name?: string;
+
+  @Field(() => Int, { nullable: true })
+  totalSessions?: number;
+
+  @Field(() => Float, { nullable: true })
+  price?: number;
+
+  @Field({ nullable: true })
+  isActive?: boolean;
+}
+
+@InputType()
+export class PurchaseClientPackageInput {
+  @Field(() => Int)
+  customerId: number;
+
+  @Field(() => Int)
+  servicePackageId: number;
+}
+
+// ============ Consent Form ============
+@InputType()
+export class CreateConsentFormInput {
+  @Field(() => Int)
+  customerId: number;
+
+  @Field()
+  formType: string;
+
+  @Field({ nullable: true })
+  category?: string;
+
+  @Field({ nullable: true })
+  answers?: string;
+
+  @Field({ nullable: true })
+  expiresAt?: string;
+}
+
+@InputType()
+export class SignConsentFormInput {
+  @Field()
+  signatureName: string;
+}

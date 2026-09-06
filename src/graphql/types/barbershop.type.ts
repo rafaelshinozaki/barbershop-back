@@ -228,6 +228,9 @@ export class Barber {
   @Field({ nullable: true })
   specialization?: string;
 
+  @Field(() => [String!]!)
+  specialties: string[];
+
   @Field()
   isActive: boolean;
 
@@ -515,6 +518,9 @@ export class Appointment {
 
   @Field(() => Int)
   barberId: number;
+
+  @Field(() => Int, { nullable: true })
+  resourceId?: number;
 
   @Field()
   startAt: string;
@@ -812,6 +818,132 @@ export class FinancialSummaryType {
 
   @Field(() => FinancialChartSeries)
   revenueByDay: FinancialChartSeries;
+}
+
+@ObjectType()
+export class ResourceType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field()
+  name: string;
+
+  @Field()
+  type: string;
+
+  @Field()
+  isActive: boolean;
+
+  @Field()
+  createdAt: string;
+
+  @Field()
+  updatedAt: string;
+}
+
+@ObjectType()
+export class ServicePackageType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field({ nullable: true })
+  serviceName?: string;
+
+  @Field()
+  name: string;
+
+  @Field(() => Int)
+  totalSessions: number;
+
+  @Field(() => Float)
+  price: number;
+
+  @Field()
+  isActive: boolean;
+
+  @Field()
+  createdAt: string;
+
+  @Field()
+  updatedAt: string;
+}
+
+@ObjectType()
+export class ClientPackageType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int)
+  customerId: number;
+
+  @Field(() => Int)
+  servicePackageId: number;
+
+  @Field({ nullable: true })
+  servicePackageName?: string;
+
+  @Field({ nullable: true })
+  serviceName?: string;
+
+  @Field(() => Int)
+  totalSessions: number;
+
+  @Field(() => Int)
+  usedSessions: number;
+
+  @Field()
+  status: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class ConsentFormType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int)
+  customerId: number;
+
+  @Field()
+  formType: string;
+
+  @Field({ nullable: true })
+  category?: string;
+
+  @Field({ nullable: true })
+  answers?: string;
+
+  @Field({ nullable: true })
+  signatureName?: string;
+
+  @Field({ nullable: true })
+  signedAt?: string;
+
+  @Field({ nullable: true })
+  expiresAt?: string;
+
+  @Field()
+  status: string;
+
+  @Field()
+  createdAt: string;
 }
 
 // Type aliases for resolver (naming consistency)
