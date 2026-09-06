@@ -85,18 +85,28 @@ EMAIL_PASS=your-password
 EMAIL_FROM=postmaster@sandbox.mailgun.org
 MAILGUN_API_KEY=
 MAILGUN_DOMAIN=
+ENABLE_GOOGLE_AUTH=true
+ENABLE_FACEBOOK_AUTH=true
+ENABLE_APPLE_AUTH=true
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_CALLBACK_URL=
+GOOGLE_CLIENT_CALLBACK_URL=
 FACEBOOK_CLIENT_ID=
 FACEBOOK_CLIENT_SECRET=
 FACEBOOK_CALLBACK_URL=
-DISABLE_SOCIAL_SSO=false
+FACEBOOK_CLIENT_CALLBACK_URL=
+APPLE_CLIENT_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY=
+APPLE_CALLBACK_URL=
+APPLE_CLIENT_CALLBACK_URL=
 ```
 
 ## Login Social
 
-Configure as chaves de OAuth do Google e do Facebook no arquivo `.env` usando as variáveis acima. Se `DISABLE_SOCIAL_SSO` estiver como `true`, o login social será ignorado em desenvolvimento. Com a aplicação em execução, acesse `/auth/google` ou `/auth/facebook` para iniciar o fluxo de autenticação. Após a autorização, o backend criará ou localizará o usuário pelo e-mail fornecido e gerará o cookie `Authentication`.
+Google, Facebook e Apple são ligados/desligados individualmente por `ENABLE_GOOGLE_AUTH` / `ENABLE_FACEBOOK_AUTH` / `ENABLE_APPLE_AUTH` — desligar uma plataforma não afeta as outras. Com a plataforma habilitada e as credenciais configuradas, acesse `/auth/google`, `/auth/facebook` ou `/auth/apple` (staff) — ou os equivalentes em `/client-auth/*` para contas de cliente do marketplace — para iniciar o fluxo de autenticação. Após a autorização, o backend criará ou localizará a conta pelo e-mail fornecido, ligando o novo método de login à conta existente quando o e-mail já é conhecido, e gerará o cookie de sessão (`Authentication` para staff, `ClientAuthentication` para cliente). Uma plataforma desligada (ou sem credenciais, no caso da Apple) devolve 404 nas rotas de OAuth em vez de tentar redirecionar.
 
 ## Histórico de Login e Sessões Ativas
 

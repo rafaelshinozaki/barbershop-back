@@ -56,38 +56,44 @@ import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
         SESSION_SECRET: Joi.string().required(),
         SESSION_MAX_AGE: Joi.string().required(),
 
-        DISABLE_SOCIAL_SSO: Joi.boolean().default(false),
+        // Chave por plataforma em vez de uma única chave que libera/derruba
+        // Google e Facebook juntos — cada provedor pode ser ligado/desligado
+        // independentemente (útil pra ativar só quando as credenciais reais
+        // daquela plataforma estiverem configuradas).
+        ENABLE_GOOGLE_AUTH: Joi.boolean().default(true),
+        ENABLE_FACEBOOK_AUTH: Joi.boolean().default(true),
+        ENABLE_APPLE_AUTH: Joi.boolean().default(true),
 
-        GOOGLE_CLIENT_ID: Joi.when('DISABLE_SOCIAL_SSO', {
+        GOOGLE_CLIENT_ID: Joi.when('ENABLE_GOOGLE_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
-        GOOGLE_CLIENT_SECRET: Joi.when('DISABLE_SOCIAL_SSO', {
+        GOOGLE_CLIENT_SECRET: Joi.when('ENABLE_GOOGLE_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
-        GOOGLE_CALLBACK_URL: Joi.when('DISABLE_SOCIAL_SSO', {
+        GOOGLE_CALLBACK_URL: Joi.when('ENABLE_GOOGLE_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
 
-        FACEBOOK_CLIENT_ID: Joi.when('DISABLE_SOCIAL_SSO', {
+        FACEBOOK_CLIENT_ID: Joi.when('ENABLE_FACEBOOK_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
-        FACEBOOK_CLIENT_SECRET: Joi.when('DISABLE_SOCIAL_SSO', {
+        FACEBOOK_CLIENT_SECRET: Joi.when('ENABLE_FACEBOOK_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
-        FACEBOOK_CALLBACK_URL: Joi.when('DISABLE_SOCIAL_SSO', {
+        FACEBOOK_CALLBACK_URL: Joi.when('ENABLE_FACEBOOK_AUTH', {
           is: true,
-          then: Joi.string().allow('').optional(),
-          otherwise: Joi.string().required(),
+          then: Joi.string().required(),
+          otherwise: Joi.string().allow('').optional(),
         }),
 
         JWT_SECRET: Joi.string().required(),

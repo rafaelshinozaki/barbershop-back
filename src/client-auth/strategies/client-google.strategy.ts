@@ -10,11 +10,11 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class ClientGoogleStrategy extends PassportStrategy(Strategy, 'google-client') {
   constructor(configService: ConfigService) {
-    const disabled = configService.get<boolean>('DISABLE_SOCIAL_SSO');
+    const enabled = configService.get<boolean>('ENABLE_GOOGLE_AUTH');
     super({
-      clientID: disabled ? 'disabled' : configService.get<string>('GOOGLE_CLIENT_ID'),
-      clientSecret: disabled ? 'disabled' : configService.get<string>('GOOGLE_CLIENT_SECRET'),
-      callbackURL: disabled ? 'disabled' : configService.get<string>('GOOGLE_CLIENT_CALLBACK_URL'),
+      clientID: enabled ? configService.get<string>('GOOGLE_CLIENT_ID') : 'disabled',
+      clientSecret: enabled ? configService.get<string>('GOOGLE_CLIENT_SECRET') : 'disabled',
+      callbackURL: enabled ? configService.get<string>('GOOGLE_CLIENT_CALLBACK_URL') : 'disabled',
       scope: ['email', 'profile'],
     });
   }

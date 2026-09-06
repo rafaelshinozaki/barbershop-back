@@ -10,7 +10,7 @@ export class FacebookAuthGuard extends AuthGuard('facebook') {
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
-    if (this.configService.get<boolean>('DISABLE_SOCIAL_SSO')) {
+    if (!this.configService.get<boolean>('ENABLE_FACEBOOK_AUTH')) {
       throw new NotFoundException();
     }
     return super.canActivate(context);
