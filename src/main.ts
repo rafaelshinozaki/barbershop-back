@@ -123,7 +123,7 @@ async function bootstrap() {
     'http://localhost:5176', // front em dev (porta alternativa)
     'http://localhost:5177', // front em dev (porta alternativa)
     'http://localhost:5178', // front em dev (porta alternativa)
-    'https://barbershop-front.vercel.app', // domínio Vercel
+    'https://barbershop-front-ten.vercel.app', // domínio Vercel (produção)
     'https://barbershop.zeero.dev.br', // domínio de produção
     'https://zeero.dev.br', // domínio alternativo
   ];
@@ -133,7 +133,7 @@ async function bootstrap() {
   app.enableCors({
     origin: corsOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization',
+    allowedHeaders: 'Content-Type, Authorization, apollo-require-preflight',
     credentials: true, // se você usar cookies ou auth
   });
 
