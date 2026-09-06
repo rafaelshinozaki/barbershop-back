@@ -44,6 +44,7 @@ export class UserService {
     grayColor: 'gray',
     radius: 'medium',
     scaling: '100%',
+    panelBackground: 'translucent',
     language: 'pt',
   };
 
@@ -281,6 +282,7 @@ export class UserService {
           grayColor: 'gray',
           radius: 'medium',
           scaling: '100%',
+          panelBackground: 'translucent',
           language: 'pt',
         },
       });
@@ -1315,6 +1317,7 @@ export class UserService {
             grayColor: configToUpdate.grayColor || 'gray',
             radius: configToUpdate.radius || 'medium',
             scaling: configToUpdate.scaling || '100%',
+            panelBackground: configToUpdate.panelBackground || 'translucent',
             language: configToUpdate.language || 'en',
           },
         });

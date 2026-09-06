@@ -23,6 +23,9 @@ export class UserSystemConfig {
   scaling: string;
 
   @Field()
+  panelBackground: string;
+
+  @Field()
   language: string;
 
   @Field()

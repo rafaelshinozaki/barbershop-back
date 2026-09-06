@@ -275,6 +275,7 @@ export class EmployeeInviteService {
         grayColor: 'gray',
         radius: 'medium',
         scaling: '100%',
+        panelBackground: 'translucent',
         language: 'pt',
       },
     });

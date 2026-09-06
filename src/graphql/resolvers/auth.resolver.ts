@@ -143,6 +143,7 @@ export class AuthResolver {
         grayColor: 'gray',
         radius: 'medium',
         scaling: '100%',
+        panelBackground: 'translucent',
         language: 'pt',
       },
     };
@@ -383,6 +384,7 @@ export class AuthResolver {
         grayColor: 'gray',
         radius: 'medium',
         scaling: '100%',
+        panelBackground: 'translucent',
         language: 'en',
       },
     };

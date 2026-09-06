@@ -1385,6 +1385,7 @@ input UpdateUserSystemConfigInput {
   accentColor: String
   grayColor: String
   language: String
+  panelBackground: String
   radius: String
   scaling: String
   theme: String
@@ -1483,6 +1484,7 @@ type UserSystemConfig {
   grayColor: String!
   id: Int!
   language: String!
+  panelBackground: String!
   radius: String!
   scaling: String!
   theme: String!

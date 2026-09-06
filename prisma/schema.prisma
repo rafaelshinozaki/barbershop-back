@@ -83,17 +83,18 @@ model VerificationCode {
 }
 
 model UserSystemConfig {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  theme       String
-  accentColor String
-  grayColor   String
-  radius      String
-  scaling     String
-  language    String
-  userId      Int      @unique
-  user        User     @relation(fields: [userId], references: [id])
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  theme           String
+  accentColor     String
+  grayColor       String
+  radius          String
+  scaling         String
+  panelBackground String   @default("translucent")
+  language        String
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
 }
 
 model Address {

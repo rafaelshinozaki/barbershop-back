@@ -8,6 +8,7 @@ export class UserSystemConfigDTO {
   grayColor?: string;
   radius?: string;
   scaling?: string;
+  panelBackground?: string;
   language?: string;
 }
 
@@ -37,6 +38,11 @@ export class UpdateUserSystemConfigInput {
   @IsOptional()
   @IsString()
   scaling?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  panelBackground?: string;
 
   @Field({ nullable: true })
   @IsOptional()
