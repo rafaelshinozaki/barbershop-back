@@ -93,13 +93,13 @@ export class UserController {
     return { success: true, data: user };
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Update user' })
-  @ApiResponse({ status: 200, description: 'User updated' })
-  @Put('update')
-  updateUser(@Body() userDto: UserDTO) {
-    return this.userService.updateUser(userDto);
-  }
+  // PUT /user/update existia aqui recebendo o UserDTO inteiro (incluindo o
+  // id) direto do corpo da requisição, sem comparar com @CurrentUser() —
+  // qualquer usuário autenticado podia atualizar o perfil de QUALQUER outro
+  // usuário (nome, telefone, twoFactorEnabled, etc.) só mandando um id
+  // diferente. Confirmado sem nenhum chamador no frontend via grep — a
+  // gestão de usuários já é toda via GraphQL (updateUser em
+  // backoffice.resolver.ts, com RolesGuard). Removida em vez de corrigida.
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
