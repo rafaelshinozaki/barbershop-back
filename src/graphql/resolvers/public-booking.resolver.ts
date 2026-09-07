@@ -4,8 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
-import { PublicBarbershopType, PublicAppointmentType } from '../types/public-booking.type';
-import { CreatePublicAppointmentInput } from '../dto/public-booking.dto';
+import { PublicBarbershopType, PublicAppointmentType, PublicBarbershopSearchResultType } from '../types/public-booking.type';
+import { CreatePublicAppointmentInput, SearchBarbershopsInput } from '../dto/public-booking.dto';
 import { ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
 
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
@@ -22,6 +22,16 @@ export class PublicBookingResolver {
   @Query(() => PublicBarbershopType)
   async publicBarbershop(@Args('slug') slug: string) {
     return this.barbershopService.getPublicBarbershopByslug(slug);
+  }
+
+  @Query(() => [String])
+  async publicServiceCategories() {
+    return this.barbershopService.getPublicServiceCategories();
+  }
+
+  @Query(() => [PublicBarbershopSearchResultType])
+  async searchBarbershops(@Args('input') input: SearchBarbershopsInput) {
+    return this.barbershopService.searchPublicBarbershops(input);
   }
 
   @Query(() => [String])

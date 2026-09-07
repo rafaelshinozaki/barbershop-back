@@ -97,6 +97,39 @@ export class PublicBarbershopType {
 }
 
 @ObjectType()
+export class PublicBarbershopSearchResultType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field()
+  slug: string;
+
+  @Field()
+  city: string;
+
+  @Field()
+  state: string;
+
+  @Field()
+  address: string;
+
+  @Field({ nullable: true })
+  imageUrl?: string;
+
+  @Field()
+  networkName: string;
+
+  @Field(() => [String])
+  categories: string[];
+
+  @Field(() => Float, { nullable: true })
+  distanceKm?: number;
+}
+
+@ObjectType()
 export class PublicAppointmentType {
   @Field(() => Int)
   id: number;

@@ -1,5 +1,33 @@
-import { InputType, Field, Int } from '@nestjs/graphql';
-import { IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { InputType, Field, Int, Float } from '@nestjs/graphql';
+import { IsEmail, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+
+@InputType()
+export class SearchBarbershopsInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  query?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
+}
 
 @InputType()
 export class CreatePublicAppointmentInput {

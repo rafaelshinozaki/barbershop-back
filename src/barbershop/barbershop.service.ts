@@ -1581,6 +1581,104 @@ export class BarbershopService {
     });
   }
 
+  // ============ BUSCA PÚBLICA (marketplace) ============
+
+  private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // Distinct categories vêm direto dos serviços cadastrados (BarbershopService.category
+  // é texto livre hoje — sem uma taxonomia própria ainda) para alimentar o filtro
+  // de busca sem precisar de uma lista hardcoded no front.
+  async getPublicServiceCategories(): Promise<string[]> {
+    const rows = await this.prisma.barbershopService.findMany({
+      where: { isActive: true, barbershop: { isActive: true } },
+      select: { category: true },
+      distinct: ['category'],
+    });
+    return rows.map((r) => r.category).sort();
+  }
+
+  async searchPublicBarbershops(input: {
+    query?: string;
+    category?: string;
+    city?: string;
+    lat?: number;
+    lng?: number;
+    limit?: number;
+  }) {
+    const AND: any[] = [];
+    if (input.query) {
+      AND.push({
+        OR: [
+          { name: { contains: input.query, mode: 'insensitive' } },
+          { city: { contains: input.query, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (input.city) AND.push({ city: { contains: input.city, mode: 'insensitive' } });
+    if (input.category) {
+      AND.push({ services: { some: { isActive: true, category: input.category } } });
+    }
+
+    const barbershops = await this.prisma.barbershop.findMany({
+      where: { isActive: true, ...(AND.length ? { AND } : {}) },
+      include: {
+        services: { where: { isActive: true }, select: { category: true } },
+        network: { select: { name: true } },
+      },
+      // Sem índice geo no banco — a distância é calculada em memória, então
+      // limitamos o conjunto candidato. Suficiente para o volume atual;
+      // precisaria de PostGIS (ou similar) numa base muito maior.
+      take: 200,
+    });
+
+    const results = barbershops.map((b) => {
+      const categories = [...new Set(b.services.map((s) => s.category))];
+      const distanceKm =
+        input.lat != null && input.lng != null && b.latitude != null && b.longitude != null
+          ? this.haversineKm(input.lat, input.lng, b.latitude, b.longitude)
+          : null;
+      return {
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+        city: b.city,
+        state: b.state,
+        address: b.address,
+        photoKey: b.photoKey,
+        networkName: b.network?.name ?? b.name,
+        categories,
+        distanceKm,
+      };
+    });
+
+    if (input.lat != null && input.lng != null) {
+      results.sort((a, b) => {
+        if (a.distanceKm == null && b.distanceKm == null) return a.name.localeCompare(b.name);
+        if (a.distanceKm == null) return 1;
+        if (b.distanceKm == null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+    } else {
+      results.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const limited = results.slice(0, input.limit ?? 30);
+    return Promise.all(
+      limited.map(async ({ photoKey, ...r }) => ({
+        ...r,
+        imageUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
+      })),
+    );
+  }
+
   // ============ WALK-INS (Queue) ============
 
   async createWalkIn(

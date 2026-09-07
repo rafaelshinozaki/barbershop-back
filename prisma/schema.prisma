@@ -386,6 +386,8 @@ model Barbershop {
   state          String
   country        String
   postalCode     String
+  latitude       Float?    // preenchido manualmente ou por geocoding — usado na busca "perto de mim"
+  longitude      Float?
   phone          String
   email          String
   photoKey       String?

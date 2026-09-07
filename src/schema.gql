@@ -1262,6 +1262,19 @@ type PublicBarberType {
   specialties: [String!]!
 }
 
+type PublicBarbershopSearchResultType {
+  address: String!
+  categories: [String!]!
+  city: String!
+  distanceKm: Float
+  id: Int!
+  imageUrl: String
+  name: String!
+  networkName: String!
+  slug: String!
+  state: String!
+}
+
 type PublicBarbershopType {
   address: String!
   barbers: [PublicBarberType!]!
@@ -1367,9 +1380,11 @@ type Query {
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
+  publicServiceCategories: [String!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
   roleDistribution: RoleDistribution!
+  searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   statusDistribution: StatusDistribution!
@@ -1441,6 +1456,14 @@ type SaleItemType {
   serviceName: String
   totalPrice: Float!
   unitPrice: Float!
+}
+
+input SearchBarbershopsInput {
+  category: String
+  city: String
+  lat: Float
+  lng: Float
+  query: String
 }
 
 input SendEmailNotificationInput {
