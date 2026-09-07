@@ -1372,7 +1372,8 @@ export class BarbershopService {
       throw new NotFoundException('Unidade não encontrada');
     }
     const imageUrl = barbershop.photoKey ? await this.s3Service.getDownloadUrl(barbershop.photoKey) : null;
-    return { ...barbershop, imageUrl };
+    const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
+    return { ...barbershop, imageUrl, averageRating, reviewCount };
   }
 
   // Janela de trabalho de um barbeiro num dia da semana, com fallback em
@@ -1672,12 +1673,108 @@ export class BarbershopService {
     }
 
     const limited = results.slice(0, input.limit ?? 30);
+    const ratings = await this.getReviewSummaries(limited.map((r) => r.id));
     return Promise.all(
       limited.map(async ({ photoKey, ...r }) => ({
         ...r,
         imageUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
+        ...ratings.get(r.id),
       })),
     );
+  }
+
+  // ============ AVALIAÇÕES ============
+
+  // Só quem teve pelo menos um atendimento CONCLUÍDO nessa unidade pode
+  // avaliar — evita review de quem nunca foi cliente de verdade (ex.:
+  // concorrente, ou alguém que só olhou a página pública).
+  private async ensureVerifiedCustomer(clientAccountId: number, barbershopId: number) {
+    const visit = await this.prisma.appointment.findFirst({
+      where: { barbershopId, status: 'COMPLETED', customer: { clientAccountId } },
+    });
+    if (!visit) {
+      throw new ForbiddenException(
+        'Você só pode avaliar unidades onde já teve um atendimento concluído.',
+      );
+    }
+  }
+
+  private privacyName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length <= 1) return parts[0] ?? '';
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  }
+
+  async createOrUpdateReview(
+    clientAccountId: number,
+    barbershopId: number,
+    rating: number,
+    comment?: string,
+  ) {
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new BadRequestException('A nota deve ser um número inteiro entre 1 e 5.');
+    }
+    await this.ensureVerifiedCustomer(clientAccountId, barbershopId);
+    return this.prisma.review.upsert({
+      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
+      create: { barbershopId, clientAccountId, rating, comment },
+      update: { rating, comment },
+    });
+  }
+
+  async deleteReview(clientAccountId: number, barbershopId: number) {
+    await this.prisma.review.deleteMany({ where: { barbershopId, clientAccountId } });
+  }
+
+  async getMyReview(clientAccountId: number, barbershopId: number) {
+    return this.prisma.review.findUnique({
+      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
+    });
+  }
+
+  async canReviewBarbershop(clientAccountId: number, barbershopId: number): Promise<boolean> {
+    const visit = await this.prisma.appointment.findFirst({
+      where: { barbershopId, status: 'COMPLETED', customer: { clientAccountId } },
+    });
+    return Boolean(visit);
+  }
+
+  async getBarbershopReviews(barbershopId: number) {
+    const reviews = await this.prisma.review.findMany({
+      where: { barbershopId },
+      include: { clientAccount: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return reviews.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt.toISOString(),
+      reviewerName: this.privacyName(r.clientAccount.name),
+    }));
+  }
+
+  private async getReviewSummaries(
+    barbershopIds: number[],
+  ): Promise<Map<number, { averageRating: number | null; reviewCount: number }>> {
+    const map = new Map<number, { averageRating: number | null; reviewCount: number }>();
+    if (barbershopIds.length === 0) return map;
+    const groups = await this.prisma.review.groupBy({
+      by: ['barbershopId'],
+      where: { barbershopId: { in: barbershopIds } },
+      _avg: { rating: true },
+      _count: true,
+    });
+    for (const g of groups) {
+      map.set(g.barbershopId, { averageRating: g._avg.rating, reviewCount: g._count });
+    }
+    return map;
+  }
+
+  async getReviewSummary(barbershopId: number): Promise<{ averageRating: number | null; reviewCount: number }> {
+    const map = await this.getReviewSummaries([barbershopId]);
+    return map.get(barbershopId) ?? { averageRating: null, reviewCount: 0 };
   }
 
   // ============ WALK-INS (Queue) ============

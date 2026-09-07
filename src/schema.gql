@@ -638,6 +638,12 @@ input CreateResourceInput {
   type: String = "ROOM"
 }
 
+input CreateReviewInput {
+  barbershopId: Int!
+  comment: String
+  rating: Int!
+}
+
 input CreateSaleInput {
   appointmentId: Int
   barberId: Int
@@ -923,6 +929,7 @@ type Mutation {
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
   createExpense(barbershopId: Int!, input: CreateExpenseInput!): ExpenseType!
   createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
+  createOrUpdateReview(input: CreateReviewInput!): Boolean!
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
@@ -951,6 +958,7 @@ type Mutation {
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
   deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
   deleteResource(barbershopId: Int!, id: Int!): Boolean!
+  deleteReview(barbershopId: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
   deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
@@ -1017,6 +1025,11 @@ type Mutation {
   validateCoupon(amount: Float!, code: String!, planId: Float!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
+}
+
+type MyReviewType {
+  comment: String
+  rating: Int!
 }
 
 type Network {
@@ -1264,6 +1277,7 @@ type PublicBarberType {
 
 type PublicBarbershopSearchResultType {
   address: String!
+  averageRating: Float
   categories: [TreatmentCategory!]!
   city: String!
   distanceKm: Float
@@ -1271,12 +1285,14 @@ type PublicBarbershopSearchResultType {
   imageUrl: String
   name: String!
   networkName: String!
+  reviewCount: Int!
   slug: String!
   state: String!
 }
 
 type PublicBarbershopType {
   address: String!
+  averageRating: Float
   barbers: [PublicBarberType!]!
   city: String!
   complement1: String
@@ -1289,6 +1305,7 @@ type PublicBarbershopType {
   name: String!
   phone: String!
   postalCode: String!
+  reviewCount: Int!
   services: [PublicServiceType!]!
   slug: String!
   state: String!
@@ -1328,9 +1345,11 @@ type Query {
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
+  barbershopReviews(barbershopId: Int!): [ReviewType!]!
   barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
+  canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
@@ -1371,6 +1390,7 @@ type Query {
   myNotificationsCount: NotificationCount!
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
+  myReview(barbershopId: Int!): MyReviewType
   mySubscriptions: [Subscription!]!
   myUnreadNotifications: [UserNotification!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
@@ -1418,6 +1438,14 @@ type ResourceType {
   name: String!
   type: String!
   updatedAt: String!
+}
+
+type ReviewType {
+  comment: String
+  createdAt: String!
+  id: Int!
+  rating: Int!
+  reviewerName: String!
 }
 
 type RoleDistribution {

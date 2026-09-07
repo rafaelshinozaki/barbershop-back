@@ -1,11 +1,19 @@
 import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
-import { PublicBarbershopType, PublicAppointmentType, PublicBarbershopSearchResultType } from '../types/public-booking.type';
-import { CreatePublicAppointmentInput, SearchBarbershopsInput } from '../dto/public-booking.dto';
+import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
+import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
+import {
+  PublicBarbershopType,
+  PublicAppointmentType,
+  PublicBarbershopSearchResultType,
+  ReviewType,
+  MyReviewType,
+} from '../types/public-booking.type';
+import { CreatePublicAppointmentInput, SearchBarbershopsInput, CreateReviewInput } from '../dto/public-booking.dto';
 import { ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
 
@@ -86,5 +94,45 @@ export class PublicBookingResolver {
       price: service ? Number(service.price) : 0,
       currency: appointment.barbershop.currency,
     };
+  }
+
+  @Query(() => [ReviewType])
+  async barbershopReviews(@Args('barbershopId', { type: () => Int }) barbershopId: number) {
+    return this.barbershopService.getBarbershopReviews(barbershopId);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => MyReviewType, { nullable: true })
+  async myReview(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+  ) {
+    return this.barbershopService.getMyReview(client.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => Boolean)
+  async canReviewBarbershop(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+  ) {
+    return this.barbershopService.canReviewBarbershop(client.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async createOrUpdateReview(@CurrentClient() client: CurrentClientUser, @Args('input') input: CreateReviewInput) {
+    await this.barbershopService.createOrUpdateReview(client.id, input.barbershopId, input.rating, input.comment);
+    return true;
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteReview(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+  ) {
+    await this.barbershopService.deleteReview(client.id, barbershopId);
+    return true;
   }
 }

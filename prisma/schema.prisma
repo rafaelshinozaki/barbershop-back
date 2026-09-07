@@ -416,6 +416,7 @@ model Barbershop {
   clientPackages  ClientPackage[]
   consentForms    ConsentForm[]
   commissionRules CommissionRule[]
+  reviews         Review[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -482,6 +483,27 @@ model ClientAccount {
   customers            Customer[]
   favorites            ClientFavorite[]
   linkedSocialAccounts ClientLinkedSocialAccount[]
+  reviews              Review[]
+}
+
+// Avaliação de uma unidade (Barbershop), não da rede inteira — o cliente
+// avalia o lugar onde de fato foi atendido. Só quem tem pelo menos um
+// Appointment COMPLETED nessa unidade pode avaliar (ver
+// BarbershopService.ensureVerifiedCustomer) — evita avaliação de quem
+// nunca foi cliente de verdade.
+model Review {
+  id              Int           @id @default(autoincrement())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  barbershopId    Int
+  clientAccountId Int
+  rating          Int // 1 a 5
+  comment         String?
+  barbershop      Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([barbershopId, clientAccountId])
+  @@index([barbershopId])
 }
 
 model ClientLinkedSocialAccount {

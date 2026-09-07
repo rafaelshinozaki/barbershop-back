@@ -1,5 +1,5 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
-import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { TreatmentCategory } from '../types/enums';
 
 @InputType()
@@ -67,4 +67,22 @@ export class CreatePublicAppointmentInput {
   @IsOptional()
   @IsString()
   notes?: string;
+}
+
+@InputType()
+export class CreateReviewInput {
+  @Field(() => Int)
+  @IsInt()
+  barbershopId: number;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  comment?: string;
 }

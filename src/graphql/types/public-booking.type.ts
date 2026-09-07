@@ -95,6 +95,12 @@ export class PublicBarbershopType {
 
   @Field(() => [PublicBarberType])
   barbers: PublicBarberType[];
+
+  @Field(() => Float, { nullable: true })
+  averageRating?: number;
+
+  @Field(() => Int)
+  reviewCount: number;
 }
 
 @ObjectType()
@@ -128,6 +134,39 @@ export class PublicBarbershopSearchResultType {
 
   @Field(() => Float, { nullable: true })
   distanceKm?: number;
+
+  @Field(() => Float, { nullable: true })
+  averageRating?: number;
+
+  @Field(() => Int)
+  reviewCount: number;
+}
+
+@ObjectType()
+export class ReviewType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  rating: number;
+
+  @Field({ nullable: true })
+  comment?: string;
+
+  @Field()
+  createdAt: string;
+
+  @Field()
+  reviewerName: string;
+}
+
+@ObjectType()
+export class MyReviewType {
+  @Field(() => Int)
+  rating: number;
+
+  @Field({ nullable: true })
+  comment?: string;
 }
 
 @ObjectType()
