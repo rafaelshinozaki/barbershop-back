@@ -15,6 +15,7 @@ import {
   BarbershopModule,
 } from './barbershop-plan.constants';
 import { PLANO_STATUS } from '../common/contants';
+import { S3Service } from '../aws/s3.service';
 
 @Injectable()
 export class BarbershopService {
@@ -23,6 +24,7 @@ export class BarbershopService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
+    private readonly s3Service: S3Service,
   ) {}
 
   /**
@@ -1131,6 +1133,32 @@ export class BarbershopService {
     }
   }
 
+  // Faltava checar conflito por BARBEIRO (só existia para resourceId) — dois
+  // agendamentos podiam ser criados para o mesmo profissional no mesmo
+  // horário sem nenhum aviso. Usado tanto pelo fluxo de staff quanto pelo
+  // agendamento público.
+  async ensureBarberAvailable(
+    barbershopId: number,
+    barberId: number,
+    startAt: Date,
+    endAt: Date,
+    excludeAppointmentId?: number,
+  ) {
+    const conflict = await this.prisma.appointment.findFirst({
+      where: {
+        barbershopId,
+        barberId,
+        id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+    });
+    if (conflict) {
+      throw new BadRequestException('Este profissional já tem um agendamento nesse horário');
+    }
+  }
+
   async createAppointment(
     userId: number,
     barbershopId: number,
@@ -1147,6 +1175,7 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarberAvailable(barbershopId, data.barberId, data.startAt, data.endAt);
     if (data.resourceId) {
       await this.ensureResourceAvailable(barbershopId, data.resourceId, data.startAt, data.endAt);
     }
@@ -1269,6 +1298,14 @@ export class BarbershopService {
       where: { id: appointmentId, barbershopId },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    const barberId = data.barberId ?? appointment.barberId;
+    await this.ensureBarberAvailable(
+      barbershopId,
+      barberId,
+      data.startAt ?? appointment.startAt,
+      data.endAt ?? appointment.endAt,
+      appointmentId,
+    );
     const resourceId = data.resourceId ?? appointment.resourceId ?? undefined;
     if (resourceId) {
       await this.ensureResourceAvailable(
@@ -1305,6 +1342,242 @@ export class BarbershopService {
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { status },
+    });
+  }
+
+  // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============
+
+  private readonly DEFAULT_WORKING_HOURS: Record<number, { start: string; end: string } | null> = {
+    0: null, // domingo fechado por padrão
+    1: { start: '09:00', end: '18:00' },
+    2: { start: '09:00', end: '18:00' },
+    3: { start: '09:00', end: '18:00' },
+    4: { start: '09:00', end: '18:00' },
+    5: { start: '09:00', end: '18:00' },
+    6: { start: '09:00', end: '17:00' },
+  };
+
+  private readonly WEEKDAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+  async getPublicBarbershopByslug(slug: string) {
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { slug },
+      include: {
+        services: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } },
+        barbers: { where: { isActive: true }, orderBy: { name: 'asc' } },
+      },
+    });
+    if (!barbershop || !barbershop.isActive) {
+      throw new NotFoundException('Unidade não encontrada');
+    }
+    const imageUrl = barbershop.photoKey ? await this.s3Service.getDownloadUrl(barbershop.photoKey) : null;
+    return { ...barbershop, imageUrl };
+  }
+
+  // Janela de trabalho de um barbeiro num dia da semana, com fallback em
+  // cascata: agenda própria do barbeiro (BarberSchedule) > horário da
+  // unidade (Barbershop.businessHours) > horário padrão embutido. Isso
+  // porque, na prática, nenhuma unidade configurou nem uma coisa nem outra
+  // ainda — sem esse fallback a página pública mostraria "sem horários
+  // disponíveis" para toda unidade existente.
+  private async getWorkingWindow(
+    barbershopId: number,
+    barberId: number,
+    dayOfWeek: number,
+  ): Promise<{ start: string; end: string; breakStart?: string | null; breakEnd?: string | null } | null> {
+    const schedule = await this.prisma.barberSchedule.findUnique({
+      where: { barberId_dayOfWeek: { barberId, dayOfWeek } },
+    });
+    if (schedule) {
+      if (!schedule.isActive) return null;
+      return { start: schedule.startTime, end: schedule.endTime, breakStart: schedule.breakStart, breakEnd: schedule.breakEnd };
+    }
+
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { businessHours: true },
+    });
+    if (barbershop?.businessHours) {
+      try {
+        const parsed = JSON.parse(barbershop.businessHours) as Record<string, { start: string; end: string } | null>;
+        const dayHours = parsed[this.WEEKDAY_KEYS[dayOfWeek]];
+        return dayHours ? { start: dayHours.start, end: dayHours.end } : null;
+      } catch {
+        // JSON inválido — cai para o horário padrão abaixo
+      }
+    }
+
+    const fallback = this.DEFAULT_WORKING_HOURS[dayOfWeek];
+    return fallback ? { ...fallback } : null;
+  }
+
+  private toMinutes(time: string): number {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  async getPublicAvailableSlots(barbershopId: number, barberId: number, serviceId: number, dateStr: string) {
+    const [barber, service] = await Promise.all([
+      this.prisma.barber.findFirst({ where: { id: barberId, barbershopId, isActive: true } }),
+      this.prisma.barbershopService.findFirst({ where: { id: serviceId, barbershopId, isActive: true } }),
+    ]);
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+
+    const date = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(date.getTime())) throw new BadRequestException('Data inválida');
+
+    const dayOfWeek = date.getDay();
+    const window = await this.getWorkingWindow(barbershopId, barberId, dayOfWeek);
+    if (!window) return [];
+
+    const duration = service.durationMinutes;
+    const dayStart = new Date(date);
+    const dayEnd = new Date(date);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const [appointments, timeOffs] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          barberId,
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+          startAt: { lt: dayEnd },
+          endAt: { gt: dayStart },
+        },
+        select: { startAt: true, endAt: true },
+      }),
+      this.prisma.barberTimeOff.findMany({
+        where: { barberId, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
+        select: { startAt: true, endAt: true },
+      }),
+    ]);
+
+    const busyRanges = [...appointments, ...timeOffs].map((r) => ({
+      start: r.startAt.getTime(),
+      end: r.endAt.getTime(),
+    }));
+
+    const windowStartMin = this.toMinutes(window.start);
+    const windowEndMin = this.toMinutes(window.end);
+    const breakStartMin = window.breakStart ? this.toMinutes(window.breakStart) : null;
+    const breakEndMin = window.breakEnd ? this.toMinutes(window.breakEnd) : null;
+
+    const now = new Date();
+    const slots: string[] = [];
+    const SLOT_GRANULARITY_MIN = 15;
+
+    for (let minutes = windowStartMin; minutes + duration <= windowEndMin; minutes += SLOT_GRANULARITY_MIN) {
+      if (breakStartMin != null && breakEndMin != null) {
+        const overlapsBreak = minutes < breakEndMin && minutes + duration > breakStartMin;
+        if (overlapsBreak) continue;
+      }
+
+      const slotStart = new Date(date);
+      slotStart.setHours(0, minutes, 0, 0);
+      const slotEnd = new Date(slotStart.getTime() + duration * 60000);
+
+      if (slotStart <= now) continue;
+
+      const overlapsBusy = busyRanges.some(
+        (r) => slotStart.getTime() < r.end && slotEnd.getTime() > r.start,
+      );
+      if (overlapsBusy) continue;
+
+      slots.push(slotStart.toISOString());
+    }
+
+    return slots;
+  }
+
+  async createPublicAppointment(input: {
+    barbershopId: number;
+    barberId: number;
+    serviceId: number;
+    startAt: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    notes?: string;
+    clientAccountId?: number;
+  }) {
+    const barbershop = await this.prisma.barbershop.findFirst({
+      where: { id: input.barbershopId, isActive: true },
+    });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+
+    const [barber, service] = await Promise.all([
+      this.prisma.barber.findFirst({ where: { id: input.barberId, barbershopId: input.barbershopId, isActive: true } }),
+      this.prisma.barbershopService.findFirst({ where: { id: input.serviceId, barbershopId: input.barbershopId, isActive: true } }),
+    ]);
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+
+    const startAt = new Date(input.startAt);
+    if (isNaN(startAt.getTime()) || startAt <= new Date()) {
+      throw new BadRequestException('Horário inválido');
+    }
+    const endAt = new Date(startAt.getTime() + service.durationMinutes * 60000);
+
+    // Revalida a janela de trabalho e a ausência de conflito no servidor —
+    // nunca confia apenas na lista de horários que o próprio cliente buscou
+    // antes (pode estar desatualizada ou ter sido manipulada).
+    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, startAt.getDay());
+    if (!window) throw new BadRequestException('Profissional não atende nesse dia');
+    const startMin = startAt.getHours() * 60 + startAt.getMinutes();
+    const endMin = startMin + service.durationMinutes;
+    if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
+      throw new BadRequestException('Horário fora do expediente do profissional');
+    }
+    if (window.breakStart && window.breakEnd) {
+      const breakStartMin = this.toMinutes(window.breakStart);
+      const breakEndMin = this.toMinutes(window.breakEnd);
+      if (startMin < breakEndMin && endMin > breakStartMin) {
+        throw new BadRequestException('Horário cai no intervalo do profissional');
+      }
+    }
+    await this.ensureBarberAvailable(input.barbershopId, input.barberId, startAt, endAt);
+
+    const networkId = barbershop.networkId;
+    let customer = await this.prisma.customer.findFirst({
+      where: { networkId, phone: input.customerPhone },
+    });
+    if (!customer) {
+      customer = await this.prisma.customer.create({
+        data: {
+          networkId,
+          name: input.customerName,
+          phone: input.customerPhone,
+          email: input.customerEmail || null,
+          clientAccountId: input.clientAccountId ?? null,
+        },
+      });
+    } else if (input.clientAccountId && !customer.clientAccountId) {
+      customer = await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { clientAccountId: input.clientAccountId },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.create({
+        data: {
+          barbershopId: input.barbershopId,
+          customerId: customer!.id,
+          barberId: input.barberId,
+          startAt,
+          endAt,
+          status: 'CONFIRMED',
+          source: 'ONLINE',
+          notes: input.notes,
+        },
+      });
+      await tx.appointmentService.create({
+        data: { appointmentId: appointment.id, serviceId: service.id, unitPrice: service.price },
+      });
+      return tx.appointment.findUnique({
+        where: { id: appointment.id },
+        include: { barbershop: true, barber: true, services: { include: { service: true } } },
+      });
     });
   }
 

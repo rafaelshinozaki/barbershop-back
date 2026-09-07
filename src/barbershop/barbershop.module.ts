@@ -7,9 +7,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { AuthModule } from '../auth/auth.module';
 import { UserModule } from '../auth/users/users.module';
+import { AwsModule } from '../aws/aws.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, AuthModule, UserModule],
+  imports: [PrismaModule, EmailModule, AuthModule, UserModule, AwsModule],
   providers: [BarbershopService, EmployeeInviteService, AppointmentReminderService],
   controllers: [EmployeeInviteController],
   exports: [BarbershopService, EmployeeInviteService],

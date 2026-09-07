@@ -622,6 +622,17 @@ input CreateProductCategoryInput {
   name: String!
 }
 
+input CreatePublicAppointmentInput {
+  barberId: Int!
+  barbershopId: Int!
+  customerEmail: String
+  customerName: String!
+  customerPhone: String!
+  notes: String
+  serviceId: Int!
+  startAt: String!
+}
+
 input CreateResourceInput {
   name: String!
   type: String = "ROOM"
@@ -915,6 +926,7 @@ type Mutation {
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
+  createPublicAppointment(input: CreatePublicAppointmentInput!): PublicAppointmentType!
   createResource(barbershopId: Int!, input: CreateResourceInput!): ResourceType!
   createSale(barbershopId: Int!, input: CreateSaleInput!): Sale!
   createServicePackage(barbershopId: Int!, input: CreateServicePackageInput!): ServicePackageType!
@@ -1230,6 +1242,56 @@ type ProfessionalSegmentAnalysis {
   segments: ChartData!
 }
 
+type PublicAppointmentType {
+  barberName: String!
+  barbershopName: String!
+  currency: String!
+  endAt: String!
+  id: Int!
+  price: Float!
+  serviceName: String!
+  startAt: String!
+  status: String!
+}
+
+type PublicBarberType {
+  avatarUrl: String
+  id: Int!
+  name: String!
+  specialization: String
+  specialties: [String!]!
+}
+
+type PublicBarbershopType {
+  address: String!
+  barbers: [PublicBarberType!]!
+  city: String!
+  complement1: String
+  complement2: String
+  country: String!
+  currency: String!
+  email: String!
+  id: Int!
+  imageUrl: String
+  name: String!
+  phone: String!
+  postalCode: String!
+  services: [PublicServiceType!]!
+  slug: String!
+  state: String!
+  timezone: String!
+}
+
+type PublicServiceType {
+  category: String!
+  description: String
+  durationMinutes: Int!
+  icon: String
+  id: Int!
+  name: String!
+  price: Float!
+}
+
 input PurchaseClientPackageInput {
   customerId: Int!
   servicePackageId: Int!
@@ -1303,6 +1365,8 @@ type Query {
   overduePayments: [Payment!]!
   planDistribution: PlanDistribution!
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
+  publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
+  publicBarbershop(slug: String!): PublicBarbershopType!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
   roleDistribution: RoleDistribution!

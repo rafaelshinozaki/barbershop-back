@@ -11,6 +11,7 @@ import { BarbershopProductResolver } from './resolvers/barbershop-product.resolv
 import { BarbershopPhotoResolver } from './resolvers/barbershop-photo.resolver';
 import { NetworkResolver } from './resolvers/network.resolver';
 import { ClientAuthResolver } from './resolvers/client-auth.resolver';
+import { PublicBookingResolver } from './resolvers/public-booking.resolver';
 import { AuthModule } from '../auth/auth.module';
 import { ClientAuthModule } from '../client-auth/client-auth.module';
 import { UserModule } from '../auth/users/users.module';
@@ -50,6 +51,7 @@ import { PaymentsModule } from '../payments/payments.module';
     BarbershopPhotoResolver,
     NetworkResolver,
     ClientAuthResolver,
+    PublicBookingResolver,
   ],
   exports: [
     AuthResolver,
