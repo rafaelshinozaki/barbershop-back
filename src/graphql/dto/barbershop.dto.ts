@@ -1,4 +1,5 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
+import { TreatmentCategory } from '../types/enums';
 
 // ============ Barbershop ============
 @InputType()
@@ -180,8 +181,8 @@ export class CreateBarberInput {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [String!], { nullable: true })
-  specialties?: string[];
+  @Field(() => [TreatmentCategory!], { nullable: true })
+  specialties?: TreatmentCategory[];
 
   @Field({ nullable: true })
   hireDate?: string;
@@ -207,8 +208,8 @@ export class UpdateBarberInput {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [String!], { nullable: true })
-  specialties?: string[];
+  @Field(() => [TreatmentCategory!], { nullable: true })
+  specialties?: TreatmentCategory[];
 
   @Field({ nullable: true })
   hireDate?: string;
@@ -297,8 +298,8 @@ export class CreateBarbershopServiceInput {
   @Field(() => Float)
   price: number;
 
-  @Field()
-  category: string;
+  @Field(() => TreatmentCategory)
+  category: TreatmentCategory;
 
   @Field({ nullable: true, defaultValue: 0 })
   displayOrder?: number;
@@ -321,8 +322,8 @@ export class UpdateBarbershopServiceInput {
   @Field(() => Float, { nullable: true })
   price?: number;
 
-  @Field({ nullable: true })
-  category?: string;
+  @Field(() => TreatmentCategory, { nullable: true })
+  category?: TreatmentCategory;
 
   @Field(() => Int, { nullable: true })
   displayOrder?: number;

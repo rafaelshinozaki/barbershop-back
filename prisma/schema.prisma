@@ -521,7 +521,7 @@ model Barber {
   email          String?
   avatarUrl      String?
   specialization String?
-  specialties    String[]         @default([]) // categorias estruturadas: HAIR, BEARD, NAILS, SKIN, BROWS_LASHES, MASSAGE, MAKEUP, WELLNESS, WAXING
+  specialties    TreatmentCategory[] @default([])
   isActive       Boolean          @default(true)
   hireDate       DateTime?
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -571,6 +571,31 @@ model BarberTimeOff {
   @@index([barberId, startAt, endAt])
 }
 
+// Taxonomia padronizada de tipo de tratamento — compartilhada entre o
+// catálogo de serviços de cada unidade (BarbershopService.category) e as
+// especialidades de cada profissional (Barber.specialties). Antes disso
+// eram dois vocabulários de texto livre desalinhados (category tinha
+// HAIRCUT/BEARD/COMBO/COLORING/STYLING/OTHER, specialties tinha
+// HAIR/BEARD/NAILS/SKIN/BROWS_LASHES/MASSAGE/MAKEUP/WELLNESS/WAXING) — o
+// que fazia a busca cruzada entre negócios (searchBarbershops) depender de
+// cada unidade ter digitado a categoria do jeito certo pra combinar com as
+// outras.
+enum TreatmentCategory {
+  HAIR
+  BEARD
+  COMBO
+  COLORING
+  STYLING
+  NAILS
+  SKIN
+  BROWS_LASHES
+  MASSAGE
+  MAKEUP
+  WELLNESS
+  WAXING
+  OTHER
+}
+
 model BarbershopService {
   id               Int      @id @default(autoincrement())
   createdAt        DateTime @default(now())
@@ -581,7 +606,7 @@ model BarbershopService {
   description      String?
   durationMinutes  Int
   price            Decimal
-  category         String   // HAIRCUT, BEARD, COMBO, etc.
+  category         TreatmentCategory @default(OTHER)
   isActive         Boolean  @default(true)
   displayOrder     Int      @default(0)
   barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)

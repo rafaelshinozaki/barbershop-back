@@ -1,4 +1,7 @@
 import { registerEnumType } from '@nestjs/graphql';
+import { TreatmentCategory } from '@prisma/client';
+
+export { TreatmentCategory };
 
 export enum UserRole {
   SYSTEM_ADMIN = 'SYSTEM_ADMIN',
@@ -23,4 +26,8 @@ registerEnumType(UserRole, {
 
 registerEnumType(MembershipStatus, {
   name: 'MembershipStatus',
+});
+
+registerEnumType(TreatmentCategory, {
+  name: 'TreatmentCategory',
 });

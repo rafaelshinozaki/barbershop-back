@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { TreatmentCategory } from '@prisma/client';
 import {
   planIncludesModule,
   getModulesForPlanName,
@@ -579,7 +580,7 @@ export class BarbershopService {
       email?: string;
       avatarUrl?: string;
       specialization?: string;
-      specialties?: string[];
+      specialties?: TreatmentCategory[];
       hireDate?: Date;
     },
   ) {
@@ -624,7 +625,7 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     barberId: number,
-    data: Partial<{ name: string; phone: string; email: string; avatarUrl: string; specialization: string; specialties: string[]; isActive: boolean }>,
+    data: Partial<{ name: string; phone: string; email: string; avatarUrl: string; specialization: string; specialties: TreatmentCategory[]; isActive: boolean }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const barber = await this.prisma.barber.findFirst({
@@ -685,7 +686,7 @@ export class BarbershopService {
       description?: string;
       durationMinutes: number;
       price: number | Decimal;
-      category: string;
+      category: TreatmentCategory;
       displayOrder?: number;
     },
   ) {
@@ -719,7 +720,7 @@ export class BarbershopService {
       description: string;
       durationMinutes: number;
       price: number | Decimal;
-      category: string;
+      category: TreatmentCategory;
       isActive: boolean;
       displayOrder: number;
     }>,
@@ -1596,7 +1597,7 @@ export class BarbershopService {
   // Distinct categories vêm direto dos serviços cadastrados (BarbershopService.category
   // é texto livre hoje — sem uma taxonomia própria ainda) para alimentar o filtro
   // de busca sem precisar de uma lista hardcoded no front.
-  async getPublicServiceCategories(): Promise<string[]> {
+  async getPublicServiceCategories(): Promise<TreatmentCategory[]> {
     const rows = await this.prisma.barbershopService.findMany({
       where: { isActive: true, barbershop: { isActive: true } },
       select: { category: true },
@@ -1607,7 +1608,7 @@ export class BarbershopService {
 
   async searchPublicBarbershops(input: {
     query?: string;
-    category?: string;
+    category?: TreatmentCategory;
     city?: string;
     lat?: number;
     lng?: number;

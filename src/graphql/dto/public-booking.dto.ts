@@ -1,5 +1,6 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
-import { IsEmail, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { TreatmentCategory } from '../types/enums';
 
 @InputType()
 export class SearchBarbershopsInput {
@@ -8,10 +9,10 @@ export class SearchBarbershopsInput {
   @IsString()
   query?: string;
 
-  @Field({ nullable: true })
+  @Field(() => TreatmentCategory, { nullable: true })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsEnum(TreatmentCategory)
+  category?: TreatmentCategory;
 
   @Field({ nullable: true })
   @IsOptional()

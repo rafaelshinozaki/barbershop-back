@@ -476,7 +476,7 @@ async function main() {
           barbershopId: barbershop.id,
           name: 'Corte masculino',
           icon: '✂️',
-          category: 'HAIRCUT',
+          category: 'HAIR',
           durationMinutes: 30,
           price: 35,
           isActive: true,

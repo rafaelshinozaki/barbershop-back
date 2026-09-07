@@ -7,6 +7,7 @@ import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payloa
 import { PublicBarbershopType, PublicAppointmentType, PublicBarbershopSearchResultType } from '../types/public-booking.type';
 import { CreatePublicAppointmentInput, SearchBarbershopsInput } from '../dto/public-booking.dto';
 import { ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
+import { TreatmentCategory } from '../types/enums';
 
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
 // pensada pra ser acessada por qualquer visitante (a página de uma unidade
@@ -24,7 +25,7 @@ export class PublicBookingResolver {
     return this.barbershopService.getPublicBarbershopByslug(slug);
   }
 
-  @Query(() => [String])
+  @Query(() => [TreatmentCategory])
   async publicServiceCategories() {
     return this.barbershopService.getPublicServiceCategories();
   }

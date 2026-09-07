@@ -1,4 +1,5 @@
 import { ObjectType, Field, Int, Float } from '@nestjs/graphql';
+import { TreatmentCategory } from './enums';
 
 @ObjectType()
 export class Network {
@@ -228,8 +229,8 @@ export class Barber {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [String!]!)
-  specialties: string[];
+  @Field(() => [TreatmentCategory!]!)
+  specialties: TreatmentCategory[];
 
   @Field()
   isActive: boolean;
@@ -327,8 +328,8 @@ export class BarbershopServiceType {
   @Field(() => Float)
   price: number;
 
-  @Field()
-  category: string;
+  @Field(() => TreatmentCategory)
+  category: TreatmentCategory;
 
   @Field()
   isActive: boolean;

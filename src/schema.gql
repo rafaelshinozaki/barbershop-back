@@ -135,7 +135,7 @@ type Barber {
   name: String!
   phone: String!
   specialization: String
-  specialties: [String!]!
+  specialties: [TreatmentCategory!]!
   staffType: String
   updatedAt: String!
   userId: Int
@@ -223,7 +223,7 @@ type BarbershopProductType {
 
 type BarbershopServiceType {
   barbershopId: Int!
-  category: String!
+  category: TreatmentCategory!
   createdAt: String!
   description: String
   displayOrder: Int!
@@ -502,7 +502,7 @@ input CreateBarberInput {
   name: String!
   phone: String!
   specialization: String
-  specialties: [String!]
+  specialties: [TreatmentCategory!]
   userId: Float
 }
 
@@ -553,7 +553,7 @@ input CreateBarbershopProductInput {
 
 input CreateBarbershopServiceInput {
   barbershopId: Int!
-  category: String!
+  category: TreatmentCategory!
   description: String
   displayOrder: Float = 0
   durationMinutes: Int!
@@ -1259,12 +1259,12 @@ type PublicBarberType {
   id: Int!
   name: String!
   specialization: String
-  specialties: [String!]!
+  specialties: [TreatmentCategory!]!
 }
 
 type PublicBarbershopSearchResultType {
   address: String!
-  categories: [String!]!
+  categories: [TreatmentCategory!]!
   city: String!
   distanceKm: Float
   id: Int!
@@ -1296,7 +1296,7 @@ type PublicBarbershopType {
 }
 
 type PublicServiceType {
-  category: String!
+  category: TreatmentCategory!
   description: String
   durationMinutes: Int!
   icon: String
@@ -1380,7 +1380,7 @@ type Query {
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
-  publicServiceCategories: [String!]!
+  publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
   roleDistribution: RoleDistribution!
@@ -1459,7 +1459,7 @@ type SaleItemType {
 }
 
 input SearchBarbershopsInput {
-  category: String
+  category: TreatmentCategory
   city: String
   lat: Float
   lng: Float
@@ -1565,6 +1565,22 @@ type SubscriptionResponse {
   status: String!
 }
 
+enum TreatmentCategory {
+  BEARD
+  BROWS_LASHES
+  COLORING
+  COMBO
+  HAIR
+  MAKEUP
+  MASSAGE
+  NAILS
+  OTHER
+  SKIN
+  STYLING
+  WAXING
+  WELLNESS
+}
+
 input TwoFactorInput {
   code: String
   currentPassword: String
@@ -1612,7 +1628,7 @@ input UpdateBarberInput {
   name: String
   phone: String
   specialization: String
-  specialties: [String!]
+  specialties: [TreatmentCategory!]
   userId: Float
 }
 
@@ -1654,7 +1670,7 @@ input UpdateBarbershopProductInput {
 }
 
 input UpdateBarbershopServiceInput {
-  category: String
+  category: TreatmentCategory
   description: String
   displayOrder: Int
   durationMinutes: Int
