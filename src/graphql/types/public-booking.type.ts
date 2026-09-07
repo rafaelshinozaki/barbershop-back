@@ -23,6 +23,9 @@ export class PublicServiceType {
 
   @Field(() => TreatmentCategory)
   category: TreatmentCategory;
+
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
 }
 
 @ObjectType()
@@ -197,4 +200,7 @@ export class PublicAppointmentType {
 
   @Field()
   currency: string;
+
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
 }

@@ -364,13 +364,47 @@ model Network {
   description    String?
   mission        String?
   foundationYear Int?
+  // Fidelidade — desativada por padrão (loyaltyEnabled=false); os dois
+  // valores abaixo só importam quando ligada. pointsPerCurrencyUnit: quantos
+  // pontos o cliente ganha por unidade de moeda gasta (ex.: 1.0 = 1 ponto por
+  // R$1). pointValue: quanto 1 ponto vale em desconto na hora de resgatar
+  // (ex.: 0.10 = R$0,10 por ponto).
+  loyaltyEnabled              Boolean @default(false)
+  loyaltyPointsPerCurrencyUnit Float?
+  loyaltyPointValue            Float?
   ownerUserId    Int
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]
   customers      Customer[]
   favoritedBy    ClientFavorite[]
+  giftCards      GiftCard[]
 
   @@index([ownerUserId])
+}
+
+// Cartão-presente: emitido manualmente pela equipe (venda recebida em
+// dinheiro/cartão/pix, como qualquer outra) e resgatado como desconto numa
+// Sale futura. Sem cobrança online própria — decisão explícita de escopo
+// pra não depender de integrar o Stripe pra pagamentos de cliente do
+// marketplace (hoje o Stripe só cobra a assinatura da plataforma).
+model GiftCard {
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  networkId      Int
+  code           String    @unique
+  initialValue   Decimal
+  remainingValue Decimal
+  purchaserName  String?
+  purchaserPhone String?
+  purchaserEmail String?
+  recipientName  String?
+  message        String?
+  isActive       Boolean   @default(true)
+  expiresAt      DateTime?
+  network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  sales          Sale[]
+
+  @@index([networkId])
 }
 
 model Barbershop {
@@ -452,6 +486,7 @@ model Customer {
   birthDate       DateTime?
   notes           String?
   isActive        Boolean         @default(true)
+  loyaltyPoints   Int             @default(0)
   network         Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
   clientAccount   ClientAccount?  @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   appointments   Appointment[]
@@ -629,6 +664,7 @@ model BarbershopService {
   durationMinutes  Int
   price            Decimal
   category         TreatmentCategory @default(OTHER)
+  depositAmount    Decimal? // sinal sugerido pra quem agendar este serviço — cobrança continua manual
   isActive         Boolean  @default(true)
   displayOrder     Int      @default(0)
   barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -698,6 +734,8 @@ model Appointment {
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
   reminderSentAt DateTime?
+  depositAmount  Decimal? // sinal — cobrança em pessoa, isto só registra valor combinado e se já foi pago
+  depositPaid    Boolean   @default(false)
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -807,11 +845,17 @@ model Sale {
   paymentStatus  String    @default("PENDING") // PENDING, PAID, REFUNDED, PARTIAL
   paymentMethod  String?   // CASH, CARD, PIX, etc.
   paidAt         DateTime?
+  giftCardId           Int?
+  giftCardAmountApplied Decimal?
+  loyaltyPointsEarned   Int?
+  loyaltyPointsRedeemed Int?
+  loyaltyDiscountAmount Decimal?
   barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer       Customer?  @relation(fields: [customerId], references: [id])
   barber         Barber?    @relation(fields: [barberId], references: [id])
   appointment    Appointment? @relation(fields: [appointmentId], references: [id])
   cashSession    CashSession? @relation(fields: [cashSessionId], references: [id])
+  giftCard       GiftCard?  @relation(fields: [giftCardId], references: [id])
   items          SaleItem[]
 
   @@index([barbershopId])
@@ -820,6 +864,7 @@ model Sale {
   @@index([barberId])
   @@index([paymentStatus])
   @@index([cashSessionId])
+  @@index([giftCardId])
 }
 
 model CashSession {

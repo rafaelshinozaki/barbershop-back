@@ -27,6 +27,8 @@ import {
   ConsentFormType,
   CommissionRuleType,
   CommissionReportType,
+  GiftCardType,
+  CustomerLoyaltyType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -65,6 +67,7 @@ import {
   CreateConsentFormInput,
   SignConsentFormInput,
   SetCommissionRuleInput,
+  CreateGiftCardInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -154,6 +157,57 @@ export class BarbershopResolver {
   @Query(() => NetworkDashboardStats)
   async networkDashboardStats(@CurrentUser() user: UserDTO) {
     return this.barbershopService.getNetworkDashboardStats(user.id);
+  }
+
+  // ============ CARTÃO-PRESENTE ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => GiftCardType)
+  async createGiftCard(@Args('input') input: CreateGiftCardInput, @CurrentUser() user: UserDTO) {
+    const { networkId, expiresAt, ...rest } = input;
+    return this.barbershopService.createGiftCard(user.id, networkId, {
+      ...rest,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [GiftCardType])
+  async giftCards(@Args('networkId', { type: () => Int }) networkId: number, @CurrentUser() user: UserDTO) {
+    return this.barbershopService.getGiftCards(user.id, networkId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => GiftCardType)
+  async setGiftCardActive(
+    @Args('networkId', { type: () => Int }) networkId: number,
+    @Args('giftCardId', { type: () => Int }) giftCardId: number,
+    @Args('isActive') isActive: boolean,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.setGiftCardActive(user.id, networkId, giftCardId, isActive);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => GiftCardType)
+  async lookupGiftCard(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('code') code: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.lookupGiftCard(user.id, barbershopId, code);
+  }
+
+  // ============ FIDELIDADE ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CustomerLoyaltyType)
+  async customerLoyalty(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCustomerLoyalty(user.id, barbershopId, customerId);
   }
 
   // ============ CUSTOMERS ============
@@ -310,7 +364,7 @@ export class BarbershopResolver {
     @Args('input') input: UpdateBarbershopServiceInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateService(barbershopId, id, user.id, input);
+    return this.barbershopService.updateService(user.id, barbershopId, id, input);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -638,7 +692,7 @@ export class BarbershopResolver {
     @Args('input') input: UpdateBarberScheduleInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateBarberSchedule(id, user.id, input);
+    return this.barbershopService.updateBarberSchedule(user.id, id, input);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -647,7 +701,7 @@ export class BarbershopResolver {
     @Args('id', { type: () => Int }) id: number,
     @CurrentUser() user: UserDTO,
   ) {
-    await this.barbershopService.deleteBarberSchedule(id, user.id);
+    await this.barbershopService.deleteBarberSchedule(user.id, id);
     return true;
   }
 
@@ -701,6 +755,17 @@ export class BarbershopResolver {
       startAt: new Date(input.startAt),
       endAt: new Date(input.endAt),
     });
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Appointment)
+  async setAppointmentDepositPaid(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('appointmentId', { type: () => Int }) appointmentId: number,
+    @Args('depositPaid') depositPaid: boolean,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.setAppointmentDepositPaid(user.id, barbershopId, appointmentId, depositPaid);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

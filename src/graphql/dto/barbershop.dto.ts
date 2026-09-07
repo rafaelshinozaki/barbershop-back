@@ -115,6 +115,15 @@ export class UpdateNetworkInput {
 
   @Field(() => Int, { nullable: true })
   foundationYear?: number;
+
+  @Field({ nullable: true })
+  loyaltyEnabled?: boolean;
+
+  @Field(() => Float, { nullable: true })
+  loyaltyPointsPerCurrencyUnit?: number;
+
+  @Field(() => Float, { nullable: true })
+  loyaltyPointValue?: number;
 }
 
 // ============ Customer ============
@@ -301,6 +310,9 @@ export class CreateBarbershopServiceInput {
   @Field(() => TreatmentCategory)
   category: TreatmentCategory;
 
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
+
   @Field({ nullable: true, defaultValue: 0 })
   displayOrder?: number;
 }
@@ -324,6 +336,9 @@ export class UpdateBarbershopServiceInput {
 
   @Field(() => TreatmentCategory, { nullable: true })
   category?: TreatmentCategory;
+
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
 
   @Field(() => Int, { nullable: true })
   displayOrder?: number;
@@ -531,6 +546,12 @@ export class CreateAppointmentInput {
   @Field({ nullable: true, defaultValue: 'PHONE' })
   source?: string;
 
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
+
+  @Field({ nullable: true })
+  depositPaid?: boolean;
+
   @Field(() => [AppointmentServiceInput])
   services: AppointmentServiceInput[];
 }
@@ -655,6 +676,12 @@ export class CreateSaleInput {
 
   @Field({ nullable: true })
   paymentMethod?: string;
+
+  @Field({ nullable: true })
+  giftCardCode?: string;
+
+  @Field(() => Int, { nullable: true })
+  loyaltyPointsRedeemed?: number;
 }
 
 @InputType()
@@ -795,4 +822,32 @@ export class SetCommissionRuleInput {
 
   @Field(() => Float)
   percentage: number;
+}
+
+// ============ Cartão-presente ============
+@InputType()
+export class CreateGiftCardInput {
+  @Field(() => Int)
+  networkId: number;
+
+  @Field(() => Float)
+  initialValue: number;
+
+  @Field({ nullable: true })
+  purchaserName?: string;
+
+  @Field({ nullable: true })
+  purchaserPhone?: string;
+
+  @Field({ nullable: true })
+  purchaserEmail?: string;
+
+  @Field({ nullable: true })
+  recipientName?: string;
+
+  @Field({ nullable: true })
+  message?: string;
+
+  @Field({ nullable: true })
+  expiresAt?: string;
 }

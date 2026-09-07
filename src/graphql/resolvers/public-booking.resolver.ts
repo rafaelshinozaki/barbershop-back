@@ -93,6 +93,7 @@ export class PublicBookingResolver {
       serviceName: service?.name ?? '',
       price: service ? Number(service.price) : 0,
       currency: appointment.barbershop.currency,
+      depositAmount: appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,
     };
   }
 

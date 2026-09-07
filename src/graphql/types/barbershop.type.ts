@@ -28,6 +28,15 @@ export class Network {
   foundationYear?: number;
 
   @Field()
+  loyaltyEnabled: boolean;
+
+  @Field(() => Float, { nullable: true })
+  loyaltyPointsPerCurrencyUnit?: number;
+
+  @Field(() => Float, { nullable: true })
+  loyaltyPointValue?: number;
+
+  @Field()
   createdAt: string;
 
   @Field()
@@ -331,6 +340,9 @@ export class BarbershopServiceType {
   @Field(() => TreatmentCategory)
   category: TreatmentCategory;
 
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
+
   @Field()
   isActive: boolean;
 
@@ -538,6 +550,12 @@ export class Appointment {
   @Field()
   source: string;
 
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number;
+
+  @Field()
+  depositPaid: boolean;
+
   @Field(() => [AppointmentServiceType], { nullable: true })
   services?: AppointmentServiceType[];
 
@@ -697,6 +715,21 @@ export class Sale {
   @Field({ nullable: true })
   paidAt?: string;
 
+  @Field(() => Int, { nullable: true })
+  giftCardId?: number;
+
+  @Field(() => Float, { nullable: true })
+  giftCardAmountApplied?: number;
+
+  @Field(() => Int, { nullable: true })
+  loyaltyPointsEarned?: number;
+
+  @Field(() => Int, { nullable: true })
+  loyaltyPointsRedeemed?: number;
+
+  @Field(() => Float, { nullable: true })
+  loyaltyDiscountAmount?: number;
+
   @Field()
   createdAt: string;
 
@@ -708,6 +741,63 @@ export class Sale {
 
   @Field({ nullable: true })
   barberName?: string;
+}
+
+@ObjectType()
+export class GiftCardType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  networkId: number;
+
+  @Field()
+  code: string;
+
+  @Field(() => Float)
+  initialValue: number;
+
+  @Field(() => Float)
+  remainingValue: number;
+
+  @Field({ nullable: true })
+  purchaserName?: string;
+
+  @Field({ nullable: true })
+  purchaserPhone?: string;
+
+  @Field({ nullable: true })
+  purchaserEmail?: string;
+
+  @Field({ nullable: true })
+  recipientName?: string;
+
+  @Field({ nullable: true })
+  message?: string;
+
+  @Field()
+  isActive: boolean;
+
+  @Field({ nullable: true })
+  expiresAt?: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class CustomerLoyaltyType {
+  @Field()
+  enabled: boolean;
+
+  @Field(() => Int)
+  points: number;
+
+  @Field(() => Float)
+  pointValue: number;
+
+  @Field(() => Float)
+  redeemableValue: number;
 }
 
 @ObjectType()

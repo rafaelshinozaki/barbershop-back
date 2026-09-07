@@ -182,6 +182,9 @@ export class BarbershopService {
       description: string;
       mission: string;
       foundationYear: number;
+      loyaltyEnabled: boolean;
+      loyaltyPointsPerCurrencyUnit: number;
+      loyaltyPointValue: number;
     }>,
   ) {
     const network = await this.getMyNetwork(userId);
@@ -687,15 +690,18 @@ export class BarbershopService {
       durationMinutes: number;
       price: number | Decimal;
       category: TreatmentCategory;
+      depositAmount?: number | Decimal | null;
       displayOrder?: number;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    const { depositAmount, ...rest } = data;
     return this.prisma.barbershopService.create({
       data: {
         barbershopId,
-        ...data,
+        ...rest,
         price: new Decimal(data.price),
+        depositAmount: depositAmount != null ? new Decimal(depositAmount) : null,
         displayOrder: data.displayOrder ?? 0,
       },
     });
@@ -721,15 +727,22 @@ export class BarbershopService {
       durationMinutes: number;
       price: number | Decimal;
       category: TreatmentCategory;
+      depositAmount: number | Decimal | null;
       isActive: boolean;
       displayOrder: number;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
+    const depositAmount =
+      data.depositAmount !== undefined
+        ? data.depositAmount != null
+          ? new Decimal(data.depositAmount)
+          : null
+        : undefined;
     return this.prisma.barbershopService.update({
       where: { id: serviceId },
-      data: { ...data, price },
+      data: { ...data, price, depositAmount },
     });
   }
 
@@ -1172,6 +1185,8 @@ export class BarbershopService {
       status?: string;
       notes?: string;
       source?: string;
+      depositAmount?: number;
+      depositPaid?: boolean;
       services: Array<{ serviceId: number; quantity?: number; unitPrice: number }>;
     },
   ) {
@@ -1180,7 +1195,15 @@ export class BarbershopService {
     if (data.resourceId) {
       await this.ensureResourceAvailable(barbershopId, data.resourceId, data.startAt, data.endAt);
     }
-    const { services, ...appointmentData } = data;
+    const { services, depositAmount, depositPaid, ...appointmentData } = data;
+    // Se nenhum valor de sinal foi informado, usa o sugerido no primeiro
+    // serviço (se essa unidade configurou um) — evita a equipe ter que
+    // lembrar de repetir o valor toda vez.
+    let resolvedDeposit = depositAmount;
+    if (resolvedDeposit === undefined && services[0]) {
+      const svc = await this.prisma.barbershopService.findUnique({ where: { id: services[0].serviceId } });
+      resolvedDeposit = svc?.depositAmount ? Number(svc.depositAmount) : undefined;
+    }
     return this.prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.create({
         data: {
@@ -1188,6 +1211,8 @@ export class BarbershopService {
           ...appointmentData,
           status: appointmentData.status ?? 'CONFIRMED',
           source: appointmentData.source ?? 'PHONE',
+          depositAmount: resolvedDeposit != null ? new Decimal(resolvedDeposit) : null,
+          depositPaid: depositPaid ?? false,
         },
       });
       await tx.appointmentService.createMany({
@@ -1343,6 +1368,23 @@ export class BarbershopService {
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { status },
+    });
+  }
+
+  async setAppointmentDepositPaid(
+    userId: number,
+    barbershopId: number,
+    appointmentId: number,
+    depositPaid: boolean,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, barbershopId },
+    });
+    if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { depositPaid },
     });
   }
 
@@ -1571,6 +1613,7 @@ export class BarbershopService {
           status: 'CONFIRMED',
           source: 'ONLINE',
           notes: input.notes,
+          depositAmount: service.depositAmount,
         },
       });
       await tx.appointmentService.create({
@@ -1777,6 +1820,120 @@ export class BarbershopService {
     return map.get(barbershopId) ?? { averageRating: null, reviewCount: 0 };
   }
 
+  // ============ CARTÃO-PRESENTE ============
+  // Emitido e resgatado manualmente pela equipe — sem cobrança online própria
+  // (decisão explícita: não integrar Stripe pra pagamentos de cliente do
+  // marketplace agora). O código evita caracteres ambíguos (0/O, 1/I) porque
+  // é lido em voz alta / digitado por telefone com frequência.
+
+  private generateGiftCardCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return `GIFT-${code}`;
+  }
+
+  async createGiftCard(
+    userId: number,
+    networkId: number,
+    data: {
+      initialValue: number;
+      purchaserName?: string;
+      purchaserPhone?: string;
+      purchaserEmail?: string;
+      recipientName?: string;
+      message?: string;
+      expiresAt?: Date;
+    },
+  ) {
+    const network = await this.getMyNetwork(userId);
+    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    if (data.initialValue <= 0) {
+      throw new BadRequestException('O valor do cartão-presente deve ser maior que zero');
+    }
+
+    let code = this.generateGiftCardCode();
+    while (await this.prisma.giftCard.findUnique({ where: { code } })) {
+      code = this.generateGiftCardCode();
+    }
+
+    return this.prisma.giftCard.create({
+      data: {
+        networkId,
+        code,
+        initialValue: new Decimal(data.initialValue),
+        remainingValue: new Decimal(data.initialValue),
+        purchaserName: data.purchaserName,
+        purchaserPhone: data.purchaserPhone,
+        purchaserEmail: data.purchaserEmail,
+        recipientName: data.recipientName,
+        message: data.message,
+        expiresAt: data.expiresAt,
+      },
+    });
+  }
+
+  async getGiftCards(userId: number, networkId: number) {
+    const network = await this.getMyNetwork(userId);
+    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    return this.prisma.giftCard.findMany({ where: { networkId }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async setGiftCardActive(userId: number, networkId: number, giftCardId: number, isActive: boolean) {
+    const network = await this.getMyNetwork(userId);
+    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    const giftCard = await this.prisma.giftCard.findFirst({ where: { id: giftCardId, networkId } });
+    if (!giftCard) throw new NotFoundException('Cartão-presente não encontrado');
+    return this.prisma.giftCard.update({ where: { id: giftCardId }, data: { isActive } });
+  }
+
+  // Confere se um código é válido/utilizável sem gastar saldo — usado tanto
+  // pela pré-visualização no checkout quanto pela validação real dentro de
+  // createSale (evita duplicar as regras em dois lugares).
+  private async validateGiftCard(barbershopId: number, code: string) {
+    const barbershop = await this.prisma.barbershop.findUnique({ where: { id: barbershopId } });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const giftCard = await this.prisma.giftCard.findUnique({ where: { code: code.trim().toUpperCase() } });
+    if (!giftCard || giftCard.networkId !== barbershop.networkId) {
+      throw new NotFoundException('Cartão-presente não encontrado');
+    }
+    if (!giftCard.isActive) throw new BadRequestException('Este cartão-presente está inativo');
+    if (giftCard.expiresAt && giftCard.expiresAt < new Date()) {
+      throw new BadRequestException('Este cartão-presente expirou');
+    }
+    if (Number(giftCard.remainingValue) <= 0) {
+      throw new BadRequestException('Este cartão-presente não tem saldo restante');
+    }
+    return giftCard;
+  }
+
+  async lookupGiftCard(userId: number, barbershopId: number, code: string) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.validateGiftCard(barbershopId, code);
+  }
+
+  // ============ FIDELIDADE ============
+
+  async getCustomerLoyalty(userId: number, barbershopId: number, customerId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: { network: true },
+    });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId: barbershop.networkId },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    const pointValue = barbershop.network.loyaltyPointValue ?? 0;
+    return {
+      enabled: barbershop.network.loyaltyEnabled,
+      points: customer.loyaltyPoints,
+      pointValue,
+      redeemableValue: customer.loyaltyPoints * pointValue,
+    };
+  }
+
   // ============ WALK-INS (Queue) ============
 
   async createWalkIn(
@@ -1907,11 +2064,46 @@ export class BarbershopService {
       total: number;
       paymentStatus?: string;
       paymentMethod?: string;
+      giftCardCode?: string;
+      loyaltyPointsRedeemed?: number;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
+
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: { network: true },
+    });
+
+    // O cartão-presente e o resgate de pontos são calculados e validados no
+    // servidor (nunca confiamos no valor que o front manda) e descontados
+    // em cima do total já calculado pelo front (subtotal - desconto + imposto)
+    // — dois mecanismos de desconto independentes, não substituem um ao outro.
+    let giftCard: { id: number; remainingValue: any } | null = null;
+    let giftCardAmountApplied = 0;
+    if (data.giftCardCode) {
+      giftCard = await this.validateGiftCard(barbershopId, data.giftCardCode);
+      giftCardAmountApplied = Math.min(Number(giftCard.remainingValue), data.total);
+    }
+
+    let loyaltyDiscountAmount = 0;
+    if (data.loyaltyPointsRedeemed && data.loyaltyPointsRedeemed > 0) {
+      if (!data.customerId) {
+        throw new BadRequestException('Selecione um cliente para resgatar pontos de fidelidade');
+      }
+      const customerForRedemption = await this.prisma.customer.findUnique({ where: { id: data.customerId } });
+      if (!customerForRedemption) throw new NotFoundException('Cliente não encontrado');
+      if (customerForRedemption.loyaltyPoints < data.loyaltyPointsRedeemed) {
+        throw new BadRequestException('Cliente não tem pontos de fidelidade suficientes');
+      }
+      const pointValue = barbershop?.network.loyaltyPointValue ?? 0;
+      loyaltyDiscountAmount = data.loyaltyPointsRedeemed * pointValue;
+    }
+
+    const finalTotal = Math.max(0, data.total - giftCardAmountApplied - loyaltyDiscountAmount);
+
     // Vincula a venda ao caixa aberto no momento, se houver um — é o que
     // permite reconciliar o fechamento de caixa depois (ver
     // closeCashSession). Uma venda feita sem caixa aberto simplesmente não
@@ -1932,12 +2124,47 @@ export class BarbershopService {
           subtotal: new Decimal(data.subtotal),
           discountAmount: new Decimal(discount),
           taxAmount: new Decimal(tax),
-          total: new Decimal(data.total),
+          total: new Decimal(finalTotal),
           paymentStatus: data.paymentStatus ?? 'PENDING',
           paymentMethod: data.paymentMethod,
           paidAt: data.paymentStatus === 'PAID' ? new Date() : null,
+          giftCardId: giftCard?.id,
+          giftCardAmountApplied: giftCard ? new Decimal(giftCardAmountApplied) : null,
+          loyaltyPointsRedeemed: data.loyaltyPointsRedeemed || null,
+          loyaltyDiscountAmount: loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
         },
       });
+
+      if (giftCard) {
+        await tx.giftCard.update({
+          where: { id: giftCard.id },
+          data: { remainingValue: { decrement: giftCardAmountApplied } },
+        });
+      }
+      if (data.loyaltyPointsRedeemed && data.customerId) {
+        await tx.customer.update({
+          where: { id: data.customerId },
+          data: { loyaltyPoints: { decrement: data.loyaltyPointsRedeemed } },
+        });
+      }
+
+      // Concede pontos de fidelidade só quando a venda já está paga — evita
+      // dar crédito por algo que ainda pode não se concretizar (PENDING).
+      if (
+        data.paymentStatus === 'PAID' &&
+        data.customerId &&
+        barbershop?.network.loyaltyEnabled &&
+        barbershop.network.loyaltyPointsPerCurrencyUnit
+      ) {
+        const pointsEarned = Math.floor(finalTotal * barbershop.network.loyaltyPointsPerCurrencyUnit);
+        if (pointsEarned > 0) {
+          await tx.customer.update({
+            where: { id: data.customerId },
+            data: { loyaltyPoints: { increment: pointsEarned } },
+          });
+          await tx.sale.update({ where: { id: sale.id }, data: { loyaltyPointsEarned: pointsEarned } });
+        }
+      }
       await tx.saleItem.createMany({
         data: data.items.map((item) => ({
           saleId: sale.id,

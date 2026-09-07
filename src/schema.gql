@@ -83,6 +83,8 @@ type Appointment {
   barbershopId: Int!
   createdAt: String!
   customerId: Int!
+  depositAmount: Float
+  depositPaid: Boolean!
   endAt: String!
   id: Int!
   notes: String
@@ -225,6 +227,7 @@ type BarbershopServiceType {
   barbershopId: Int!
   category: TreatmentCategory!
   createdAt: String!
+  depositAmount: Float
   description: String
   displayOrder: Int!
   durationMinutes: Int!
@@ -486,6 +489,8 @@ input CreateAppointmentInput {
   barberId: Int!
   barbershopId: Int!
   customerId: Int!
+  depositAmount: Float
+  depositPaid: Boolean
   endAt: String!
   notes: String
   resourceId: Int
@@ -554,6 +559,7 @@ input CreateBarbershopProductInput {
 input CreateBarbershopServiceInput {
   barbershopId: Int!
   category: TreatmentCategory!
+  depositAmount: Float
   description: String
   displayOrder: Float = 0
   durationMinutes: Int!
@@ -605,6 +611,17 @@ input CreateExpenseInput {
   paymentMethod: String
 }
 
+input CreateGiftCardInput {
+  expiresAt: String
+  initialValue: Float!
+  message: String
+  networkId: Int!
+  purchaserEmail: String
+  purchaserName: String
+  purchaserPhone: String
+  recipientName: String
+}
+
 input CreatePlanInput {
   billingCycle: String!
   description: String
@@ -649,7 +666,9 @@ input CreateSaleInput {
   barberId: Int
   customerId: Int
   discountAmount: Float = 0
+  giftCardCode: String
   items: [CreateSaleItemInput!]!
+  loyaltyPointsRedeemed: Int
   paymentMethod: String
   paymentStatus: String = "PENDING"
   saleType: String!
@@ -714,6 +733,13 @@ input CreateWalkInInput {
   customerName: String!
   customerPhone: String
   services: [WalkInServiceInput!]!
+}
+
+type CustomerLoyaltyType {
+  enabled: Boolean!
+  pointValue: Float!
+  points: Int!
+  redeemableValue: Float!
 }
 
 """
@@ -834,6 +860,22 @@ type GeographicAnalysis {
   states: ChartData!
 }
 
+type GiftCardType {
+  code: String!
+  createdAt: String!
+  expiresAt: String
+  id: Int!
+  initialValue: Float!
+  isActive: Boolean!
+  message: String
+  networkId: Int!
+  purchaserEmail: String
+  purchaserName: String
+  purchaserPhone: String
+  recipientName: String
+  remainingValue: Float!
+}
+
 type InventoryItemType {
   barbershopId: Int!
   createdAt: String!
@@ -928,6 +970,7 @@ type Mutation {
   createCoupon(data: CreateCouponInput!): Coupon!
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
   createExpense(barbershopId: Int!, input: CreateExpenseInput!): ExpenseType!
+  createGiftCard(input: CreateGiftCardInput!): GiftCardType!
   createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
   createOrUpdateReview(input: CreateReviewInput!): Boolean!
   createPaymentIntent(planId: Int!): PaymentIntentResponse!
@@ -991,7 +1034,9 @@ type Mutation {
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
+  setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
+  setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -1040,6 +1085,9 @@ type Network {
   foundationYear: Int
   id: Int!
   logoUrl: String
+  loyaltyEnabled: Boolean!
+  loyaltyPointValue: Float
+  loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
   updatedAt: String!
@@ -1259,6 +1307,7 @@ type PublicAppointmentType {
   barberName: String!
   barbershopName: String!
   currency: String!
+  depositAmount: Float
   endAt: String!
   id: Int!
   price: Float!
@@ -1314,6 +1363,7 @@ type PublicBarbershopType {
 
 type PublicServiceType {
   category: TreatmentCategory!
+  depositAmount: Float
   description: String
   durationMinutes: Int!
   icon: String
@@ -1363,6 +1413,7 @@ type Query {
   couponStats(id: Float!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
+  customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
   demographicAnalysis: DemographicAnalysis!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
@@ -1376,11 +1427,13 @@ type Query {
   getPlanById(id: Int!): Plan
   getUserPhotoDownloadUrl: String
   getUsers: [User!]!
+  giftCards(networkId: Int!): [GiftCardType!]!
   inventoryItems(barbershopId: Int!): [InventoryItemType!]!
   inventoryMovements(barbershopId: Int!, productId: Int!): [InventoryMovementType!]!
   latestPendingPayment: Payment
   linkedSocialAccounts: [LinkedSocialAccountType!]!
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
+  lookupGiftCard(barbershopId: Int!, code: String!): GiftCardType!
   me: User!
   myBarbershops: [Barbershop!]!
   myCoupons: [Coupon!]!
@@ -1461,8 +1514,13 @@ type Sale {
   customerId: Int
   customerName: String
   discountAmount: Float!
+  giftCardAmountApplied: Float
+  giftCardId: Int
   id: Int!
   items: [SaleItemType!]
+  loyaltyDiscountAmount: Float
+  loyaltyPointsEarned: Int
+  loyaltyPointsRedeemed: Int
   paidAt: String
   paymentMethod: String
   paymentStatus: String!
@@ -1699,6 +1757,7 @@ input UpdateBarbershopProductInput {
 
 input UpdateBarbershopServiceInput {
   category: TreatmentCategory
+  depositAmount: Float
   description: String
   displayOrder: Int
   durationMinutes: Int
@@ -1741,6 +1800,9 @@ input UpdateNetworkInput {
   description: String
   foundationYear: Int
   logoUrl: String
+  loyaltyEnabled: Boolean
+  loyaltyPointValue: Float
+  loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
 }
