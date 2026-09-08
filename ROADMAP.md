@@ -38,5 +38,19 @@ País inicial do cadastro sugerido por geolocalização de IP (mesma técnica da
 ## Pendências conhecidas (fora deste horizonte)
 - Rollback de cadastro incompleto: se `createBarbershop` falha após o `User` já ter sido criado, o rollback manual não limpa `LoginHistory`/`ActiveSession`, podendo deixar usuário órfão (chip de tarefa já aberto).
 
-## Próximo horizonte
-Ainda não definido — a definir com o time/produto.
+## Horizonte: Crescimento e retenção — 🔜 A fazer
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Lembretes de agendamento por WhatsApp | 🔜 |
+| 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | 🔜 |
+| 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | 🔜 |
+
+### 1. Lembretes de agendamento por WhatsApp
+Hoje o lembrete de agendamento existe só por e-mail (`appointment-reminder.service.ts` + templates em `email/templates/*/appointment_reminder.hbs`). WhatsApp tem taxa de abertura muito maior no público-alvo (BR) e reduz no-show de forma mais eficaz.
+
+### 2. Relatórios avançados pro dono
+O dashboard (`Overview.tsx`) hoje só mostra receita semanal e vendas por dia da semana. Faltam métricas de retenção/recorrência de clientes, taxa de no-show por barbeiro/serviço, e ranking de serviços/produtos mais vendidos.
+
+### 3. Indicação entre clientes de uma barbearia
+Cliente indica cliente e ganha pontos de fidelidade — reaproveita o programa de fidelidade já construído no horizonte anterior. Diferente do "Convidar amigos" (`InviteFriends`/`AcceptInvite`) já existente, que é pra atrair novos *donos* de barbearia pra plataforma, não clientes de uma unidade específica.
