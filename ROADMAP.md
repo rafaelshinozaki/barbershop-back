@@ -38,16 +38,18 @@ País inicial do cadastro sugerido por geolocalização de IP (mesma técnica da
 ## Pendências conhecidas (fora deste horizonte)
 - Rollback de cadastro incompleto: se `createBarbershop` falha após o `User` já ter sido criado, o rollback manual não limpa `LoginHistory`/`ActiveSession`, podendo deixar usuário órfão (chip de tarefa já aberto).
 
-## Horizonte: Crescimento e retenção — 🔜 A fazer
+## Horizonte: Crescimento e retenção — 🚧 Em andamento
 
-| # | Item | Status |
-|---|------|--------|
-| 1 | Lembretes de agendamento por WhatsApp | 🔜 |
-| 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | 🔜 |
-| 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | 🔜 |
+| # | Item | Status | Backend | Frontend |
+|---|------|--------|---------|----------|
+| 1 | Lembretes de agendamento por WhatsApp | ✅ | `809dd3e` | — |
+| 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | 🔜 | | |
+| 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | 🔜 | | |
 
 ### 1. Lembretes de agendamento por WhatsApp
-Hoje o lembrete de agendamento existe só por e-mail (`appointment-reminder.service.ts` + templates em `email/templates/*/appointment_reminder.hbs`). WhatsApp tem taxa de abertura muito maior no público-alvo (BR) e reduz no-show de forma mais eficaz.
+Novo `WhatsappService` envia lembrete via WhatsApp Cloud API (Meta) direto, além do e-mail já existente — os dois canais são independentes (falha em um não afeta o outro). Só ativa se `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` estiverem configurados (ver `.env.example`); sem eles, comportamento idêntico ao de antes (só e-mail). Nova `normalizePhoneToE164` (`src/common/phone.util.ts`) normaliza o telefone (texto livre hoje) por heurística de melhor esforço pro mercado BR.
+
+**Pendência pra funcionar de verdade em produção**: exige submissão manual de um template de mensagem no Meta Business Manager e aprovação da Meta (não automatizável, nem testável nesta sessão sem credenciais reais) — texto sugerido do template em `.env.example`.
 
 ### 2. Relatórios avançados pro dono
 O dashboard (`Overview.tsx`) hoje só mostra receita semanal e vendas por dia da semana. Faltam métricas de retenção/recorrência de clientes, taxa de no-show por barbeiro/serviço, e ranking de serviços/produtos mais vendidos.
