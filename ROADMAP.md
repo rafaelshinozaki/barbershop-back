@@ -57,13 +57,13 @@ Nova aba "Reports" com seletor de período (semana/mês): taxa de não-compareci
 ### 3. Indicação entre clientes de uma barbearia
 Cliente indica cliente e ganha pontos de fidelidade — reaproveita o programa de fidelidade já construído no horizonte anterior. Diferente do "Convidar amigos" (`InviteFriends`/`AcceptInvite`) já existente, que é pra atrair novos *donos* de barbearia pra plataforma, não clientes de uma unidade específica.
 
-## Horizonte: Paridade com Booksy — 🔜 A fazer
+## Horizonte: Paridade com Booksy — 🚧 Em andamento
 
 Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/who-loves-us/barber) (maior plataforma de agendamento pra barbearias/salões do mercado americano) — comparação completa em artifact publicado em 2026-09-08. Hoje já temos paridade ou vantagem em 17 categorias (SEO próprio, avaliações, comissão por barbeiro — que o Booksy nem tem —, relatórios avançados, etc.); estes são os gaps reais encontrados.
 
 | # | Item | Status | Backend | Frontend |
 |---|------|--------|---------|----------|
-| 1 | Lista de espera automática | 🔜 | | |
+| 1 | Lista de espera automática | ✅ | `e0363aa` | `343cbb3` |
 | 2 | Campanhas de marketing (Message Blast) | 🔜 | | |
 | 3 | Taxa de cancelamento/no-show cobrada automaticamente | 🔜 | | |
 | 4 | Assinatura recorrente pro cliente final | 🔜 | | |
@@ -71,7 +71,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 | 6 | Site/domínio próprio do negócio | 🔜 | | |
 
 ### 1. Lista de espera automática
-Cliente entra numa lista de espera pra um barbeiro/serviço/data; quando um agendamento é cancelado, a vaga é oferecida automaticamente pra quem está esperando (por ordem de entrada), reduzindo horário vago sem esforço manual do staff. Não depende de decisão de cobrança — pode começar por aqui.
+Novo modelo `WaitlistEntry`: staff adiciona cliente à lista de espera de um barbeiro/serviço/data (todos opcionais exceto data — "qualquer barbeiro"/"qualquer serviço" são válidos). Quando um agendamento que combina é cancelado, o primeiro da fila (por ordem de entrada) é automaticamente marcado como avisado e notificado por WhatsApp/e-mail — reaproveita `WhatsappService`/`EmailService` do item anterior. Não reagenda sozinho, só avisa que abriu vaga (evita criar agendamento sem confirmação do cliente). Nova página "Waitlist" na barbearia pra gerenciar.
 
 ### 2. Campanhas de marketing (Message Blast)
 Disparo segmentado por WhatsApp/e-mail pra grupos de clientes (inativos há X dias, aniversariantes, todos) com texto livre ou promoção — reaproveita o `WhatsappService`/`EmailService` recém-construídos pros lembretes de agendamento.
