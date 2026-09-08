@@ -43,7 +43,7 @@ País inicial do cadastro sugerido por geolocalização de IP (mesma técnica da
 | # | Item | Status | Backend | Frontend |
 |---|------|--------|---------|----------|
 | 1 | Lembretes de agendamento por WhatsApp | ✅ | `809dd3e` | — |
-| 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | 🔜 | | |
+| 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | ✅ | `4ce78c1` | `de424f1` |
 | 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | 🔜 | | |
 
 ### 1. Lembretes de agendamento por WhatsApp
@@ -52,7 +52,7 @@ Novo `WhatsappService` envia lembrete via WhatsApp Cloud API (Meta) direto, alé
 **Pendência pra funcionar de verdade em produção**: exige submissão manual de um template de mensagem no Meta Business Manager e aprovação da Meta (não automatizável, nem testável nesta sessão sem credenciais reais) — texto sugerido do template em `.env.example`.
 
 ### 2. Relatórios avançados pro dono
-O dashboard (`Overview.tsx`) hoje só mostra receita semanal e vendas por dia da semana. Faltam métricas de retenção/recorrência de clientes, taxa de no-show por barbeiro/serviço, e ranking de serviços/produtos mais vendidos.
+Nova aba "Reports" com seletor de período (semana/mês): taxa de não-comparecimento geral/por barbeiro/por serviço (baseada em agendamentos `COMPLETED`/`NO_SHOW`), serviços e produtos mais vendidos por receita (via `SaleItem` pago no período), e retenção de clientes (retornando vs. novos, comparando vendas do período com vendas anteriores). Reaproveita o módulo `'reports'` do plano Premium, que já existia definido em `barbershop-plan.constants.ts` mas nunca tinha sido usado — recurso Premium-only, com a mesma tela de "bloqueado por plano" já usada em Estoque.
 
 ### 3. Indicação entre clientes de uma barbearia
 Cliente indica cliente e ganha pontos de fidelidade — reaproveita o programa de fidelidade já construído no horizonte anterior. Diferente do "Convidar amigos" (`InviteFriends`/`AcceptInvite`) já existente, que é pra atrair novos *donos* de barbearia pra plataforma, não clientes de uma unidade específica.
