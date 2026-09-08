@@ -30,6 +30,7 @@ import {
   AdvancedReportsType,
   GiftCardType,
   CustomerLoyaltyType,
+  WaitlistEntryType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -69,6 +70,7 @@ import {
   SignConsentFormInput,
   SetCommissionRuleInput,
   CreateGiftCardInput,
+  CreateWaitlistEntryInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -1155,6 +1157,66 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getAdvancedReports(user.id, barbershopId, new Date(from), new Date(to));
+  }
+
+  // ============ LISTA DE ESPERA ============
+
+  private mapWaitlistEntry(e: any): WaitlistEntryType {
+    return {
+      id: e.id,
+      barbershopId: e.barbershopId,
+      customerId: e.customerId,
+      customerName: e.customer.name,
+      customerPhone: e.customer.phone,
+      barberId: e.barberId ?? undefined,
+      barberName: e.barber?.name,
+      serviceId: e.serviceId ?? undefined,
+      serviceName: e.service?.name,
+      date: e.date.toISOString(),
+      notes: e.notes ?? undefined,
+      status: e.status,
+      notifiedAt: e.notifiedAt ? e.notifiedAt.toISOString() : undefined,
+      createdAt: e.createdAt.toISOString(),
+    };
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [WaitlistEntryType])
+  async waitlistEntries(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('status', { nullable: true }) status: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const entries = await this.barbershopService.getWaitlistEntries(user.id, barbershopId, status);
+    return entries.map((e) => this.mapWaitlistEntry(e));
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => WaitlistEntryType)
+  async createWaitlistEntry(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateWaitlistEntryInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const entry = await this.barbershopService.createWaitlistEntry(user.id, barbershopId, {
+      customerId: input.customerId,
+      barberId: input.barberId,
+      serviceId: input.serviceId,
+      date: new Date(input.date),
+      notes: input.notes,
+    });
+    return this.mapWaitlistEntry(entry);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async cancelWaitlistEntry(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    await this.barbershopService.cancelWaitlistEntry(user.id, barbershopId, id);
+    return true;
   }
 
   // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============

@@ -851,3 +851,22 @@ export class CreateGiftCardInput {
   @Field({ nullable: true })
   expiresAt?: string;
 }
+
+// ============ Lista de espera ============
+@InputType()
+export class CreateWaitlistEntryInput {
+  @Field(() => Int)
+  customerId: number;
+
+  @Field(() => Int, { nullable: true })
+  barberId?: number;
+
+  @Field(() => Int, { nullable: true })
+  serviceId?: number;
+
+  @Field()
+  date: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+}

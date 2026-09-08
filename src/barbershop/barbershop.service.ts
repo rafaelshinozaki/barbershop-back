@@ -17,6 +17,9 @@ import {
 } from './barbershop-plan.constants';
 import { PLANO_STATUS } from '../common/contants';
 import { S3Service } from '../aws/s3.service';
+import { EmailService } from '../email/email.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { normalizePhoneToE164 } from '../common/phone.util';
 
 @Injectable()
 export class BarbershopService {
@@ -26,6 +29,8 @@ export class BarbershopService {
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
     private readonly s3Service: S3Service,
+    private readonly emailService: EmailService,
+    private readonly whatsappService: WhatsappService,
   ) {}
 
   /**
@@ -1342,11 +1347,23 @@ export class BarbershopService {
         appointmentId,
       );
     }
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data,
       include: { services: { include: { service: true } }, customer: true, barber: true },
     });
+
+    // Vaga liberada por cancelamento — avisa o primeiro da lista de espera
+    // que combine (mesma data, mesmo barbeiro/serviço se especificado).
+    // Não bloqueia a resposta da mutation nem falha ela: notificação é
+    // best-effort (erro de WhatsApp/e-mail não deve impedir o cancelamento).
+    if (data.status === 'CANCELLED' && appointment.status !== 'CANCELLED') {
+      this.checkWaitlistOnCancellation(barbershopId, updated).catch((err) =>
+        this.logger.error(`Erro ao verificar lista de espera do agendamento #${appointmentId}:`, err),
+      );
+    }
+
+    return updated;
   }
 
   async deleteAppointment(userId: number, barbershopId: number, appointmentId: number) {
@@ -1386,6 +1403,114 @@ export class BarbershopService {
       where: { id: appointmentId },
       data: { depositPaid },
     });
+  }
+
+  // ============ LISTA DE ESPERA ============
+  // Manual (staff adiciona) — quando um agendamento cancela e combina com
+  // uma entrada aqui, o primeiro da fila é avisado por WhatsApp/e-mail que
+  // abriu vaga. Não reagenda sozinho, só notifica (evita criar um
+  // agendamento que o cliente não confirmou de fato).
+
+  async getWaitlistEntries(userId: number, barbershopId: number, status?: string) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.waitlistEntry.findMany({
+      where: { barbershopId, status: status ?? undefined },
+      include: { customer: true, barber: true, service: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createWaitlistEntry(
+    userId: number,
+    barbershopId: number,
+    data: { customerId: number; barberId?: number; serviceId?: number; date: Date; notes?: string },
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.waitlistEntry.create({
+      data: { ...data, barbershopId },
+      include: { customer: true, barber: true, service: true },
+    });
+  }
+
+  async cancelWaitlistEntry(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const entry = await this.prisma.waitlistEntry.findFirst({ where: { id, barbershopId } });
+    if (!entry) throw new NotFoundException('Entrada da lista de espera não encontrada');
+    return this.prisma.waitlistEntry.update({ where: { id }, data: { status: 'CANCELLED' } });
+  }
+
+  private async checkWaitlistOnCancellation(
+    barbershopId: number,
+    appointment: { startAt: Date; barberId: number; services: { serviceId: number }[] },
+  ) {
+    const dayStart = new Date(appointment.startAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const serviceIds = appointment.services.map((s) => s.serviceId);
+
+    const candidates = await this.prisma.waitlistEntry.findMany({
+      where: {
+        barbershopId,
+        status: 'WAITING',
+        date: { gte: dayStart, lt: dayEnd },
+        OR: [{ barberId: null }, { barberId: appointment.barberId }],
+      },
+      include: { customer: true, barbershop: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const match = candidates.find((c) => c.serviceId == null || serviceIds.includes(c.serviceId));
+    if (!match) return;
+
+    await this.prisma.waitlistEntry.update({
+      where: { id: match.id },
+      data: { status: 'NOTIFIED', notifiedAt: new Date() },
+    });
+
+    const dateStr = appointment.startAt.toLocaleDateString('pt-BR', { timeZone: match.barbershop.timezone });
+    const timeStr = appointment.startAt.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: match.barbershop.timezone,
+    });
+
+    if (match.customer.email) {
+      try {
+        await this.emailService.sendCustomerEmail(
+          match.barbershop.ownerUserId ?? 0,
+          'waitlist_slot_available',
+          {
+            CustomerName: match.customer.name,
+            BarbershopName: match.barbershop.name,
+            BarbershopPhone: match.barbershop.phone,
+            AppointmentDate: dateStr,
+            AppointmentTime: timeStr,
+            Year: new Date().getFullYear(),
+          },
+          `Vaga disponível em ${match.barbershop.name}`,
+          'waitlist-slot-available',
+          match.customer.email,
+        );
+      } catch (err) {
+        this.logger.error(`Erro ao notificar lista de espera #${match.id} por e-mail:`, err);
+      }
+    }
+
+    if (this.whatsappService.isConfigured()) {
+      const phone = normalizePhoneToE164(match.customer.phone);
+      if (phone) {
+        try {
+          await this.whatsappService.sendWaitlistSlotAvailable(phone, {
+            customerName: match.customer.name,
+            barbershopName: match.barbershop.name,
+            date: dateStr,
+            time: timeStr,
+          });
+        } catch (err) {
+          this.logger.error(`Erro ao notificar lista de espera #${match.id} por WhatsApp:`, err);
+        }
+      }
+    }
   }
 
   // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============

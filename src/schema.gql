@@ -741,6 +741,14 @@ input CreateUserInput {
   signupType: String
 }
 
+input CreateWaitlistEntryInput {
+  barberId: Int
+  customerId: Int!
+  date: String!
+  notes: String
+  serviceId: Int
+}
+
 input CreateWalkInInput {
   barberId: Float
   barbershopId: Int!
@@ -962,6 +970,7 @@ type Mutation {
   applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelSubscription: Boolean!
+  cancelWaitlistEntry(barbershopId: Int!, id: Int!): Boolean!
   changeMultipleUsersPlan(plan: String!, userIds: [Int!]!): Boolean!
   changePassword(input: ChangePasswordInput!): Boolean!
   changePlan(planId: Int!): ChangePlanResponse!
@@ -998,6 +1007,7 @@ type Mutation {
   createSetupIntent: SetupIntent!
   createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
   createUser(input: CreateUserInput!): User!
+  createWaitlistEntry(barbershopId: Int!, input: CreateWaitlistEntryInput!): WaitlistEntryType!
   createWalkIn(barbershopId: Int!, input: CreateWalkInInput!): WalkIn!
   debitClientPackageSession(barbershopId: Int!, id: Int!): ClientPackageType!
   deleteAppointment(barbershopId: Int!, id: Int!): Boolean!
@@ -1502,6 +1512,7 @@ type Query {
   userGrowthData: UserGrowthData!
   userSystemConfig: UserSystemConfig!
   usersDetailed(filters: UsersDetailedFilters!): DetailedUsersResponse!
+  waitlistEntries(barbershopId: Int!, status: String): [WaitlistEntryType!]!
 }
 
 input RequestChangePasswordCodeInput {
@@ -2093,6 +2104,23 @@ input Verify2FAInput {
 
 input VerifyChangePasswordCodeInput {
   code: String!
+}
+
+type WaitlistEntryType {
+  barberId: Int
+  barberName: String
+  barbershopId: Int!
+  createdAt: String!
+  customerId: Int!
+  customerName: String!
+  customerPhone: String
+  date: String!
+  id: Int!
+  notes: String
+  notifiedAt: String
+  serviceId: Int
+  serviceName: String
+  status: String!
 }
 
 type WalkIn {

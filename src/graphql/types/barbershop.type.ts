@@ -1193,6 +1193,51 @@ export class AdvancedReportsType {
   retentionRate: number;
 }
 
+@ObjectType()
+export class WaitlistEntryType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field(() => Int)
+  customerId: number;
+
+  @Field()
+  customerName: string;
+
+  @Field({ nullable: true })
+  customerPhone?: string;
+
+  @Field(() => Int, { nullable: true })
+  barberId?: number;
+
+  @Field({ nullable: true })
+  barberName?: string;
+
+  @Field(() => Int, { nullable: true })
+  serviceId?: number;
+
+  @Field({ nullable: true })
+  serviceName?: string;
+
+  @Field()
+  date: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  notifiedAt?: string;
+
+  @Field()
+  createdAt: string;
+}
+
 // Type aliases for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
 export const BarberSchedule = BarberScheduleType;

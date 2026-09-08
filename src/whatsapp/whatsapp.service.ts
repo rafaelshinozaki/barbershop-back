@@ -9,6 +9,13 @@ interface AppointmentReminderParams {
   time: string;
 }
 
+interface WaitlistSlotAvailableParams {
+  customerName: string;
+  barbershopName: string;
+  date: string;
+  time: string;
+}
+
 // Integração com a WhatsApp Cloud API (Meta), direto — sem Twilio no meio.
 // Mensagem de negócio pra cliente fora da janela de atendimento (lembrete
 // de agendamento) exige um "template" pré-aprovado pela Meta; não dá pra
@@ -35,6 +42,17 @@ export class WhatsappService {
     await this.sendTemplateMessage(to, templateName, languageCode, [
       params.customerName,
       params.serviceNames,
+      params.barbershopName,
+      params.date,
+      params.time,
+    ]);
+  }
+
+  async sendWaitlistSlotAvailable(to: string, params: WaitlistSlotAvailableParams): Promise<void> {
+    const templateName = this.config.get<string>('WHATSAPP_WAITLIST_TEMPLATE_NAME') || 'waitlist_slot_available';
+    const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
+    await this.sendTemplateMessage(to, templateName, languageCode, [
+      params.customerName,
       params.barbershopName,
       params.date,
       params.time,

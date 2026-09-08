@@ -452,6 +452,7 @@ model Barbershop {
   consentForms    ConsentForm[]
   commissionRules CommissionRule[]
   reviews         Review[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -496,6 +497,7 @@ model Customer {
   walkIns        WalkIn[]
   packages       ClientPackage[]
   consentForms   ConsentForm[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -592,6 +594,7 @@ model Barber {
   sales          Sale[]
   walkIns        WalkIn[]
   commissionRules CommissionRule[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([barbershopId])
   @@index([userId])
@@ -674,6 +677,7 @@ model BarbershopService {
   serviceHistory   ServiceHistory[]
   saleItems        SaleItem[]
   packages         ServicePackage[]
+  waitlistEntries  WaitlistEntry[]
 
   @@index([barbershopId])
   @@index([barbershopId, isActive])
@@ -766,6 +770,31 @@ model AppointmentService {
 
   @@index([appointmentId])
   @@index([serviceId])
+}
+
+// Lista de espera manual (staff adiciona o cliente): quando um agendamento
+// que combina com uma entrada aqui (mesma data, mesmo barbeiro/serviço se
+// especificado) é cancelado, o primeiro da fila (por createdAt) é
+// notificado por WhatsApp/e-mail — não é reagendado automaticamente, só
+// avisado que abriu vaga (ver checkWaitlistOnCancellation).
+model WaitlistEntry {
+  id           Int                @id @default(autoincrement())
+  createdAt    DateTime           @default(now())
+  barbershopId Int
+  customerId   Int
+  barberId     Int?               // null = qualquer barbeiro
+  serviceId    Int?               // null = qualquer serviço
+  date         DateTime           // dia desejado (comparado por data, sem hora)
+  notes        String?
+  status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED
+  notifiedAt   DateTime?
+  barbershop   Barbershop         @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barber       Barber?            @relation(fields: [barberId], references: [id], onDelete: SetNull)
+  service      BarbershopService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([barbershopId, status, date])
+  @@index([customerId])
 }
 
 model WalkIn {
