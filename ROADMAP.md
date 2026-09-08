@@ -56,3 +56,34 @@ Nova aba "Reports" com seletor de período (semana/mês): taxa de não-compareci
 
 ### 3. Indicação entre clientes de uma barbearia
 Cliente indica cliente e ganha pontos de fidelidade — reaproveita o programa de fidelidade já construído no horizonte anterior. Diferente do "Convidar amigos" (`InviteFriends`/`AcceptInvite`) já existente, que é pra atrair novos *donos* de barbearia pra plataforma, não clientes de uma unidade específica.
+
+## Horizonte: Paridade com Booksy — 🔜 A fazer
+
+Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/who-loves-us/barber) (maior plataforma de agendamento pra barbearias/salões do mercado americano) — comparação completa em artifact publicado em 2026-09-08. Hoje já temos paridade ou vantagem em 17 categorias (SEO próprio, avaliações, comissão por barbeiro — que o Booksy nem tem —, relatórios avançados, etc.); estes são os gaps reais encontrados.
+
+| # | Item | Status | Backend | Frontend |
+|---|------|--------|---------|----------|
+| 1 | Lista de espera automática | 🔜 | | |
+| 2 | Campanhas de marketing (Message Blast) | 🔜 | | |
+| 3 | Taxa de cancelamento/no-show cobrada automaticamente | 🔜 | | |
+| 4 | Assinatura recorrente pro cliente final | 🔜 | | |
+| 5 | Agendamento de posts em redes sociais | 🔜 | | |
+| 6 | Site/domínio próprio do negócio | 🔜 | | |
+
+### 1. Lista de espera automática
+Cliente entra numa lista de espera pra um barbeiro/serviço/data; quando um agendamento é cancelado, a vaga é oferecida automaticamente pra quem está esperando (por ordem de entrada), reduzindo horário vago sem esforço manual do staff. Não depende de decisão de cobrança — pode começar por aqui.
+
+### 2. Campanhas de marketing (Message Blast)
+Disparo segmentado por WhatsApp/e-mail pra grupos de clientes (inativos há X dias, aniversariantes, todos) com texto livre ou promoção — reaproveita o `WhatsappService`/`EmailService` recém-construídos pros lembretes de agendamento.
+
+### 3. Taxa de cancelamento/no-show cobrada automaticamente
+**Reabre a decisão de cobrança online já debatida antes** (sinal/cartão-presente ficaram manuais por escolha explícita). O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso de cancelamento tardio/no-show — isso exigiria uma integração de pagamento nova pro cliente final do marketplace, algo que foi deliberadamente adiado até aqui.
+
+### 4. Assinatura recorrente pro cliente final
+Ex.: "corte ilimitado por R$99/mês" cobrado automaticamente todo mês — diferente do pacote pré-pago (`ServicePackage`) que já existe, que é finito e sem cobrança recorrente. **Também reabre a decisão de cobrança online.**
+
+### 5. Agendamento de posts em redes sociais
+Publicar promoções automaticamente no Instagram/Facebook a partir do próprio app — exige integração com a Meta Graph API (OAuth de página/conta comercial, credenciais próprias por barbearia).
+
+### 6. Site/domínio próprio do negócio
+Hoje a página pública de cada unidade vive em `/u/:slug` dentro do nosso domínio. Um domínio próprio por barbearia exigiria roteamento por domínio customizado + provisionamento de SSL — maior esforço de infraestrutura do horizonte.
