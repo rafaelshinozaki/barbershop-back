@@ -27,6 +27,7 @@ import {
   ConsentFormType,
   CommissionRuleType,
   CommissionReportType,
+  AdvancedReportsType,
   GiftCardType,
   CustomerLoyaltyType,
 } from '../types/barbershop.type';
@@ -1143,6 +1144,17 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getCommissionReport(user.id, barbershopId, new Date(from), new Date(to));
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => AdvancedReportsType)
+  async advancedReports(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('from') from: string,
+    @Args('to') to: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getAdvancedReports(user.id, barbershopId, new Date(from), new Date(to));
   }
 
   // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============

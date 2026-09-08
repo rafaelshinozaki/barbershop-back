@@ -78,6 +78,19 @@ type AdminRecurringPaymentsStats {
   upcomingPayments: [UpcomingPaymentDetail!]!
 }
 
+type AdvancedReportsType {
+  newCustomers: Int!
+  noShowByBarber: [NoShowByBarberRow!]!
+  noShowByService: [NoShowByServiceRow!]!
+  noShowRate: Float!
+  retentionRate: Float!
+  returningCustomers: Int!
+  topProducts: [TopProductRow!]!
+  topServices: [TopServiceRow!]!
+  totalCompletedOrNoShow: Int!
+  totalNoShow: Int!
+}
+
 type Appointment {
   barberId: Int!
   barbershopId: Int!
@@ -1118,6 +1131,22 @@ type NetworkDashboardStats {
   totalServicesDone: Int!
 }
 
+type NoShowByBarberRow {
+  barberId: Int!
+  barberName: String!
+  completedCount: Int!
+  noShowCount: Int!
+  rate: Float!
+}
+
+type NoShowByServiceRow {
+  completedCount: Int!
+  noShowCount: Int!
+  rate: Float!
+  serviceId: Int!
+  serviceName: String!
+}
+
 type NotificationCount {
   newCount: Int!
   unreadCount: Int!
@@ -1385,6 +1414,7 @@ input PurchaseClientPackageInput {
 type Query {
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   adminBarbershops(query: String): [Barbershop!]!
+  advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!
   allNotificationsWithUser(limit: Int! = 100): [NotificationWithUser!]!
@@ -1657,6 +1687,20 @@ type SubscriptionResponse {
   id: Int!
   plan: SubscriptionPlan!
   status: String!
+}
+
+type TopProductRow {
+  productId: Int!
+  productName: String!
+  quantity: Int!
+  revenue: Float!
+}
+
+type TopServiceRow {
+  quantity: Int!
+  revenue: Float!
+  serviceId: Int!
+  serviceName: String!
 }
 
 enum TreatmentCategory {

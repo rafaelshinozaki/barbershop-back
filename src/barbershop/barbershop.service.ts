@@ -2990,4 +2990,152 @@ export class BarbershopService {
       totalCommission: rows.reduce((sum, r) => sum + r.totalCommission, 0),
     };
   }
+
+  // ============ RELATÓRIOS AVANÇADOS (plano Premium) ============
+
+  async getAdvancedReports(userId: number, barbershopId: number, from: Date, to: Date) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'reports');
+
+    const [appointments, saleItems, customersInPeriod] = await Promise.all([
+      // Taxa de não-comparecimento: só entre agendamentos que de fato
+      // chegaram no horário marcado (COMPLETED ou NO_SHOW) — CANCELLED e
+      // outros status não representam "cliente não apareceu".
+      this.prisma.appointment.findMany({
+        where: {
+          barbershopId,
+          startAt: { gte: from, lte: to },
+          status: { in: ['COMPLETED', 'NO_SHOW'] },
+        },
+        include: {
+          barber: { select: { id: true, name: true } },
+          services: { include: { service: { select: { id: true, name: true } } } },
+        },
+      }),
+      this.prisma.saleItem.findMany({
+        where: {
+          sale: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+        },
+        include: {
+          service: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.sale.findMany({
+        where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to }, customerId: { not: null } },
+        select: { customerId: true },
+        distinct: ['customerId'],
+      }),
+    ]);
+
+    // --- Taxa de não-comparecimento geral, por barbeiro e por serviço ---
+    let totalNoShow = 0;
+    const byBarber = new Map<number, { name: string; noShow: number; completed: number }>();
+    const byService = new Map<number, { name: string; noShow: number; completed: number }>();
+
+    for (const appt of appointments) {
+      const isNoShow = appt.status === 'NO_SHOW';
+      if (isNoShow) totalNoShow++;
+
+      if (!byBarber.has(appt.barberId)) {
+        byBarber.set(appt.barberId, { name: appt.barber.name, noShow: 0, completed: 0 });
+      }
+      const barberAcc = byBarber.get(appt.barberId)!;
+      if (isNoShow) barberAcc.noShow++;
+      else barberAcc.completed++;
+
+      for (const s of appt.services) {
+        if (!s.service) continue;
+        if (!byService.has(s.service.id)) {
+          byService.set(s.service.id, { name: s.service.name, noShow: 0, completed: 0 });
+        }
+        const serviceAcc = byService.get(s.service.id)!;
+        if (isNoShow) serviceAcc.noShow++;
+        else serviceAcc.completed++;
+      }
+    }
+
+    const toRate = (noShow: number, completed: number) => (noShow + completed > 0 ? noShow / (noShow + completed) : 0);
+
+    const noShowByBarber = Array.from(byBarber.entries())
+      .map(([barberId, acc]) => ({
+        barberId,
+        barberName: acc.name,
+        noShowCount: acc.noShow,
+        completedCount: acc.completed,
+        rate: toRate(acc.noShow, acc.completed),
+      }))
+      .sort((a, b) => b.rate - a.rate);
+
+    const noShowByService = Array.from(byService.entries())
+      .map(([serviceId, acc]) => ({
+        serviceId,
+        serviceName: acc.name,
+        noShowCount: acc.noShow,
+        completedCount: acc.completed,
+        rate: toRate(acc.noShow, acc.completed),
+      }))
+      .sort((a, b) => b.rate - a.rate);
+
+    // --- Serviços e produtos mais vendidos (por receita) ---
+    const serviceSales = new Map<number, { name: string; quantity: number; revenue: number }>();
+    const productSales = new Map<number, { name: string; quantity: number; revenue: number }>();
+
+    for (const item of saleItems) {
+      if (item.itemType === 'SERVICE' && item.service) {
+        if (!serviceSales.has(item.service.id)) {
+          serviceSales.set(item.service.id, { name: item.service.name, quantity: 0, revenue: 0 });
+        }
+        const acc = serviceSales.get(item.service.id)!;
+        acc.quantity += item.quantity;
+        acc.revenue += Number(item.totalPrice);
+      } else if (item.itemType === 'PRODUCT' && item.product) {
+        if (!productSales.has(item.product.id)) {
+          productSales.set(item.product.id, { name: item.product.name, quantity: 0, revenue: 0 });
+        }
+        const acc = productSales.get(item.product.id)!;
+        acc.quantity += item.quantity;
+        acc.revenue += Number(item.totalPrice);
+      }
+    }
+
+    const topServices = Array.from(serviceSales.entries())
+      .map(([serviceId, acc]) => ({ serviceId, serviceName: acc.name, quantity: acc.quantity, revenue: acc.revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    const topProducts = Array.from(productSales.entries())
+      .map(([productId, acc]) => ({ productId, productName: acc.name, quantity: acc.quantity, revenue: acc.revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    // --- Retenção: dos clientes que compraram no período, quantos já
+    // tinham comprado antes dele (retornando) vs. primeira compra (novos) ---
+    const customerIds = customersInPeriod.map((s) => s.customerId as number);
+    const priorSales =
+      customerIds.length > 0
+        ? await this.prisma.sale.findMany({
+            where: { barbershopId, paymentStatus: 'PAID', customerId: { in: customerIds }, createdAt: { lt: from } },
+            select: { customerId: true },
+            distinct: ['customerId'],
+          })
+        : [];
+    const returningSet = new Set(priorSales.map((s) => s.customerId));
+    const totalCustomers = customerIds.length;
+    const returningCustomers = returningSet.size;
+    const newCustomers = totalCustomers - returningCustomers;
+
+    return {
+      totalNoShow,
+      totalCompletedOrNoShow: appointments.length,
+      noShowRate: toRate(totalNoShow, appointments.length - totalNoShow),
+      noShowByBarber,
+      noShowByService,
+      topServices,
+      topProducts,
+      newCustomers,
+      returningCustomers,
+      retentionRate: totalCustomers > 0 ? returningCustomers / totalCustomers : 0,
+    };
+  }
 }

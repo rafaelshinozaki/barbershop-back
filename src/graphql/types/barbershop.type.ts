@@ -1094,6 +1094,105 @@ export class CommissionReportType {
   totalCommission: number;
 }
 
+@ObjectType()
+export class NoShowByBarberRow {
+  @Field(() => Int)
+  barberId: number;
+
+  @Field()
+  barberName: string;
+
+  @Field(() => Int)
+  noShowCount: number;
+
+  @Field(() => Int)
+  completedCount: number;
+
+  @Field(() => Float)
+  rate: number;
+}
+
+@ObjectType()
+export class NoShowByServiceRow {
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field()
+  serviceName: string;
+
+  @Field(() => Int)
+  noShowCount: number;
+
+  @Field(() => Int)
+  completedCount: number;
+
+  @Field(() => Float)
+  rate: number;
+}
+
+@ObjectType()
+export class TopServiceRow {
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field()
+  serviceName: string;
+
+  @Field(() => Int)
+  quantity: number;
+
+  @Field(() => Float)
+  revenue: number;
+}
+
+@ObjectType()
+export class TopProductRow {
+  @Field(() => Int)
+  productId: number;
+
+  @Field()
+  productName: string;
+
+  @Field(() => Int)
+  quantity: number;
+
+  @Field(() => Float)
+  revenue: number;
+}
+
+@ObjectType()
+export class AdvancedReportsType {
+  @Field(() => Int)
+  totalNoShow: number;
+
+  @Field(() => Int)
+  totalCompletedOrNoShow: number;
+
+  @Field(() => Float)
+  noShowRate: number;
+
+  @Field(() => [NoShowByBarberRow])
+  noShowByBarber: NoShowByBarberRow[];
+
+  @Field(() => [NoShowByServiceRow])
+  noShowByService: NoShowByServiceRow[];
+
+  @Field(() => [TopServiceRow])
+  topServices: TopServiceRow[];
+
+  @Field(() => [TopProductRow])
+  topProducts: TopProductRow[];
+
+  @Field(() => Int)
+  newCustomers: number;
+
+  @Field(() => Int)
+  returningCustomers: number;
+
+  @Field(() => Float)
+  retentionRate: number;
+}
+
 // Type aliases for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
 export const BarberSchedule = BarberScheduleType;
