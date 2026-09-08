@@ -44,6 +44,11 @@ export class PublicBookingResolver {
   }
 
   @Query(() => [String])
+  async publicCities() {
+    return this.barbershopService.getPublicCities();
+  }
+
+  @Query(() => [String])
   async publicAvailableSlots(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('barberId', { type: () => Int }) barberId: number,

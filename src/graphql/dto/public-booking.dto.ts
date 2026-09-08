@@ -19,6 +19,14 @@ export class SearchBarbershopsInput {
   @IsString()
   city?: string;
 
+  // Slug de cidade vindo das páginas de SEO categoria×cidade (/search/:categoria/:cidade) —
+  // comparado via slugificação da própria cidade cadastrada (ignora acento/caixa), em vez de
+  // "contains" no texto livre, pra não depender de acentuação combinar entre URL e banco.
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  citySlug?: string;
+
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()

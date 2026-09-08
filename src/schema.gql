@@ -179,6 +179,7 @@ type Barbershop {
   createdAt: String!
   currency: String!
   email: String!
+  featuredUntil: String
   id: Int!
   imageUrl: String
   isActive: Boolean!
@@ -1035,6 +1036,7 @@ type Mutation {
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
+  setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
@@ -1332,6 +1334,7 @@ type PublicBarbershopSearchResultType {
   distanceKm: Float
   id: Int!
   imageUrl: String
+  isFeatured: Boolean!
   name: String!
   networkName: String!
   reviewCount: Int!
@@ -1351,6 +1354,7 @@ type PublicBarbershopType {
   email: String!
   id: Int!
   imageUrl: String
+  isFeatured: Boolean!
   name: String!
   phone: String!
   postalCode: String!
@@ -1379,6 +1383,7 @@ input PurchaseClientPackageInput {
 
 type Query {
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
+  adminBarbershops(query: String): [Barbershop!]!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!
   allNotificationsWithUser(limit: Int! = 100): [NotificationWithUser!]!
@@ -1453,6 +1458,7 @@ type Query {
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
+  publicCities: [String!]!
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
@@ -1547,6 +1553,7 @@ type SaleItemType {
 input SearchBarbershopsInput {
   category: TreatmentCategory
   city: String
+  citySlug: String
   lat: Float
   lng: Float
   query: String

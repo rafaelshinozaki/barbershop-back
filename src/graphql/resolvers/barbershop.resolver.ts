@@ -73,6 +73,9 @@ import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 
@@ -1140,5 +1143,24 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getCommissionReport(user.id, barbershopId, new Date(from), new Date(to));
+  }
+
+  // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Query(() => [Barbershop])
+  async adminBarbershops(@Args('query', { nullable: true }) query?: string) {
+    return this.barbershopService.getAdminBarbershops(query);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Mutation(() => Barbershop)
+  async setBarbershopFeatured(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('featuredUntil', { nullable: true }) featuredUntil?: string,
+  ) {
+    return this.barbershopService.setBarbershopFeatured(barbershopId, featuredUntil ?? null);
   }
 }

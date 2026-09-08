@@ -162,6 +162,9 @@ export class Barbershop {
   @Field()
   isActive: boolean;
 
+  @Field({ nullable: true })
+  featuredUntil?: string;
+
   @Field(() => Int, { nullable: true })
   ownerUserId?: number;
 

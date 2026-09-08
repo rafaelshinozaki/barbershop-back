@@ -429,6 +429,7 @@ model Barbershop {
   currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
   isActive       Boolean   @default(true)
+  featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
   networkId      Int
   network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
   ownerUserId    Int?      // denormalized for backward compat / quick access

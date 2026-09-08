@@ -104,6 +104,9 @@ export class PublicBarbershopType {
 
   @Field(() => Int)
   reviewCount: number;
+
+  @Field()
+  isFeatured: boolean;
 }
 
 @ObjectType()
@@ -143,6 +146,9 @@ export class PublicBarbershopSearchResultType {
 
   @Field(() => Int)
   reviewCount: number;
+
+  @Field()
+  isFeatured: boolean;
 }
 
 @ObjectType()

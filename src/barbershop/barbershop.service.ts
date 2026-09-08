@@ -1415,7 +1415,8 @@ export class BarbershopService {
     }
     const imageUrl = barbershop.photoKey ? await this.s3Service.getDownloadUrl(barbershop.photoKey) : null;
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
-    return { ...barbershop, imageUrl, averageRating, reviewCount };
+    const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
+    return { ...barbershop, imageUrl, averageRating, reviewCount, isFeatured };
   }
 
   // Janela de trabalho de um barbeiro num dia da semana, com fallback em
@@ -1650,10 +1651,36 @@ export class BarbershopService {
     return rows.map((r) => r.category).sort();
   }
 
+  // Slugifica um nome de cidade pra comparação — remove acento, baixa a caixa,
+  // troca não-alfanumérico por hífen. Usado pras páginas de SEO categoria×cidade
+  // (/search/:categoria/:cidade): o slug da URL é comparado contra a cidade
+  // cadastrada slugificada, em vez de "contains" em texto livre, porque o slug
+  // vem sem acento (ex: "sao-jose-dos-campos") e não bateria com "São José dos
+  // Campos" num contains case-insensitive comum (Postgres não ignora acento).
+  slugifyCity(city: string): string {
+    return city
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
+  async getPublicCities(): Promise<string[]> {
+    const rows = await this.prisma.barbershop.findMany({
+      where: { isActive: true },
+      select: { city: true },
+      distinct: ['city'],
+    });
+    return rows.map((r) => r.city).sort();
+  }
+
   async searchPublicBarbershops(input: {
     query?: string;
     category?: TreatmentCategory;
     city?: string;
+    citySlug?: string;
     lat?: number;
     lng?: number;
     limit?: number;
@@ -1684,7 +1711,12 @@ export class BarbershopService {
       take: 200,
     });
 
-    const results = barbershops.map((b) => {
+    const now = new Date();
+    const candidates = input.citySlug
+      ? barbershops.filter((b) => this.slugifyCity(b.city) === input.citySlug)
+      : barbershops;
+
+    const results = candidates.map((b) => {
       const categories = [...new Set(b.services.map((s) => s.category))];
       const distanceKm =
         input.lat != null && input.lng != null && b.latitude != null && b.longitude != null
@@ -1701,19 +1733,25 @@ export class BarbershopService {
         networkName: b.network?.name ?? b.name,
         categories,
         distanceKm,
+        isFeatured: b.featuredUntil != null && b.featuredUntil > now,
       };
     });
 
-    if (input.lat != null && input.lng != null) {
-      results.sort((a, b) => {
+    // Destaque pago (ativado manualmente pelo admin) sempre aparece primeiro;
+    // dentro de cada grupo (destaque / não-destaque) mantém a ordenação normal.
+    const rank = (a: (typeof results)[number], b: (typeof results)[number]) => {
+      if (input.lat != null && input.lng != null) {
         if (a.distanceKm == null && b.distanceKm == null) return a.name.localeCompare(b.name);
         if (a.distanceKm == null) return 1;
         if (b.distanceKm == null) return -1;
         return a.distanceKm - b.distanceKm;
-      });
-    } else {
-      results.sort((a, b) => a.name.localeCompare(b.name));
-    }
+      }
+      return a.name.localeCompare(b.name);
+    };
+    results.sort((a, b) => {
+      if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+      return rank(a, b);
+    });
 
     const limited = results.slice(0, input.limit ?? 30);
     const ratings = await this.getReviewSummaries(limited.map((r) => r.id));
@@ -1721,9 +1759,33 @@ export class BarbershopService {
       limited.map(async ({ photoKey, ...r }) => ({
         ...r,
         imageUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
-        ...ratings.get(r.id),
+        ...(ratings.get(r.id) ?? { averageRating: null, reviewCount: 0 }),
       })),
     );
+  }
+
+  // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============
+
+  async getAdminBarbershops(query?: string) {
+    return this.prisma.barbershop.findMany({
+      where: query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' } },
+              { city: { contains: query, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
+  }
+
+  async setBarbershopFeatured(barbershopId: number, featuredUntil: string | null) {
+    return this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      data: { featuredUntil: featuredUntil ? new Date(featuredUntil) : null },
+    });
   }
 
   // ============ AVALIAÇÕES ============
