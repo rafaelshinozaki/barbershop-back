@@ -81,6 +81,13 @@ export class BarbershopSignupData {
   @IsOptional()
   @IsString()
   businessHours?: string;
+
+  // ISO 4217 — detectada no front a partir do país selecionado (geolocalização
+  // sugere o país inicial); createBarbershop já cai pra moeda da rede/BRL se vier vazia.
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 }
 
 /** Endereço pessoal do usuário no cadastro */

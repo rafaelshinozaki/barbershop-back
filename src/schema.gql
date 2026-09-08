@@ -247,6 +247,7 @@ input BarbershopSignupData {
   complement1: String
   complement2: String
   country: String!
+  currency: String
   email: String!
   name: String!
   phone: String!

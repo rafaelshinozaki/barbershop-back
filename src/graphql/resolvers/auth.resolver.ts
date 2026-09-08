@@ -175,6 +175,7 @@ export class AuthResolver {
           email: createUserInput.barbershopData.email,
           timezone: createUserInput.barbershopData.timezone,
           businessHours: createUserInput.barbershopData.businessHours,
+          currency: createUserInput.barbershopData.currency,
         });
       } catch (error) {
         // userService.createUser() e barbershopService.createBarbershop() não
