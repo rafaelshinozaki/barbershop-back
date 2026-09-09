@@ -1005,35 +1005,6 @@ export class BarbershopService {
 
   // ============ BARBER SCHEDULE ============
 
-  async setBarberSchedule(
-    userId: number,
-    barbershopId: number,
-    barberId: number,
-    schedules: Array<{
-      dayOfWeek: number;
-      startTime: string;
-      endTime: string;
-      breakStart?: string;
-      breakEnd?: string;
-    }>,
-  ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    const barber = await this.prisma.barber.findFirst({
-      where: { id: barberId, barbershopId },
-    });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
-
-    await this.prisma.$transaction([
-      this.prisma.barberSchedule.deleteMany({ where: { barberId } }),
-      ...schedules.map((s) =>
-        this.prisma.barberSchedule.create({
-          data: { barberId, ...s },
-        }),
-      ),
-    ]);
-    return this.prisma.barberSchedule.findMany({ where: { barberId } });
-  }
-
   async getBarberSchedules(userId: number, barbershopId: number, barberId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     return this.prisma.barberSchedule.findMany({
@@ -1094,14 +1065,6 @@ export class BarbershopService {
         endAt: new Date(input.endAt),
         reason: input.reason ?? 'PERSONAL',
       },
-    });
-  }
-
-  async getBarberTimeOffs(userId: number, barbershopId: number, barberId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.prisma.barberTimeOff.findMany({
-      where: { barberId },
-      orderBy: { startAt: 'desc' },
     });
   }
 
@@ -1381,19 +1344,6 @@ export class BarbershopService {
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
     await this.prisma.appointment.delete({ where: { id: appointmentId } });
-  }
-
-  async updateAppointmentStatus(
-    userId: number,
-    barbershopId: number,
-    appointmentId: number,
-    status: string,
-  ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.prisma.appointment.update({
-      where: { id: appointmentId },
-      data: { status },
-    });
   }
 
   async setAppointmentDepositPaid(
@@ -2327,15 +2277,6 @@ export class BarbershopService {
       orderBy: [{ status: 'asc' }, { queuePosition: 'asc' }],
       take: filters?.limit ?? 50,
       skip: filters?.offset ?? 0,
-    });
-  }
-
-  async getWalkInQueue(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.prisma.walkIn.findMany({
-      where: { barbershopId, status: 'WAITING' },
-      include: { services: { include: { service: true } }, customer: true, barber: true },
-      orderBy: { queuePosition: 'asc' },
     });
   }
 

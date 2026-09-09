@@ -199,33 +199,6 @@ export class ActiveSession {
 }
 
 @ObjectType()
-export class VerificationCode {
-  @Field(() => Int)
-  id: number;
-
-  @Field()
-  code: string;
-
-  @Field()
-  expiresAt: string;
-
-  @Field()
-  used: boolean;
-
-  @Field()
-  attempts: number;
-
-  @Field()
-  createdAt: string;
-
-  @Field()
-  updatedAt: string;
-
-  @Field(() => Int)
-  userId: number;
-}
-
-@ObjectType()
 export class PaginatedLoginHistory {
   @Field(() => [LoginHistory])
   data: LoginHistory[];

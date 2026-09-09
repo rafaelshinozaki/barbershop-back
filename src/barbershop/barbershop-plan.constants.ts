@@ -65,9 +65,6 @@ export function getPlanLimits(planName: string): PlanLimits {
   return LIMITS_BY_TIER[resolveTier(planName)]
 }
 
-/** Planos considerados para barbearia (nome exato no Plan) */
-export const BARBERSHOP_PLAN_NAMES = ['Basic', 'Standard', 'Medium', 'Premium'] as const
-
 /**
  * Retorna os módulos disponíveis para um nome de plano.
  * Planos não reconhecidos retornam módulos básicos (clients, queue, cuts, barbers).

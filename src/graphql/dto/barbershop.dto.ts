@@ -720,13 +720,6 @@ export class UpdateSaleInput {
   paymentMethod?: string;
 }
 
-// Aliases for resolver (without barbershopId in input)
-export const CreateServiceInput = CreateBarbershopServiceInput;
-export const UpdateServiceInput = UpdateBarbershopServiceInput;
-export const CreateProductInput = CreateBarbershopProductInput;
-export const UpdateProductInput = UpdateBarbershopProductInput;
-export const CreateWalkInServiceInput = WalkInServiceInput;
-
 // ============ Resource ============
 @InputType()
 export class CreateResourceInput {

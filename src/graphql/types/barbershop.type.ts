@@ -1286,9 +1286,5 @@ export class MarketingCampaignType {
   createdAt: string;
 }
 
-// Type aliases for resolver (naming consistency)
+// Type alias for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
-export const BarberSchedule = BarberScheduleType;
-export const BarberTimeOff = BarberTimeOffType;
-export const BarbershopService = BarbershopServiceType;
-export const BarbershopProduct = BarbershopProductType;
