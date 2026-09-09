@@ -59,6 +59,16 @@ export class WhatsappService {
     ]);
   }
 
+  // Campanha de marketing (Message Blast) — texto livre que o staff escreve
+  // vira o único parâmetro do corpo de um template genérico pré-aprovado
+  // (a Cloud API não aceita texto livre puro pra mensagem de negócio fora
+  // da janela de atendimento, só templates).
+  async sendMarketingBlast(to: string, message: string): Promise<void> {
+    const templateName = this.config.get<string>('WHATSAPP_MARKETING_TEMPLATE_NAME') || 'marketing_blast';
+    const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
+    await this.sendTemplateMessage(to, templateName, languageCode, [message]);
+  }
+
   private async sendTemplateMessage(
     to: string,
     templateName: string,

@@ -167,6 +167,9 @@ export class UpdateCustomerInput {
 
   @Field({ nullable: true })
   isActive?: boolean;
+
+  @Field({ nullable: true })
+  marketingOptOut?: boolean;
 }
 
 // ============ Barber ============
@@ -869,4 +872,26 @@ export class CreateWaitlistEntryInput {
 
   @Field({ nullable: true })
   notes?: string;
+}
+
+// ============ Campanhas de marketing ============
+@InputType()
+export class SendMarketingBlastInput {
+  @Field({ nullable: true })
+  subject?: string;
+
+  @Field()
+  message: string;
+
+  @Field()
+  segment: string;
+
+  @Field(() => Int, { nullable: true })
+  inactiveDays?: number;
+
+  @Field()
+  sendEmail: boolean;
+
+  @Field()
+  sendWhatsapp: boolean;
 }

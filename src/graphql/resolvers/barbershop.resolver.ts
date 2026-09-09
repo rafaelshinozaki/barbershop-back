@@ -31,6 +31,8 @@ import {
   GiftCardType,
   CustomerLoyaltyType,
   WaitlistEntryType,
+  MarketingSegmentPreviewType,
+  MarketingCampaignType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -71,6 +73,7 @@ import {
   SetCommissionRuleInput,
   CreateGiftCardInput,
   CreateWaitlistEntryInput,
+  SendMarketingBlastInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -1217,6 +1220,57 @@ export class BarbershopResolver {
   ) {
     await this.barbershopService.cancelWaitlistEntry(user.id, barbershopId, id);
     return true;
+  }
+
+  // ============ CAMPANHAS DE MARKETING ============
+
+  private mapMarketingCampaign(c: any): MarketingCampaignType {
+    return {
+      id: c.id,
+      barbershopId: c.barbershopId,
+      subject: c.subject ?? undefined,
+      message: c.message,
+      segment: c.segment,
+      inactiveDays: c.inactiveDays ?? undefined,
+      sentByEmail: c.sentByEmail,
+      sentByWhatsapp: c.sentByWhatsapp,
+      recipientCount: c.recipientCount,
+      emailSentCount: c.emailSentCount,
+      whatsappSentCount: c.whatsappSentCount,
+      createdAt: c.createdAt.toISOString(),
+    };
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => MarketingSegmentPreviewType)
+  async previewMarketingSegment(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('segment') segment: string,
+    @Args('inactiveDays', { type: () => Int, nullable: true }) inactiveDays: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.previewMarketingSegment(user.id, barbershopId, segment, inactiveDays);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [MarketingCampaignType])
+  async marketingCampaigns(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const campaigns = await this.barbershopService.getMarketingCampaigns(user.id, barbershopId);
+    return campaigns.map((c) => this.mapMarketingCampaign(c));
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => MarketingCampaignType)
+  async sendMarketingBlast(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: SendMarketingBlastInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const campaign = await this.barbershopService.sendMarketingBlast(user.id, barbershopId, input);
+    return this.mapMarketingCampaign(campaign);
   }
 
   // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============

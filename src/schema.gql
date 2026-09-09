@@ -212,6 +212,7 @@ type BarbershopCustomer {
   email: String
   id: Int!
   isActive: Boolean!
+  marketingOptOut: Boolean!
   name: String!
   networkId: Int!
   notes: String
@@ -948,6 +949,25 @@ input LoginInput {
   password: String!
 }
 
+type MarketingCampaignType {
+  barbershopId: Int!
+  createdAt: String!
+  emailSentCount: Int!
+  id: Int!
+  inactiveDays: Int
+  message: String!
+  recipientCount: Int!
+  segment: String!
+  sentByEmail: Boolean!
+  sentByWhatsapp: Boolean!
+  subject: String
+  whatsappSentCount: Int!
+}
+
+type MarketingSegmentPreviewType {
+  recipientCount: Int!
+}
+
 enum MembershipStatus {
   BASIC
   ENTERPRISE
@@ -1059,6 +1079,7 @@ type Mutation {
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
+  sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
@@ -1480,6 +1501,7 @@ type Query {
   linkedSocialAccounts: [LinkedSocialAccountType!]!
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   lookupGiftCard(barbershopId: Int!, code: String!): GiftCardType!
+  marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   me: User!
   myBarbershops: [Barbershop!]!
   myCoupons: [Coupon!]!
@@ -1496,6 +1518,7 @@ type Query {
   networkDashboardStats: NetworkDashboardStats!
   overduePayments: [Payment!]!
   planDistribution: PlanDistribution!
+  previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
@@ -1608,6 +1631,15 @@ input SendEmailNotificationInput {
   subject: String!
   type: String
   userIds: [Int!]!
+}
+
+input SendMarketingBlastInput {
+  inactiveDays: Int
+  message: String!
+  segment: String!
+  sendEmail: Boolean!
+  sendWhatsapp: Boolean!
+  subject: String
 }
 
 type ServiceHistory {
@@ -1847,6 +1879,7 @@ input UpdateCustomerInput {
   birthDate: String
   email: String
   isActive: Boolean
+  marketingOptOut: Boolean
   name: String
   notes: String
   phone: String

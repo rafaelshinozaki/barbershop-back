@@ -209,6 +209,9 @@ export class BarbershopCustomer {
   isActive: boolean;
 
   @Field()
+  marketingOptOut: boolean;
+
+  @Field()
   createdAt: string;
 
   @Field()
@@ -1233,6 +1236,51 @@ export class WaitlistEntryType {
 
   @Field({ nullable: true })
   notifiedAt?: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class MarketingSegmentPreviewType {
+  @Field(() => Int)
+  recipientCount: number;
+}
+
+@ObjectType()
+export class MarketingCampaignType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field({ nullable: true })
+  subject?: string;
+
+  @Field()
+  message: string;
+
+  @Field()
+  segment: string;
+
+  @Field(() => Int, { nullable: true })
+  inactiveDays?: number;
+
+  @Field()
+  sentByEmail: boolean;
+
+  @Field()
+  sentByWhatsapp: boolean;
+
+  @Field(() => Int)
+  recipientCount: number;
+
+  @Field(() => Int)
+  emailSentCount: number;
+
+  @Field(() => Int)
+  whatsappSentCount: number;
 
   @Field()
   createdAt: string;

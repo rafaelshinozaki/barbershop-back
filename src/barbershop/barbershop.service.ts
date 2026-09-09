@@ -555,7 +555,15 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     customerId: number,
-    data: Partial<{ name: string; phone: string; email: string; birthDate: Date; notes: string; isActive: boolean }>,
+    data: Partial<{
+      name: string;
+      phone: string;
+      email: string;
+      birthDate: Date;
+      notes: string;
+      isActive: boolean;
+      marketingOptOut: boolean;
+    }>,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     const customer = await this.prisma.customer.findFirst({
@@ -1511,6 +1519,144 @@ export class BarbershopService {
         }
       }
     }
+  }
+
+  // ============ CAMPANHAS DE MARKETING (Message Blast) ============
+  // Disparo segmentado por WhatsApp/e-mail. Guarda só o resumo de cada
+  // campanha (não uma linha por destinatário) e respeita
+  // Customer.marketingOptOut. WhatsApp precisa de um template genérico
+  // aprovado (ver .env.example); sem credencial configurada, envia só
+  // por e-mail.
+
+  private async resolveMarketingSegment(
+    networkId: number,
+    barbershopId: number,
+    segment: string,
+    inactiveDays?: number,
+  ) {
+    const baseWhere = { networkId, isActive: true, marketingOptOut: false };
+
+    if (segment === 'INACTIVE') {
+      const days = inactiveDays ?? 60;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const [recent, ever] = await Promise.all([
+        this.prisma.serviceHistory.findMany({
+          where: { barbershopId, performedAt: { gte: cutoff } },
+          select: { customerId: true },
+          distinct: ['customerId'],
+        }),
+        this.prisma.serviceHistory.findMany({
+          where: { barbershopId },
+          select: { customerId: true },
+          distinct: ['customerId'],
+        }),
+      ]);
+      const recentIds = new Set(recent.map((r) => r.customerId));
+      const inactiveIds = ever.map((r) => r.customerId).filter((id) => !recentIds.has(id));
+      return this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } });
+    }
+
+    if (segment === 'BIRTHDAY_MONTH') {
+      const currentMonth = new Date().getMonth();
+      const customers = await this.prisma.customer.findMany({
+        where: { ...baseWhere, birthDate: { not: null } },
+      });
+      return customers.filter((c) => c.birthDate && c.birthDate.getMonth() === currentMonth);
+    }
+
+    // ALL
+    return this.prisma.customer.findMany({ where: baseWhere });
+  }
+
+  async previewMarketingSegment(
+    userId: number,
+    barbershopId: number,
+    segment: string,
+    inactiveDays?: number,
+  ) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const customers = await this.resolveMarketingSegment(barbershop.networkId, barbershopId, segment, inactiveDays);
+    return { recipientCount: customers.length };
+  }
+
+  async getMarketingCampaigns(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    return this.prisma.marketingCampaign.findMany({
+      where: { barbershopId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async sendMarketingBlast(
+    userId: number,
+    barbershopId: number,
+    data: {
+      subject?: string;
+      message: string;
+      segment: string;
+      inactiveDays?: number;
+      sendEmail: boolean;
+      sendWhatsapp: boolean;
+    },
+  ) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const customers = await this.resolveMarketingSegment(barbershop.networkId, barbershopId, data.segment, data.inactiveDays);
+
+    let emailSentCount = 0;
+    let whatsappSentCount = 0;
+
+    for (const customer of customers) {
+      if (data.sendEmail && customer.email) {
+        try {
+          await this.emailService.sendCustomerEmail(
+            barbershop.ownerUserId ?? 0,
+            'marketing_blast',
+            {
+              BarbershopName: barbershop.name,
+              Subject: data.subject ?? barbershop.name,
+              Message: data.message,
+              Year: new Date().getFullYear(),
+            },
+            data.subject ?? barbershop.name,
+            'marketing-blast',
+            customer.email,
+          );
+          emailSentCount++;
+        } catch (err) {
+          this.logger.error(`Erro ao enviar campanha por e-mail pro cliente #${customer.id}:`, err);
+        }
+      }
+
+      if (data.sendWhatsapp && this.whatsappService.isConfigured()) {
+        const phone = normalizePhoneToE164(customer.phone);
+        if (phone) {
+          try {
+            await this.whatsappService.sendMarketingBlast(phone, data.message);
+            whatsappSentCount++;
+          } catch (err) {
+            this.logger.error(`Erro ao enviar campanha por WhatsApp pro cliente #${customer.id}:`, err);
+          }
+        }
+      }
+    }
+
+    return this.prisma.marketingCampaign.create({
+      data: {
+        barbershopId,
+        createdByUserId: userId,
+        subject: data.subject,
+        message: data.message,
+        segment: data.segment,
+        inactiveDays: data.inactiveDays,
+        sentByEmail: data.sendEmail,
+        sentByWhatsapp: data.sendWhatsapp,
+        recipientCount: customers.length,
+        emailSentCount,
+        whatsappSentCount,
+      },
+    });
   }
 
   // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============
