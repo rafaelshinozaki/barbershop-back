@@ -64,7 +64,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 | # | Item | Status | Backend | Frontend |
 |---|------|--------|---------|----------|
 | 1 | Lista de espera automática | ✅ | `e0363aa` | `343cbb3` |
-| 2 | Campanhas de marketing (Message Blast) | 🔜 | | |
+| 2 | Campanhas de marketing (Message Blast) | ✅ | `a21507b` | `d72d7ab` |
 | 3 | Taxa de cancelamento/no-show cobrada automaticamente | 🔜 | | |
 | 4 | Assinatura recorrente pro cliente final | 🔜 | | |
 | 5 | Agendamento de posts em redes sociais | 🔜 | | |
@@ -74,7 +74,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 Novo modelo `WaitlistEntry`: staff adiciona cliente à lista de espera de um barbeiro/serviço/data (todos opcionais exceto data — "qualquer barbeiro"/"qualquer serviço" são válidos). Quando um agendamento que combina é cancelado, o primeiro da fila (por ordem de entrada) é automaticamente marcado como avisado e notificado por WhatsApp/e-mail — reaproveita `WhatsappService`/`EmailService` do item anterior. Não reagenda sozinho, só avisa que abriu vaga (evita criar agendamento sem confirmação do cliente). Nova página "Waitlist" na barbearia pra gerenciar.
 
 ### 2. Campanhas de marketing (Message Blast)
-Disparo segmentado por WhatsApp/e-mail pra grupos de clientes (inativos há X dias, aniversariantes, todos) com texto livre ou promoção — reaproveita o `WhatsappService`/`EmailService` recém-construídos pros lembretes de agendamento.
+Nova página "Marketing": escolhe público (todos, inativos há N dias sem `ServiceHistory` nesta unidade, ou aniversariantes do mês), vê a contagem de destinatários em tempo real, escreve mensagem livre, escolhe canal (e-mail/WhatsApp) e confirma antes de disparar. Novo modelo `MarketingCampaign` guarda o histórico com contagem real de envios bem-sucedidos por canal (falha em um destinatário não derruba os demais). Novo `Customer.marketingOptOut` (checkbox no cadastro do cliente) exclui da segmentação. Reaproveita `WhatsappService`/`EmailService` dos lembretes; WhatsApp usa um template genérico de parâmetro único (mesma exigência de aprovação da Meta dos anteriores).
 
 ### 3. Taxa de cancelamento/no-show cobrada automaticamente
 **Reabre a decisão de cobrança online já debatida antes** (sinal/cartão-presente ficaram manuais por escolha explícita). O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso de cancelamento tardio/no-show — isso exigiria uma integração de pagamento nova pro cliente final do marketplace, algo que foi deliberadamente adiado até aqui.
