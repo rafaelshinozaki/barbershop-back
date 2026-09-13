@@ -1078,6 +1078,7 @@ type Mutation {
   logout: Boolean!
   logoutOtherSessions: Boolean!
   markAllNotificationsAsRead: CommonResponse!
+  markNoShowFeeCollected(barbershopId: Int!, id: Int!): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
   processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
@@ -1136,6 +1137,7 @@ type Mutation {
   validateCoupon(amount: Float!, code: String!, planId: Float!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
+  waiveNoShowFee(barbershopId: Int!, id: Int!): Boolean!
 }
 
 type MyReviewType {
@@ -1150,12 +1152,16 @@ type Network {
   description: String
   foundationYear: Int
   id: Int!
+  lateCancellationWindowHours: Int!
   logoUrl: String
   loyaltyEnabled: Boolean!
   loyaltyPointValue: Float
   loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
+  noShowFeeEnabled: Boolean!
+  noShowFeeType: String
+  noShowFeeValue: Float
   referralBonusPoints: Int!
   updatedAt: String!
 }
@@ -1196,6 +1202,18 @@ type NoShowByServiceRow {
   rate: Float!
   serviceId: Int!
   serviceName: String!
+}
+
+type NoShowFeeType {
+  amount: Float!
+  collectedAt: String
+  createdAt: String!
+  currency: String!
+  customerId: Int!
+  customerName: String!
+  id: Int!
+  reason: String!
+  status: String!
 }
 
 type NotificationCount {
@@ -1480,6 +1498,7 @@ type Query {
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
@@ -1917,12 +1936,16 @@ input UpdateNetworkInput {
   currency: String
   description: String
   foundationYear: Int
+  lateCancellationWindowHours: Int
   logoUrl: String
   loyaltyEnabled: Boolean
   loyaltyPointValue: Float
   loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
+  noShowFeeEnabled: Boolean
+  noShowFeeType: String
+  noShowFeeValue: Float
   referralBonusPoints: Int
 }
 

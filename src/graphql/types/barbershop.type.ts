@@ -40,6 +40,18 @@ export class Network {
   referralBonusPoints: number;
 
   @Field()
+  noShowFeeEnabled: boolean;
+
+  @Field({ nullable: true })
+  noShowFeeType?: string;
+
+  @Field(() => Float, { nullable: true })
+  noShowFeeValue?: number;
+
+  @Field(() => Int)
+  lateCancellationWindowHours: number;
+
+  @Field()
   createdAt: string;
 
   @Field()
@@ -848,6 +860,36 @@ export class CustomerReferralType {
 
   @Field({ nullable: true })
   completedAt?: string;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class NoShowFeeType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  customerId: number;
+
+  @Field()
+  customerName: string;
+
+  @Field(() => Float)
+  amount: number;
+
+  @Field()
+  currency: string;
+
+  @Field()
+  reason: string;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  collectedAt?: string;
 
   @Field()
   createdAt: string;

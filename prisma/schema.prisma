@@ -375,6 +375,19 @@ model Network {
   // Pontos de fidelidade concedidos ao cliente que indicou, quando o
   // indicado completa sua primeira venda paga (ver CustomerReferral).
   referralBonusPoints Int @default(50)
+  // Taxa de cancelamento tardio/no-show — cobrança 100% manual, mesma
+  // filosofia do sinal e do cartão-presente (staff registra o pagamento
+  // depois, sem integração de pagamento nova pro cliente final). O sistema
+  // só calcula quanto é devido e registra em NoShowFee; não cobra sozinho.
+  // noShowFeeType: "PERCENT" (percentual do preço do serviço) ou "FIXED"
+  // (valor fixo, mesma moeda da rede). lateCancellationWindowHours:
+  // cancelar com menos que isso de antecedência do horário marcado já
+  // conta como tardio e devido; NO_SHOW é sempre devido, não depende dessa
+  // janela.
+  noShowFeeEnabled            Boolean @default(false)
+  noShowFeeType               String?
+  noShowFeeValue              Float?
+  lateCancellationWindowHours Int     @default(24)
   ownerUserId    Int
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]
@@ -458,6 +471,7 @@ model Barbershop {
   reviews         Review[]
   waitlistEntries WaitlistEntry[]
   marketingCampaigns MarketingCampaign[]
+  noShowFees      NoShowFee[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -506,6 +520,7 @@ model Customer {
   waitlistEntries WaitlistEntry[]
   referralsMade    CustomerReferral[] @relation("ReferralsMade")
   referralReceived CustomerReferral?  @relation("ReferralReceived")
+  noShowFees       NoShowFee[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -534,6 +549,35 @@ model CustomerReferral {
 
   @@index([networkId])
   @@index([referrerId])
+}
+
+// Tentativa de cobrança de taxa de no-show/cancelamento tardio — um registro
+// por Appointment (appointmentId é único: só cobra uma vez por agendamento,
+// mesmo que o status mude de novo depois). status guarda o resultado real
+// retornado pela Stripe (cartão recusado não impede o cancelamento em si,
+// só fica registrado aqui como FAILED pra a barbearia ver o motivo).
+// Taxa de cancelamento tardio/no-show — cobrança manual (staff registra
+// depois, mesma filosofia do sinal e do cartão-presente). Um registro por
+// Appointment (appointmentId é único: calcula uma vez só, mesmo que o
+// status mude de novo depois). status: PENDING (calculado, ainda não
+// cobrado), COLLECTED (staff marcou como recebido) ou WAIVED (perdoado).
+model NoShowFee {
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  appointmentId Int       @unique
+  customerId    Int
+  barbershopId  Int
+  amount        Decimal
+  currency      String
+  reason        String    // LATE_CANCELLATION, NO_SHOW
+  status        String    @default("PENDING") // PENDING, COLLECTED, WAIVED
+  collectedAt   DateTime?
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barbershop    Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
+  @@index([customerId])
 }
 
 // Conta de cliente da plataforma (marketplace) — distinta do User (usado por
@@ -779,6 +823,7 @@ model Appointment {
   services     AppointmentService[]
   serviceHistory ServiceHistory[]
   sale         Sale?
+  noShowFee    NoShowFee?
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])

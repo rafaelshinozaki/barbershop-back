@@ -191,6 +191,10 @@ export class BarbershopService {
       loyaltyPointsPerCurrencyUnit: number;
       loyaltyPointValue: number;
       referralBonusPoints: number;
+      noShowFeeEnabled: boolean;
+      noShowFeeType: string;
+      noShowFeeValue: number;
+      lateCancellationWindowHours: number;
     }>,
   ) {
     const network = await this.getMyNetwork(userId);
@@ -1335,7 +1339,77 @@ export class BarbershopService {
       );
     }
 
+    // Taxa de no-show/cancelamento tardio: cobrança 100% manual (mesma
+    // filosofia do sinal e do cartão-presente) — só calcula e registra o
+    // valor devido, não cobra sozinho. Best-effort: nunca bloqueia a
+    // mutation nem falha o cancelamento em si.
+    if (
+      (data.status === 'CANCELLED' || data.status === 'NO_SHOW') &&
+      appointment.status !== data.status
+    ) {
+      this.recordNoShowFee(barbershopId, updated, data.status).catch((err) =>
+        this.logger.error(`Erro ao registrar taxa de no-show do agendamento #${appointmentId}:`, err),
+      );
+    }
+
     return updated;
+  }
+
+  private async recordNoShowFee(
+    barbershopId: number,
+    appointment: {
+      id: number;
+      startAt: Date;
+      services: Array<{ unitPrice: Decimal; quantity: number }>;
+      customer: { id: number };
+    },
+    newStatus: string,
+  ) {
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: { network: true },
+    });
+    if (!barbershop) return;
+    const { network } = barbershop;
+    if (!network.noShowFeeEnabled) return;
+
+    const isNoShow = newStatus === 'NO_SHOW';
+    const isLateCancellation =
+      newStatus === 'CANCELLED' &&
+      appointment.startAt.getTime() - Date.now() < network.lateCancellationWindowHours * 3600000;
+    if (!isNoShow && !isLateCancellation) return;
+
+    // appointmentId é único em NoShowFee — calcula uma vez só, mesmo que o
+    // status mude de novo depois.
+    const existing = await this.prisma.noShowFee.findUnique({
+      where: { appointmentId: appointment.id },
+    });
+    if (existing) return;
+
+    const serviceTotal = appointment.services.reduce(
+      (sum, s) => sum + Number(s.unitPrice) * s.quantity,
+      0,
+    );
+    if (serviceTotal <= 0) return;
+
+    let feeAmount = 0;
+    if (network.noShowFeeType === 'PERCENT' && network.noShowFeeValue) {
+      feeAmount = serviceTotal * (network.noShowFeeValue / 100);
+    } else if (network.noShowFeeType === 'FIXED' && network.noShowFeeValue) {
+      feeAmount = network.noShowFeeValue;
+    }
+    if (feeAmount <= 0) return;
+
+    await this.prisma.noShowFee.create({
+      data: {
+        appointmentId: appointment.id,
+        customerId: appointment.customer.id,
+        barbershopId,
+        amount: new Decimal(feeAmount),
+        currency: barbershop.currency,
+        reason: isNoShow ? 'NO_SHOW' : 'LATE_CANCELLATION',
+      },
+    });
   }
 
   async deleteAppointment(userId: number, barbershopId: number, appointmentId: number) {
@@ -2274,6 +2348,48 @@ export class BarbershopService {
       referralsCount: referralsMade.length,
       pointsEarnedFromReferrals: referralsMade.reduce((sum, r) => sum + (r.pointsAwarded ?? 0), 0),
     };
+  }
+
+  async getBarbershopNoShowFees(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const fees = await this.prisma.noShowFee.findMany({
+      where: { barbershopId },
+      include: { customer: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return fees.map((f) => ({
+      id: f.id,
+      customerId: f.customerId,
+      customerName: f.customer.name,
+      amount: Number(f.amount),
+      currency: f.currency,
+      reason: f.reason,
+      status: f.status,
+      collectedAt: f.collectedAt?.toISOString(),
+      createdAt: f.createdAt.toISOString(),
+    }));
+  }
+
+  async markNoShowFeeCollected(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
+    if (!fee) throw new NotFoundException('Taxa não encontrada');
+    await this.prisma.noShowFee.update({
+      where: { id },
+      data: { status: 'COLLECTED', collectedAt: new Date() },
+    });
+    return true;
+  }
+
+  async waiveNoShowFee(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
+    if (!fee) throw new NotFoundException('Taxa não encontrada');
+    await this.prisma.noShowFee.update({
+      where: { id },
+      data: { status: 'WAIVED' },
+    });
+    return true;
   }
 
   async getBarbershopReferrals(userId: number, barbershopId: number) {

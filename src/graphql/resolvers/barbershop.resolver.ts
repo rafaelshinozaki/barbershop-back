@@ -32,6 +32,7 @@ import {
   CustomerLoyaltyType,
   CustomerReferralInfoType,
   CustomerReferralType,
+  NoShowFeeType,
   WaitlistEntryType,
   MarketingSegmentPreviewType,
   MarketingCampaignType,
@@ -238,6 +239,35 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getBarbershopReferrals(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [NoShowFeeType])
+  async barbershopNoShowFees(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getBarbershopNoShowFees(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async markNoShowFeeCollected(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.markNoShowFeeCollected(user.id, barbershopId, id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async waiveNoShowFee(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.waiveNoShowFee(user.id, barbershopId, id);
   }
 
   // ============ CUSTOMERS ============

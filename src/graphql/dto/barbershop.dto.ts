@@ -127,6 +127,18 @@ export class UpdateNetworkInput {
 
   @Field(() => Int, { nullable: true })
   referralBonusPoints?: number;
+
+  @Field({ nullable: true })
+  noShowFeeEnabled?: boolean;
+
+  @Field({ nullable: true })
+  noShowFeeType?: string;
+
+  @Field(() => Float, { nullable: true })
+  noShowFeeValue?: number;
+
+  @Field(() => Int, { nullable: true })
+  lateCancellationWindowHours?: number;
 }
 
 // ============ Customer ============
