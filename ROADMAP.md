@@ -38,13 +38,13 @@ País inicial do cadastro sugerido por geolocalização de IP (mesma técnica da
 ## Pendências conhecidas (fora deste horizonte)
 - Rollback de cadastro incompleto: se `createBarbershop` falha após o `User` já ter sido criado, o rollback manual não limpa `LoginHistory`/`ActiveSession`, podendo deixar usuário órfão (chip de tarefa já aberto).
 
-## Horizonte: Crescimento e retenção — 🚧 Em andamento
+## Horizonte: Crescimento e retenção — ✅ Concluído
 
 | # | Item | Status | Backend | Frontend |
 |---|------|--------|---------|----------|
 | 1 | Lembretes de agendamento por WhatsApp | ✅ | `809dd3e` | — |
 | 2 | Relatórios avançados pro dono (retenção, no-show, mais vendidos) | ✅ | `4ce78c1` | `de424f1` |
-| 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | 🔜 | | |
+| 3 | Indicação entre clientes de uma barbearia (ganha pontos de fidelidade) | ✅ | `61d8116` | `9f95abd` |
 
 ### 1. Lembretes de agendamento por WhatsApp
 Novo `WhatsappService` envia lembrete via WhatsApp Cloud API (Meta) direto, além do e-mail já existente — os dois canais são independentes (falha em um não afeta o outro). Só ativa se `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` estiverem configurados (ver `.env.example`); sem eles, comportamento idêntico ao de antes (só e-mail). Nova `normalizePhoneToE164` (`src/common/phone.util.ts`) normaliza o telefone (texto livre hoje) por heurística de melhor esforço pro mercado BR.
