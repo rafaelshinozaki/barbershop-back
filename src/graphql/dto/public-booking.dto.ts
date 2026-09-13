@@ -75,6 +75,14 @@ export class CreatePublicAppointmentInput {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Código de indicação (base36 do id do Customer que indicou), lido do
+  // ?ref= da URL pública da barbearia — só tem efeito se o cliente sendo
+  // criado for realmente novo (ver createPublicAppointment).
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }
 
 @InputType()

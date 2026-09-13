@@ -662,6 +662,7 @@ input CreatePublicAppointmentInput {
   customerName: String!
   customerPhone: String!
   notes: String
+  referralCode: String
   serviceId: Int!
   startAt: String!
 }
@@ -764,6 +765,24 @@ type CustomerLoyaltyType {
   pointValue: Float!
   points: Int!
   redeemableValue: Float!
+}
+
+type CustomerReferralInfoType {
+  pointsEarnedFromReferrals: Int!
+  referralBonusPoints: Int!
+  referralCode: String!
+  referralsCount: Int!
+}
+
+type CustomerReferralType {
+  completedAt: String
+  createdAt: String!
+  id: Int!
+  pointsAwarded: Int
+  referredId: Int!
+  referredName: String!
+  referrerId: Int!
+  referrerName: String!
 }
 
 """
@@ -1137,6 +1156,7 @@ type Network {
   loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
+  referralBonusPoints: Int!
   updatedAt: String!
 }
 
@@ -1462,6 +1482,7 @@ type Query {
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
+  barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
   barbershopReviews(barbershopId: Int!): [ReviewType!]!
   barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
@@ -1481,6 +1502,7 @@ type Query {
   currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
+  customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
   demographicAnalysis: DemographicAnalysis!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
@@ -1901,6 +1923,7 @@ input UpdateNetworkInput {
   loyaltyPointsPerCurrencyUnit: Float
   mission: String
   name: String
+  referralBonusPoints: Int
 }
 
 input UpdateNotificationPreferenceInput {

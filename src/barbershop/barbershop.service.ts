@@ -190,6 +190,7 @@ export class BarbershopService {
       loyaltyEnabled: boolean;
       loyaltyPointsPerCurrencyUnit: number;
       loyaltyPointValue: number;
+      referralBonusPoints: number;
     }>,
   ) {
     const network = await this.getMyNetwork(userId);
@@ -1765,6 +1766,7 @@ export class BarbershopService {
     customerEmail?: string;
     notes?: string;
     clientAccountId?: number;
+    referralCode?: string;
   }) {
     const barbershop = await this.prisma.barbershop.findFirst({
       where: { id: input.barbershopId, isActive: true },
@@ -1817,6 +1819,24 @@ export class BarbershopService {
           clientAccountId: input.clientAccountId ?? null,
         },
       });
+
+      // Registra a indicação (se veio um ?ref= válido) só na criação — cliente
+      // já existente sendo reconhecido de novo não conta indicação retroativa.
+      // Falha silenciosa em código inválido/de outra rede/auto-indicação: não
+      // vale travar o agendamento por causa de um link de indicação quebrado.
+      if (input.referralCode) {
+        const referrerId = this.decodeReferralCode(input.referralCode);
+        if (referrerId && referrerId !== customer.id) {
+          const referrer = await this.prisma.customer.findFirst({
+            where: { id: referrerId, networkId },
+          });
+          if (referrer) {
+            await this.prisma.customerReferral.create({
+              data: { networkId, referrerId: referrer.id, referredId: customer.id },
+            });
+          }
+        }
+      }
     } else if (input.clientAccountId && !customer.clientAccountId) {
       customer = await this.prisma.customer.update({
         where: { id: customer.id },
@@ -2217,6 +2237,64 @@ export class BarbershopService {
     };
   }
 
+  // ============ INDICAÇÃO ENTRE CLIENTES ============
+
+  // Código de indicação = base36 do id do Customer — decodificável sem
+  // round-trip no banco (não precisa de coluna própria nem checar colisão,
+  // já que id já é único).
+  private encodeReferralCode(customerId: number): string {
+    return customerId.toString(36).toUpperCase();
+  }
+
+  private decodeReferralCode(code: string): number | null {
+    const id = parseInt(code, 36);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+
+  async getCustomerReferralInfo(userId: number, barbershopId: number, customerId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: { network: true },
+    });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId: barbershop.networkId },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+
+    const referralsMade = await this.prisma.customerReferral.findMany({
+      where: { referrerId: customerId },
+      select: { pointsAwarded: true },
+    });
+
+    return {
+      referralCode: this.encodeReferralCode(customer.id),
+      referralBonusPoints: barbershop.network.referralBonusPoints,
+      referralsCount: referralsMade.length,
+      pointsEarnedFromReferrals: referralsMade.reduce((sum, r) => sum + (r.pointsAwarded ?? 0), 0),
+    };
+  }
+
+  async getBarbershopReferrals(userId: number, barbershopId: number) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const referrals = await this.prisma.customerReferral.findMany({
+      where: { networkId: barbershop.networkId },
+      include: { referrer: true, referred: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return referrals.map((r) => ({
+      id: r.id,
+      referrerId: r.referrerId,
+      referrerName: r.referrer.name,
+      referredId: r.referredId,
+      referredName: r.referred.name,
+      pointsAwarded: r.pointsAwarded,
+      completedAt: r.completedAt?.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
   // ============ WALK-INS (Queue) ============
 
   async createWalkIn(
@@ -2437,6 +2515,35 @@ export class BarbershopService {
             data: { loyaltyPoints: { increment: pointsEarned } },
           });
           await tx.sale.update({ where: { id: sale.id }, data: { loyaltyPointsEarned: pointsEarned } });
+        }
+      }
+
+      // Indicação entre clientes: o referrer só ganha o bônus quando o
+      // indicado completa a PRIMEIRA venda paga (não no cadastro) — evita
+      // indicação fake sem gasto real. Um cliente só pode ter uma indicação
+      // pendente (referredId é único), então não há risco de premiar mais de
+      // uma vez por engano em vendas futuras.
+      if (data.paymentStatus === 'PAID' && data.customerId && barbershop?.network.loyaltyEnabled) {
+        const referral = await tx.customerReferral.findUnique({
+          where: { referredId: data.customerId },
+        });
+        if (referral && !referral.completedAt) {
+          const paidSalesCount = await tx.sale.count({
+            where: { customerId: data.customerId, paymentStatus: 'PAID' },
+          });
+          if (paidSalesCount === 1) {
+            const bonusPoints = barbershop.network.referralBonusPoints;
+            if (bonusPoints > 0) {
+              await tx.customer.update({
+                where: { id: referral.referrerId },
+                data: { loyaltyPoints: { increment: bonusPoints } },
+              });
+            }
+            await tx.customerReferral.update({
+              where: { id: referral.id },
+              data: { completedAt: new Date(), pointsAwarded: bonusPoints },
+            });
+          }
         }
       }
       await tx.saleItem.createMany({

@@ -36,6 +36,9 @@ export class Network {
   @Field(() => Float, { nullable: true })
   loyaltyPointValue?: number;
 
+  @Field(() => Int)
+  referralBonusPoints: number;
+
   @Field()
   createdAt: string;
 
@@ -804,6 +807,50 @@ export class CustomerLoyaltyType {
 
   @Field(() => Float)
   redeemableValue: number;
+}
+
+@ObjectType()
+export class CustomerReferralInfoType {
+  // Base36 do id do cliente — decodificado de volta em createPublicAppointment,
+  // sem precisar de coluna própria no banco (id já é único).
+  @Field()
+  referralCode: string;
+
+  @Field(() => Int)
+  referralBonusPoints: number;
+
+  @Field(() => Int)
+  referralsCount: number;
+
+  @Field(() => Int)
+  pointsEarnedFromReferrals: number;
+}
+
+@ObjectType()
+export class CustomerReferralType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  referrerId: number;
+
+  @Field()
+  referrerName: string;
+
+  @Field(() => Int)
+  referredId: number;
+
+  @Field()
+  referredName: string;
+
+  @Field(() => Int, { nullable: true })
+  pointsAwarded?: number;
+
+  @Field({ nullable: true })
+  completedAt?: string;
+
+  @Field()
+  createdAt: string;
 }
 
 @ObjectType()

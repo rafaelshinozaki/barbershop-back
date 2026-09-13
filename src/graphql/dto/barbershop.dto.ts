@@ -124,6 +124,9 @@ export class UpdateNetworkInput {
 
   @Field(() => Float, { nullable: true })
   loyaltyPointValue?: number;
+
+  @Field(() => Int, { nullable: true })
+  referralBonusPoints?: number;
 }
 
 // ============ Customer ============

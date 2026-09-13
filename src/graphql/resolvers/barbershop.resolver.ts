@@ -30,6 +30,8 @@ import {
   AdvancedReportsType,
   GiftCardType,
   CustomerLoyaltyType,
+  CustomerReferralInfoType,
+  CustomerReferralType,
   WaitlistEntryType,
   MarketingSegmentPreviewType,
   MarketingCampaignType,
@@ -217,6 +219,25 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getCustomerLoyalty(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CustomerReferralInfoType)
+  async customerReferralInfo(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCustomerReferralInfo(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [CustomerReferralType])
+  async barbershopReferrals(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getBarbershopReferrals(user.id, barbershopId);
   }
 
   // ============ CUSTOMERS ============

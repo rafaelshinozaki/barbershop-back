@@ -372,12 +372,16 @@ model Network {
   loyaltyEnabled              Boolean @default(false)
   loyaltyPointsPerCurrencyUnit Float?
   loyaltyPointValue            Float?
+  // Pontos de fidelidade concedidos ao cliente que indicou, quando o
+  // indicado completa sua primeira venda paga (ver CustomerReferral).
+  referralBonusPoints Int @default(50)
   ownerUserId    Int
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]
   customers      Customer[]
   favoritedBy    ClientFavorite[]
   giftCards      GiftCard[]
+  referrals      CustomerReferral[]
 
   @@index([ownerUserId])
 }
@@ -500,11 +504,36 @@ model Customer {
   packages       ClientPackage[]
   consentForms   ConsentForm[]
   waitlistEntries WaitlistEntry[]
+  referralsMade    CustomerReferral[] @relation("ReferralsMade")
+  referralReceived CustomerReferral?  @relation("ReferralReceived")
 
   @@index([networkId])
   @@index([networkId, phone])
   @@index([networkId, email])
   @@index([clientAccountId])
+}
+
+// Indicação entre clientes de uma mesma rede: um Customer (referrer) indica
+// outro (referred), que ganha o registro ao ser criado com o código de
+// indicação do primeiro. O referrer só ganha os pontos de fidelidade
+// (Network.referralBonusPoints) quando o indicado completa a primeira venda
+// paga — não no cadastro, pra evitar indicação fake sem gasto real (ver
+// createSale). referredId é único: cada cliente só pode ter sido indicado
+// uma vez.
+model CustomerReferral {
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  networkId     Int
+  referrerId    Int
+  referredId    Int       @unique
+  pointsAwarded Int?
+  completedAt   DateTime?
+  network       Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  referrer      Customer  @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred      Customer  @relation("ReferralReceived", fields: [referredId], references: [id], onDelete: Cascade)
+
+  @@index([networkId])
+  @@index([referrerId])
 }
 
 // Conta de cliente da plataforma (marketplace) — distinta do User (usado por
