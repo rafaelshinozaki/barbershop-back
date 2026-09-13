@@ -65,7 +65,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 |---|------|--------|---------|----------|
 | 1 | Lista de espera automática | ✅ | `e0363aa` | `343cbb3` |
 | 2 | Campanhas de marketing (Message Blast) | ✅ | `a21507b` | `d72d7ab` |
-| 3 | Taxa de cancelamento/no-show cobrada automaticamente | 🔜 | | |
+| 3 | Taxa de cancelamento tardio/no-show | ✅ | `895fe0f` | `c3eeee3` |
 | 4 | Assinatura recorrente pro cliente final | 🔜 | | |
 | 5 | Agendamento de posts em redes sociais | 🔜 | | |
 | 6 | Site/domínio próprio do negócio | 🔜 | | |
@@ -76,8 +76,8 @@ Novo modelo `WaitlistEntry`: staff adiciona cliente à lista de espera de um bar
 ### 2. Campanhas de marketing (Message Blast)
 Nova página "Marketing": escolhe público (todos, inativos há N dias sem `ServiceHistory` nesta unidade, ou aniversariantes do mês), vê a contagem de destinatários em tempo real, escreve mensagem livre, escolhe canal (e-mail/WhatsApp) e confirma antes de disparar. Novo modelo `MarketingCampaign` guarda o histórico com contagem real de envios bem-sucedidos por canal (falha em um destinatário não derruba os demais). Novo `Customer.marketingOptOut` (checkbox no cadastro do cliente) exclui da segmentação. Reaproveita `WhatsappService`/`EmailService` dos lembretes; WhatsApp usa um template genérico de parâmetro único (mesma exigência de aprovação da Meta dos anteriores).
 
-### 3. Taxa de cancelamento/no-show cobrada automaticamente
-**Reabre a decisão de cobrança online já debatida antes** (sinal/cartão-presente ficaram manuais por escolha explícita). O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso de cancelamento tardio/no-show — isso exigiria uma integração de pagamento nova pro cliente final do marketplace, algo que foi deliberadamente adiado até aqui.
+### 3. Taxa de cancelamento tardio/no-show
+O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso de cancelamento tardio/no-show — isso foi cogitado via Stripe Connect (conta própria da franquia), mas descartado: exigiria o dono da barbearia passar por onboarding numa plataforma de pagamento externa, uma camada de burocracia que barbearias não-técnicas provavelmente não completariam, arriscando abandono da plataforma. Ficou manual em vez disso — mesma filosofia do sinal e do cartão-presente: o sistema calcula automaticamente quanto o cliente deve (percentual do serviço ou valor fixo, configurável por rede) quando cancela dentro da janela de cancelamento tardio ou não aparece, registra o valor, e a equipe cobra depois por fora. Nova seção na tela de franquia pra configurar a política, e uma página listando as taxas geradas por barbearia com ações pra marcar como cobrada ou perdoar.
 
 ### 4. Assinatura recorrente pro cliente final
 Ex.: "corte ilimitado por R$99/mês" cobrado automaticamente todo mês — diferente do pacote pré-pago (`ServicePackage`) que já existe, que é finito e sem cobrança recorrente. **Também reabre a decisão de cobrança online.**
