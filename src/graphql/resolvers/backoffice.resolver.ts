@@ -10,8 +10,6 @@ import {
   PlanDistribution,
   GeographicAnalysis,
   DemographicAnalysis,
-  ProfessionalSegmentAnalysis,
-  CompanyAnalysis,
   DetailedUser,
   DetailedUsersResponse,
   BackofficeDashboard,
@@ -101,28 +99,6 @@ export class BackofficeResolver {
   @Query(() => DemographicAnalysis)
   async demographicAnalysis() {
     return this.backofficeService.getDemographicAnalysis();
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @Query(() => ProfessionalSegmentAnalysis)
-  async professionalSegmentAnalysis() {
-    this.logger.log('professionalSegmentAnalysis resolver called');
-    try {
-      const result = await this.backofficeService.getProfessionalSegmentAnalysis();
-      this.logger.log('professionalSegmentAnalysis result:', result);
-      return result;
-    } catch (error) {
-      this.logger.error('Error in professionalSegmentAnalysis resolver:', error);
-      throw error;
-    }
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @Query(() => CompanyAnalysis)
-  async companyAnalysis() {
-    return this.backofficeService.getCompanyAnalysis();
   }
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
@@ -227,9 +203,6 @@ export class BackofficeResolver {
     if (input.fullName !== undefined) userDto.fullName = input.fullName;
     if (input.phone !== undefined) userDto.phone = input.phone;
     if (input.birthdate !== undefined) userDto.birthdate = new Date(input.birthdate);
-    if (input.company !== undefined) userDto.company = input.company;
-    if (input.professionalSegment !== undefined)
-      userDto.professionalSegment = input.professionalSegment;
     if (input.gender !== undefined) userDto.gender = input.gender;
     if (input.isActive !== undefined) userDto.isActive = input.isActive;
     if (input.twoFactorEnabled !== undefined) userDto.twoFactorEnabled = input.twoFactorEnabled;

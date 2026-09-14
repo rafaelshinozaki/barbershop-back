@@ -81,27 +81,6 @@ export class NewUserSchema {
   })
   idDocNumber: string;
 
-  @IsString({ message: 'Company name must be a string' })
-  @Transform(({ value }) => value.trim().toUpperCase(), { groups: ['transform'] })
-  @Matches(/^[a-zA-Z0-9À-ÿ\- ]{3,255}$/, {
-    message: 'Company name must be between 3 and 255 characters',
-  })
-  company: string;
-
-  @IsString({ message: 'Job title must be a string' })
-  @Transform(({ value }) => (value ? value.trim().toUpperCase() : value), { groups: ['transform'] })
-  jobTitle?: string;
-
-  @IsString({ message: 'Department must be a string' })
-  @Transform(({ value }) => (value ? value.trim().toUpperCase() : value), { groups: ['transform'] })
-  department?: string;
-
-  @IsString({ message: 'Invalid professional segment' })
-  professionalSegment: string;
-
-  @IsString({ message: 'Required field' })
-  knowledgeApp: string;
-
   @IsBoolean({ message: 'Accept terms must be a boolean' })
   readTerms: boolean;
 

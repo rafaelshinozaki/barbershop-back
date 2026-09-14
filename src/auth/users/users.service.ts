@@ -263,11 +263,6 @@ export class UserService {
           phone: userData.phone,
           gender: userData.gender,
           birthdate: userData.birthdate,
-          company: userData.company,
-          jobTitle: userData.jobTitle,
-          department: userData.department,
-          professionalSegment: userData.professionalSegment,
-          knowledgeApp: userData.knowledgeApp,
           readTerms: userData.readTerms,
           membership: MEMBERSHIP_STATUS.FREE,
           isActive: true,
@@ -425,9 +420,6 @@ export class UserService {
     if (userDto.fullName !== undefined) data.fullName = userDto.fullName;
     if (userDto.phone !== undefined) data.phone = userDto.phone;
     if (userDto.birthdate !== undefined) data.birthdate = userDto.birthdate;
-    if (userDto.company !== undefined) data.company = userDto.company;
-    if (userDto.professionalSegment !== undefined)
-      data.professionalSegment = userDto.professionalSegment;
 
     // Incluir twoFactorEnabled normalmente
     if ('twoFactorEnabled' in userDto) {
@@ -533,9 +525,6 @@ export class UserService {
         idDocNumber: true,
         gender: true,
         birthdate: true,
-        company: true,
-        professionalSegment: true,
-        knowledgeApp: true,
         readTerms: true,
         membership: true,
         isActive: true,
@@ -596,9 +585,6 @@ export class UserService {
     idDocNumber: true,
     gender: true,
     birthdate: true,
-    company: true,
-    professionalSegment: true,
-    knowledgeApp: true,
     readTerms: true,
     membership: true,
     isActive: true,
@@ -738,9 +724,6 @@ export class UserService {
           phone: '',
           gender: '',
           birthdate: new Date(),
-          company: '',
-          professionalSegment: '',
-          knowledgeApp: 'social',
           readTerms: true,
           isActive: true,
           roleId: userRole.id,
@@ -872,9 +855,6 @@ export class UserService {
         phone: true,
         gender: true,
         birthdate: true,
-        company: true,
-        professionalSegment: true,
-        knowledgeApp: true,
         readTerms: true,
         membership: true,
         isActive: true,
@@ -1162,11 +1142,6 @@ export class UserService {
         phone: true,
         gender: true,
         birthdate: true,
-        company: true,
-        jobTitle: true,
-        department: true,
-        professionalSegment: true,
-        knowledgeApp: true,
         readTerms: true,
         membership: true,
         isActive: true,
@@ -2180,11 +2155,6 @@ export class UserService {
             phone: userData.phone,
             idDocNumber: userData.idDocNumber,
             birthdate: new Date(userData.birthdate),
-            company: userData.company ? userData.company.toUpperCase() : undefined,
-            jobTitle: userData.jobTitle ? userData.jobTitle.toUpperCase() : undefined,
-            department: userData.department ? userData.department.toUpperCase() : undefined,
-            professionalSegment: userData.professionalSegment,
-            knowledgeApp: userData.knowledgeApp,
             readTerms: userData.readTerms,
             membership: MEMBERSHIP_STATUS.FREE,
             isActive: isActive,

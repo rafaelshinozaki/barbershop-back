@@ -358,137 +358,6 @@ export class BackofficeService {
     };
   }
 
-  async getProfessionalSegmentAnalysis() {
-    this.logger.log('Starting getProfessionalSegmentAnalysis');
-
-    try {
-      const users = await this.prisma.user.findMany({
-        where: {
-          deleted_at: null,
-        },
-        select: {
-          professionalSegment: true,
-          jobTitle: true,
-          department: true,
-        },
-      });
-
-      this.logger.log(`Found ${users.length} users for analysis`);
-
-      // Log alguns exemplos de usuários
-      const sampleUsers = users.slice(0, 5);
-      this.logger.log('Sample users:', sampleUsers);
-
-      // Análise por segmento profissional
-      const segmentCounts = new Map<string, number>();
-      const jobTitleCounts = new Map<string, number>();
-      const departmentCounts = new Map<string, number>();
-
-      users.forEach((user) => {
-        // Segmento profissional
-        const segment = user.professionalSegment || 'Não informado';
-        segmentCounts.set(segment, (segmentCounts.get(segment) || 0) + 1);
-
-        // Cargo - usar valor padrão se estiver vazio
-        const jobTitle = user.jobTitle || 'Não informado';
-        jobTitleCounts.set(jobTitle, (jobTitleCounts.get(jobTitle) || 0) + 1);
-
-        // Departamento - usar valor padrão se estiver vazio
-        const department = user.department || 'Não informado';
-        departmentCounts.set(department, (departmentCounts.get(department) || 0) + 1);
-      });
-
-      this.logger.log(`Segment counts: ${Array.from(segmentCounts.entries())}`);
-      this.logger.log(`Job title counts: ${Array.from(jobTitleCounts.entries())}`);
-      this.logger.log(`Department counts: ${Array.from(departmentCounts.entries())}`);
-
-      // Pegar os top 10 cargos
-      const topJobTitles = Array.from(jobTitleCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-      // Pegar os top 10 departamentos
-      const topDepartments = Array.from(departmentCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-      this.logger.log(`Top job titles: ${topJobTitles}`);
-      this.logger.log(`Top departments: ${topDepartments}`);
-
-      const result = {
-        segments: {
-          labels: Array.from(segmentCounts.keys()),
-          data: Array.from(segmentCounts.values()),
-        },
-        jobTitles: {
-          labels: topJobTitles.map(([title]) => title),
-          data: topJobTitles.map(([, count]) => count),
-        },
-        departments: {
-          labels: topDepartments.map(([dept]) => dept),
-          data: topDepartments.map(([, count]) => count),
-        },
-      };
-
-      this.logger.log('Final result:', result);
-      return result;
-    } catch (error) {
-      this.logger.error('Error in getProfessionalSegmentAnalysis:', error);
-      throw error;
-    }
-  }
-
-  async getCompanyAnalysis() {
-    const users = await this.prisma.user.findMany({
-      where: {
-        deleted_at: null,
-      },
-      select: {
-        company: true,
-      },
-    });
-
-    // Análise por empresa
-    const companyCounts = new Map<string, number>();
-    const companySizeRanges = {
-      '1-10': 0,
-      '11-50': 0,
-      '51-200': 0,
-      '201-1000': 0,
-      '1000+': 0,
-    };
-
-    users.forEach((user) => {
-      const company = user.company || 'Não informado';
-      companyCounts.set(company, (companyCounts.get(company) || 0) + 1);
-    });
-
-    // Simular tamanho da empresa baseado no número de usuários da mesma empresa
-    companyCounts.forEach((count, company) => {
-      if (count >= 1 && count <= 10) companySizeRanges['1-10']++;
-      else if (count >= 11 && count <= 50) companySizeRanges['11-50']++;
-      else if (count >= 51 && count <= 200) companySizeRanges['51-200']++;
-      else if (count >= 201 && count <= 1000) companySizeRanges['201-1000']++;
-      else if (count > 1000) companySizeRanges['1000+']++;
-    });
-
-    // Pegar as top 10 empresas
-    const topCompanies = Array.from(companyCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-
-    return {
-      companies: {
-        labels: topCompanies.map(([company]) => company),
-        data: topCompanies.map(([, count]) => count),
-      },
-      companySizes: {
-        labels: Object.keys(companySizeRanges),
-        data: Object.values(companySizeRanges),
-      },
-    };
-  }
-
   async getUsersDetailed(filters: {
     page: number;
     limit: number;
@@ -501,15 +370,12 @@ export class BackofficeService {
     status?: string;
     gender?: string;
     ageRange?: string;
-    professionalSegment?: string;
-    company?: string;
   }) {
     const { page, limit, ...filterParams } = filters;
     const skip = (page - 1) * limit;
 
     // Debug logs para filtros
     this.logger.log('Filters received', filterParams);
-    this.logger.log('Professional segment filter', filterParams.professionalSegment);
     this.logger.log('Role filter', filterParams.role);
 
     // Construir where clause
@@ -528,16 +394,6 @@ export class BackofficeService {
       where.email = {
         contains: filterParams.email,
       };
-    }
-
-    if (filterParams.company) {
-      where.company = {
-        contains: filterParams.company,
-      };
-    }
-
-    if (filterParams.professionalSegment && filterParams.professionalSegment !== 'all') {
-      where.professionalSegment = filterParams.professionalSegment;
     }
 
     if (filterParams.role && filterParams.role !== 'all') {
@@ -631,15 +487,6 @@ export class BackofficeService {
               contains: filterParams.email,
             },
           }),
-          ...(filterParams.company && {
-            company: {
-              contains: filterParams.company,
-            },
-          }),
-          ...(filterParams.professionalSegment &&
-            filterParams.professionalSegment !== 'all' && {
-              professionalSegment: filterParams.professionalSegment,
-            }),
           ...(filterParams.role &&
             filterParams.role !== 'all' && {
               role: {
@@ -729,10 +576,6 @@ export class BackofficeService {
         country: user.address?.country || 'Não informado',
         city: user.address?.city || 'Não informado',
         state: user.address?.state || 'Não informado',
-        company: user.company || 'Não informado',
-        professionalSegment: user.professionalSegment || 'Não informado',
-        jobTitle: user.jobTitle || 'Não informado',
-        department: user.department || 'Não informado',
         plan: user.membership || 'FREE',
         status: user.isActive ? 'ACTIVE' : 'INACTIVE',
         role: roleEnum,

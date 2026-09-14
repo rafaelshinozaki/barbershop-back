@@ -217,7 +217,7 @@ export class AuthController {
     // Verificar se o usuário precisa completar o cadastro
     // Se o usuário tem dados básicos preenchidos, vai para a página principal
     // Caso contrário, vai para social-signup para completar o cadastro
-    const needsCompleteSignup = !dbUser.phone || !dbUser.company || !dbUser.professionalSegment;
+    const needsCompleteSignup = !dbUser.phone;
 
     const redirectPath = needsCompleteSignup ? '/social-signup' : '/';
     const fullRedirectUrl = `${frontendUrl}${redirectPath}`;

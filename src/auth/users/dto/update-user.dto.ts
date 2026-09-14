@@ -21,37 +21,12 @@ export class UpdateUserInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  company?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  position?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  department?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
   gender?: string;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsDateString()
   birthdate?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  professionalSegment?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  knowledgeApp?: string;
 
   @Field({ nullable: true })
   @IsOptional()

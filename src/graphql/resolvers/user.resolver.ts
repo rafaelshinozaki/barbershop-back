@@ -155,9 +155,6 @@ export class UserResolver {
     // Campos básicos do usuário
     if (input.fullName !== undefined) updateData.fullName = input.fullName;
     if (input.phone !== undefined) updateData.phone = input.phone;
-    if (input.company !== undefined) updateData.company = input.company;
-    if (input.position !== undefined) updateData.jobTitle = input.position;
-    if (input.department !== undefined) updateData.department = input.department;
     if (input.gender !== undefined) updateData.gender = input.gender;
     if (input.birthdate !== undefined && input.birthdate.trim() !== '') {
       const birthdate = new Date(input.birthdate);
@@ -165,9 +162,6 @@ export class UserResolver {
         updateData.birthdate = birthdate;
       }
     }
-    if (input.professionalSegment !== undefined)
-      updateData.professionalSegment = input.professionalSegment;
-    if (input.knowledgeApp !== undefined) updateData.knowledgeApp = input.knowledgeApp;
     // twoFactorEnabled não é aceito aqui de propósito — precisa passar por
     // setTwoFactor, que exige código de verificação (ativar) ou senha atual
     // (desativar); ver AuthResolver.setTwoFactor.

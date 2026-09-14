@@ -12,11 +12,6 @@ export class UserDTO {
   gender: string;
   phone: string;
   idDocNumber: string;
-  company: string;
-  jobTitle?: string;
-  department?: string;
-  professionalSegment: string;
-  knowledgeApp: string;
   readTerms: boolean;
   membership: string;
   isActive: boolean;

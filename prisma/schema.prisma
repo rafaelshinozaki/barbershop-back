@@ -20,11 +20,6 @@ model User {
   phone               String
   gender              String
   birthdate           DateTime
-  company             String
-  jobTitle            String?
-  department          String?
-  professionalSegment String
-  knowledgeApp        String
   readTerms           Boolean
   membership          String             @default("FREE")
   isActive            Boolean            @default(false)

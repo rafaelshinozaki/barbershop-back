@@ -148,26 +148,6 @@ export class UpdateUserByAdminInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  company?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  professionalSegment?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  jobTitle?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  department?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
   gender?: string;
 
   @Field({ nullable: true })
@@ -252,16 +232,6 @@ export class UsersDetailedFilters {
   @IsOptional()
   @IsString()
   ageRange?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  professionalSegment?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  company?: string;
 }
 
 @InputType()

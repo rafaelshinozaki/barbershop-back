@@ -84,27 +84,6 @@ export class DemographicAnalysis {
 }
 
 @ObjectType()
-export class ProfessionalSegmentAnalysis {
-  @Field(() => ChartData)
-  segments: ChartData;
-
-  @Field(() => ChartData)
-  jobTitles: ChartData;
-
-  @Field(() => ChartData)
-  departments: ChartData;
-}
-
-@ObjectType()
-export class CompanyAnalysis {
-  @Field(() => ChartData)
-  companies: ChartData;
-
-  @Field(() => ChartData)
-  companySizes: ChartData;
-}
-
-@ObjectType()
 export class DetailedUser {
   @Field(() => Int)
   id: number;
@@ -135,18 +114,6 @@ export class DetailedUser {
 
   @Field()
   state: string;
-
-  @Field()
-  company: string;
-
-  @Field()
-  professionalSegment: string;
-
-  @Field()
-  jobTitle: string;
-
-  @Field()
-  department: string;
 
   @Field(() => MembershipStatus)
   plan: MembershipStatus;

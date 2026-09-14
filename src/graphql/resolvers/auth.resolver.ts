@@ -44,11 +44,6 @@ function toGraphQLUser(user: any) {
     phone: user.phone,
     gender: user.gender,
     birthdate: user.birthdate,
-    company: user.company,
-    jobTitle: user.jobTitle,
-    department: user.department,
-    professionalSegment: user.professionalSegment,
-    knowledgeApp: user.knowledgeApp,
     readTerms: user.readTerms,
     membership: user.membership,
     isActive: user.isActive,
@@ -149,11 +144,6 @@ export class AuthResolver {
     };
 
     if (isBarbershopOwner && createUserInput.barbershopData) {
-      const { barbershopData } = createUserInput;
-      userData.company = barbershopData.name;
-      userData.jobTitle = 'Proprietário';
-      userData.department = 'Barbearia';
-      userData.professionalSegment = 'barbershop';
       userData.roleName = Role.BARBERSHOP_OWNER;
     }
 

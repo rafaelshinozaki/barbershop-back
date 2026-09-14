@@ -158,28 +158,6 @@ export class CreateUserInput {
   birthdate: Date;
 
   @Field()
-  @IsString()
-  company: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  jobTitle?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  department?: string;
-
-  @Field()
-  @IsString()
-  professionalSegment: string;
-
-  @Field()
-  @IsString()
-  knowledgeApp: string;
-
-  @Field()
   @IsBoolean()
   readTerms: boolean;
 
@@ -347,28 +325,6 @@ export class SocialSignupInput {
 
   @Field()
   birthdate: Date;
-
-  @Field()
-  @IsString()
-  company: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  jobTitle?: string;
-
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  department?: string;
-
-  @Field()
-  @IsString()
-  professionalSegment: string;
-
-  @Field()
-  @IsString()
-  knowledgeApp: string;
 
   @Field()
   @IsBoolean()

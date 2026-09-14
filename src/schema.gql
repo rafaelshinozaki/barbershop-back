@@ -437,11 +437,6 @@ type CommonResponse {
   count: Int!
 }
 
-type CompanyAnalysis {
-  companies: ChartData!
-  companySizes: ChartData!
-}
-
 type CompletedPayment {
   amount: Float!
   createdAt: String!
@@ -775,17 +770,12 @@ input CreateUserInput {
   address: UserAddressInput
   barbershopData: BarbershopSignupData
   birthdate: DateTime!
-  company: String!
-  department: String
   email: String!
   fullName: String!
   gender: String!
   idDocNumber: String!
-  jobTitle: String
-  knowledgeApp: String!
   password: String!
   phone: String!
-  professionalSegment: String!
   readTerms: Boolean!
   signupType: String
 }
@@ -857,18 +847,14 @@ type DetailedUser {
   ageRange: String!
   birthdate: String!
   city: String!
-  company: String!
   country: String!
   createdAt: String!
-  department: String!
   email: String!
   fullName: String!
   gender: String!
   id: Int!
-  jobTitle: String!
   lastLogin: String!
   plan: MembershipStatus!
-  professionalSegment: String!
   role: UserRole!
   state: String!
   status: UserStatus!
@@ -1456,12 +1442,6 @@ type ProductCategoryType {
   updatedAt: String!
 }
 
-type ProfessionalSegmentAnalysis {
-  departments: ChartData!
-  jobTitles: ChartData!
-  segments: ChartData!
-}
-
 type PublicAppointmentType {
   barberName: String!
   barbershopName: String!
@@ -1583,7 +1563,6 @@ type Query {
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
-  companyAnalysis: CompanyAnalysis!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
   couponStats(id: Float!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
@@ -1629,7 +1608,6 @@ type Query {
   overduePayments: [Payment!]!
   planDistribution: PlanDistribution!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
-  professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
   publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
@@ -1826,16 +1804,11 @@ type SocialPostType {
 
 input SocialSignupInput {
   birthdate: DateTime!
-  company: String!
-  department: String
   email: String!
   fullName: String!
   gender: String!
   idDocNumber: String!
-  jobTitle: String
-  knowledgeApp: String!
   phone: String!
-  professionalSegment: String!
   provider: String!
   readTerms: Boolean!
 }
@@ -2135,16 +2108,12 @@ input UpdateSubscriptionPlanInput {
 input UpdateUserByAdminInput {
   address: AddressInput
   birthdate: String
-  company: String
-  department: String
   email: String
   fullName: String
   gender: String
   isActive: Boolean
-  jobTitle: String
   notificationPreference: AdminNotificationPreferenceInput
   phone: String
-  professionalSegment: String
   twoFactorEnabled: Boolean
   userId: Int!
   userSystemConfig: UserSystemConfigInput
@@ -2153,19 +2122,14 @@ input UpdateUserByAdminInput {
 input UpdateUserInput {
   birthdate: String
   city: String
-  company: String
   complement1: String
   complement2: String
   country: String
-  department: String
   email: String
   fullName: String
   gender: String
-  knowledgeApp: String
   neighborhood: String
   phone: String
-  position: String
-  professionalSegment: String
   state: String
   street: String
   zipcode: String
@@ -2184,25 +2148,20 @@ input UpdateUserSystemConfigInput {
 type User {
   address: Address
   birthdate: String!
-  company: String!
   createdAt: String!
   deleted_at: String
-  department: String
   email: String!
   fullName: String!
   gender: String!
   id: Int!
   idDocNumber: String!
   isActive: Boolean!
-  jobTitle: String
-  knowledgeApp: String!
   loginId: String
   membership: MembershipStatus
   notificationPreference: NotificationPreference
   phone: String!
   photoKey: String
   plan: String
-  professionalSegment: String!
   provider: String!
   readTerms: Boolean!
   role: String
@@ -2293,7 +2252,6 @@ input UserSystemConfigInput {
 input UsersDetailedFilters {
   ageRange: String
   city: String
-  company: String
   country: String
   email: String
   gender: String
@@ -2301,7 +2259,6 @@ input UsersDetailedFilters {
   name: String
   page: Int! = 1
   plan: String
-  professionalSegment: String
   role: String
   status: String
 }

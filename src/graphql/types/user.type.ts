@@ -110,21 +110,6 @@ export class User {
   birthdate: string;
 
   @Field()
-  company: string;
-
-  @Field({ nullable: true })
-  jobTitle?: string;
-
-  @Field({ nullable: true })
-  department?: string;
-
-  @Field()
-  professionalSegment: string;
-
-  @Field()
-  knowledgeApp: string;
-
-  @Field()
   readTerms: boolean;
 
   @Field(() => MembershipStatus, { nullable: true })
