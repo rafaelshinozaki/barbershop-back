@@ -797,6 +797,37 @@ export class PurchaseClientPackageInput {
   servicePackageId: number;
 }
 
+// ============ Assinatura recorrente do cliente ============
+@InputType()
+export class CreateSubscriptionPlanInput {
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field()
+  name: string;
+
+  @Field(() => Float)
+  price: number;
+
+  @Field(() => Int, { nullable: true })
+  sessionsPerCycle?: number;
+}
+
+@InputType()
+export class UpdateSubscriptionPlanInput {
+  @Field({ nullable: true })
+  name?: string;
+
+  @Field(() => Float, { nullable: true })
+  price?: number;
+
+  @Field(() => Int, { nullable: true })
+  sessionsPerCycle?: number;
+
+  @Field({ nullable: true })
+  isActive?: boolean;
+}
+
 // ============ Consent Form ============
 @InputType()
 export class CreateConsentFormInput {

@@ -9,9 +9,10 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AuthModule } from '../auth/auth.module';
 import { UserModule } from '../auth/users/users.module';
 import { AwsModule } from '../aws/aws.module';
+import { StripeModule } from '../stripe/stripe.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, WhatsappModule, AuthModule, UserModule, AwsModule],
+  imports: [PrismaModule, EmailModule, WhatsappModule, AuthModule, UserModule, AwsModule, StripeModule],
   providers: [BarbershopService, EmployeeInviteService, AppointmentReminderService],
   controllers: [EmployeeInviteController],
   exports: [BarbershopService, EmployeeInviteService],

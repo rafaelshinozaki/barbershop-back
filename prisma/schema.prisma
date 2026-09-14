@@ -472,6 +472,8 @@ model Barbershop {
   waitlistEntries WaitlistEntry[]
   marketingCampaigns MarketingCampaign[]
   noShowFees      NoShowFee[]
+  clientSubscriptionPlans ClientSubscriptionPlan[]
+  clientSubscriptions     ClientSubscription[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -551,11 +553,6 @@ model CustomerReferral {
   @@index([referrerId])
 }
 
-// Tentativa de cobrança de taxa de no-show/cancelamento tardio — um registro
-// por Appointment (appointmentId é único: só cobra uma vez por agendamento,
-// mesmo que o status mude de novo depois). status guarda o resultado real
-// retornado pela Stripe (cartão recusado não impede o cancelamento em si,
-// só fica registrado aqui como FAILED pra a barbearia ver o motivo).
 // Taxa de cancelamento tardio/no-show — cobrança manual (staff registra
 // depois, mesma filosofia do sinal e do cartão-presente). Um registro por
 // Appointment (appointmentId é único: calcula uma vez só, mesmo que o
@@ -593,10 +590,14 @@ model ClientAccount {
   name                 String
   phone                String?
   avatarUrl            String?
+  stripeCustomerId     String?                     // Stripe Customer na conta da própria plataforma — usado pra
+                                                     // assinatura recorrente de serviço (ver ClientSubscription).
+                                                     // Não é Stripe Connect: o dinheiro cai na conta da plataforma.
   customers            Customer[]
   favorites            ClientFavorite[]
   linkedSocialAccounts ClientLinkedSocialAccount[]
   reviews              Review[]
+  subscriptions        ClientSubscription[]
 }
 
 // Avaliação de uma unidade (Barbershop), não da rede inteira — o cliente
@@ -753,6 +754,7 @@ model BarbershopService {
   saleItems        SaleItem[]
   packages         ServicePackage[]
   waitlistEntries  WaitlistEntry[]
+  subscriptionPlans ClientSubscriptionPlan[]
 
   @@index([barbershopId])
   @@index([barbershopId, isActive])
@@ -1136,6 +1138,80 @@ model ClientPackage {
   @@index([barbershopId])
   @@index([customerId])
   @@index([barbershopId, status])
+}
+
+// ============ ASSINATURA RECORRENTE DO CLIENTE ============
+//
+// Diferente do sinal, cartão-presente e taxa de no-show (todos cobrança
+// manual por escolha explícita), a assinatura recorrente precisa mesmo de
+// cobrança automática todo mês — não dá pra pedir pro cliente final pagar
+// na mão todo mês sem perder o sentido do produto. Usa o Stripe Subscriptions
+// nativo (Product/Price/Subscription) na conta da PRÓPRIA PLATAFORMA, não
+// Stripe Connect: o dono da barbearia não precisa criar/onboardar conta
+// nenhuma (mesma preocupação de fricção que descartou o Connect na taxa de
+// no-show). O dinheiro cai inteiro na conta da plataforma; o repasse pra
+// barbearia é reconciliação manual periódica (ver PLATFORM_SUBSCRIPTION_FEE_PERCENT
+// em subscription.constants.ts) — o sistema só calcula quanto é devido,
+// não transfere nada sozinho.
+
+model ClientSubscriptionPlan {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  barbershopId     Int
+  serviceId        Int
+  name             String
+  price            Decimal // valor cobrado do cliente por ciclo (mensal)
+  sessionsPerCycle Int? // null = ilimitado; caso contrário, nº máximo de usos por ciclo de cobrança
+  stripeProductId  String?
+  stripePriceId    String?
+  isActive         Boolean  @default(true)
+  barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  service          BarbershopService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  subscriptions    ClientSubscription[]
+
+  @@index([barbershopId])
+  @@index([barbershopId, isActive])
+}
+
+model ClientSubscription {
+  id                   Int       @id @default(autoincrement())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  barbershopId         Int
+  clientAccountId      Int
+  planId               Int
+  stripeSubscriptionId String    @unique
+  // INCOMPLETE (aguardando confirmação do primeiro pagamento), ACTIVE,
+  // PAST_DUE (fatura falhou), CANCELED.
+  status               String    @default("INCOMPLETE")
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  usedThisCycle        Int       @default(0) // resetado a cada invoice.payment_succeeded (novo ciclo)
+  cancelAtPeriodEnd    Boolean   @default(false)
+  canceledAt           DateTime?
+  barbershop           Barbershop                  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  clientAccount        ClientAccount               @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  plan                 ClientSubscriptionPlan      @relation(fields: [planId], references: [id])
+  payments             ClientSubscriptionPayment[]
+
+  @@index([barbershopId])
+  @@index([clientAccountId])
+  @@index([barbershopId, status])
+}
+
+model ClientSubscriptionPayment {
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
+  subscriptionId  Int
+  stripeInvoiceId String    @unique
+  amount          Decimal
+  status          String // SUCCEEDED, FAILED
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  subscription    ClientSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
 }
 
 // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============

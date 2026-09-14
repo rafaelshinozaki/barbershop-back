@@ -20,6 +20,8 @@ import { S3Service } from '../aws/s3.service';
 import { EmailService } from '../email/email.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
+import { StripeService } from '../stripe/stripe.service';
+import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
 
 @Injectable()
 export class BarbershopService {
@@ -31,6 +33,7 @@ export class BarbershopService {
     private readonly s3Service: S3Service,
     private readonly emailService: EmailService,
     private readonly whatsappService: WhatsappService,
+    private readonly stripeService: StripeService,
   ) {}
 
   /**
@@ -1712,7 +1715,22 @@ export class BarbershopService {
     const imageUrl = barbershop.photoKey ? await this.s3Service.getDownloadUrl(barbershop.photoKey) : null;
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
     const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
-    return { ...barbershop, imageUrl, averageRating, reviewCount, isFeatured };
+    const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
+    const subscriptionPlans = canOfferSubscriptions
+      ? await this.prisma.clientSubscriptionPlan.findMany({
+          where: { barbershopId: barbershop.id, isActive: true },
+          include: { service: true },
+          orderBy: { name: 'asc' },
+        })
+      : [];
+    return {
+      ...barbershop,
+      imageUrl,
+      averageRating,
+      reviewCount,
+      isFeatured,
+      subscriptionPlans: subscriptionPlans.map((p) => ({ ...p, serviceName: p.service?.name ?? null })),
+    };
   }
 
   // Janela de trabalho de um barbeiro num dia da semana, com fallback em
@@ -2409,6 +2427,285 @@ export class BarbershopService {
       completedAt: r.completedAt?.toISOString(),
       createdAt: r.createdAt.toISOString(),
     }));
+  }
+
+  // ============ ASSINATURA RECORRENTE DO CLIENTE ============
+  //
+  // Ver comentário no schema (model ClientSubscriptionPlan) — cobrança
+  // automática mensal via Stripe Subscriptions na conta da própria
+  // plataforma (sem Stripe Connect). Métodos "staff" (dono/funcionário,
+  // gate por ensureBarbershopAccess/ensureModuleAccess) cuidam da oferta e
+  // do relatório de repasse; métodos "client" (clientAccountId, sem
+  // ensureBarbershopAccess pois o cliente não é da equipe) cuidam de
+  // assinar/cancelar.
+
+  async getSubscriptionPlans(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const plans = await this.prisma.clientSubscriptionPlan.findMany({
+      where: { barbershopId },
+      include: { service: true },
+      orderBy: { name: 'asc' },
+    });
+    return plans.map((p) => ({ ...p, serviceName: p.service?.name ?? null }));
+  }
+
+  async createSubscriptionPlan(
+    userId: number,
+    barbershopId: number,
+    data: { serviceId: number; name: string; price: number; sessionsPerCycle?: number },
+  ) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureModuleAccess(barbershopId, 'subscriptions');
+    const service = await this.prisma.barbershopService.findFirst({
+      where: { id: data.serviceId, barbershopId },
+    });
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+
+    const product = await this.stripeService.createProduct(
+      `${barbershop.name} — ${data.name}`,
+      `Assinatura recorrente (${service.name})`,
+    );
+    const price = await this.stripeService.createPrice(
+      product.id,
+      Math.round(data.price * 100),
+      barbershop.currency.toLowerCase(),
+      { interval: 'month' },
+    );
+
+    const plan = await this.prisma.clientSubscriptionPlan.create({
+      data: {
+        barbershopId,
+        serviceId: data.serviceId,
+        name: data.name,
+        price: new Decimal(data.price),
+        sessionsPerCycle: data.sessionsPerCycle ?? null,
+        stripeProductId: product.id,
+        stripePriceId: price.id,
+      },
+      include: { service: true },
+    });
+    return { ...plan, serviceName: plan.service?.name ?? null };
+  }
+
+  async updateSubscriptionPlan(
+    userId: number,
+    barbershopId: number,
+    id: number,
+    data: Partial<{ name: string; price: number; sessionsPerCycle: number; isActive: boolean }>,
+  ) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const plan = await this.prisma.clientSubscriptionPlan.findFirst({ where: { id, barbershopId } });
+    if (!plan) throw new NotFoundException('Plano não encontrado');
+
+    let stripePriceId = plan.stripePriceId;
+    // Stripe Price é imutável — se o valor mudou, cria um Price novo e
+    // aponta o plano pra ele (assinaturas já ativas continuam no Price
+    // antigo, o que é o comportamento correto: não muda o valor de quem já
+    // assinou).
+    if (data.price != null && Number(plan.price) !== data.price && plan.stripeProductId) {
+      const newPrice = await this.stripeService.createPrice(
+        plan.stripeProductId,
+        Math.round(data.price * 100),
+        barbershop.currency.toLowerCase(),
+        { interval: 'month' },
+      );
+      stripePriceId = newPrice.id;
+    }
+
+    const { price, ...rest } = data;
+    const updated = await this.prisma.clientSubscriptionPlan.update({
+      where: { id },
+      data: {
+        ...rest,
+        price: price != null ? new Decimal(price) : undefined,
+        stripePriceId,
+      },
+      include: { service: true },
+    });
+    return { ...updated, serviceName: updated.service?.name ?? null };
+  }
+
+  async deleteSubscriptionPlan(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const plan = await this.prisma.clientSubscriptionPlan.findFirst({ where: { id, barbershopId } });
+    if (!plan) throw new NotFoundException('Plano não encontrado');
+    await this.prisma.clientSubscriptionPlan.update({ where: { id }, data: { isActive: false } });
+    return true;
+  }
+
+  async getBarbershopSubscribers(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: { barbershopId },
+      include: { clientAccount: true, plan: { include: { service: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return subs.map((s) => this.toClientSubscriptionResult(s));
+  }
+
+  /** Relatório de repasse: quanto foi cobrado dos clientes e quanto é devido à barbearia (taxa da plataforma já descontada). Não transfere nada — só calcula. */
+  async getSubscriptionRevenueReport(
+    userId: number,
+    barbershopId: number,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const payments = await this.prisma.clientSubscriptionPayment.findMany({
+      where: {
+        status: 'SUCCEEDED',
+        subscription: { barbershopId },
+        createdAt: {
+          gte: startDate ? new Date(startDate) : undefined,
+          lte: endDate ? new Date(endDate) : undefined,
+        },
+      },
+    });
+    const grossAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const platformFeeAmount = grossAmount * (PLATFORM_SUBSCRIPTION_FEE_PERCENT / 100);
+    return {
+      paymentsCount: payments.length,
+      grossAmount,
+      platformFeePercentage: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
+      platformFeeAmount,
+      netOwedToBarbershop: grossAmount - platformFeeAmount,
+    };
+  }
+
+  private toClientSubscriptionResult(s: any) {
+    return {
+      id: s.id,
+      barbershopId: s.barbershopId,
+      clientAccountId: s.clientAccountId,
+      clientName: s.clientAccount?.name ?? null,
+      clientEmail: s.clientAccount?.email ?? null,
+      planId: s.planId,
+      planName: s.plan?.name ?? null,
+      serviceName: s.plan?.service?.name ?? null,
+      price: s.plan ? Number(s.plan.price) : null,
+      sessionsPerCycle: s.plan?.sessionsPerCycle ?? null,
+      status: s.status,
+      currentPeriodStart: s.currentPeriodStart?.toISOString(),
+      currentPeriodEnd: s.currentPeriodEnd?.toISOString(),
+      usedThisCycle: s.usedThisCycle,
+      cancelAtPeriodEnd: s.cancelAtPeriodEnd,
+      createdAt: s.createdAt.toISOString(),
+    };
+  }
+
+  /** Aciona o SetupIntent do cliente na conta da plataforma (não Connect) pra ele salvar o cartão via Stripe Elements antes de assinar. */
+  async createClientSubscriptionSetupIntent(clientAccountId: number) {
+    const clientAccount = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    if (!clientAccount) throw new NotFoundException('Conta não encontrada');
+
+    let stripeCustomerId = clientAccount.stripeCustomerId;
+    if (!stripeCustomerId) {
+      const customer = await this.stripeService.createCustomer(clientAccount.email, clientAccount.name, {
+        clientAccountId: String(clientAccountId),
+      });
+      stripeCustomerId = customer.id;
+      await this.prisma.clientAccount.update({ where: { id: clientAccountId }, data: { stripeCustomerId } });
+    }
+
+    const setupIntent = await this.stripeService.createSetupIntent(stripeCustomerId);
+    return { clientSecret: setupIntent.client_secret };
+  }
+
+  async subscribeToPlan(
+    clientAccountId: number,
+    barbershopId: number,
+    planId: number,
+    paymentMethodId: string,
+  ) {
+    const clientAccount = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    if (!clientAccount?.stripeCustomerId) {
+      throw new BadRequestException('Salve um cartão antes de assinar');
+    }
+    const plan = await this.prisma.clientSubscriptionPlan.findFirst({
+      where: { id: planId, barbershopId, isActive: true },
+    });
+    if (!plan?.stripePriceId) throw new NotFoundException('Plano não encontrado');
+
+    const existing = await this.prisma.clientSubscription.findFirst({
+      where: { clientAccountId, planId, status: { in: ['INCOMPLETE', 'ACTIVE', 'PAST_DUE'] } },
+    });
+    if (existing) throw new BadRequestException('Você já tem uma assinatura ativa neste plano');
+
+    await this.stripeService.attachPaymentMethod(paymentMethodId, clientAccount.stripeCustomerId);
+    await this.stripeService.setDefaultPaymentMethod(clientAccount.stripeCustomerId, paymentMethodId);
+
+    const stripeSubscription = await this.stripeService.createSubscription(
+      clientAccount.stripeCustomerId,
+      plan.stripePriceId,
+      { clientAccountId: String(clientAccountId), barbershopId: String(barbershopId), planId: String(planId) },
+    );
+
+    const subscription = await this.prisma.clientSubscription.create({
+      data: {
+        barbershopId,
+        clientAccountId,
+        planId,
+        stripeSubscriptionId: stripeSubscription.id,
+        status: stripeSubscription.status === 'active' ? 'ACTIVE' : 'INCOMPLETE',
+        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+      },
+    });
+
+    const latestInvoice = stripeSubscription.latest_invoice as any;
+    const paymentIntent = latestInvoice?.payment_intent as any;
+    return {
+      id: subscription.id,
+      status: subscription.status,
+      clientSecret: paymentIntent?.client_secret ?? null,
+    };
+  }
+
+  async getMySubscriptions(clientAccountId: number) {
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: { clientAccountId },
+      include: { clientAccount: true, plan: { include: { service: true } }, barbershop: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return subs.map((s) => ({ ...this.toClientSubscriptionResult(s), barbershopName: s.barbershop.name }));
+  }
+
+  async cancelMySubscription(clientAccountId: number, subscriptionId: number) {
+    const subscription = await this.prisma.clientSubscription.findFirst({
+      where: { id: subscriptionId, clientAccountId },
+    });
+    if (!subscription) throw new NotFoundException('Assinatura não encontrada');
+    await this.stripeService.updateSubscription(subscription.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+    await this.prisma.clientSubscription.update({
+      where: { id: subscriptionId },
+      data: { cancelAtPeriodEnd: true },
+    });
+    return true;
+  }
+
+  /** Staff registra que o cliente usou uma sessão da assinatura neste ciclo (mesmo padrão manual de debitClientPackageSession — não é acionado automaticamente pelo agendamento). */
+  async redeemClientSubscriptionSession(userId: number, barbershopId: number, subscriptionId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const subscription = await this.prisma.clientSubscription.findFirst({
+      where: { id: subscriptionId, barbershopId },
+      include: { plan: true },
+    });
+    if (!subscription) throw new NotFoundException('Assinatura não encontrada');
+    if (subscription.status !== 'ACTIVE') {
+      throw new BadRequestException('Assinatura não está ativa');
+    }
+    const limit = subscription.plan.sessionsPerCycle;
+    if (limit != null && subscription.usedThisCycle >= limit) {
+      throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
+    }
+    const updated = await this.prisma.clientSubscription.update({
+      where: { id: subscriptionId },
+      data: { usedThisCycle: subscription.usedThisCycle + 1 },
+      include: { clientAccount: true, plan: { include: { service: true } } },
+    });
+    return this.toClientSubscriptionResult(updated);
   }
 
   // ============ WALK-INS (Queue) ============

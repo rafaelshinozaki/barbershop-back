@@ -13,7 +13,17 @@ import {
   ReviewType,
   MyReviewType,
 } from '../types/public-booking.type';
-import { CreatePublicAppointmentInput, SearchBarbershopsInput, CreateReviewInput } from '../dto/public-booking.dto';
+import {
+  ClientSubscriptionType,
+  SubscribeToPlanResultType,
+  SubscriptionSetupIntentType,
+} from '../types/barbershop.type';
+import {
+  CreatePublicAppointmentInput,
+  SearchBarbershopsInput,
+  CreateReviewInput,
+  SubscribeToPlanInput,
+} from '../dto/public-booking.dto';
 import { ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
 
@@ -140,5 +150,39 @@ export class PublicBookingResolver {
   ) {
     await this.barbershopService.deleteReview(client.id, barbershopId);
     return true;
+  }
+
+  // ============ ASSINATURA RECORRENTE DO CLIENTE ============
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => SubscriptionSetupIntentType)
+  async createClientSubscriptionSetupIntent(@CurrentClient() client: CurrentClientUser) {
+    return this.barbershopService.createClientSubscriptionSetupIntent(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => SubscribeToPlanResultType)
+  async subscribeToPlan(@CurrentClient() client: CurrentClientUser, @Args('input') input: SubscribeToPlanInput) {
+    return this.barbershopService.subscribeToPlan(
+      client.id,
+      input.barbershopId,
+      input.planId,
+      input.paymentMethodId,
+    );
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => [ClientSubscriptionType])
+  async mySubscriptions(@CurrentClient() client: CurrentClientUser) {
+    return this.barbershopService.getMySubscriptions(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async cancelMySubscription(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('subscriptionId', { type: () => Int }) subscriptionId: number,
+  ) {
+    return this.barbershopService.cancelMySubscription(client.id, subscriptionId);
   }
 }

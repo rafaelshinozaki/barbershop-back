@@ -86,6 +86,21 @@ export class CreatePublicAppointmentInput {
 }
 
 @InputType()
+export class SubscribeToPlanInput {
+  @Field(() => Int)
+  @IsInt()
+  barbershopId: number;
+
+  @Field(() => Int)
+  @IsInt()
+  planId: number;
+
+  @Field()
+  @IsString()
+  paymentMethodId: string;
+}
+
+@InputType()
 export class CreateReviewInput {
   @Field(() => Int)
   @IsInt()

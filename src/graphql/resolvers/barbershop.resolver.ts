@@ -36,6 +36,9 @@ import {
   WaitlistEntryType,
   MarketingSegmentPreviewType,
   MarketingCampaignType,
+  ClientSubscriptionPlanType,
+  ClientSubscriptionType,
+  SubscriptionRevenueReportType,
 } from '../types/barbershop.type';
 import {
   CreateBarbershopInput,
@@ -77,6 +80,8 @@ import {
   CreateGiftCardInput,
   CreateWaitlistEntryInput,
   SendMarketingBlastInput,
+  CreateSubscriptionPlanInput,
+  UpdateSubscriptionPlanInput,
 } from '../dto/barbershop.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
@@ -1322,6 +1327,78 @@ export class BarbershopResolver {
   ) {
     const campaign = await this.barbershopService.sendMarketingBlast(user.id, barbershopId, input);
     return this.mapMarketingCampaign(campaign);
+  }
+
+  // ============ ASSINATURA RECORRENTE DO CLIENTE ============
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ClientSubscriptionPlanType])
+  async subscriptionPlans(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getSubscriptionPlans(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ClientSubscriptionPlanType)
+  async createSubscriptionPlan(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('input') input: CreateSubscriptionPlanInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.createSubscriptionPlan(user.id, barbershopId, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ClientSubscriptionPlanType)
+  async updateSubscriptionPlan(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('input') input: UpdateSubscriptionPlanInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.updateSubscriptionPlan(user.id, barbershopId, id, input);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async deleteSubscriptionPlan(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.deleteSubscriptionPlan(user.id, barbershopId, id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ClientSubscriptionType])
+  async barbershopSubscribers(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getBarbershopSubscribers(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => SubscriptionRevenueReportType)
+  async subscriptionRevenueReport(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('startDate', { nullable: true }) startDate: string,
+    @Args('endDate', { nullable: true }) endDate: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getSubscriptionRevenueReport(user.id, barbershopId, startDate, endDate);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ClientSubscriptionType)
+  async redeemClientSubscriptionSession(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.redeemClientSubscriptionSession(user.id, barbershopId, id);
   }
 
   // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============

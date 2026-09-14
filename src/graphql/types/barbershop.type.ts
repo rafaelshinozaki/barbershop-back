@@ -1375,5 +1375,122 @@ export class MarketingCampaignType {
   createdAt: string;
 }
 
+@ObjectType()
+export class ClientSubscriptionPlanType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  serviceId: number;
+
+  @Field()
+  serviceName: string;
+
+  @Field()
+  name: string;
+
+  @Field(() => Float)
+  price: number;
+
+  @Field(() => Int, { nullable: true })
+  sessionsPerCycle?: number;
+
+  @Field()
+  isActive: boolean;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class ClientSubscriptionType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field({ nullable: true })
+  barbershopName?: string;
+
+  @Field(() => Int)
+  clientAccountId: number;
+
+  @Field({ nullable: true })
+  clientName?: string;
+
+  @Field({ nullable: true })
+  clientEmail?: string;
+
+  @Field(() => Int)
+  planId: number;
+
+  @Field({ nullable: true })
+  planName?: string;
+
+  @Field({ nullable: true })
+  serviceName?: string;
+
+  @Field(() => Float, { nullable: true })
+  price?: number;
+
+  @Field(() => Int, { nullable: true })
+  sessionsPerCycle?: number;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  currentPeriodStart?: string;
+
+  @Field({ nullable: true })
+  currentPeriodEnd?: string;
+
+  @Field(() => Int)
+  usedThisCycle: number;
+
+  @Field()
+  cancelAtPeriodEnd: boolean;
+
+  @Field()
+  createdAt: string;
+}
+
+@ObjectType()
+export class SubscribeToPlanResultType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  clientSecret?: string;
+}
+
+@ObjectType()
+export class SubscriptionSetupIntentType {
+  @Field()
+  clientSecret: string;
+}
+
+@ObjectType()
+export class SubscriptionRevenueReportType {
+  @Field(() => Int)
+  paymentsCount: number;
+
+  @Field(() => Float)
+  grossAmount: number;
+
+  @Field(() => Float)
+  platformFeePercentage: number;
+
+  @Field(() => Float)
+  platformFeeAmount: number;
+
+  @Field(() => Float)
+  netOwedToBarbershop: number;
+}
+
 // Type alias for resolver (naming consistency)
 export const Customer = BarbershopCustomer;

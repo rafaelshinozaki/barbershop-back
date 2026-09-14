@@ -90,7 +90,7 @@ export class StripeController {
     });
 
     if (!subscription) {
-      this.logger.warn(`Subscription not found for Stripe subscription ID: ${subscriptionId}`);
+      await this.handleClientSubscriptionInvoiceSucceeded(invoice, subscriptionId);
       return;
     }
 
@@ -164,6 +164,7 @@ export class StripeController {
     });
 
     if (!subscription) {
+      await this.handleClientSubscriptionInvoiceFailed(subscriptionId);
       return;
     }
 
@@ -187,6 +188,55 @@ export class StripeController {
     this.logger.log(
       `Payment failed for user ${subscription.userId}, subscription ${subscriptionId}`,
     );
+  }
+
+  // ============ ASSINATURA RECORRENTE DO CLIENTE ============
+  // Fatura mensal cobrada com sucesso: reativa/renova o ciclo (zera
+  // usedThisCycle) e registra o pagamento. amount_paid vem em centavos.
+  private async handleClientSubscriptionInvoiceSucceeded(invoice: Stripe.Invoice, stripeSubscriptionId: string) {
+    if (!stripeSubscriptionId) return;
+    const subscription = await this.prisma.clientSubscription.findFirst({
+      where: { stripeSubscriptionId },
+    });
+    if (!subscription) {
+      this.logger.warn(`No subscription (owner or client) found for Stripe subscription ID: ${stripeSubscriptionId}`);
+      return;
+    }
+
+    const stripeSubscription = await this.stripeService.getSubscription(stripeSubscriptionId);
+    await this.prisma.clientSubscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: 'ACTIVE',
+        usedThisCycle: 0,
+        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+      },
+    });
+
+    await this.prisma.clientSubscriptionPayment.upsert({
+      where: { stripeInvoiceId: invoice.id },
+      create: {
+        subscriptionId: subscription.id,
+        stripeInvoiceId: invoice.id,
+        amount: new Prisma.Decimal(invoice.amount_paid / 100),
+        status: 'SUCCEEDED',
+        periodStart: new Date(stripeSubscription.current_period_start * 1000),
+        periodEnd: new Date(stripeSubscription.current_period_end * 1000),
+      },
+      update: { status: 'SUCCEEDED' },
+    });
+  }
+
+  // Fatura falhou: marca como inadimplente. Não cancela sozinho — o Stripe
+  // continua tentando conforme a configuração de retry da conta, e dispara
+  // customer.subscription.deleted quando desistir de vez.
+  private async handleClientSubscriptionInvoiceFailed(stripeSubscriptionId: string) {
+    if (!stripeSubscriptionId) return;
+    await this.prisma.clientSubscription.updateMany({
+      where: { stripeSubscriptionId },
+      data: { status: 'PAST_DUE' },
+    });
   }
 
   private async handleSubscriptionCreated(subscription: Stripe.Subscription) {
@@ -254,6 +304,10 @@ export class StripeController {
     });
 
     if (!dbSubscription) {
+      await this.prisma.clientSubscription.updateMany({
+        where: { stripeSubscriptionId: subscription.id },
+        data: { status: 'CANCELED', canceledAt: new Date() },
+      });
       return;
     }
 

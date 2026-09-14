@@ -47,6 +47,24 @@ export class PublicBarberType {
 }
 
 @ObjectType()
+export class PublicSubscriptionPlanType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field(() => Float)
+  price: number;
+
+  @Field(() => Int, { nullable: true })
+  sessionsPerCycle?: number;
+
+  @Field()
+  serviceName: string;
+}
+
+@ObjectType()
 export class PublicBarbershopType {
   @Field(() => Int)
   id: number;
@@ -98,6 +116,9 @@ export class PublicBarbershopType {
 
   @Field(() => [PublicBarberType])
   barbers: PublicBarberType[];
+
+  @Field(() => [PublicSubscriptionPlanType])
+  subscriptionPlans: PublicSubscriptionPlanType[];
 
   @Field(() => Float, { nullable: true })
   averageRating?: number;

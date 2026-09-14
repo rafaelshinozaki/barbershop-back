@@ -372,6 +372,37 @@ input ClientSignupInput {
   phone: String
 }
 
+type ClientSubscriptionPlanType {
+  createdAt: String!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  price: Float!
+  serviceId: Int!
+  serviceName: String!
+  sessionsPerCycle: Int
+}
+
+type ClientSubscriptionType {
+  barbershopId: Int!
+  barbershopName: String
+  cancelAtPeriodEnd: Boolean!
+  clientAccountId: Int!
+  clientEmail: String
+  clientName: String
+  createdAt: String!
+  currentPeriodEnd: String
+  currentPeriodStart: String
+  id: Int!
+  planId: Int!
+  planName: String
+  price: Float
+  serviceName: String
+  sessionsPerCycle: Int
+  status: String!
+  usedThisCycle: Int!
+}
+
 input CloseCashSessionInput {
   countedBalance: Float!
   notes: String
@@ -716,6 +747,13 @@ input CreateSubscriptionInput {
   planId: Int!
 }
 
+input CreateSubscriptionPlanInput {
+  name: String!
+  price: Float!
+  serviceId: Int!
+  sessionsPerCycle: Int
+}
+
 type CreateSubscriptionResponse {
   checkoutUrl: String
   clientSecret: String
@@ -1008,6 +1046,7 @@ type Mutation {
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
+  cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
   cancelWaitlistEntry(barbershopId: Int!, id: Int!): Boolean!
   changeMultipleUsersPlan(plan: String!, userIds: [Int!]!): Boolean!
@@ -1029,6 +1068,7 @@ type Mutation {
   createBarbershopProduct(barbershopId: Int!, input: CreateBarbershopProductInput!): BarbershopProductType!
   createBarbershopService(barbershopId: Int!, input: CreateBarbershopServiceInput!): BarbershopServiceType!
   createBatchNotifications(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userIds: [Int!]!): CommonResponse!
+  createClientSubscriptionSetupIntent: SubscriptionSetupIntentType!
   createConsentForm(barbershopId: Int!, input: CreateConsentFormInput!): ConsentFormType!
   createCoupon(data: CreateCouponInput!): Coupon!
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
@@ -1045,6 +1085,7 @@ type Mutation {
   createServicePackage(barbershopId: Int!, input: CreateServicePackageInput!): ServicePackageType!
   createSetupIntent: SetupIntent!
   createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
+  createSubscriptionPlan(barbershopId: Int!, input: CreateSubscriptionPlanInput!): ClientSubscriptionPlanType!
   createUser(input: CreateUserInput!): User!
   createWaitlistEntry(barbershopId: Int!, input: CreateWaitlistEntryInput!): WaitlistEntryType!
   createWalkIn(barbershopId: Int!, input: CreateWalkInInput!): WalkIn!
@@ -1068,6 +1109,7 @@ type Mutation {
   deleteReview(barbershopId: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
   deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
+  deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
@@ -1087,6 +1129,7 @@ type Mutation {
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
   purchaseClientPackage(barbershopId: Int!, input: PurchaseClientPackageInput!): ClientPackageType!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
+  redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
   removeNetworkLogo: Boolean!
@@ -1109,6 +1152,7 @@ type Mutation {
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
+  subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
   unlinkClientSocialAccount(provider: String!): Boolean!
@@ -1129,6 +1173,7 @@ type Mutation {
   updateResource(barbershopId: Int!, id: Int!, input: UpdateResourceInput!): ResourceType!
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
   updateServicePackage(barbershopId: Int!, id: Int!, input: UpdateServicePackageInput!): ServicePackageType!
+  updateSubscriptionPlan(barbershopId: Int!, id: Int!, input: UpdateSubscriptionPlanInput!): ClientSubscriptionPlanType!
   updateUser(input: UpdateUserByAdminInput!): Boolean!
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserRole(role: String!, userId: Int!): User!
@@ -1461,6 +1506,7 @@ type PublicBarbershopType {
   services: [PublicServiceType!]!
   slug: String!
   state: String!
+  subscriptionPlans: [PublicSubscriptionPlanType!]!
   timezone: String!
 }
 
@@ -1473,6 +1519,14 @@ type PublicServiceType {
   id: Int!
   name: String!
   price: Float!
+}
+
+type PublicSubscriptionPlanType {
+  id: Int!
+  name: String!
+  price: Float!
+  serviceName: String!
+  sessionsPerCycle: Int
 }
 
 input PurchaseClientPackageInput {
@@ -1505,6 +1559,7 @@ type Query {
   barbershopReviews(barbershopId: Int!): [ReviewType!]!
   barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
+  barbershopSubscribers(barbershopId: Int!): [ClientSubscriptionType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
@@ -1553,7 +1608,7 @@ type Query {
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
   myReview(barbershopId: Int!): MyReviewType
-  mySubscriptions: [Subscription!]!
+  mySubscriptions: [ClientSubscriptionType!]!
   myUnreadNotifications: [UserNotification!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
@@ -1572,6 +1627,8 @@ type Query {
   searchNetworks(query: String!): [Network!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   statusDistribution: StatusDistribution!
+  subscriptionPlans(barbershopId: Int!): [ClientSubscriptionPlanType!]!
+  subscriptionRevenueReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!
   userSystemConfig: UserSystemConfig!
@@ -1746,6 +1803,18 @@ type StatusDistribution {
   status: ChartData!
 }
 
+input SubscribeToPlanInput {
+  barbershopId: Int!
+  paymentMethodId: String!
+  planId: Int!
+}
+
+type SubscribeToPlanResultType {
+  clientSecret: String
+  id: Int!
+  status: String!
+}
+
 type Subscription {
   cancelationDate: String
   createdAt: String!
@@ -1771,6 +1840,18 @@ type SubscriptionResponse {
   id: Int!
   plan: SubscriptionPlan!
   status: String!
+}
+
+type SubscriptionRevenueReportType {
+  grossAmount: Float!
+  netOwedToBarbershop: Float!
+  paymentsCount: Int!
+  platformFeeAmount: Float!
+  platformFeePercentage: Float!
+}
+
+type SubscriptionSetupIntentType {
+  clientSecret: String!
 }
 
 type TopProductRow {
@@ -2000,6 +2081,13 @@ input UpdateServicePackageInput {
   name: String
   price: Float
   totalSessions: Int
+}
+
+input UpdateSubscriptionPlanInput {
+  isActive: Boolean
+  name: String
+  price: Float
+  sessionsPerCycle: Int
 }
 
 input UpdateUserByAdminInput {

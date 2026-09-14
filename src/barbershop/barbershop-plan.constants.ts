@@ -14,6 +14,7 @@ export type BarbershopModule =
   | 'settings'
   | 'inventory'
   | 'packages' // pacotes de sessão + ficha de anamnese/consentimento
+  | 'subscriptions' // assinatura recorrente do cliente final
 
 /** Planos (por nome no BD). Basic/Standard = Basic e Standard do seed; Premium = Premium */
 const PLAN_TIERS = {
@@ -38,6 +39,7 @@ const MODULES_BY_TIER: Record<string, BarbershopModule[]> = {
     'settings',
     'inventory',
     'packages',
+    'subscriptions',
   ],
 }
 
