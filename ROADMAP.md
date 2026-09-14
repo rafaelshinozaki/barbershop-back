@@ -66,7 +66,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 | 1 | Lista de espera automática | ✅ | `e0363aa` | `343cbb3` |
 | 2 | Campanhas de marketing (Message Blast) | ✅ | `a21507b` | `d72d7ab` |
 | 3 | Taxa de cancelamento tardio/no-show | ✅ | `895fe0f` | `c3eeee3` |
-| 4 | Assinatura recorrente pro cliente final | 🔜 | | |
+| 4 | Assinatura recorrente pro cliente final | ✅ | `621a912` | `fe7fe64` |
 | 5 | Agendamento de posts em redes sociais | 🔜 | | |
 | 6 | Site/domínio próprio do negócio | 🔜 | | |
 
@@ -80,7 +80,7 @@ Nova página "Marketing": escolhe público (todos, inativos há N dias sem `Serv
 O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso de cancelamento tardio/no-show — isso foi cogitado via Stripe Connect (conta própria da franquia), mas descartado: exigiria o dono da barbearia passar por onboarding numa plataforma de pagamento externa, uma camada de burocracia que barbearias não-técnicas provavelmente não completariam, arriscando abandono da plataforma. Ficou manual em vez disso — mesma filosofia do sinal e do cartão-presente: o sistema calcula automaticamente quanto o cliente deve (percentual do serviço ou valor fixo, configurável por rede) quando cancela dentro da janela de cancelamento tardio ou não aparece, registra o valor, e a equipe cobra depois por fora. Nova seção na tela de franquia pra configurar a política, e uma página listando as taxas geradas por barbearia com ações pra marcar como cobrada ou perdoar.
 
 ### 4. Assinatura recorrente pro cliente final
-Ex.: "corte ilimitado por R$99/mês" cobrado automaticamente todo mês — diferente do pacote pré-pago (`ServicePackage`) que já existe, que é finito e sem cobrança recorrente. **Também reabre a decisão de cobrança online.**
+Ex.: "corte ilimitado por R$99/mês" cobrado automaticamente todo mês — diferente do pacote pré-pago (`ServicePackage`) que já existe, que é finito e sem cobrança recorrente. Aqui a cobrança precisa mesmo ser automática (não dá pra pedir pro cliente pagar na mão todo mês sem perder o sentido do produto), então usa Stripe Subscriptions nativo na conta da própria plataforma — não Stripe Connect: o dono da barbearia não participa do onboarding nenhum, mesma preocupação de fricção que descartou o Connect no item 3. O dinheiro cai inteiro na conta da plataforma; o repasse pra barbearia é só um cálculo (taxa de 15% fixa em código, não editável pela barbearia), mostrado num relatório — a transferência de fato é combinada por fora. Nova página "Assinaturas" pra criar planos, ver assinantes e o relatório de repasse; seção de planos + captura de cartão (Stripe Elements) na página pública de agendamento; "Minhas assinaturas" na área do cliente pra ver/cancelar.
 
 ### 5. Agendamento de posts em redes sociais
 Publicar promoções automaticamente no Instagram/Facebook a partir do próprio app — exige integração com a Meta Graph API (OAuth de página/conta comercial, credenciais próprias por barbearia).
