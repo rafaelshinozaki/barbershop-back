@@ -12,6 +12,7 @@ import { BarbershopPhotoResolver } from './resolvers/barbershop-photo.resolver';
 import { NetworkResolver } from './resolvers/network.resolver';
 import { ClientAuthResolver } from './resolvers/client-auth.resolver';
 import { PublicBookingResolver } from './resolvers/public-booking.resolver';
+import { SocialResolver } from './resolvers/social.resolver';
 import { AuthModule } from '../auth/auth.module';
 import { ClientAuthModule } from '../client-auth/client-auth.module';
 import { UserModule } from '../auth/users/users.module';
@@ -23,6 +24,7 @@ import { AwsModule } from '../aws/aws.module';
 import { StripeModule } from '../stripe/stripe.module';
 import { BarbershopModule } from '../barbershop/barbershop.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SocialModule } from '../social/social.module';
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { PaymentsModule } from '../payments/payments.module';
     BarbershopModule,
     PaymentsModule,
     ClientAuthModule,
+    SocialModule,
   ],
   providers: [
     AuthResolver,
@@ -52,6 +55,7 @@ import { PaymentsModule } from '../payments/payments.module';
     NetworkResolver,
     ClientAuthResolver,
     PublicBookingResolver,
+    SocialResolver,
   ],
   exports: [
     AuthResolver,

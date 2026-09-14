@@ -743,6 +743,14 @@ input CreateServicePackageInput {
   totalSessions: Int!
 }
 
+input CreateSocialPostInput {
+  caption: String!
+  imageKey: String!
+  postToFacebook: Boolean!
+  postToInstagram: Boolean!
+  scheduledFor: String!
+}
+
 input CreateSubscriptionInput {
   planId: Int!
 }
@@ -1084,6 +1092,7 @@ type Mutation {
   createSale(barbershopId: Int!, input: CreateSaleInput!): Sale!
   createServicePackage(barbershopId: Int!, input: CreateServicePackageInput!): ServicePackageType!
   createSetupIntent: SetupIntent!
+  createSocialPost(barbershopId: Int!, input: CreateSocialPostInput!): SocialPostType!
   createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
   createSubscriptionPlan(barbershopId: Int!, input: CreateSubscriptionPlanInput!): ClientSubscriptionPlanType!
   createUser(input: CreateUserInput!): User!
@@ -1109,13 +1118,16 @@ type Mutation {
   deleteReview(barbershopId: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
   deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
+  deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
+  disconnectSocialAccount(barbershopId: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
   getNetworkLogoUploadUrl(contentType: String, fileExtension: String): String!
   getPhotoUploadUrl(contentType: String, fileExtension: String): String!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String, productId: Int!): String!
+  getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String!): SocialPostImageUploadUrlType!
   login(input: LoginInput!): User!
   logout: Boolean!
   logoutOtherSessions: Boolean!
@@ -1627,6 +1639,8 @@ type Query {
   searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
+  socialConnection(barbershopId: Int!): SocialConnectionType
+  socialPosts(barbershopId: Int!): [SocialPostType!]!
   statusDistribution: StatusDistribution!
   subscriptionPlans(barbershopId: Int!): [ClientSubscriptionPlanType!]!
   subscriptionRevenueReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
@@ -1782,6 +1796,30 @@ type SetupIntent {
 
 input SignConsentFormInput {
   signatureName: String!
+}
+
+type SocialConnectionType {
+  connectedAt: String!
+  facebookPageName: String!
+  instagramUsername: String
+}
+
+type SocialPostImageUploadUrlType {
+  imageKey: String!
+  uploadUrl: String!
+}
+
+type SocialPostType {
+  caption: String!
+  createdAt: String!
+  errorMessage: String
+  id: Int!
+  imageUrl: String!
+  postToFacebook: Boolean!
+  postToInstagram: Boolean!
+  publishedAt: String
+  scheduledFor: String!
+  status: String!
 }
 
 input SocialSignupInput {

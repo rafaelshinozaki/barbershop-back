@@ -474,6 +474,8 @@ model Barbershop {
   noShowFees      NoShowFee[]
   clientSubscriptionPlans ClientSubscriptionPlan[]
   clientSubscriptions     ClientSubscription[]
+  socialConnection        SocialConnection?
+  socialPosts             SocialPost[]
 
   @@index([networkId])
   @@index([ownerUserId])
@@ -896,6 +898,55 @@ model MarketingCampaign {
   barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId, createdAt])
+}
+
+// ============ REDES SOCIAIS (Instagram/Facebook) ============
+
+// Conexão com a Página do Facebook (e, se houver, a conta comercial do
+// Instagram vinculada a ela) usada pra publicar posts agendados. Um vínculo
+// por barbearia. facebookAccessToken é o Page Access Token de longa duração
+// devolvido pela Meta no fim do fluxo OAuth — nunca é exposto no GraphQL,
+// só usado internamente pelo SocialService pra chamar a Graph API.
+model SocialConnection {
+  id                          Int      @id @default(autoincrement())
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  barbershopId                Int      @unique
+  facebookPageId              String
+  facebookPageName            String
+  facebookAccessToken         String
+  instagramBusinessAccountId  String?
+  instagramUsername           String?
+  connectedByUserId           Int
+  barbershop                  Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
+}
+
+// Post agendado pra publicar no Instagram e/ou Facebook. status: SCHEDULED
+// (aguardando o horário), PUBLISHED, FAILED (erro na publicação, ver
+// errorMessage). Publicado por polling (SocialPostsScheduler, cron a cada
+// poucos minutos) — não tem fila de jobs no projeto, e granularidade de
+// minutos é suficiente pra post de marketing.
+model SocialPost {
+  id                Int       @id @default(autoincrement())
+  createdAt         DateTime  @default(now())
+  barbershopId      Int
+  createdByUserId   Int
+  caption           String
+  imageKey          String    // chave no S3, mesma convenção de foto de perfil/franquia
+  postToFacebook    Boolean   @default(true)
+  postToInstagram   Boolean   @default(true)
+  scheduledFor      DateTime
+  status            String    @default("SCHEDULED")
+  publishedAt       DateTime?
+  facebookPostId    String?
+  instagramMediaId  String?
+  errorMessage      String?
+  barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
+  @@index([status, scheduledFor])
 }
 
 model WalkIn {
