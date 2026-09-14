@@ -482,13 +482,43 @@ export class BarbershopService {
       currency: string;
       businessHours: string;
       isActive: boolean;
+      subdomain: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id);
+    const { subdomain, ...rest } = data;
+    const updateData: typeof rest & { subdomain?: string | null } = { ...rest };
+    if (subdomain !== undefined) {
+      updateData.subdomain = await this.resolveSubdomainUpdate(id, subdomain);
+    }
     return this.prisma.barbershop.update({
       where: { id },
-      data,
+      data: updateData,
     });
+  }
+
+  // Label de DNS válido: minúsculas, números, hífen no meio; 3 a 63
+  // caracteres. String vazia limpa (volta pra null) — usado quando o dono
+  // quer desativar o subdomínio sem excluir a barbearia.
+  private async resolveSubdomainUpdate(barbershopId: number, rawSubdomain: string): Promise<string | null> {
+    const trimmed = rawSubdomain.trim().toLowerCase();
+    if (trimmed === '') return null;
+    if (!/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/.test(trimmed)) {
+      throw new BadRequestException(
+        'Subdomínio inválido — use só letras minúsculas, números e hífen (sem começar/terminar com hífen), de 3 a 63 caracteres.',
+      );
+    }
+    const RESERVED = ['www', 'app', 'api', 'admin', 'mail', 'ftp'];
+    if (RESERVED.includes(trimmed)) {
+      throw new BadRequestException('Esse subdomínio é reservado. Escolha outro.');
+    }
+    const existing = await this.prisma.barbershop.findFirst({
+      where: { subdomain: trimmed, NOT: { id: barbershopId } },
+    });
+    if (existing) {
+      throw new BadRequestException('Esse subdomínio já está em uso por outra barbearia.');
+    }
+    return trimmed;
   }
 
   async deleteBarbershop(userId: number, id: number) {
@@ -1731,6 +1761,18 @@ export class BarbershopService {
       isFeatured,
       subscriptionPlans: subscriptionPlans.map((p) => ({ ...p, serviceName: p.service?.name ?? null })),
     };
+  }
+
+  // Mesma página pública de sempre (getPublicBarbershopByslug), só que
+  // resolvida a partir do host (subdomain.<domínio>) em vez do caminho
+  // /u/:slug — usado quando o front detecta que está rodando num
+  // subdomínio próprio da unidade.
+  async getPublicBarbershopBySubdomain(subdomain: string) {
+    const barbershop = await this.prisma.barbershop.findFirst({
+      where: { subdomain: subdomain.trim().toLowerCase(), isActive: true },
+    });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    return this.getPublicBarbershopByslug(barbershop.slug);
   }
 
   // Janela de trabalho de um barbeiro num dia da semana, com fallback em

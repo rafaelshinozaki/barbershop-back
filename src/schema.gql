@@ -202,6 +202,7 @@ type Barbershop {
   postalCode: String!
   slug: String!
   state: String!
+  subdomain: String
   timezone: String!
   updatedAt: String!
 }
@@ -1631,6 +1632,7 @@ type Query {
   professionalSegmentAnalysis: ProfessionalSegmentAnalysis!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
+  publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
   publicCities: [String!]!
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
@@ -1996,6 +1998,7 @@ input UpdateBarbershopInput {
   phone: String
   postalCode: String
   state: String
+  subdomain: String
   timezone: String
 }
 

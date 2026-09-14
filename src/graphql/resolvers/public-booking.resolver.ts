@@ -43,6 +43,14 @@ export class PublicBookingResolver {
     return this.barbershopService.getPublicBarbershopByslug(slug);
   }
 
+  // Mesma página pública, resolvida pelo subdomínio próprio da unidade em
+  // vez do slug — usado quando o front detecta um host tipo
+  // subdominio.<domínio da plataforma>.
+  @Query(() => PublicBarbershopType)
+  async publicBarbershopBySubdomain(@Args('subdomain') subdomain: string) {
+    return this.barbershopService.getPublicBarbershopBySubdomain(subdomain);
+  }
+
   @Query(() => [TreatmentCategory])
   async publicServiceCategories() {
     return this.barbershopService.getPublicServiceCategories();

@@ -430,6 +430,13 @@ model Barbershop {
   updatedAt      DateTime  @updatedAt
   name           String
   slug           String    @unique
+  // Subdomínio próprio da unidade (ex.: "barbeariavintage" ->
+  // barbeariavintage.<domínio da plataforma>) — mesma página pública que já
+  // existe em /u/:slug, só que acessível por um host próprio em vez do
+  // caminho. Opcional, independente do slug (que continua controlando a URL
+  // /u/:slug e não é mais editável depois de criado); precisa ser um label
+  // de DNS válido (minúsculas, números, hífen — validado no service).
+  subdomain      String?   @unique
   address        String
   complement1    String?
   complement2    String?

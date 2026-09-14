@@ -90,6 +90,11 @@ export class UpdateBarbershopInput {
 
   @Field({ nullable: true })
   isActive?: boolean;
+
+  // String vazia limpa o subdomínio (volta pra null). Formato validado no
+  // service, não aqui — mensagem de erro amigável precisa saber o valor.
+  @Field({ nullable: true })
+  subdomain?: string;
 }
 
 // ============ Network / Franchise ============

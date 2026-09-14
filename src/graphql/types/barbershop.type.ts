@@ -141,6 +141,9 @@ export class Barbershop {
   @Field()
   slug: string;
 
+  @Field({ nullable: true })
+  subdomain?: string;
+
   @Field()
   address: string;
 

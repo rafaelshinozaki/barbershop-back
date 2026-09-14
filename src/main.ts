@@ -133,10 +133,33 @@ async function bootstrap() {
     'https://zeero.dev.br', // domínio alternativo
   ];
 
-  logger.log(`🌐 Configurando CORS para origins: ${corsOrigins.join(', ')}`);
+  // Subdomínio próprio de barbearia (ex.: barbeariavintage.<domínio da
+  // plataforma>, ou barbeariavintage.localhost em dev) não cabe numa lista
+  // fixa de origins — libera qualquer host terminando em ".localhost"
+  // (qualquer porta, só dev) ou em ".${TENANT_ROOT_DOMAIN}" quando essa env
+  // var estiver configurada (produção, depois que o domínio existir).
+  const tenantRootDomain = configService.get<string>('TENANT_ROOT_DOMAIN');
+  const isTenantSubdomainOrigin = (origin: string): boolean => {
+    try {
+      const hostname = new URL(origin).hostname;
+      if (hostname.endsWith('.localhost')) return true;
+      if (tenantRootDomain && hostname.endsWith(`.${tenantRootDomain}`)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  logger.log(`🌐 Configurando CORS para origins: ${corsOrigins.join(', ')} + subdomínios de tenant`);
 
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      if (!origin || corsOrigins.includes(origin) || isTenantSubdomainOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} não permitida por CORS`));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Authorization, apollo-require-preflight',
     credentials: true, // se você usar cookies ou auth
