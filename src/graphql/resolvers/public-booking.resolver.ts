@@ -171,9 +171,13 @@ export class PublicBookingResolver {
     );
   }
 
+  // Nome diferente de "mySubscriptions" (já usado por payment.resolver.ts /
+  // plan.resolver.ts pra assinatura SaaS do dono da barbearia) — mesmo nome
+  // de campo Query em resolvers diferentes colide no schema (o último
+  // registrado vence silenciosamente, sem erro de build).
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Query(() => [ClientSubscriptionType])
-  async mySubscriptions(@CurrentClient() client: CurrentClientUser) {
+  async myClientSubscriptions(@CurrentClient() client: CurrentClientUser) {
     return this.barbershopService.getMySubscriptions(client.id);
   }
 

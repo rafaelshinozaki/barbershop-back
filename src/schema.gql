@@ -1600,6 +1600,7 @@ type Query {
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   me: User!
   myBarbershops: [Barbershop!]!
+  myClientSubscriptions: [ClientSubscriptionType!]!
   myCoupons: [Coupon!]!
   myNetwork: Network
   myNewNotifications: [UserNotification!]!
@@ -1608,7 +1609,7 @@ type Query {
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
   myReview(barbershopId: Int!): MyReviewType
-  mySubscriptions: [ClientSubscriptionType!]!
+  mySubscriptions: [Subscription!]!
   myUnreadNotifications: [UserNotification!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
