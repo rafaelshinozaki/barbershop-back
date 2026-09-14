@@ -67,7 +67,7 @@ Baseado em análise competitiva contra o [Booksy](https://biz.booksy.com/en-us/w
 | 2 | Campanhas de marketing (Message Blast) | ✅ | `a21507b` | `d72d7ab` |
 | 3 | Taxa de cancelamento tardio/no-show | ✅ | `895fe0f` | `c3eeee3` |
 | 4 | Assinatura recorrente pro cliente final | ✅ | `621a912` | `fe7fe64` |
-| 5 | Agendamento de posts em redes sociais | 🔜 | | |
+| 5 | Agendamento de posts em redes sociais | ✅ | `e5138de` | `358cfcc` |
 | 6 | Site/domínio próprio do negócio | 🔜 | | |
 
 ### 1. Lista de espera automática
@@ -83,7 +83,7 @@ O Booksy pede cartão no momento do agendamento e cobra automaticamente em caso 
 Ex.: "corte ilimitado por R$99/mês" cobrado automaticamente todo mês — diferente do pacote pré-pago (`ServicePackage`) que já existe, que é finito e sem cobrança recorrente. Aqui a cobrança precisa mesmo ser automática (não dá pra pedir pro cliente pagar na mão todo mês sem perder o sentido do produto), então usa Stripe Subscriptions nativo na conta da própria plataforma — não Stripe Connect: o dono da barbearia não participa do onboarding nenhum, mesma preocupação de fricção que descartou o Connect no item 3. O dinheiro cai inteiro na conta da plataforma; o repasse pra barbearia é só um cálculo (taxa de 15% fixa em código, não editável pela barbearia), mostrado num relatório — a transferência de fato é combinada por fora. Nova página "Assinaturas" pra criar planos, ver assinantes e o relatório de repasse; seção de planos + captura de cartão (Stripe Elements) na página pública de agendamento; "Minhas assinaturas" na área do cliente pra ver/cancelar.
 
 ### 5. Agendamento de posts em redes sociais
-Publicar promoções automaticamente no Instagram/Facebook a partir do próprio app — exige integração com a Meta Graph API (OAuth de página/conta comercial, credenciais próprias por barbearia).
+Barbearia conecta a própria Página do Facebook (e a conta comercial do Instagram vinculada, se houver) via OAuth Login do Facebook pra Empresas — token da Página guardado, nunca exposto no GraphQL. **Publicação de verdade exige a Meta aprovar as permissões de negócio** (`pages_manage_posts`, `instagram_content_publish`, etc.) via App Review, processo deles que pode levar dias; sem aprovação, só funciona com contas de teste do próprio app Meta da plataforma. Post agendado guarda legenda, imagem e horário; um cron a cada 5 minutos publica via Graph API direto (sem SDK, mesmo padrão do `WhatsappService`) — sem fila de jobs no projeto, granularidade de minutos é suficiente pra post de marketing. Falha numa rede não impede a outra. Nova página "Redes sociais" na barbearia pra conectar a conta, compor/agendar publicações e acompanhar status.
 
 ### 6. Site/domínio próprio do negócio
 Hoje a página pública de cada unidade vive em `/u/:slug` dentro do nosso domínio. Um domínio próprio por barbearia exigiria roteamento por domínio customizado + provisionamento de SSL — maior esforço de infraestrutura do horizonte.
