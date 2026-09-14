@@ -9,7 +9,7 @@ import {
 } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UserService } from '../../auth/users/users.service';
-import { User, UserSystemConfig, Address } from '../types/user.type';
+import { User, UserSystemConfig, Address, TrialStatus } from '../types/user.type';
 import {
   LoginHistory,
   PaginatedLoginHistory,
@@ -136,6 +136,12 @@ export class UserResolver {
     }
 
     return result;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => TrialStatus)
+  async trialStatus(@CurrentUser() user: UserDTO): Promise<TrialStatus> {
+    return this.userService.checkAndUpdateTrialStatus(user.id);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

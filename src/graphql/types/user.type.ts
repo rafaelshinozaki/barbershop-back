@@ -15,6 +15,21 @@ export class LinkedSocialAccountType {
 }
 
 @ObjectType()
+export class TrialStatus {
+  @Field()
+  isInTrial: boolean;
+
+  @Field()
+  isInViewerMode: boolean;
+
+  @Field(() => Int)
+  trialDaysLeft: number;
+
+  @Field(() => Int)
+  viewerModeDaysLeft: number;
+}
+
+@ObjectType()
 export class UserSystemConfig {
   @Field(() => Int)
   id: number;

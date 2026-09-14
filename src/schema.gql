@@ -1624,6 +1624,7 @@ type Query {
   statusDistribution: StatusDistribution!
   subscriptionPlans(barbershopId: Int!): [ClientSubscriptionPlanType!]!
   subscriptionRevenueReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
+  trialStatus: TrialStatus!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!
   userSystemConfig: UserSystemConfig!
@@ -1896,6 +1897,13 @@ enum TreatmentCategory {
   STYLING
   WAXING
   WELLNESS
+}
+
+type TrialStatus {
+  isInTrial: Boolean!
+  isInViewerMode: Boolean!
+  trialDaysLeft: Int!
+  viewerModeDaysLeft: Int!
 }
 
 input TwoFactorInput {
