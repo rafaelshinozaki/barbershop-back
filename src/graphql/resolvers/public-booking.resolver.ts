@@ -1,7 +1,8 @@
 import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
-import { NotFoundException, UseGuards } from '@nestjs/common';
+import { NotFoundException, UseGuards, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
@@ -30,7 +31,12 @@ import { TreatmentCategory } from '../types/enums';
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
 // pensada pra ser acessada por qualquer visitante (a página de uma unidade
 // e o fluxo de auto-agendamento não pedem login).
+// @UseFilters: sem isso, o Apollo Server 4 mascara qualquer HttpException
+// (daqui ou de dentro de BarbershopService) como "Internal server error"
+// genérico — visitante nunca via a mensagem real (ex.: "Agendamento não
+// encontrado"). Mesmo filtro já usado em AuthResolver.
 @Resolver()
+@UseFilters(GqlHttpExceptionFilter)
 export class PublicBookingResolver {
   constructor(
     private readonly barbershopService: BarbershopService,
