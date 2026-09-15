@@ -103,7 +103,13 @@ export class BarbershopResolver {
 
   // ============ BARBERSHOP ============
 
-  @UseGuards(GraphQLJwtAuthGuard)
+  // Restrito a quem já é BarbershopOwner (ex.: abrir uma segunda unidade) — a
+  // primeira barbearia de um novo dono é criada dentro da mutation
+  // createUser (que já embute barbershopData), não por aqui. Sem essa
+  // restrição, qualquer conta logada (até um funcionário de outra barbearia)
+  // podia chamar essa mutation e virar dono de uma barbearia nova.
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.BARBERSHOP_OWNER)
   @Mutation(() => Barbershop)
   async createBarbershop(
     @Args('input') input: CreateBarbershopInput,

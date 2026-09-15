@@ -71,7 +71,6 @@ export class AuthService {
         Year: new Date().getFullYear(),
       };
 
-      // TODO: Fix Mailgun configuration before enabling email
       try {
         await this.emailService.sendTemplateEmail(
           user.id,
