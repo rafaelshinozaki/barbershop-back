@@ -15,45 +15,51 @@ const roles = [
 const plans = [
   {
     name: 'Basic',
-    description: 'Plano básico com recursos limitados',
+    description: 'Ideal pra quem está começando',
     price: 9.99,
     billingCycle: 'MONTHLY',
-    features: 'Suporte básico, 1 barbearia',
+    features:
+      'Cadastro de clientes, Fila de espera, Agenda de atendimentos, Até 3 barbeiros, 1 barbearia',
   },
   {
     name: 'Basic',
-    description: 'Plano básico com recursos limitados',
+    description: 'Ideal pra quem está começando',
     price: 99.99,
     billingCycle: 'YEARLY',
-    features: 'Suporte básico, 1 barbearia',
+    features:
+      'Cadastro de clientes, Fila de espera, Agenda de atendimentos, Até 3 barbeiros, 1 barbearia',
   },
   {
     name: 'Standard',
-    description: 'Plano padrão com recursos adicionais',
+    description: 'Pra quem já vende produtos e controla estoque',
     price: 19.99,
     billingCycle: 'MONTHLY',
-    features: 'Suporte prioritário, até 3 barbearias',
+    features:
+      'Tudo do Basic, Catálogo de produtos, Controle de estoque, Até 10 barbeiros, Até 3 barbearias',
   },
   {
     name: 'Standard',
-    description: 'Plano padrão com recursos adicionais',
+    description: 'Pra quem já vende produtos e controla estoque',
     price: 189.99,
     billingCycle: 'YEARLY',
-    features: 'Suporte prioritário, até 3 barbearias',
+    features:
+      'Tudo do Basic, Catálogo de produtos, Controle de estoque, Até 10 barbeiros, Até 3 barbearias',
   },
   {
     name: 'Premium',
-    description: 'Plano premium com todos os recursos',
+    description: 'Rede completa, com gestão financeira e fidelização',
     price: 29.99,
     billingCycle: 'MONTHLY',
-    features: 'Suporte 24/7, barbearias ilimitadas',
+    features:
+      'Tudo do Standard, Fluxo de caixa, Relatórios avançados, Pacotes de sessão e ficha de anamnese, Assinatura recorrente do cliente, Barbeiros e barbearias ilimitados',
   },
   {
     name: 'Premium',
-    description: 'Plano premium com todos os recursos',
+    description: 'Rede completa, com gestão financeira e fidelização',
     price: 284.99,
     billingCycle: 'YEARLY',
-    features: 'Suporte 24/7, barbearias ilimitadas',
+    features:
+      'Tudo do Standard, Fluxo de caixa, Relatórios avançados, Pacotes de sessão e ficha de anamnese, Assinatura recorrente do cliente, Barbeiros e barbearias ilimitados',
   },
 ];
 

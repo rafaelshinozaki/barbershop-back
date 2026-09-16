@@ -51,7 +51,7 @@ async function updatePlansWithStripe() {
     const plans = await prisma.plan.findMany();
 
     if (plans.length === 0) {
-      console.log('⚠️  No plans found. Run init-plans.js first.');
+      console.log('⚠️  No plans found. Run `npm run seed` first.');
       return;
     }
 

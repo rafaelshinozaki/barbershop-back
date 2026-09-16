@@ -16,10 +16,10 @@ export type BarbershopModule =
   | 'packages' // pacotes de sessão + ficha de anamnese/consentimento
   | 'subscriptions' // assinatura recorrente do cliente final
 
-/** Planos (por nome no BD). Basic/Standard = Basic e Standard do seed; Premium = Premium */
+/** Planos (por nome no BD, ver prisma/seed.ts) */
 const PLAN_TIERS = {
   BASIC: ['Basic'],
-  MEDIUM: ['Standard', 'Medium'],
+  MEDIUM: ['Standard'],
   PREMIUM: ['Premium'],
 } as const
 
