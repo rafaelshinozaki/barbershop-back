@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { TreatmentCategory } from '@prisma/client';
+import { Prisma, TreatmentCategory } from '@prisma/client';
 import {
   planIncludesModule,
   getModulesForPlanName,
@@ -404,15 +404,24 @@ export class BarbershopService {
         `Seu plano permite no máximo ${limits.maxBarbershops} unidade(s). Faça upgrade para cadastrar mais.`,
       );
     }
-    const barbershop = await this.prisma.barbershop.create({
-      data: {
-        ...data,
-        timezone: data.timezone ?? 'America/Sao_Paulo',
-        currency: data.currency ?? network.currency,
-        networkId: network.id,
-        ownerUserId: userId,
-      },
-    });
+    // O check de slug lá em cima não é atômico: dois cadastros simultâneos
+    // com o mesmo slug passam juntos por ele e um estoura a unique aqui.
+    const barbershop = await this.prisma.barbershop
+      .create({
+        data: {
+          ...data,
+          timezone: data.timezone ?? 'America/Sao_Paulo',
+          currency: data.currency ?? network.currency,
+          networkId: network.id,
+          ownerUserId: userId,
+        },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new BadRequestException('Já existe uma barbearia com este slug');
+        }
+        throw error;
+      });
 
     const owner = await this.prisma.user.findUnique({ where: { id: userId } });
     if (owner) {
