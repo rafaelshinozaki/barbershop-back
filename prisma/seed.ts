@@ -205,9 +205,21 @@ async function createRandomUser() {
 // real data.
 const RESET_DB = process.env.SEED_RESET === 'true';
 
+// Dados de demonstração (seed-demo.ts: ~830 agendamentos, barbearias e
+// clientes fictícios, contas com a senha "pwned", Premium de graça pro dono)
+// só entram quando pedidos explicitamente — o entrypoint do Docker roda este
+// seed em todo deploy, inclusive em produção. SEED_RESET=true implica demo
+// (banco descartável). Nunca em NODE_ENV=production.
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const SEED_DEMO = !IS_PRODUCTION && (process.env.SEED_DEMO === 'true' || RESET_DB);
+
 async function main() {
   try {
     console.log(`Starting seed script (SEED_RESET=${RESET_DB})...`);
+
+    if (RESET_DB && IS_PRODUCTION) {
+      throw new Error('SEED_RESET=true apaga todas as tabelas — recusado com NODE_ENV=production.');
+    }
 
     if (RESET_DB) {
       // Apaga todas as tabelas (menos o histórico de migrations) de uma vez —
@@ -422,7 +434,15 @@ async function main() {
       console.log('Green Barbershop already exists, skipping...');
     }
 
-    await seedDemoData(prisma);
+    if (SEED_DEMO) {
+      await seedDemoData(prisma);
+    } else {
+      console.log(
+        IS_PRODUCTION
+          ? 'Skipping demo data (NODE_ENV=production).'
+          : 'Skipping demo data (set SEED_DEMO=true to create it).',
+      );
+    }
 
     if (!RESET_DB) {
       console.log('Seeding completed (SEED_RESET not set - skipped random demo users).');
