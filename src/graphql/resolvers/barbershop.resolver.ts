@@ -6,6 +6,7 @@ import {
   Customer,
   Barber,
   Network,
+  NetworkTheme,
   NetworkDashboardStats,
   BarbershopServiceType,
   ProductCategoryType,
@@ -160,6 +161,12 @@ export class BarbershopResolver {
   @Query(() => Network, { nullable: true })
   async myNetwork(@CurrentUser() user: UserDTO) {
     return this.barbershopService.getMyNetwork(user.id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => NetworkTheme, { nullable: true })
+  async myNetworkTheme(@CurrentUser() user: UserDTO) {
+    return this.barbershopService.getMyNetworkTheme(user.id);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

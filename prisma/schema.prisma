@@ -383,6 +383,11 @@ model Network {
   noShowFeeType               String?
   noShowFeeValue              Float?
   lateCancellationWindowHours Int     @default(24)
+  // Cores do app (Radix Themes) para toda a franquia — só o dono define;
+  // equipe da rede herda. null = padrão do app. Arredondamento, escala e
+  // claro/escuro continuam por usuário (UserSystemConfig).
+  accentColor    String?
+  grayColor      String?
   ownerUserId    Int
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]

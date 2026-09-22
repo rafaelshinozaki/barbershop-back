@@ -51,11 +51,33 @@ export class Network {
   @Field(() => Int)
   lateCancellationWindowHours: number;
 
+  @Field({ nullable: true })
+  accentColor?: string;
+
+  @Field({ nullable: true })
+  grayColor?: string;
+
   @Field()
   createdAt: string;
 
   @Field()
   updatedAt: string;
+}
+
+/** Cores da franquia do usuário logado (dono ou equipe). */
+@ObjectType()
+export class NetworkTheme {
+  @Field(() => Int)
+  networkId: number;
+
+  @Field({ nullable: true })
+  accentColor?: string;
+
+  @Field({ nullable: true })
+  grayColor?: string;
+
+  @Field({ description: 'true só para o dono da franquia' })
+  canEdit: boolean;
 }
 
 @ObjectType()
