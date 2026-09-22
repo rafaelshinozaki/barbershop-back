@@ -97,3 +97,22 @@ export function nextDateStr(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
+
+/** "YYYY-MM-DD" deslocado de `days` dias (negativo volta). */
+export function addDaysStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * Início e fim (exclusivo) de um mês de calendário no fuso dado.
+ * `month` é 1-12 e pode sair do intervalo (0 = dezembro do ano anterior).
+ */
+export function monthRangeUtc(year: number, month: number, timeZone: string) {
+  const first = (y: number, m: number) =>
+    new Date(Date.UTC(y, m - 1, 1)).toISOString().slice(0, 10);
+  return {
+    start: zonedTimeToUtc(first(year, month), 0, timeZone),
+    end: zonedTimeToUtc(first(year, month + 1), 0, timeZone),
+  };
+}

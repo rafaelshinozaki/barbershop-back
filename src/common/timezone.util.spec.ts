@@ -1,5 +1,7 @@
 import {
   DEFAULT_TIMEZONE,
+  addDaysStr,
+  monthRangeUtc,
   dayOfWeekOf,
   nextDateStr,
   safeTimeZone,
@@ -65,5 +67,14 @@ describe('timezone.util', () => {
     expect(safeTimeZone('Nao/Existe')).toBe(DEFAULT_TIMEZONE);
     expect(safeTimeZone(null)).toBe(DEFAULT_TIMEZONE);
     expect(safeTimeZone('Europe/Lisbon')).toBe('Europe/Lisbon');
+  });
+
+  it('addDaysStr e monthRangeUtc', () => {
+    expect(addDaysStr('2026-03-01', -1)).toBe('2026-02-28');
+    const sep = monthRangeUtc(2026, 9, 'America/Sao_Paulo');
+    expect(sep.start.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+    expect(sep.end.toISOString()).toBe('2026-10-01T03:00:00.000Z');
+    const dec = monthRangeUtc(2026, 0, 'America/Sao_Paulo');
+    expect(dec.start.toISOString()).toBe('2025-12-01T03:00:00.000Z');
   });
 });

@@ -11,6 +11,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import {
   dayOfWeekOf,
+  monthRangeUtc,
   nextDateStr,
   safeTimeZone,
   toZonedParts,
@@ -234,8 +235,11 @@ export class BarbershopService {
       };
     }
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Meses no fuso da rede (o da primeira unidade — todas as unidades de uma
+    // rede ficam no mesmo país), não no do servidor, que roda em UTC.
+    const timeZone = safeTimeZone(barbershops[0]?.timezone);
+    const [year, month] = toZonedParts(new Date(), timeZone).dateStr.split('-').map(Number);
+    const startOfMonth = monthRangeUtc(year, month, timeZone).start;
 
     // Total barbers (funcionários)
     const totalBarbers = await this.prisma.barber.count({
@@ -279,21 +283,21 @@ export class BarbershopService {
       total: number;
     }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const start = new Date(d.getFullYear(), d.getMonth(), 1);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const { start, end } = monthRangeUtc(year, month - i, timeZone);
       const r = await this.prisma.sale.aggregate({
         where: {
           barbershopId: { in: barbershopIds },
           paymentStatus: 'PAID',
-          createdAt: { gte: start, lte: end },
+          createdAt: { gte: start, lt: end },
         },
         _sum: { total: true },
       });
+      // Meio do mês em UTC só pra extrair rótulo/ano/mês do calendário
+      const label = new Date(Date.UTC(year, month - 1 - i, 15));
       monthlyRevenue.push({
-        month: start.toLocaleDateString('en-US', { month: 'short' }),
-        monthIndex: start.getMonth(),
-        year: start.getFullYear(),
+        month: label.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+        monthIndex: label.getUTCMonth(),
+        year: label.getUTCFullYear(),
         total: Number(r._sum.total ?? 0),
       });
     }
@@ -1639,11 +1643,20 @@ export class BarbershopService {
     }
 
     if (segment === 'BIRTHDAY_MONTH') {
-      const currentMonth = new Date().getMonth();
+      // Mês corrente no fuso da unidade; birthDate é data de calendário
+      // gravada como meia-noite UTC (new Date("YYYY-MM-DD")), então o mês
+      // dela é o UTC — getMonth() no fuso local jogava quem nasceu no dia 1
+      // pro mês anterior num servidor a oeste de Greenwich.
+      const shop = await this.prisma.barbershop.findUnique({
+        where: { id: barbershopId },
+        select: { timezone: true },
+      });
+      const currentMonth =
+        Number(toZonedParts(new Date(), safeTimeZone(shop?.timezone)).dateStr.slice(5, 7)) - 1;
       const customers = await this.prisma.customer.findMany({
         where: { ...baseWhere, birthDate: { not: null } },
       });
-      return customers.filter((c) => c.birthDate && c.birthDate.getMonth() === currentMonth);
+      return customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth);
     }
 
     // ALL
@@ -3393,7 +3406,8 @@ export class BarbershopService {
   // ============ FINANCIAL DASHBOARD ============
 
   async getFinancialSummary(userId: number, barbershopId: number, from: Date, to: Date) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const timeZone = safeTimeZone(barbershop.timezone);
     const [sales, expenses] = await Promise.all([
       this.prisma.sale.findMany({
         where: {
@@ -3425,7 +3439,9 @@ export class BarbershopService {
 
     const byDay = new Map<string, number>();
     sales.forEach((s) => {
-      const key = s.createdAt.toISOString().slice(0, 10); // YYYY-MM-DD
+      // Dia no fuso da unidade — em UTC, venda depois das 21h em Brasília
+      // caía no dia seguinte do gráfico
+      const key = toZonedParts(s.createdAt, timeZone).dateStr;
       byDay.set(key, (byDay.get(key) ?? 0) + Number(s.total));
     });
     const sortedDays = Array.from(byDay.keys()).sort();
