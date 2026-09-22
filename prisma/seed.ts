@@ -213,6 +213,84 @@ const RESET_DB = process.env.SEED_RESET === 'true';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SEED_DEMO = !IS_PRODUCTION && (process.env.SEED_DEMO === 'true' || RESET_DB);
 
+const DEFAULT_SEED_PASSWORD = 'pwned';
+const SEED_USER_EMAILS = [
+  'rafael.sinosaki@barbershop.com',
+  'jacqueline.mariane@barbershop.com',
+  'cayo.carlos@barbershop.com',
+  'bianca.silverio@barbershop.com',
+  'minion.cayo@barbershop.com',
+  'marcos.andrade@barbershop.com',
+  'tiago.moura@barbershop.com',
+];
+
+// Primeiro SystemAdmin de um banco de produção novo. Só age se as duas
+// variáveis estiverem definidas e ainda não houver nenhum SystemAdmin — nunca
+// altera um admin existente.
+async function ensureProductionAdmin(rs: { id: number; name: string }[]) {
+  const email = process.env.SEED_ADMIN_EMAIL?.trim();
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!email || !password) {
+    console.log('SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD not set - no admin bootstrap.');
+    return;
+  }
+  const adminRole = rs.find((r) => r.name === 'SystemAdmin');
+  if (!adminRole) return;
+  const existingAdmin = await prisma.user.findFirst({ where: { roleId: adminRole.id } });
+  if (existingAdmin) {
+    console.log('A SystemAdmin already exists - admin bootstrap skipped.');
+    return;
+  }
+  if (password.length < 12 || password === DEFAULT_SEED_PASSWORD) {
+    throw new Error('SEED_ADMIN_PASSWORD precisa ter pelo menos 12 caracteres.');
+  }
+  await prisma.user.create({
+    data: {
+      email,
+      fullName: process.env.SEED_ADMIN_NAME?.trim() || 'Administrador',
+      provider: 'local',
+      password: bcrypt.hashSync(password, 10),
+      phone: '',
+      gender: '',
+      birthdate: new Date('1990-01-01T12:00:00Z'),
+      idDocNumber: '',
+      readTerms: true,
+      isActive: true,
+      roleId: adminRole.id,
+      userSystemConfig: {
+        create: {
+          theme: 'light',
+          accentColor: 'bronze',
+          grayColor: 'gray',
+          radius: 'medium',
+          scaling: '100%',
+          language: 'pt',
+        },
+      },
+      notificationPreference: { create: {} },
+    },
+  });
+  console.log(`Created SystemAdmin ${email} from SEED_ADMIN_EMAIL.`);
+}
+
+// Contas-semente conhecidas que continuam com a senha padrão num banco de
+// produção (criadas por seeds antigos, que rodavam em todo deploy).
+async function warnDefaultPasswordAccounts() {
+  const users = await prisma.user.findMany({
+    where: { email: { in: SEED_USER_EMAILS }, provider: 'local' },
+    select: { email: true, password: true, isActive: true },
+  });
+  const exposed = users.filter(
+    (u) => u.isActive && u.password && bcrypt.compareSync(DEFAULT_SEED_PASSWORD, u.password),
+  );
+  if (exposed.length === 0) return;
+  console.warn(
+    `\n⚠️  SECURITY: ${exposed.length} active account(s) still use the default seed password ` +
+      `"${DEFAULT_SEED_PASSWORD}" in production: ${exposed.map((u) => u.email).join(', ')}.\n` +
+      '   Change their passwords or deactivate them.\n',
+  );
+}
+
 async function main() {
   try {
     console.log(`Starting seed script (SEED_RESET=${RESET_DB})...`);
@@ -255,183 +333,192 @@ async function main() {
       rs.push(r);
     }
 
-    // Create seed users with specific roles
-    const seedUsers = [
-      {
-        email: 'rafael.sinosaki@barbershop.com',
-        fullName: 'Rafael Sinosaki',
-        role: 'SystemAdmin',
-      },
-      {
-        email: 'jacqueline.mariane@barbershop.com',
-        fullName: 'Jacqueline Mariane',
-        role: 'SystemManager',
-      },
-      {
-        email: 'cayo.carlos@barbershop.com',
-        fullName: 'Cayo Carlos',
-        role: 'BarbershopOwner',
-      },
-      {
-        email: 'bianca.silverio@barbershop.com',
-        fullName: 'Bianca Silverio',
-        role: 'BarbershopManager',
-      },
-      {
-        email: 'minion.cayo@barbershop.com',
-        fullName: 'Minion Cayo',
-        role: 'BarbershopEmployee',
-      },
-    ];
-
-    const sharedUserData = {
-      provider: 'local' as const,
-      password: bcrypt.hashSync('pwned', 10),
-      phone: faker.phone.number('+55129########'),
-      gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
-      birthdate: faker.date.birthdate(),
-      idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-      readTerms: true,
-      isActive: true,
-      userSystemConfig: { create: userSystemConfig.create },
-      notificationPreference: {
-        create: {
-          newsEmail: faker.helpers.arrayElement([true, false]),
-          newsInApp: faker.helpers.arrayElement([true, false]),
-          promotionsEmail: faker.helpers.arrayElement([true, false]),
-          promotionsInApp: faker.helpers.arrayElement([true, false]),
-          instabilityEmail: faker.helpers.arrayElement([true, false]),
-          instabilityInApp: faker.helpers.arrayElement([true, false]),
-          securityEmail: faker.helpers.arrayElement([true, false]),
-          securityInApp: faker.helpers.arrayElement([true, false]),
+    if (IS_PRODUCTION) {
+      // Em produção não cria os usuários-semente (senha "pwned") nem a Green
+      // Barbershop — são contas de exemplo. O primeiro admin vem de
+      // SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD, e contas que ainda usam a senha
+      // padrão (de seeds anteriores) são avisadas no log do deploy.
+      await ensureProductionAdmin(rs);
+      await warnDefaultPasswordAccounts();
+    } else {
+      // Create seed users with specific roles
+      const seedUsers = [
+        {
+          email: 'rafael.sinosaki@barbershop.com',
+          fullName: 'Rafael Sinosaki',
+          role: 'SystemAdmin',
         },
-      },
-      address: {
-        create: {
-          zipcode: faker.address.zipCode(),
-          street: faker.address.street(),
-          city: faker.address.city(),
-          neighborhood: faker.address.street(),
-          state: faker.address.stateAbbr(),
-          country: 'Brazil',
-          complement1: faker.address.secondaryAddress(),
-          complement2: faker.helpers.maybe(() => 'Próximo ao mercado', { probability: 0.3 }),
+        {
+          email: 'jacqueline.mariane@barbershop.com',
+          fullName: 'Jacqueline Mariane',
+          role: 'SystemManager',
         },
-      },
-    };
-
-    const createdSeedUsers: { email: string; id: number }[] = [];
-    for (const u of seedUsers) {
-      const existing = await prisma.user.findUnique({
-        where: { email_provider: { email: u.email, provider: 'local' } },
-      });
-      if (existing) {
-        console.log(`${u.fullName} (${u.role}) already exists, skipping...`);
-        createdSeedUsers.push({ email: u.email, id: existing.id });
-        continue;
-      }
-      console.log(`Creating ${u.fullName} (${u.role})...`);
-      const user = await prisma.user.create({
-        data: {
-          ...sharedUserData,
-          email: u.email,
-          fullName: u.fullName,
-          roleId: rs.find((r) => r.name === u.role)!.id,
-        },
-      });
-      createdSeedUsers.push({ email: u.email, id: user.id });
-    }
-
-    // Create Network, Barbershop and link Bianca as manager for Cayo's barbershop
-    // (skipped entirely if the barbershop already exists, since its slug is unique)
-    const cayo = createdSeedUsers.find((u) => u.email === 'cayo.carlos@barbershop.com');
-    const bianca = createdSeedUsers.find((u) => u.email === 'bianca.silverio@barbershop.com');
-    const existingBarbershop = await prisma.barbershop.findUnique({
-      where: { slug: 'green-barbershop' },
-    });
-    if (cayo && bianca && !existingBarbershop) {
-      console.log('Creating Green Barbershop (Cayo owns, Bianca is manager)...');
-      const network = await prisma.network.create({
-        data: { ownerUserId: cayo.id },
-      });
-      const barbershop = await prisma.barbershop.create({
-        data: {
-          name: 'Green Barbershop',
-          slug: 'green-barbershop',
-          address: 'Rua Raimundo Barbosa Nogueira',
-          complement1: 'Sala 2',
-          complement2: 'Próximo ao shopping',
-          city: 'São José dos Campos',
-          state: 'SP',
-          country: 'BR',
-          postalCode: '12245-000',
-          phone: '(12) 99757-2011',
-          email: 'rafaelsinosak@barbershop.com',
-          networkId: network.id,
-          ownerUserId: cayo.id,
-        },
-      });
-      await prisma.barber.create({
-        data: {
-          barbershopId: barbershop.id,
-          userId: cayo.id,
-          staffType: 'barber',
-          name: 'Cayo Carlos',
-          phone: '(12) 99757-2011',
+        {
           email: 'cayo.carlos@barbershop.com',
-          specialization: 'Proprietário',
-          isActive: true,
+          fullName: 'Cayo Carlos',
+          role: 'BarbershopOwner',
         },
-      });
-      await prisma.barber.create({
-        data: {
-          barbershopId: barbershop.id,
-          userId: bianca.id,
-          staffType: 'manager',
-          name: 'Bianca Silverio',
-          phone: faker.phone.number('(12) 9####-####'),
+        {
           email: 'bianca.silverio@barbershop.com',
-          isActive: true,
+          fullName: 'Bianca Silverio',
+          role: 'BarbershopManager',
         },
+        {
+          email: 'minion.cayo@barbershop.com',
+          fullName: 'Minion Cayo',
+          role: 'BarbershopEmployee',
+        },
+      ];
+
+      const sharedUserData = {
+        provider: 'local' as const,
+        password: bcrypt.hashSync('pwned', 10),
+        phone: faker.phone.number('+55129########'),
+        gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
+        birthdate: faker.date.birthdate(),
+        idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
+        readTerms: true,
+        isActive: true,
+        userSystemConfig: { create: userSystemConfig.create },
+        notificationPreference: {
+          create: {
+            newsEmail: faker.helpers.arrayElement([true, false]),
+            newsInApp: faker.helpers.arrayElement([true, false]),
+            promotionsEmail: faker.helpers.arrayElement([true, false]),
+            promotionsInApp: faker.helpers.arrayElement([true, false]),
+            instabilityEmail: faker.helpers.arrayElement([true, false]),
+            instabilityInApp: faker.helpers.arrayElement([true, false]),
+            securityEmail: faker.helpers.arrayElement([true, false]),
+            securityInApp: faker.helpers.arrayElement([true, false]),
+          },
+        },
+        address: {
+          create: {
+            zipcode: faker.address.zipCode(),
+            street: faker.address.street(),
+            city: faker.address.city(),
+            neighborhood: faker.address.street(),
+            state: faker.address.stateAbbr(),
+            country: 'Brazil',
+            complement1: faker.address.secondaryAddress(),
+            complement2: faker.helpers.maybe(() => 'Próximo ao mercado', { probability: 0.3 }),
+          },
+        },
+      };
+
+      const createdSeedUsers: { email: string; id: number }[] = [];
+      for (const u of seedUsers) {
+        const existing = await prisma.user.findUnique({
+          where: { email_provider: { email: u.email, provider: 'local' } },
+        });
+        if (existing) {
+          console.log(`${u.fullName} (${u.role}) already exists, skipping...`);
+          createdSeedUsers.push({ email: u.email, id: existing.id });
+          continue;
+        }
+        console.log(`Creating ${u.fullName} (${u.role})...`);
+        const user = await prisma.user.create({
+          data: {
+            ...sharedUserData,
+            email: u.email,
+            fullName: u.fullName,
+            roleId: rs.find((r) => r.name === u.role)!.id,
+          },
+        });
+        createdSeedUsers.push({ email: u.email, id: user.id });
+      }
+
+      // Create Network, Barbershop and link Bianca as manager for Cayo's barbershop
+      // (skipped entirely if the barbershop already exists, since its slug is unique)
+      const cayo = createdSeedUsers.find((u) => u.email === 'cayo.carlos@barbershop.com');
+      const bianca = createdSeedUsers.find((u) => u.email === 'bianca.silverio@barbershop.com');
+      const existingBarbershop = await prisma.barbershop.findUnique({
+        where: { slug: 'green-barbershop' },
       });
-      const minion = createdSeedUsers.find((u) => u.email === 'minion.cayo@barbershop.com');
-      if (minion) {
+      if (cayo && bianca && !existingBarbershop) {
+        console.log('Creating Green Barbershop (Cayo owns, Bianca is manager)...');
+        const network = await prisma.network.create({
+          data: { ownerUserId: cayo.id },
+        });
+        const barbershop = await prisma.barbershop.create({
+          data: {
+            name: 'Green Barbershop',
+            slug: 'green-barbershop',
+            address: 'Rua Raimundo Barbosa Nogueira',
+            complement1: 'Sala 2',
+            complement2: 'Próximo ao shopping',
+            city: 'São José dos Campos',
+            state: 'SP',
+            country: 'BR',
+            postalCode: '12245-000',
+            phone: '(12) 99757-2011',
+            email: 'rafaelsinosak@barbershop.com',
+            networkId: network.id,
+            ownerUserId: cayo.id,
+          },
+        });
         await prisma.barber.create({
           data: {
             barbershopId: barbershop.id,
-            userId: minion.id,
+            userId: cayo.id,
             staffType: 'barber',
-            name: 'Minion Cayo',
-            phone: faker.phone.number('(12) 9####-####'),
-            email: 'minion.cayo@barbershop.com',
-            specialization: 'Corte masculino',
+            name: 'Cayo Carlos',
+            phone: '(12) 99757-2011',
+            email: 'cayo.carlos@barbershop.com',
+            specialization: 'Proprietário',
             isActive: true,
           },
         });
+        await prisma.barber.create({
+          data: {
+            barbershopId: barbershop.id,
+            userId: bianca.id,
+            staffType: 'manager',
+            name: 'Bianca Silverio',
+            phone: faker.phone.number('(12) 9####-####'),
+            email: 'bianca.silverio@barbershop.com',
+            isActive: true,
+          },
+        });
+        const minion = createdSeedUsers.find((u) => u.email === 'minion.cayo@barbershop.com');
+        if (minion) {
+          await prisma.barber.create({
+            data: {
+              barbershopId: barbershop.id,
+              userId: minion.id,
+              staffType: 'barber',
+              name: 'Minion Cayo',
+              phone: faker.phone.number('(12) 9####-####'),
+              email: 'minion.cayo@barbershop.com',
+              specialization: 'Corte masculino',
+              isActive: true,
+            },
+          });
+        }
+        await prisma.customer.create({
+          data: {
+            networkId: network.id,
+            name: 'João Silva',
+            phone: '(12) 98765-4321',
+            email: 'joao.silva@email.com',
+            isActive: true,
+          },
+        });
+        await prisma.barbershopService.create({
+          data: {
+            barbershopId: barbershop.id,
+            name: 'Corte masculino',
+            icon: '✂️',
+            category: 'HAIR',
+            durationMinutes: 30,
+            price: 35,
+            isActive: true,
+          },
+        });
+        console.log(`  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`);
+      } else if (existingBarbershop) {
+        console.log('Green Barbershop already exists, skipping...');
       }
-      await prisma.customer.create({
-        data: {
-          networkId: network.id,
-          name: 'João Silva',
-          phone: '(12) 98765-4321',
-          email: 'joao.silva@email.com',
-          isActive: true,
-        },
-      });
-      await prisma.barbershopService.create({
-        data: {
-          barbershopId: barbershop.id,
-          name: 'Corte masculino',
-          icon: '✂️',
-          category: 'HAIR',
-          durationMinutes: 30,
-          price: 35,
-          isActive: true,
-        },
-      });
-      console.log(`  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`);
-    } else if (existingBarbershop) {
-      console.log('Green Barbershop already exists, skipping...');
     }
 
     if (SEED_DEMO) {
@@ -572,9 +659,12 @@ async function main() {
     console.log('Seeding completed.');
   } catch (error) {
     console.error(error);
+    // Código de saída 1 pra CI/scripts perceberem a falha (o entrypoint do
+    // Docker usa `pnpm run seed || true`, então o deploy não trava por isso)
+    process.exitCode = 1;
   } finally {
     // await prisma.$disconnect();
-    process.exit(0);
+    process.exit();
   }
 }
 
