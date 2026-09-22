@@ -144,6 +144,12 @@ export class UpdateNetworkInput {
 
   @Field(() => Int, { nullable: true })
   lateCancellationWindowHours?: number;
+
+  @Field({ nullable: true, description: 'Cor de destaque (Radix). String vazia volta ao padrão.' })
+  accentColor?: string;
+
+  @Field({ nullable: true, description: 'Tom de cinza (Radix). String vazia volta ao padrão.' })
+  grayColor?: string;
 }
 
 // ============ Customer ============

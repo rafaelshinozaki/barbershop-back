@@ -31,6 +31,37 @@ import { normalizePhoneToE164 } from '../common/phone.util';
 import { StripeService } from '../stripe/stripe.service';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
 
+// Mesmas opções do seletor de cores do front (Radix Themes)
+const NETWORK_ACCENT_COLORS = [
+  'gray',
+  'gold',
+  'bronze',
+  'brown',
+  'yellow',
+  'amber',
+  'orange',
+  'tomato',
+  'red',
+  'ruby',
+  'crimson',
+  'pink',
+  'plum',
+  'purple',
+  'violet',
+  'iris',
+  'indigo',
+  'blue',
+  'cyan',
+  'teal',
+  'jade',
+  'green',
+  'grass',
+  'lime',
+  'mint',
+  'sky',
+] as const;
+const NETWORK_GRAY_COLORS = ['auto', 'gray', 'mauve', 'slate', 'sage', 'olive', 'sand'] as const;
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -184,6 +215,37 @@ export class BarbershopService {
     });
   }
 
+  /** Valida contra as cores do Radix Themes; vazio/null volta ao padrão. */
+  private normalizeThemeColor(value: string | null, allowed: readonly string[], label: string) {
+    if (value == null || value.trim() === '') return null;
+    const v = value.trim();
+    if (!allowed.includes(v)) throw new BadRequestException(`${label} inválida: ${v}`);
+    return v;
+  }
+
+  /**
+   * Cores da franquia do usuário: a rede que ele possui, ou a rede da
+   * barbearia onde trabalha (Barber.userId). Só o dono pode editar.
+   */
+  async getMyNetworkTheme(userId: number) {
+    const owned = await this.prisma.network.findFirst({ where: { ownerUserId: userId } });
+    const network =
+      owned ??
+      (
+        await this.prisma.barber.findFirst({
+          where: { userId, isActive: true },
+          select: { barbershop: { select: { network: true } } },
+        })
+      )?.barbershop.network;
+    if (!network) return null;
+    return {
+      networkId: network.id,
+      accentColor: network.accentColor,
+      grayColor: network.grayColor,
+      canEdit: network.ownerUserId === userId,
+    };
+  }
+
   async updateNetwork(
     userId: number,
     data: Partial<{
@@ -203,12 +265,28 @@ export class BarbershopService {
       noShowFeeType: string;
       noShowFeeValue: number;
       lateCancellationWindowHours: number;
+      accentColor: string;
+      grayColor: string;
     }>,
   ) {
     const network = await this.getMyNetwork(userId);
     if (!network) throw new NotFoundException('Franquia não encontrada');
     const updateData: Record<string, unknown> = { ...data };
     if (data.logoUrl !== undefined) updateData.logoKey = null;
+    if (data.accentColor !== undefined) {
+      updateData.accentColor = this.normalizeThemeColor(
+        data.accentColor,
+        NETWORK_ACCENT_COLORS,
+        'Cor de destaque',
+      );
+    }
+    if (data.grayColor !== undefined) {
+      updateData.grayColor = this.normalizeThemeColor(
+        data.grayColor,
+        NETWORK_GRAY_COLORS,
+        'Tom de cinza',
+      );
+    }
     return this.prisma.network.update({
       where: { id: network.id },
       data: updateData,

@@ -1190,11 +1190,13 @@ type MyReviewType {
 }
 
 type Network {
+  accentColor: String
   city: String
   createdAt: String!
   currency: String!
   description: String
   foundationYear: Int
+  grayColor: String
   id: Int!
   lateCancellationWindowHours: Int!
   logoUrl: String
@@ -1230,6 +1232,15 @@ type NetworkDashboardStats {
   totalBarbershops: Int!
   totalProductsSold: Int!
   totalServicesDone: Int!
+}
+
+type NetworkTheme {
+  accentColor: String
+
+  """true só para o dono da franquia"""
+  canEdit: Boolean!
+  grayColor: String
+  networkId: Int!
 }
 
 type NoShowByBarberRow {
@@ -1595,6 +1606,7 @@ type Query {
   myClientSubscriptions: [ClientSubscriptionType!]!
   myCoupons: [Coupon!]!
   myNetwork: Network
+  myNetworkTheme: NetworkTheme
   myNewNotifications: [UserNotification!]!
   myNotifications(limit: Int! = 10): [UserNotification!]!
   myNotificationsCount: NotificationCount!
@@ -2036,10 +2048,15 @@ input UpdateInventoryItemInput {
 }
 
 input UpdateNetworkInput {
+  """Cor de destaque (Radix). String vazia volta ao padrão."""
+  accentColor: String
   city: String
   currency: String
   description: String
   foundationYear: Int
+
+  """Tom de cinza (Radix). String vazia volta ao padrão."""
+  grayColor: String
   lateCancellationWindowHours: Int
   logoUrl: String
   loyaltyEnabled: Boolean
