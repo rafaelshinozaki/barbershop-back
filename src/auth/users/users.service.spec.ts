@@ -17,7 +17,10 @@ describe('UserService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: {} },
       ],
-    }).compile();
+    })
+      // Dependências não usadas aqui viram objetos vazios
+      .useMocker(() => ({}))
+      .compile();
 
     service = module.get<UserService>(UserService);
   });

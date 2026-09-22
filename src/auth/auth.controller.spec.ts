@@ -8,7 +8,10 @@ describe('AuthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-    }).compile();
+    })
+      // Dependências não usadas aqui viram objetos vazios
+      .useMocker(() => ({}))
+      .compile();
 
     controller = module.get<AuthController>(AuthController);
   });
