@@ -2312,7 +2312,8 @@ export class UserService {
 
     const now = new Date();
     const trialEndDate = user.trialEndDate;
-    const isInTrial = trialEndDate && now < trialEndDate;
+    // !! porque sem trialEndDate a expressão vira null, e isInTrial é Boolean! no GraphQL
+    const isInTrial = !!trialEndDate && now < trialEndDate;
 
     let trialDaysLeft = 0;
     if (trialEndDate && now < trialEndDate) {

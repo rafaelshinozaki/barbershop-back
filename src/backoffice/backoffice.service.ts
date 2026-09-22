@@ -1,4 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import {
+  DEFAULT_TIMEZONE,
+  addDaysStr,
+  dayOfWeekOf,
+  monthRangeUtc,
+  toZonedParts,
+} from '../common/timezone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartLogger } from '../common/logger.util';
 import { EmailService } from '../email/email.service';
@@ -43,15 +50,19 @@ export class BackofficeService {
   }
 
   async getUserGrowth() {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    // Agrupa no fuso padrão da plataforma, não no do servidor (UTC) — senão
+    // cadastro depois das 21h em Brasília caía no dia/mês seguinte
+    const timeZone = DEFAULT_TIMEZONE;
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    const [year, month] = today.split('-').map(Number);
+    const since = monthRangeUtc(year, month - 5, timeZone).start;
 
     let users: any[] = [];
     try {
       users = await this.prisma.user.findMany({
         where: {
           createdAt: {
-            gte: sixMonthsAgo,
+            gte: since,
           },
         },
         select: {
@@ -62,8 +73,11 @@ export class BackofficeService {
       this.logger.error('Error fetching users for growth chart:', e);
     }
 
-    // Agrupar por mês
-    const monthlyStats = new Map();
+    // Data local ("YYYY-MM-DD") de cada cadastro
+    const localDates: string[] = (users ?? []).map(
+      (u) => toZonedParts(u.createdAt, timeZone).dateStr,
+    );
+
     const months = [
       'Jan',
       'Feb',
@@ -79,43 +93,24 @@ export class BackofficeService {
       'Dec',
     ];
 
-    if (users && Array.isArray(users)) {
-      users.forEach((item) => {
-        const month = months[item.createdAt.getMonth()];
-        const year = item.createdAt.getFullYear();
-        const key = `${month} ${year}`;
-        monthlyStats.set(key, (monthlyStats.get(key) || 0) + 1);
-      });
-    }
-
-    // Pegar os últimos 6 meses
+    // Últimos 6 meses
     const monthlyLabels = [];
     const monthlyValues = [];
     for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const month = months[date.getMonth()];
-      const year = date.getFullYear();
-      const key = `${month} ${year}`;
-      monthlyLabels.push(month);
-      monthlyValues.push(monthlyStats.get(key) || 0);
+      const d = new Date(Date.UTC(year, month - 1 - i, 1));
+      const key = d.toISOString().slice(0, 7); // YYYY-MM
+      monthlyLabels.push(months[d.getUTCMonth()]);
+      monthlyValues.push(localDates.filter((ld) => ld.startsWith(key)).length);
     }
 
-    // Weekly: contagem real dos últimos 7 dias (já incluídos em `users`, buscado desde 6 meses atrás)
+    // Weekly: contagem real dos últimos 7 dias
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const weeklyLabels: string[] = [];
     const weeklyValues: number[] = [];
     for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const count = users.filter(
-        (u) =>
-          u.createdAt.getFullYear() === date.getFullYear() &&
-          u.createdAt.getMonth() === date.getMonth() &&
-          u.createdAt.getDate() === date.getDate(),
-      ).length;
-      weeklyLabels.push(dayNames[date.getDay()]);
-      weeklyValues.push(count);
+      const day = addDaysStr(today, -i);
+      weeklyLabels.push(dayNames[dayOfWeekOf(day)]);
+      weeklyValues.push(localDates.filter((ld) => ld === day).length);
     }
 
     return {
@@ -216,9 +211,8 @@ export class BackofficeService {
   }
 
   private async getNewUsersThisMonth(): Promise<number> {
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    const [year, month] = toZonedParts(new Date(), DEFAULT_TIMEZONE).dateStr.split('-').map(Number);
+    const startOfMonth = monthRangeUtc(year, month, DEFAULT_TIMEZONE).start;
 
     const result = await this.prisma.user.count({
       where: {

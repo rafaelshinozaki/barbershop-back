@@ -180,11 +180,35 @@ export class AuthResolver {
         // aqui deixaria o email permanentemente preso e a pessoa nunca mais
         // conseguiria se cadastrar com ele. Por isso o delete final é via SQL
         // bruto, contornando o middleware, para realmente liberar o registro.
-        await this.prisma.address.deleteMany({ where: { userId: dbUser.id } });
-        await this.prisma.userSystemConfig.deleteMany({ where: { userId: dbUser.id } });
-        await this.prisma.notificationPreference.deleteMany({ where: { userId: dbUser.id } });
-        await this.prisma.subscription.deleteMany({ where: { userId: dbUser.id } });
-        await this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${dbUser.id}`;
+        //
+        // createBarbershop cria a Network antes da Barbershop, então uma falha
+        // depois disso (ex.: dois cadastros simultâneos com o mesmo slug, que
+        // passam juntos pelo check de slug) deixa uma Network apontando pro
+        // usuário com FK RESTRICT — apagar a Network leva Barbershop/Barber
+        // junto por cascade. As demais tabelas com FK RESTRICT pra User que um
+        // cadastro recém-criado pode ter preenchido também são limpas.
+        const userId = dbUser.id;
+        try {
+          await this.prisma.$transaction([
+            this.prisma.network.deleteMany({ where: { ownerUserId: userId } }),
+            this.prisma.address.deleteMany({ where: { userId } }),
+            this.prisma.userSystemConfig.deleteMany({ where: { userId } }),
+            this.prisma.notificationPreference.deleteMany({ where: { userId } }),
+            this.prisma.subscription.deleteMany({ where: { userId } }),
+            this.prisma.emailLogger.deleteMany({ where: { userId } }),
+            this.prisma.verificationCode.deleteMany({ where: { userId } }),
+            this.prisma.loginHistory.deleteMany({ where: { userId } }),
+            this.prisma.activeSession.deleteMany({ where: { userId } }),
+            this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${userId}`,
+          ]);
+        } catch (cleanupError) {
+          // Não mascara o erro original (é ele que explica pro cliente o que
+          // deu errado no cadastro) — só registra a falha de limpeza.
+          this.logger.error(
+            `Falha ao desfazer cadastro incompleto do usuário ${userId}`,
+            cleanupError,
+          );
+        }
         throw error;
       }
     }

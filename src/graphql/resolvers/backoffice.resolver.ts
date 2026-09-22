@@ -1,4 +1,5 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
+import { DEFAULT_TIMEZONE, monthRangeUtc, toZonedParts } from '../../common/timezone.util';
 import { UseGuards } from '@nestjs/common';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { UserService } from '../../auth/users/users.service';
@@ -447,15 +448,12 @@ export class BackofficeResolver {
 
           // Filtro por próximo pagamento (mês/ano)
           if (filters.nextPaymentDateMonth) {
-            const paymentDate = new Date(payment.nextPaymentDate);
-            const [year, month] = filters.nextPaymentDateMonth.split('-');
-            const filterYear = parseInt(year);
-            const filterMonth = parseInt(month);
-
-            if (
-              paymentDate.getFullYear() !== filterYear ||
-              paymentDate.getMonth() + 1 !== filterMonth
-            ) {
+            // Mês no fuso da plataforma, não no do servidor
+            const localMonth = toZonedParts(
+              new Date(payment.nextPaymentDate),
+              DEFAULT_TIMEZONE,
+            ).dateStr.slice(0, 7);
+            if (localMonth !== filters.nextPaymentDateMonth) {
               return false;
             }
           }
@@ -555,18 +553,14 @@ export class BackofficeResolver {
 
       if (filters.paymentDateMonth) {
         const [year, month] = filters.paymentDateMonth.split('-').map(Number);
-        where.paymentDate = {
-          gte: new Date(year, month - 1, 1),
-          lte: new Date(year, month, 0, 23, 59, 59),
-        };
+        const { start, end } = monthRangeUtc(year, month, DEFAULT_TIMEZONE);
+        where.paymentDate = { gte: start, lt: end };
       }
 
       if (filters.nextPaymentDateMonth) {
         const [year, month] = filters.nextPaymentDateMonth.split('-').map(Number);
-        where.nextPaymentDate = {
-          gte: new Date(year, month - 1, 1),
-          lte: new Date(year, month, 0, 23, 59, 59),
-        };
+        const { start, end } = monthRangeUtc(year, month, DEFAULT_TIMEZONE);
+        where.nextPaymentDate = { gte: start, lt: end };
       }
 
       if (filters.paymentMethod) {

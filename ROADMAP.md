@@ -36,7 +36,7 @@ País inicial do cadastro sugerido por geolocalização de IP (mesma técnica da
 - `searchPublicBarbershops` quebrava com erro GraphQL quando uma unidade sem nenhuma avaliação aparecia nos resultados (`reviewCount` não nullable sem fallback).
 
 ## Pendências conhecidas (fora deste horizonte)
-- Rollback de cadastro incompleto: se `createBarbershop` falha após o `User` já ter sido criado, o rollback manual não limpa `LoginHistory`/`ActiveSession`, podendo deixar usuário órfão (chip de tarefa já aberto).
+- ~~Rollback de cadastro incompleto~~ ✅ resolvido: o rollback agora apaga também a `Network` criada por `createBarbershop` (que travava o `DELETE` do `User` por FK RESTRICT quando dois cadastros disputavam o mesmo slug) e as demais tabelas com FK pra `User` (`LoginHistory`, `ActiveSession`, `EmailLogger`, `VerificationCode`), numa transação que não mascara o erro original; a unique violation de slug vira a mesma mensagem amigável do check prévio.
 
 ## Horizonte: Crescimento e retenção — ✅ Concluído
 

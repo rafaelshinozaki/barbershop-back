@@ -8,7 +8,15 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { TreatmentCategory } from '@prisma/client';
+import { Prisma, TreatmentCategory } from '@prisma/client';
+import {
+  dayOfWeekOf,
+  monthRangeUtc,
+  nextDateStr,
+  safeTimeZone,
+  toZonedParts,
+  zonedTimeToUtc,
+} from '../common/timezone.util';
 import {
   planIncludesModule,
   getModulesForPlanName,
@@ -227,8 +235,11 @@ export class BarbershopService {
       };
     }
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Meses no fuso da rede (o da primeira unidade — todas as unidades de uma
+    // rede ficam no mesmo país), não no do servidor, que roda em UTC.
+    const timeZone = safeTimeZone(barbershops[0]?.timezone);
+    const [year, month] = toZonedParts(new Date(), timeZone).dateStr.split('-').map(Number);
+    const startOfMonth = monthRangeUtc(year, month, timeZone).start;
 
     // Total barbers (funcionários)
     const totalBarbers = await this.prisma.barber.count({
@@ -272,21 +283,21 @@ export class BarbershopService {
       total: number;
     }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const start = new Date(d.getFullYear(), d.getMonth(), 1);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const { start, end } = monthRangeUtc(year, month - i, timeZone);
       const r = await this.prisma.sale.aggregate({
         where: {
           barbershopId: { in: barbershopIds },
           paymentStatus: 'PAID',
-          createdAt: { gte: start, lte: end },
+          createdAt: { gte: start, lt: end },
         },
         _sum: { total: true },
       });
+      // Meio do mês em UTC só pra extrair rótulo/ano/mês do calendário
+      const label = new Date(Date.UTC(year, month - 1 - i, 15));
       monthlyRevenue.push({
-        month: start.toLocaleDateString('en-US', { month: 'short' }),
-        monthIndex: start.getMonth(),
-        year: start.getFullYear(),
+        month: label.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+        monthIndex: label.getUTCMonth(),
+        year: label.getUTCFullYear(),
         total: Number(r._sum.total ?? 0),
       });
     }
@@ -404,15 +415,24 @@ export class BarbershopService {
         `Seu plano permite no máximo ${limits.maxBarbershops} unidade(s). Faça upgrade para cadastrar mais.`,
       );
     }
-    const barbershop = await this.prisma.barbershop.create({
-      data: {
-        ...data,
-        timezone: data.timezone ?? 'America/Sao_Paulo',
-        currency: data.currency ?? network.currency,
-        networkId: network.id,
-        ownerUserId: userId,
-      },
-    });
+    // O check de slug lá em cima não é atômico: dois cadastros simultâneos
+    // com o mesmo slug passam juntos por ele e um estoura a unique aqui.
+    const barbershop = await this.prisma.barbershop
+      .create({
+        data: {
+          ...data,
+          timezone: data.timezone ?? 'America/Sao_Paulo',
+          currency: data.currency ?? network.currency,
+          networkId: network.id,
+          ownerUserId: userId,
+        },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new BadRequestException('Já existe uma barbearia com este slug');
+        }
+        throw error;
+      });
 
     const owner = await this.prisma.user.findUnique({ where: { id: userId } });
     if (owner) {
@@ -1509,10 +1529,17 @@ export class BarbershopService {
     barbershopId: number,
     appointment: { startAt: Date; barberId: number; services: { serviceId: number }[] },
   ) {
-    const dayStart = new Date(appointment.startAt);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // WaitlistEntry.date é gravada como meia-noite UTC do dia escolhido
+    // (new Date("YYYY-MM-DD")); o dia do agendamento tem de ser o do fuso da
+    // unidade — em UTC, um horário depois das 21h em Brasília já caía no dia
+    // seguinte e não achava ninguém na lista.
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const localDate = toZonedParts(appointment.startAt, safeTimeZone(shop?.timezone)).dateStr;
+    const dayStart = new Date(`${localDate}T00:00:00Z`);
+    const dayEnd = new Date(`${nextDateStr(localDate)}T00:00:00Z`);
     const serviceIds = appointment.services.map((s) => s.serviceId);
 
     const candidates = await this.prisma.waitlistEntry.findMany({
@@ -1616,11 +1643,20 @@ export class BarbershopService {
     }
 
     if (segment === 'BIRTHDAY_MONTH') {
-      const currentMonth = new Date().getMonth();
+      // Mês corrente no fuso da unidade; birthDate é data de calendário
+      // gravada como meia-noite UTC (new Date("YYYY-MM-DD")), então o mês
+      // dela é o UTC — getMonth() no fuso local jogava quem nasceu no dia 1
+      // pro mês anterior num servidor a oeste de Greenwich.
+      const shop = await this.prisma.barbershop.findUnique({
+        where: { id: barbershopId },
+        select: { timezone: true },
+      });
+      const currentMonth =
+        Number(toZonedParts(new Date(), safeTimeZone(shop?.timezone)).dateStr.slice(5, 7)) - 1;
       const customers = await this.prisma.customer.findMany({
         where: { ...baseWhere, birthDate: { not: null } },
       });
-      return customers.filter((c) => c.birthDate && c.birthDate.getMonth() === currentMonth);
+      return customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth);
     }
 
     // ALL
@@ -1825,17 +1861,24 @@ export class BarbershopService {
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
 
-    const date = new Date(`${dateStr}T00:00:00`);
-    if (isNaN(date.getTime())) throw new BadRequestException('Data inválida');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || isNaN(Date.parse(`${dateStr}T00:00:00Z`))) {
+      throw new BadRequestException('Data inválida');
+    }
 
-    const dayOfWeek = date.getDay();
+    // Tudo no fuso da unidade, não do servidor (ver common/timezone.util.ts)
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const timeZone = safeTimeZone(shop?.timezone);
+
+    const dayOfWeek = dayOfWeekOf(dateStr);
     const window = await this.getWorkingWindow(barbershopId, barberId, dayOfWeek);
     if (!window) return [];
 
     const duration = service.durationMinutes;
-    const dayStart = new Date(date);
-    const dayEnd = new Date(date);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayStart = zonedTimeToUtc(dateStr, 0, timeZone);
+    const dayEnd = zonedTimeToUtc(nextDateStr(dateStr), 0, timeZone);
 
     const [appointments, timeOffs] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -1873,8 +1916,7 @@ export class BarbershopService {
         if (overlapsBreak) continue;
       }
 
-      const slotStart = new Date(date);
-      slotStart.setHours(0, minutes, 0, 0);
+      const slotStart = zonedTimeToUtc(dateStr, minutes, timeZone);
       const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
       if (slotStart <= now) continue;
@@ -1923,9 +1965,11 @@ export class BarbershopService {
     // Revalida a janela de trabalho e a ausência de conflito no servidor —
     // nunca confia apenas na lista de horários que o próprio cliente buscou
     // antes (pode estar desatualizada ou ter sido manipulada).
-    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, startAt.getDay());
+    // Dia da semana e hora de parede no fuso da unidade, não do servidor
+    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
+    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, local.dayOfWeek);
     if (!window) throw new BadRequestException('Profissional não atende nesse dia');
-    const startMin = startAt.getHours() * 60 + startAt.getMinutes();
+    const startMin = local.minutesOfDay;
     const endMin = startMin + service.durationMinutes;
     if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
       throw new BadRequestException('Horário fora do expediente do profissional');
@@ -3362,7 +3406,8 @@ export class BarbershopService {
   // ============ FINANCIAL DASHBOARD ============
 
   async getFinancialSummary(userId: number, barbershopId: number, from: Date, to: Date) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const timeZone = safeTimeZone(barbershop.timezone);
     const [sales, expenses] = await Promise.all([
       this.prisma.sale.findMany({
         where: {
@@ -3394,7 +3439,9 @@ export class BarbershopService {
 
     const byDay = new Map<string, number>();
     sales.forEach((s) => {
-      const key = s.createdAt.toISOString().slice(0, 10); // YYYY-MM-DD
+      // Dia no fuso da unidade — em UTC, venda depois das 21h em Brasília
+      // caía no dia seguinte do gráfico
+      const key = toZonedParts(s.createdAt, timeZone).dateStr;
       byDay.set(key, (byDay.get(key) ?? 0) + Number(s.total));
     });
     const sortedDays = Array.from(byDay.keys()).sort();

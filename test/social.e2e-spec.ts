@@ -56,7 +56,8 @@ describe('Social Auth (e2e)', () => {
   it('/auth/google/redirect sets cookie', async () => {
     const res = await request(app.getHttpServer()).get('/auth/google/redirect');
     expect(res.status).toBe(302);
-    expect(res.header['set-cookie'].some((c: string) => c.includes('Authentication'))).toBe(true);
+    const cookies = res.header['set-cookie'] as unknown as string[];
+    expect(cookies.some((c) => c.includes('Authentication'))).toBe(true);
   });
 
   it('/auth/facebook redirects', async () => {
@@ -67,6 +68,7 @@ describe('Social Auth (e2e)', () => {
   it('/auth/facebook/redirect sets cookie', async () => {
     const res = await request(app.getHttpServer()).get('/auth/facebook/redirect');
     expect(res.status).toBe(302);
-    expect(res.header['set-cookie'].some((c: string) => c.includes('Authentication'))).toBe(true);
+    const cookies = res.header['set-cookie'] as unknown as string[];
+    expect(cookies.some((c) => c.includes('Authentication'))).toBe(true);
   });
 });
