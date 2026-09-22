@@ -2,7 +2,13 @@ import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 import { EmployeeInviteController } from './employee-invite.controller';
-import { AppointmentReminderService } from './appointment-reminder.service';
+import { BullModule } from '@nestjs/bullmq';
+import {
+  AppointmentReminderService,
+  AppointmentReminderScheduler,
+  AppointmentReminderProcessor,
+} from './appointment-reminder.service';
+import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -20,8 +26,15 @@ import { StripeModule } from '../stripe/stripe.module';
     UserModule,
     AwsModule,
     StripeModule,
+    BullModule.registerQueue({ name: APPOINTMENT_REMINDERS_QUEUE }),
   ],
-  providers: [BarbershopService, EmployeeInviteService, AppointmentReminderService],
+  providers: [
+    BarbershopService,
+    EmployeeInviteService,
+    AppointmentReminderService,
+    AppointmentReminderScheduler,
+    AppointmentReminderProcessor,
+  ],
   controllers: [EmployeeInviteController],
   exports: [BarbershopService, EmployeeInviteService],
 })

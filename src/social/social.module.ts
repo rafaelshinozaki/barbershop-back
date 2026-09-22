@@ -6,13 +6,19 @@ import { AwsModule } from '@/aws/aws.module';
 import { BarbershopModule } from '@/barbershop/barbershop.module';
 import { SocialService } from './social.service';
 import { SocialController } from './social.controller';
-import { SocialPostsSchedulerService } from './social-posts-scheduler.service';
+import { BullModule } from '@nestjs/bullmq';
+import {
+  SocialPostsSchedulerService,
+  SocialPostsProcessor,
+} from './social-posts-scheduler.service';
+import { SOCIAL_POSTS_QUEUE } from '../queue/queue.constants';
 
 @Module({
   imports: [
     PrismaModule,
     AwsModule,
     BarbershopModule,
+    BullModule.registerQueue({ name: SOCIAL_POSTS_QUEUE }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -22,7 +28,7 @@ import { SocialPostsSchedulerService } from './social-posts-scheduler.service';
     }),
   ],
   controllers: [SocialController],
-  providers: [SocialService, SocialPostsSchedulerService],
+  providers: [SocialService, SocialPostsSchedulerService, SocialPostsProcessor],
   exports: [SocialService],
 })
 export class SocialModule {}

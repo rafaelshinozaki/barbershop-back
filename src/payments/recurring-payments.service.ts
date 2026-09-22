@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { PaymentsService } from './payments.service';
+import { RECURRING_PAYMENTS_QUEUE, SCHEDULED_JOB_OPTIONS } from '../queue/queue.constants';
 
 @Injectable()
 export class RecurringPaymentsService {
@@ -9,13 +11,8 @@ export class RecurringPaymentsService {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   /**
-   * Cron job que executa diariamente às 9h da manhã para processar cobranças recorrentes
-   * Formato: segundo minuto hora dia mês dia-da-semana
+   * Diariamente às 9h (horário de Brasília) — ver RecurringPaymentsScheduler
    */
-  @Cron(CronExpression.EVERY_DAY_AT_9AM, {
-    name: 'process-recurring-payments',
-    timeZone: 'America/Sao_Paulo',
-  })
   async handleRecurringPayments() {
     this.logger.log('🔄 Iniciando cron job de cobranças recorrentes...');
 
@@ -28,13 +25,9 @@ export class RecurringPaymentsService {
   }
 
   /**
-   * Cron job que executa a cada 6 horas para verificar pagamentos vencidos
+   * A cada 6 horas — ver RecurringPaymentsScheduler
    * Útil para detectar pagamentos que podem ter sido perdidos
    */
-  @Cron('0 0 */6 * * *', {
-    name: 'check-overdue-payments',
-    timeZone: 'America/Sao_Paulo',
-  })
   async handleOverduePaymentsCheck() {
     this.logger.log('Verificando pagamentos vencidos...');
 
@@ -51,25 +44,6 @@ export class RecurringPaymentsService {
       }
     } catch (error) {
       this.logger.error('Erro ao verificar pagamentos vencidos:', error);
-    }
-  }
-
-  /**
-   * Cron job que executa semanalmente para limpeza e manutenção
-   * Remove registros antigos e faz backup de dados importantes
-   */
-  @Cron(CronExpression.EVERY_WEEK, {
-    name: 'payment-maintenance',
-    timeZone: 'America/Sao_Paulo',
-  })
-  async handlePaymentMaintenance() {
-    this.logger.log('🧹 Iniciando manutenção semanal de pagamentos...');
-
-    try {
-      // Aqui você pode adicionar lógica de limpeza, backup, etc.
-      this.logger.log('✅ Manutenção semanal de pagamentos concluída');
-    } catch (error) {
-      this.logger.error('❌ Erro na manutenção semanal de pagamentos:', error);
     }
   }
 
@@ -105,5 +79,38 @@ export class RecurringPaymentsService {
       this.logger.error('Erro ao obter estatísticas:', error);
       throw error;
     }
+  }
+}
+
+// Antes eram @Cron, que rodam em TODAS as instâncias do back: com duas
+// réplicas, a cobrança recorrente do dia rodava duas vezes. O agendador do
+// BullMQ dispara cada execução uma vez só no cluster.
+@Injectable()
+export class RecurringPaymentsScheduler implements OnModuleInit {
+  constructor(@InjectQueue(RECURRING_PAYMENTS_QUEUE) private readonly queue: Queue) {}
+
+  async onModuleInit() {
+    await this.queue.upsertJobScheduler(
+      'process-recurring-payments',
+      { pattern: '0 0 9 * * *', tz: 'America/Sao_Paulo' },
+      { name: 'process-recurring-payments', opts: SCHEDULED_JOB_OPTIONS },
+    );
+    await this.queue.upsertJobScheduler(
+      'check-overdue-payments',
+      { pattern: '0 0 */6 * * *', tz: 'America/Sao_Paulo' },
+      { name: 'check-overdue-payments', opts: SCHEDULED_JOB_OPTIONS },
+    );
+  }
+}
+
+@Processor(RECURRING_PAYMENTS_QUEUE)
+export class RecurringPaymentsProcessor extends WorkerHost {
+  constructor(private readonly recurring: RecurringPaymentsService) {
+    super();
+  }
+
+  async process(job: Job) {
+    if (job.name === 'process-recurring-payments') return this.recurring.handleRecurringPayments();
+    if (job.name === 'check-overdue-payments') return this.recurring.handleOverduePaymentsCheck();
   }
 }

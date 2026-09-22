@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-interface AppointmentReminderParams {
+export interface AppointmentReminderParams {
   customerName: string;
   serviceNames: string;
   barbershopName: string;
@@ -9,7 +9,7 @@ interface AppointmentReminderParams {
   time: string;
 }
 
-interface WaitlistSlotAvailableParams {
+export interface WaitlistSlotAvailableParams {
   customerName: string;
   barbershopName: string;
   date: string;

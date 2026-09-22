@@ -17,8 +17,25 @@ services:
     networks:
       - barbershop-network
 
+  # Filas de e-mail/WhatsApp e tarefas agendadas (BullMQ) + código de login
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - barbershop-network
+
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   barbershop-network:

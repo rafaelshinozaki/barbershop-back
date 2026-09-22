@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationQueueService } from '../queue/notification-queue.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
@@ -25,7 +26,6 @@ import {
 } from './barbershop-plan.constants';
 import { PLANO_STATUS } from '../common/contants';
 import { S3Service } from '../aws/s3.service';
-import { EmailService } from '../email/email.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
 import { StripeService } from '../stripe/stripe.service';
@@ -70,9 +70,9 @@ export class BarbershopService {
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
     private readonly s3Service: S3Service,
-    private readonly emailService: EmailService,
     private readonly whatsappService: WhatsappService,
     private readonly stripeService: StripeService,
+    private readonly notificationQueue: NotificationQueueService,
   ) {}
 
   /**
@@ -1699,42 +1699,51 @@ export class BarbershopService {
       timeZone: match.barbershop.timezone,
     });
 
-    if (match.customer.email) {
-      try {
-        await this.emailService.sendCustomerEmail(
-          match.barbershop.ownerUserId ?? 0,
-          'waitlist_slot_available',
+    // Envio pela fila (tentativas + limite de taxa), sem segurar o
+    // cancelamento esperando o Mailgun/a Meta responderem
+    try {
+      if (match.customer.email) {
+        await this.notificationQueue.email(
           {
-            CustomerName: match.customer.name,
-            BarbershopName: match.barbershop.name,
-            BarbershopPhone: match.barbershop.phone,
-            AppointmentDate: dateStr,
-            AppointmentTime: timeStr,
-            Year: new Date().getFullYear(),
+            kind: 'customer',
+            loggedAgainstUserId: match.barbershop.ownerUserId ?? 0,
+            template: 'waitlist_slot_available',
+            context: {
+              CustomerName: match.customer.name,
+              BarbershopName: match.barbershop.name,
+              BarbershopPhone: match.barbershop.phone,
+              AppointmentDate: dateStr,
+              AppointmentTime: timeStr,
+              Year: new Date().getFullYear(),
+            },
+            subject: `Vaga disponível em ${match.barbershop.name}`,
+            meta: 'waitlist-slot-available',
+            to: match.customer.email,
           },
-          `Vaga disponível em ${match.barbershop.name}`,
-          'waitlist-slot-available',
-          match.customer.email,
+          `waitlist-email-${match.id}`,
         );
-      } catch (err) {
-        this.logger.error(`Erro ao notificar lista de espera #${match.id} por e-mail:`, err);
       }
-    }
 
-    if (this.whatsappService.isConfigured()) {
-      const phone = normalizePhoneToE164(match.customer.phone);
+      const phone = this.whatsappService.isConfigured()
+        ? normalizePhoneToE164(match.customer.phone)
+        : null;
       if (phone) {
-        try {
-          await this.whatsappService.sendWaitlistSlotAvailable(phone, {
-            customerName: match.customer.name,
-            barbershopName: match.barbershop.name,
-            date: dateStr,
-            time: timeStr,
-          });
-        } catch (err) {
-          this.logger.error(`Erro ao notificar lista de espera #${match.id} por WhatsApp:`, err);
-        }
+        await this.notificationQueue.whatsapp(
+          {
+            kind: 'waitlist-slot',
+            to: phone,
+            params: {
+              customerName: match.customer.name,
+              barbershopName: match.barbershop.name,
+              date: dateStr,
+              time: timeStr,
+            },
+          },
+          `waitlist-whatsapp-${match.id}`,
+        );
       }
+    } catch (err) {
+      this.logger.error(`Erro ao enfileirar aviso da lista de espera #${match.id}:`, err);
     }
   }
 
@@ -1840,48 +1849,21 @@ export class BarbershopService {
       data.inactiveDays,
     );
 
-    let emailSentCount = 0;
-    let whatsappSentCount = 0;
+    // Cria a campanha primeiro e enfileira um envio por cliente — antes o
+    // loop enviava um por um dentro da própria requisição (milhares de
+    // clientes = dezenas de minutos, timeout no meio e contagem errada).
+    // Os workers atualizam emailSentCount/whatsappSentCount conforme enviam.
+    const emailRecipients = data.sendEmail
+      ? customers.filter((c): c is typeof c & { email: string } => !!c.email)
+      : [];
+    const whatsappPhones =
+      data.sendWhatsapp && this.whatsappService.isConfigured()
+        ? customers
+            .map((c) => normalizePhoneToE164(c.phone))
+            .filter((phone): phone is string => !!phone)
+        : [];
 
-    for (const customer of customers) {
-      if (data.sendEmail && customer.email) {
-        try {
-          await this.emailService.sendCustomerEmail(
-            barbershop.ownerUserId ?? 0,
-            'marketing_blast',
-            {
-              BarbershopName: barbershop.name,
-              Subject: data.subject ?? barbershop.name,
-              Message: data.message,
-              Year: new Date().getFullYear(),
-            },
-            data.subject ?? barbershop.name,
-            'marketing-blast',
-            customer.email,
-          );
-          emailSentCount++;
-        } catch (err) {
-          this.logger.error(`Erro ao enviar campanha por e-mail pro cliente #${customer.id}:`, err);
-        }
-      }
-
-      if (data.sendWhatsapp && this.whatsappService.isConfigured()) {
-        const phone = normalizePhoneToE164(customer.phone);
-        if (phone) {
-          try {
-            await this.whatsappService.sendMarketingBlast(phone, data.message);
-            whatsappSentCount++;
-          } catch (err) {
-            this.logger.error(
-              `Erro ao enviar campanha por WhatsApp pro cliente #${customer.id}:`,
-              err,
-            );
-          }
-        }
-      }
-    }
-
-    return this.prisma.marketingCampaign.create({
+    const campaign = await this.prisma.marketingCampaign.create({
       data: {
         barbershopId,
         createdByUserId: userId,
@@ -1892,10 +1874,38 @@ export class BarbershopService {
         sentByEmail: data.sendEmail,
         sentByWhatsapp: data.sendWhatsapp,
         recipientCount: customers.length,
-        emailSentCount,
-        whatsappSentCount,
+        emailQueuedCount: emailRecipients.length,
+        whatsappQueuedCount: whatsappPhones.length,
       },
     });
+
+    await this.notificationQueue.emailBulk(
+      emailRecipients.map((customer) => ({
+        kind: 'customer' as const,
+        loggedAgainstUserId: barbershop.ownerUserId ?? 0,
+        template: 'marketing_blast',
+        context: {
+          BarbershopName: barbershop.name,
+          Subject: data.subject ?? barbershop.name,
+          Message: data.message,
+          Year: new Date().getFullYear(),
+        },
+        subject: data.subject ?? barbershop.name,
+        meta: 'marketing-blast',
+        to: customer.email,
+        campaignId: campaign.id,
+      })),
+    );
+    await this.notificationQueue.whatsappBulk(
+      whatsappPhones.map((phone) => ({
+        kind: 'marketing' as const,
+        to: phone,
+        message: data.message,
+        campaignId: campaign.id,
+      })),
+    );
+
+    return campaign;
   }
 
   // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============

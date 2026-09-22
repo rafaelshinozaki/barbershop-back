@@ -3,6 +3,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { SmartLogger } from '../common/logger.util';
 
+// Teto das listas do sininho (antes "não lidas" e "novas" não tinham limite)
+const MAX_LIST = 100;
+// Envio em lote em partes: um createMany/IN com dezenas de milhares de
+// usuários estoura o limite de parâmetros do Postgres (65.535)
+const BATCH_CHUNK = 1000;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new SmartLogger('NotificationsService');
@@ -31,6 +37,7 @@ export class NotificationsService {
   }
 
   async getUserNotifications(userId: number, limit = 50) {
+    limit = Math.min(Math.max(limit, 1), MAX_LIST);
     this.logger.log(`Getting notifications for user ${userId}, limit: ${limit}`);
     try {
       const result = await this.prisma.userNotification.findMany({
@@ -55,6 +62,7 @@ export class NotificationsService {
           isRead: false,
         },
         orderBy: { createdAt: 'desc' },
+        take: MAX_LIST,
       });
       this.logger.log(`Found ${result.length} unread notifications for user ${userId}`);
       return result;
@@ -73,6 +81,7 @@ export class NotificationsService {
           isNew: true,
         },
         orderBy: { createdAt: 'desc' },
+        take: MAX_LIST,
       });
       this.logger.log(`Found ${result.length} new notifications for user ${userId}`);
       return result;
@@ -171,34 +180,31 @@ export class NotificationsService {
   ) {
     this.logger.log(`Creating notifications for ${userIds.length} users: ${data.title}`);
     try {
-      // Buscar notificações já existentes para esses usuários com o mesmo título nos últimos 5 minutos
+      // Pula quem já recebeu uma notificação com o mesmo título nos últimos
+      // 5 minutos (evita duplicar num reenvio/duplo clique)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const existing = await this.prisma.userNotification.findMany({
-        where: {
-          userId: { in: userIds },
-          title: data.title,
-          createdAt: { gte: fiveMinutesAgo },
-        },
-        select: { userId: true },
-      });
-      const alreadyNotified = new Set(existing.map((n) => n.userId));
-      const notifications = userIds
-        .filter((userId) => !alreadyNotified.has(userId))
-        .map((userId) => ({
-          ...data,
-          userId,
-        }));
-
-      if (notifications.length === 0) {
-        this.logger.log('No new notifications to create (all already exist)');
-        return { count: 0 };
+      const uniqueIds = [...new Set(userIds)];
+      let count = 0;
+      for (let i = 0; i < uniqueIds.length; i += BATCH_CHUNK) {
+        const chunk = uniqueIds.slice(i, i + BATCH_CHUNK);
+        const existing = await this.prisma.userNotification.findMany({
+          where: {
+            userId: { in: chunk },
+            title: data.title,
+            createdAt: { gte: fiveMinutesAgo },
+          },
+          select: { userId: true },
+        });
+        const alreadyNotified = new Set(existing.map((n) => n.userId));
+        const notifications = chunk
+          .filter((userId) => !alreadyNotified.has(userId))
+          .map((userId) => ({ ...data, userId }));
+        if (notifications.length === 0) continue;
+        const result = await this.prisma.userNotification.createMany({ data: notifications });
+        count += result.count;
       }
-
-      const result = await this.prisma.userNotification.createMany({
-        data: notifications,
-      });
-      this.logger.log(`Created ${result.count} notifications for multiple users`);
-      return result;
+      this.logger.log(`Created ${count} notifications for multiple users`);
+      return { count };
     } catch (error) {
       this.logger.error(`Error creating notifications for users: ${error.message}`);
       throw error;

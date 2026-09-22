@@ -8,6 +8,16 @@ import * as fs from 'fs/promises';
 import Handlebars from 'handlebars';
 import { ConfigService } from '@nestjs/config';
 
+// O log de e-mails guardava o contexto inteiro — inclusive o link de
+// redefinição de senha (com o token) e códigos de verificação: quem lesse a
+// tabela EmailLogger conseguia trocar a senha de qualquer usuário.
+const SECRET_KEY = /url|link|token|code|password|senha/i;
+function redactSecrets(context: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(context).map(([k, v]) => [k, SECRET_KEY.test(k) ? '[redacted]' : v]),
+  );
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -85,7 +95,7 @@ export class EmailService {
       await this.prisma.emailLogger.create({
         data: {
           userId,
-          body: JSON.stringify(context),
+          body: JSON.stringify(redactSecrets(context)),
           sentTo: to,
           subject,
           meta: `[${meta}] -> ${JSON.stringify(emailResponse)}`,

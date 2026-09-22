@@ -8,3 +8,24 @@ services:
       - "5555:5555"
     environment:
       - NODE_ENV=production
+      # Filas (BullMQ) e estado de login compartilhado entre instâncias
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # appendonly: os jobs na fila sobrevivem a um restart do Redis
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis_data:
