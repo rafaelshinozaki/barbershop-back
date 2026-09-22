@@ -1240,6 +1240,10 @@ type NetworkTheme {
   """true só para o dono da franquia"""
   canEdit: Boolean!
   grayColor: String
+
+  """Logo da franquia (mostrado no topo do app para dono e equipe)"""
+  logoUrl: String
+  name: String
   networkId: Int!
 }
 
