@@ -1,5 +1,4 @@
 import { Field, ObjectType, Int, Float } from '@nestjs/graphql';
-import { Plan } from './plan.type';
 
 @ObjectType()
 export class Payment {

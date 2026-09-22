@@ -150,7 +150,9 @@ export class ClientAuthService {
     if (account && !existingLink) {
       await this.prisma.clientLinkedSocialAccount
         .create({ data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail } })
-        .catch(() => {});
+        .catch(() => {
+          // Vínculo já criado por outra requisição simultânea — pode ignorar
+        });
     }
 
     if (!account) {

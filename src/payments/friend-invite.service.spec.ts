@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FriendInviteService } from './friend-invite.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,7 +39,6 @@ describe('FriendInviteService', () => {
   let service: FriendInviteService;
   let prismaService: any;
   let emailService: any;
-  let configService: any;
 
   beforeEach(async () => {
     // Create mock functions
@@ -99,7 +98,6 @@ describe('FriendInviteService', () => {
     service = module.get<FriendInviteService>(FriendInviteService);
     prismaService = module.get(PrismaService);
     emailService = module.get(EmailService);
-    configService = module.get(ConfigService);
   });
 
   afterEach(() => {

@@ -1,4 +1,4 @@
-import { Resolver, ResolveField, Args, Int, Parent } from '@nestjs/graphql';
+import { Resolver, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { BarbershopProductType } from '../types/barbershop.type';
 import { S3Service } from '../../aws/s3.service';

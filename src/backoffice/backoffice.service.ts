@@ -606,7 +606,6 @@ export class BackofficeService {
       },
     });
     for (const user of users) {
-      const lang = user.userSystemConfig?.language?.toLowerCase() || 'pt';
       await this.emailService.sendTemplateEmail(
         user.id,
         'admin_notification',

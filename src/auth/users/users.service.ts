@@ -18,7 +18,6 @@ import { Role } from '../interfaces/roles';
 import * as bcrypt from 'bcryptjs';
 import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
-import { CustomErrorMessage } from '@/common/errors';
 import { S3Service } from '@/aws/s3.service';
 import { SmartLogger } from '@/common/logger.util';
 import { v4 as uuidv4 } from 'uuid';

@@ -1,17 +1,10 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { BarbershopService } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
-import { Role } from '../auth/interfaces/roles';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
 export type StaffType = 'barber' | 'manager';

@@ -1,6 +1,6 @@
 import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
-import { CouponsService, COUPON_TYPE } from '../../payments/coupons.service';
+import { CouponsService } from '../../payments/coupons.service';
 import { PaymentsService } from '../../payments/payments.service';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';

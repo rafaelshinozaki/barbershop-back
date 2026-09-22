@@ -47,7 +47,7 @@ export class EmailService {
     subject: string,
     meta: string,
     to: string,
-    lang: string = 'pt',
+    lang = 'pt',
   ) {
     return this.renderAndSend(loggedAgainstUserId, template, context, subject, meta, to, lang);
   }

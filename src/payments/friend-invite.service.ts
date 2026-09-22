@@ -279,15 +279,10 @@ export class FriendInviteService {
    * Cria um cupom para convite de amigo
    */
   private async createFriendInviteCoupon(
-    userId: number,
+    _userId: number,
     type: 'INVITER' | 'FRIEND',
     inviteId: number,
   ) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true },
-    });
-
     const couponCode = `FRIEND_${type}_${inviteId}_${randomBytes(4).toString('hex').toUpperCase()}`;
 
     return this.prisma.coupon.create({
@@ -334,7 +329,7 @@ export class FriendInviteService {
   /**
    * Envia emails de confirmação quando o convite é aceito
    */
-  private async sendInviteAcceptedEmails(invite: any, hasBenefits: boolean = true) {
+  private async sendInviteAcceptedEmails(invite: any, hasBenefits = true) {
     if (hasBenefits) {
       // Email para quem enviou o convite (com benefícios)
       await this.emailService.sendTemplateEmail(

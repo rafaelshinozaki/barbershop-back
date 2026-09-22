@@ -8,10 +8,7 @@ import {
   Param,
   Logger,
   ParseIntPipe,
-  NotFoundException,
   Query,
-  Patch,
-  Delete,
 } from '@nestjs/common';
 import { UserService } from './users.service';
 import { UserDTO } from './dto/user.dto';
@@ -19,7 +16,6 @@ import { ApiTags, ApiCookieAuth, ApiOperation, ApiResponse, ApiQuery } from '@ne
 
 import { PublicRoute, MEMBERSHIP_STATUS } from '@/common';
 import { NewUserSchema } from './models/new-user.schema';
-import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../current-user.decorator';
 import { Roles } from '../roles.decorator';

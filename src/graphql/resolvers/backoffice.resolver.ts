@@ -11,14 +11,12 @@ import {
   PlanDistribution,
   GeographicAnalysis,
   DemographicAnalysis,
-  DetailedUser,
   DetailedUsersResponse,
   BackofficeDashboard,
   OverduePaymentDetail,
   AdminProcessAllRecurringPaymentsResponse,
   AdminProcessRecurringPaymentResponse,
   AdminRecurringPaymentsStats,
-  UpcomingPaymentDetail,
   PaginatedCompletedPayments,
 } from '../types/backoffice.type';
 import {
@@ -35,7 +33,6 @@ import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
-import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { SmartLogger } from '../../common/logger.util';
 import { PrismaService } from '../../prisma/prisma.service';

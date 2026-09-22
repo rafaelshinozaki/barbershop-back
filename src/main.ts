@@ -2,7 +2,6 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestFactory } from '@nestjs/core';
-import * as session from 'express-session';
 import * as passport from 'passport';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
