@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Sex, faker } from '@faker-js/faker';
 import * as bcrypt from 'bcryptjs';
+import { BR_LOCATIONS, cpf, seedDemoData } from './seed-demo';
 
 const prisma = new PrismaClient();
 
@@ -116,10 +117,10 @@ async function createRandomUser() {
     fullName: `${firstName} ${lastName}`,
     email: faker.internet.email(firstName, lastName, 'barbershop.com'),
     provider: 'local',
-    phone: faker.phone.number('(###) ###-####'),
+    phone: faker.phone.number('+55129########'),
     gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
     birthdate: faker.date.birthdate(),
-    idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
+    idDocNumber: cpf(faker.phone.number('#########')),
     password: await bcrypt.hash('pwned', 10),
     readTerms: true,
     userSystemConfig: {
@@ -165,16 +166,24 @@ async function createRandomUser() {
       scaling: faker.helpers.arrayElement(['90%', '95%', '100%', '105%', '110%']),
       language: faker.helpers.arrayElement(['es', 'en', 'pt']),
     },
-    address: {
-      zipcode: faker.address.zipCode(),
-      street: faker.address.street(),
-      city: faker.address.city(),
-      neighborhood: faker.address.street(),
-      state: faker.address.stateAbbr(),
-      country: 'Brazil',
-      complement1: faker.address.secondaryAddress(),
-      complement2: faker.helpers.maybe(() => 'Próximo ao mercado', { probability: 0.3 }),
-    },
+    // Endereço com códigos ISO/cidade reais — o front casa País/Estado/Cidade
+    // pelos dados do country-state-city ("BR", "SP", "São Paulo").
+    address: (() => {
+      const loc = faker.helpers.arrayElement(BR_LOCATIONS);
+      return {
+        zipcode: loc.zipcode,
+        street: `Rua ${faker.name.lastName()}, ${faker.datatype.number({ min: 10, max: 2000 })}`,
+        city: loc.city,
+        neighborhood: loc.neighborhood,
+        state: loc.state,
+        country: 'BR',
+        complement1: faker.helpers.maybe(
+          () => `Apto ${faker.datatype.number({ min: 11, max: 204 })}`,
+          { probability: 0.4 },
+        ),
+        complement2: undefined as string | undefined,
+      };
+    })(),
     notificationPreference: {
       newsEmail: faker.helpers.arrayElement([true, false]),
       newsInApp: faker.helpers.arrayElement([true, false]),
@@ -201,39 +210,15 @@ async function main() {
     console.log(`Starting seed script (SEED_RESET=${RESET_DB})...`);
 
     if (RESET_DB) {
-      // Clean DB (Barbershop/Network first - they reference User)
+      // Apaga todas as tabelas (menos o histórico de migrations) de uma vez —
+      // a lista manual antiga ficava desatualizada a cada model novo e
+      // quebrava por FK.
       console.log('Cleaning database...');
-      await prisma.$transaction([
-        prisma.saleItem.deleteMany(),
-        prisma.sale.deleteMany(),
-        prisma.serviceHistory.deleteMany(),
-        prisma.walkInService.deleteMany(),
-        prisma.walkIn.deleteMany(),
-        prisma.appointmentService.deleteMany(),
-        prisma.appointment.deleteMany(),
-        prisma.barberSchedule.deleteMany(),
-        prisma.barberTimeOff.deleteMany(),
-        prisma.barber.deleteMany(),
-        prisma.barbershopService.deleteMany(),
-        prisma.barbershopProduct.deleteMany(),
-        prisma.customer.deleteMany(),
-        prisma.barbershop.deleteMany(),
-        prisma.network.deleteMany(),
-        prisma.userNotification.deleteMany(),
-        prisma.invalidatedToken.deleteMany(),
-        prisma.activeSession.deleteMany(),
-        prisma.loginHistory.deleteMany(),
-        prisma.verificationCode.deleteMany(),
-        prisma.payment.deleteMany(),
-        prisma.subscription.deleteMany(),
-        prisma.plan.deleteMany(),
-        prisma.address.deleteMany(),
-        prisma.userSystemConfig.deleteMany(),
-        prisma.emailLogger.deleteMany(),
-        prisma.notificationPreference.deleteMany(),
-        prisma.user.deleteMany(),
-        prisma.role.deleteMany(),
-      ]);
+      const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
+      const list = tables.map((t) => `"public"."${t.tablename}"`).join(', ');
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
     }
 
     // Create plans (find-or-create: Plan has no unique constraint to upsert on)
@@ -290,7 +275,7 @@ async function main() {
     const sharedUserData = {
       provider: 'local' as const,
       password: bcrypt.hashSync('pwned', 10),
-      phone: faker.phone.number('(###) ###-####'),
+      phone: faker.phone.number('+55129########'),
       gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
       birthdate: faker.date.birthdate(),
       idDocNumber: Math.floor(10000000000 + Math.random() * 90000000000).toString(),
@@ -366,7 +351,7 @@ async function main() {
           complement2: 'Próximo ao shopping',
           city: 'São José dos Campos',
           state: 'SP',
-          country: 'Brazil',
+          country: 'BR',
           postalCode: '12245-000',
           phone: '(12) 99757-2011',
           email: 'rafaelsinosak@barbershop.com',
@@ -392,7 +377,7 @@ async function main() {
           userId: bianca.id,
           staffType: 'manager',
           name: 'Bianca Silverio',
-          phone: faker.phone.number('(###) ###-####'),
+          phone: faker.phone.number('(12) 9####-####'),
           email: 'bianca.silverio@barbershop.com',
           isActive: true,
         },
@@ -405,7 +390,7 @@ async function main() {
             userId: minion.id,
             staffType: 'barber',
             name: 'Minion Cayo',
-            phone: faker.phone.number('(###) ###-####'),
+            phone: faker.phone.number('(12) 9####-####'),
             email: 'minion.cayo@barbershop.com',
             specialization: 'Corte masculino',
             isActive: true,
@@ -436,6 +421,8 @@ async function main() {
     } else if (existingBarbershop) {
       console.log('Green Barbershop already exists, skipping...');
     }
+
+    await seedDemoData(prisma);
 
     if (!RESET_DB) {
       console.log('Seeding completed (SEED_RESET not set - skipped random demo users).');
