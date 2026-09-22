@@ -69,6 +69,12 @@ export class PublicBarbershopType {
   @Field(() => Int)
   id: number;
 
+  @Field({ nullable: true, description: 'Cor de destaque da franquia (Radix); null = padrão' })
+  accentColor?: string;
+
+  @Field({ nullable: true, description: 'Tom de cinza da franquia (Radix); null = padrão' })
+  grayColor?: string;
+
   @Field()
   name: string;
 

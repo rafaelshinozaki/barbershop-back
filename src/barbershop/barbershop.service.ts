@@ -1919,6 +1919,7 @@ export class BarbershopService {
       include: {
         services: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } },
         barbers: { where: { isActive: true }, orderBy: { name: 'asc' } },
+        network: { select: { accentColor: true, grayColor: true } },
       },
     });
     if (!barbershop || !barbershop.isActive) {
@@ -1947,6 +1948,9 @@ export class BarbershopService {
         ...p,
         serviceName: p.service?.name ?? null,
       })),
+      // Cores definidas pelo dono da franquia — a página pública usa as mesmas
+      accentColor: barbershop.network.accentColor,
+      grayColor: barbershop.network.grayColor,
     };
   }
 
