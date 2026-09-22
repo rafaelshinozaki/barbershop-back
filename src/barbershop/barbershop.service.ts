@@ -10,6 +10,13 @@ import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import {
+  dayOfWeekOf,
+  nextDateStr,
+  safeTimeZone,
+  toZonedParts,
+  zonedTimeToUtc,
+} from '../common/timezone.util';
+import {
   planIncludesModule,
   getModulesForPlanName,
   getPlanLimits,
@@ -1518,10 +1525,17 @@ export class BarbershopService {
     barbershopId: number,
     appointment: { startAt: Date; barberId: number; services: { serviceId: number }[] },
   ) {
-    const dayStart = new Date(appointment.startAt);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // WaitlistEntry.date é gravada como meia-noite UTC do dia escolhido
+    // (new Date("YYYY-MM-DD")); o dia do agendamento tem de ser o do fuso da
+    // unidade — em UTC, um horário depois das 21h em Brasília já caía no dia
+    // seguinte e não achava ninguém na lista.
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const localDate = toZonedParts(appointment.startAt, safeTimeZone(shop?.timezone)).dateStr;
+    const dayStart = new Date(`${localDate}T00:00:00Z`);
+    const dayEnd = new Date(`${nextDateStr(localDate)}T00:00:00Z`);
     const serviceIds = appointment.services.map((s) => s.serviceId);
 
     const candidates = await this.prisma.waitlistEntry.findMany({
@@ -1834,17 +1848,24 @@ export class BarbershopService {
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
 
-    const date = new Date(`${dateStr}T00:00:00`);
-    if (isNaN(date.getTime())) throw new BadRequestException('Data inválida');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || isNaN(Date.parse(`${dateStr}T00:00:00Z`))) {
+      throw new BadRequestException('Data inválida');
+    }
 
-    const dayOfWeek = date.getDay();
+    // Tudo no fuso da unidade, não do servidor (ver common/timezone.util.ts)
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const timeZone = safeTimeZone(shop?.timezone);
+
+    const dayOfWeek = dayOfWeekOf(dateStr);
     const window = await this.getWorkingWindow(barbershopId, barberId, dayOfWeek);
     if (!window) return [];
 
     const duration = service.durationMinutes;
-    const dayStart = new Date(date);
-    const dayEnd = new Date(date);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayStart = zonedTimeToUtc(dateStr, 0, timeZone);
+    const dayEnd = zonedTimeToUtc(nextDateStr(dateStr), 0, timeZone);
 
     const [appointments, timeOffs] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -1882,8 +1903,7 @@ export class BarbershopService {
         if (overlapsBreak) continue;
       }
 
-      const slotStart = new Date(date);
-      slotStart.setHours(0, minutes, 0, 0);
+      const slotStart = zonedTimeToUtc(dateStr, minutes, timeZone);
       const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
       if (slotStart <= now) continue;
@@ -1932,9 +1952,11 @@ export class BarbershopService {
     // Revalida a janela de trabalho e a ausência de conflito no servidor —
     // nunca confia apenas na lista de horários que o próprio cliente buscou
     // antes (pode estar desatualizada ou ter sido manipulada).
-    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, startAt.getDay());
+    // Dia da semana e hora de parede no fuso da unidade, não do servidor
+    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
+    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, local.dayOfWeek);
     if (!window) throw new BadRequestException('Profissional não atende nesse dia');
-    const startMin = startAt.getHours() * 60 + startAt.getMinutes();
+    const startMin = local.minutesOfDay;
     const endMin = startMin + service.durationMinutes;
     if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
       throw new BadRequestException('Horário fora do expediente do profissional');
