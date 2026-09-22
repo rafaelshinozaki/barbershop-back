@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FriendInviteService } from './friend-invite.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,14 +11,14 @@ const mockUser = {
   id: 1,
   email: 'inviter@test.com',
   fullName: 'Test Inviter',
-  createdAt: new Date('2023-01-01')
+  createdAt: new Date('2023-01-01'),
 };
 
 const mockFriend = {
   id: 2,
   email: 'friend@test.com',
   fullName: 'Test Friend',
-  createdAt: new Date('2024-01-01') // Criado depois do convite
+  createdAt: new Date('2024-01-01'), // Criado depois do convite
 };
 
 const mockInvite = {
@@ -31,15 +31,14 @@ const mockInvite = {
   createdAt: new Date('2023-12-01'),
   inviter: {
     fullName: 'Test Inviter',
-    email: 'inviter@test.com'
-  }
+    email: 'inviter@test.com',
+  },
 };
 
 describe('FriendInviteService', () => {
   let service: FriendInviteService;
   let prismaService: any;
   let emailService: any;
-  let configService: any;
 
   beforeEach(async () => {
     // Create mock functions
@@ -50,26 +49,26 @@ describe('FriendInviteService', () => {
         create: jest.fn(),
         update: jest.fn(),
         count: jest.fn(),
-        findMany: jest.fn()
+        findMany: jest.fn(),
       },
       user: {
-        findUnique: jest.fn()
+        findUnique: jest.fn(),
       },
       coupon: {
-        create: jest.fn()
+        create: jest.fn(),
       },
       userCoupon: {
         findUnique: jest.fn(),
-        upsert: jest.fn()
-      }
+        upsert: jest.fn(),
+      },
     };
 
     const mockEmail = {
-      sendTemplateEmail: jest.fn().mockResolvedValue(undefined)
+      sendTemplateEmail: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockConfig = {
-      get: jest.fn().mockReturnValue('http://localhost:3000')
+      get: jest.fn().mockReturnValue('http://localhost:3000'),
     };
 
     const mockCoupons = {};
@@ -79,27 +78,26 @@ describe('FriendInviteService', () => {
         FriendInviteService,
         {
           provide: PrismaService,
-          useValue: mockPrisma
+          useValue: mockPrisma,
         },
         {
           provide: EmailService,
-          useValue: mockEmail
+          useValue: mockEmail,
         },
         {
           provide: CouponsService,
-          useValue: mockCoupons
+          useValue: mockCoupons,
         },
         {
           provide: ConfigService,
-          useValue: mockConfig
-        }
-      ]
+          useValue: mockConfig,
+        },
+      ],
     }).compile();
 
     service = module.get<FriendInviteService>(FriendInviteService);
     prismaService = module.get(PrismaService);
     emailService = module.get(EmailService);
-    configService = module.get(ConfigService);
   });
 
   afterEach(() => {
@@ -111,12 +109,12 @@ describe('FriendInviteService', () => {
       // Arrange
       const userId = 1;
       const friendEmail = 'friend@test.com';
-      
+
       prismaService.friendInvite.findFirst.mockResolvedValue(null);
       prismaService.user.findUnique.mockResolvedValue(mockUser);
       prismaService.friendInvite.create.mockResolvedValue({
         ...mockInvite,
-        inviter: mockUser
+        inviter: mockUser,
       });
 
       // Act
@@ -127,13 +125,13 @@ describe('FriendInviteService', () => {
         where: {
           inviterId: userId,
           friendEmail: friendEmail.toLowerCase(),
-          status: { in: ['PENDING', 'ACCEPTED'] }
-        }
+          status: { in: ['PENDING', 'ACCEPTED'] },
+        },
       });
 
       expect(prismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: userId },
-        select: { email: true }
+        select: { email: true },
       });
 
       expect(prismaService.friendInvite.create).toHaveBeenCalledWith({
@@ -142,16 +140,16 @@ describe('FriendInviteService', () => {
           friendEmail: friendEmail.toLowerCase(),
           inviteToken: expect.any(String),
           expiresAt: expect.any(Date),
-          sentVia: 'EMAIL'
+          sentVia: 'EMAIL',
         },
         include: {
           inviter: {
             select: {
               fullName: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       expect(emailService.sendTemplateEmail).toHaveBeenCalledTimes(1);
@@ -162,39 +160,39 @@ describe('FriendInviteService', () => {
       // Arrange
       const userId = 1;
       const friendEmail = 'friend@test.com';
-      
+
       prismaService.friendInvite.findFirst.mockResolvedValue(mockInvite);
 
       // Act & Assert
-      await expect(service.createInvite(userId, friendEmail))
-        .rejects
-        .toThrow(new BadRequestException('Você já convidou este email'));
+      await expect(service.createInvite(userId, friendEmail)).rejects.toThrow(
+        new BadRequestException('Você já convidou este email'),
+      );
     });
 
     it('should throw error if user tries to invite themselves', async () => {
       // Arrange
       const userId = 1;
       const friendEmail = 'inviter@test.com'; // Same as user email
-      
+
       prismaService.friendInvite.findFirst.mockResolvedValue(null);
       prismaService.user.findUnique.mockResolvedValue(mockUser);
 
       // Act & Assert
-      await expect(service.createInvite(userId, friendEmail))
-        .rejects
-        .toThrow(new BadRequestException('Você não pode convidar a si mesmo'));
+      await expect(service.createInvite(userId, friendEmail)).rejects.toThrow(
+        new BadRequestException('Você não pode convidar a si mesmo'),
+      );
     });
 
     it('should convert friend email to lowercase', async () => {
       // Arrange
       const userId = 1;
       const friendEmail = 'FRIEND@TEST.COM';
-      
+
       prismaService.friendInvite.findFirst.mockResolvedValue(null);
       prismaService.user.findUnique.mockResolvedValue(mockUser);
       prismaService.friendInvite.create.mockResolvedValue({
         ...mockInvite,
-        inviter: mockUser
+        inviter: mockUser,
       });
 
       // Act
@@ -203,9 +201,9 @@ describe('FriendInviteService', () => {
       // Assert
       expect(prismaService.friendInvite.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          friendEmail: friendEmail.toLowerCase()
+          friendEmail: friendEmail.toLowerCase(),
         }),
-        include: expect.any(Object)
+        include: expect.any(Object),
       });
     });
   });
@@ -214,11 +212,11 @@ describe('FriendInviteService', () => {
     it('should return valid invite for correct token', async () => {
       // Arrange
       const inviteToken = 'mock-token-123';
-      
+
       prismaService.friendInvite.findUnique.mockResolvedValue({
         ...mockInvite,
         inviter: mockUser,
-        expiresAt: new Date(Date.now() + 86400000) // Tomorrow
+        expiresAt: new Date(Date.now() + 86400000), // Tomorrow
       });
 
       // Act
@@ -234,7 +232,7 @@ describe('FriendInviteService', () => {
     it('should return invalid for non-existent invite', async () => {
       // Arrange
       const inviteToken = 'invalid-token';
-      
+
       prismaService.friendInvite.findUnique.mockResolvedValue(null);
 
       // Act
@@ -248,10 +246,10 @@ describe('FriendInviteService', () => {
     it('should return invalid for already processed invite', async () => {
       // Arrange
       const inviteToken = 'mock-token-123';
-      
+
       prismaService.friendInvite.findUnique.mockResolvedValue({
         ...mockInvite,
-        status: 'ACCEPTED'
+        status: 'ACCEPTED',
       });
 
       // Act
@@ -265,10 +263,10 @@ describe('FriendInviteService', () => {
     it('should return invalid for expired invite', async () => {
       // Arrange
       const inviteToken = 'mock-token-123';
-      
+
       prismaService.friendInvite.findUnique.mockResolvedValue({
         ...mockInvite,
-        expiresAt: new Date('2023-01-01') // Expired
+        expiresAt: new Date('2023-01-01'), // Expired
       });
 
       // Act
@@ -284,10 +282,10 @@ describe('FriendInviteService', () => {
     it('should return correct statistics', async () => {
       // Arrange
       const userId = 1;
-      
+
       prismaService.friendInvite.count
         .mockResolvedValueOnce(10) // total sent
-        .mockResolvedValueOnce(7)  // total accepted
+        .mockResolvedValueOnce(7) // total accepted
         .mockResolvedValueOnce(2); // total pending
 
       // Act
@@ -303,7 +301,7 @@ describe('FriendInviteService', () => {
     it('should handle zero division for acceptance rate', async () => {
       // Arrange
       const userId = 1;
-      
+
       prismaService.friendInvite.count
         .mockResolvedValueOnce(0) // total sent
         .mockResolvedValueOnce(0) // total accepted
@@ -326,10 +324,10 @@ describe('FriendInviteService', () => {
           ...mockInvite,
           acceptedByUser: mockFriend,
           inviterCoupon: { id: 1, code: 'COUPON1', name: 'Test Coupon' },
-          friendCoupon: { id: 2, code: 'COUPON2', name: 'Friend Coupon' }
-        }
+          friendCoupon: { id: 2, code: 'COUPON2', name: 'Friend Coupon' },
+        },
       ];
-      
+
       prismaService.friendInvite.findMany.mockResolvedValue(mockInvites);
 
       // Act
@@ -343,8 +341,8 @@ describe('FriendInviteService', () => {
             select: {
               id: true,
               fullName: true,
-              email: true
-            }
+              email: true,
+            },
           },
           inviterCoupon: {
             select: {
@@ -352,8 +350,8 @@ describe('FriendInviteService', () => {
               code: true,
               name: true,
               value: true,
-              type: true
-            }
+              type: true,
+            },
           },
           friendCoupon: {
             select: {
@@ -361,13 +359,13 @@ describe('FriendInviteService', () => {
               code: true,
               name: true,
               value: true,
-              type: true
-            }
-          }
+              type: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: 'desc',
+        },
       });
 
       expect(result).toEqual(mockInvites);
@@ -379,17 +377,17 @@ describe('FriendInviteService', () => {
     it('should be able to mock acceptInvite function', async () => {
       // Este é um teste básico que verifica se podemos mockar a função
       // sem implementar toda a lógica complexa
-      
+
       // Arrange
       const inviteToken = 'mock-token-123';
       const acceptedByUserId = 2;
-      
+
       // Mock simples para verificar se a função existe e pode ser chamada
       const mockAcceptInvite = jest.spyOn(service, 'acceptInvite').mockResolvedValue({
         success: true,
         message: 'Mocked response',
         invite: mockInvite,
-        hasBenefits: true
+        hasBenefits: true,
       } as any);
 
       // Act
@@ -399,7 +397,7 @@ describe('FriendInviteService', () => {
       expect(mockAcceptInvite).toHaveBeenCalledWith(inviteToken, acceptedByUserId);
       expect(result.success).toBe(true);
       expect(result.message).toBe('Mocked response');
-      
+
       // Restore original implementation
       mockAcceptInvite.mockRestore();
     });

@@ -1,13 +1,11 @@
 // src\auth\users\models\new-user.schema.ts
 import {
   IsBoolean,
-  IsDate,
   IsDateString,
   IsEmail,
   IsIn,
   IsNotEmptyObject,
   IsObject,
-  IsPhoneNumber,
   IsString,
   IsStrongPassword,
   Matches,

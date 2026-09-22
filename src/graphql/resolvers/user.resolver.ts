@@ -1,20 +1,8 @@
-import {
-  Resolver,
-  Query,
-  Mutation,
-  Args,
-  Int,
-  ResolveField,
-  Parent,
-} from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UserService } from '../../auth/users/users.service';
-import { User, UserSystemConfig, Address, TrialStatus } from '../types/user.type';
-import {
-  LoginHistory,
-  PaginatedLoginHistory,
-  PaginatedActiveSessions,
-} from '../types/notification.type';
+import { User, UserSystemConfig, TrialStatus } from '../types/user.type';
+import { PaginatedLoginHistory, PaginatedActiveSessions } from '../types/notification.type';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';

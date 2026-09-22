@@ -163,4 +163,4 @@ export class DeleteCouponResponse {
 
   @Field()
   message: string;
-} 
+}

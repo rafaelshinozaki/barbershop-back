@@ -21,7 +21,9 @@ export class ClientAuthController {
 
   @Get('google')
   @UseGuards(ClientGoogleAuthGuard)
-  async googleAuth() {}
+  async googleAuth() {
+    // Vazio de propósito: o guard do Passport redireciona pro provedor antes
+  }
 
   @Get('google/redirect')
   @UseGuards(ClientGoogleAuthGuard)
@@ -31,7 +33,9 @@ export class ClientAuthController {
 
   @Get('facebook')
   @UseGuards(ClientFacebookAuthGuard)
-  async facebookAuth() {}
+  async facebookAuth() {
+    // Vazio de propósito: o guard do Passport redireciona pro provedor antes
+  }
 
   @Get('facebook/redirect')
   @UseGuards(ClientFacebookAuthGuard)
@@ -41,7 +45,9 @@ export class ClientAuthController {
 
   @Get('apple')
   @UseGuards(ClientAppleAuthGuard)
-  async appleAuth() {}
+  async appleAuth() {
+    // Vazio de propósito: o guard do Passport redireciona pro provedor antes
+  }
 
   @Post('apple/redirect')
   @UseGuards(ClientAppleAuthGuard)
@@ -72,7 +78,11 @@ export class ClientAuthController {
     const currentClientId = this.getCurrentSessionClientId(req);
 
     if (currentClientId) {
-      const result = await this.clientAuthService.linkSocialAccountToClient(currentClientId, user.email, provider);
+      const result = await this.clientAuthService.linkSocialAccountToClient(
+        currentClientId,
+        user.email,
+        provider,
+      );
       let redirectUrl = `${frontendUrl}/client/account?linked=${provider}`;
       if (!result.ok) {
         redirectUrl = `${frontendUrl}/client/account?linkError=${result.reason}`;
@@ -81,7 +91,11 @@ export class ClientAuthController {
       return;
     }
 
-    const account = await this.clientAuthService.findOrCreateSocialAccount(user.email, user.displayName, provider);
+    const account = await this.clientAuthService.findOrCreateSocialAccount(
+      user.email,
+      user.displayName,
+      provider,
+    );
     this.clientAuthService.issueCookie(account, res);
     res.redirect(`${frontendUrl}/client/account`);
   }

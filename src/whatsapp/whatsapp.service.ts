@@ -33,11 +33,15 @@ export class WhatsappService {
   constructor(private readonly config: ConfigService) {}
 
   isConfigured(): boolean {
-    return !!(this.config.get<string>('WHATSAPP_ACCESS_TOKEN') && this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID'));
+    return !!(
+      this.config.get<string>('WHATSAPP_ACCESS_TOKEN') &&
+      this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID')
+    );
   }
 
   async sendAppointmentReminder(to: string, params: AppointmentReminderParams): Promise<void> {
-    const templateName = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_NAME') || 'appointment_reminder';
+    const templateName =
+      this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_NAME') || 'appointment_reminder';
     const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
     await this.sendTemplateMessage(to, templateName, languageCode, [
       params.customerName,
@@ -49,7 +53,8 @@ export class WhatsappService {
   }
 
   async sendWaitlistSlotAvailable(to: string, params: WaitlistSlotAvailableParams): Promise<void> {
-    const templateName = this.config.get<string>('WHATSAPP_WAITLIST_TEMPLATE_NAME') || 'waitlist_slot_available';
+    const templateName =
+      this.config.get<string>('WHATSAPP_WAITLIST_TEMPLATE_NAME') || 'waitlist_slot_available';
     const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
     await this.sendTemplateMessage(to, templateName, languageCode, [
       params.customerName,
@@ -64,7 +69,8 @@ export class WhatsappService {
   // (a Cloud API não aceita texto livre puro pra mensagem de negócio fora
   // da janela de atendimento, só templates).
   async sendMarketingBlast(to: string, message: string): Promise<void> {
-    const templateName = this.config.get<string>('WHATSAPP_MARKETING_TEMPLATE_NAME') || 'marketing_blast';
+    const templateName =
+      this.config.get<string>('WHATSAPP_MARKETING_TEMPLATE_NAME') || 'marketing_blast';
     const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
     await this.sendTemplateMessage(to, templateName, languageCode, [message]);
   }
@@ -76,7 +82,9 @@ export class WhatsappService {
     bodyParams: string[],
   ): Promise<void> {
     if (!this.isConfigured()) {
-      throw new Error('WhatsApp não configurado (faltam WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID)');
+      throw new Error(
+        'WhatsApp não configurado (faltam WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID)',
+      );
     }
     const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
     const accessToken = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');

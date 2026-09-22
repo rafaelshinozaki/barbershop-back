@@ -1,4 +1,4 @@
-import { Resolver, ResolveField, Args, Int, Parent } from '@nestjs/graphql';
+import { Resolver, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { BarbershopProductType } from '../types/barbershop.type';
 import { S3Service } from '../../aws/s3.service';
@@ -10,9 +10,7 @@ export class BarbershopProductResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @ResolveField('imageUrl', () => String, { nullable: true })
-  async imageUrl(
-    @Parent() product: { imageKey?: string | null },
-  ): Promise<string | null> {
+  async imageUrl(@Parent() product: { imageKey?: string | null }): Promise<string | null> {
     if (product.imageKey) {
       return this.s3Service.getDownloadUrl(product.imageKey);
     }

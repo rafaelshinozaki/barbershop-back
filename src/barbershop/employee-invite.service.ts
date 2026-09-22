@@ -1,17 +1,10 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { BarbershopService } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
-import { Role } from '../auth/interfaces/roles';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
 export type StaffType = 'barber' | 'manager';
@@ -74,7 +67,9 @@ export class EmployeeInviteService {
       where: { email, provider: 'local' },
     });
     if (existingUser) {
-      throw new BadRequestException('Já existe um usuário com este email. Funcionários devem usar um email ainda não cadastrado.');
+      throw new BadRequestException(
+        'Já existe um usuário com este email. Funcionários devem usar um email ainda não cadastrado.',
+      );
     }
 
     const existingInvite = await this.prisma.employeeInvite.findFirst({
@@ -85,7 +80,9 @@ export class EmployeeInviteService {
       },
     });
     if (existingInvite) {
-      throw new BadRequestException('Já existe um convite pendente para este email nesta barbearia');
+      throw new BadRequestException(
+        'Já existe um convite pendente para este email nesta barbearia',
+      );
     }
 
     const phone = input.phone.trim();
@@ -114,7 +111,8 @@ export class EmployeeInviteService {
         name: input.name.trim(),
         phone,
         email,
-        specialization: input.specialization?.trim() || (staffType === 'barber' ? undefined : 'Gerente'),
+        specialization:
+          input.specialization?.trim() || (staffType === 'barber' ? undefined : 'Gerente'),
         hireDate: input.hireDate ? new Date(input.hireDate) : undefined,
         staffType,
       },
@@ -236,7 +234,9 @@ export class EmployeeInviteService {
         email: invite.email,
         password: hashedPassword,
         fullName: data.fullName.trim(),
-        idDocNumber: data.idDocNumber.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
+        idDocNumber: data.idDocNumber
+          .replace(/\D/g, '')
+          .replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
         phone: data.phone.trim(),
         gender,
         birthdate,
@@ -249,7 +249,15 @@ export class EmployeeInviteService {
       },
     });
 
-    if (data.address && data.address.zipcode && data.address.street && data.address.city && data.address.neighborhood && data.address.state && data.address.country) {
+    if (
+      data.address &&
+      data.address.zipcode &&
+      data.address.street &&
+      data.address.city &&
+      data.address.neighborhood &&
+      data.address.state &&
+      data.address.country
+    ) {
       await this.prisma.address.create({
         data: {
           userId: newUser.id,

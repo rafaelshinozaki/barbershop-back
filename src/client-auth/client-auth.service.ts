@@ -65,7 +65,11 @@ export class ClientAuthService {
   // que batem por email ou telefone a esta conta. É isso que dá o histórico
   // "cross-negócio": cada Customer continua pertencendo à sua Network, só a
   // conta do cliente une os registros na hora de consultar.
-  private async linkExistingCustomers(clientAccountId: number, email: string, phone?: string | null) {
+  private async linkExistingCustomers(
+    clientAccountId: number,
+    email: string,
+    phone?: string | null,
+  ) {
     await this.prisma.customer.updateMany({
       where: {
         clientAccountId: null,
@@ -79,14 +83,21 @@ export class ClientAuthService {
     const normalizedEmail = email.trim().toLowerCase();
     validatePassword(password);
 
-    const existing = await this.prisma.clientAccount.findUnique({ where: { email: normalizedEmail } });
+    const existing = await this.prisma.clientAccount.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) {
       throw new ConflictException('Já existe uma conta com este email.');
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const account = await this.prisma.clientAccount.create({
-      data: { email: normalizedEmail, password: passwordHash, name: name.trim(), phone: phone?.trim() || null },
+      data: {
+        email: normalizedEmail,
+        password: passwordHash,
+        name: name.trim(),
+        phone: phone?.trim() || null,
+      },
     });
 
     await this.linkExistingCustomers(account.id, normalizedEmail, account.phone);
@@ -96,7 +107,9 @@ export class ClientAuthService {
 
   async validateCredentials(email: string, password: string) {
     const normalizedEmail = email.trim().toLowerCase();
-    const account = await this.prisma.clientAccount.findUnique({ where: { email: normalizedEmail } });
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!account) {
       throw new UnauthorizedException('Email ou senha inválidos.');
     }
@@ -137,12 +150,18 @@ export class ClientAuthService {
     if (account && !existingLink) {
       await this.prisma.clientLinkedSocialAccount
         .create({ data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail } })
-        .catch(() => {});
+        .catch(() => {
+          // Vínculo já criado por outra requisição simultânea — pode ignorar
+        });
     }
 
     if (!account) {
       account = await this.prisma.clientAccount.create({
-        data: { email: normalizedEmail, name: name || normalizedEmail.split('@')[0], password: null },
+        data: {
+          email: normalizedEmail,
+          name: name || normalizedEmail.split('@')[0],
+          password: null,
+        },
       });
       await this.prisma.clientLinkedSocialAccount.create({
         data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail },
@@ -162,7 +181,9 @@ export class ClientAuthService {
   }
 
   async unlinkSocialAccount(clientAccountId: number, provider: string) {
-    await this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId, provider } });
+    await this.prisma.clientLinkedSocialAccount.deleteMany({
+      where: { clientAccountId, provider },
+    });
   }
 
   // Chamado quando o cliente JÁ está logado e clica em "conectar" um novo
@@ -268,13 +289,18 @@ export class ClientAuthService {
     if (customers.length === 0) return [];
 
     const customerIds = customers.map((c) => c.id);
-    const networkNameByCustomer = new Map(customers.map((c) => [c.id, c.network?.name ?? 'Negócio']));
+    const networkNameByCustomer = new Map(
+      customers.map((c) => [c.id, c.network?.name ?? 'Negócio']),
+    );
     const currencyByCustomer = new Map(customers.map((c) => [c.id, c.network?.currency ?? 'BRL']));
 
     const [appointments, sales, walkIns] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { customerId: { in: customerIds } },
-        include: { barbershop: { select: { name: true } }, services: { include: { service: { select: { name: true } } } } },
+        include: {
+          barbershop: { select: { name: true } },
+          services: { include: { service: { select: { name: true } } } },
+        },
         orderBy: { startAt: 'desc' },
         take: 50,
       }),
@@ -295,7 +321,10 @@ export class ClientAuthService {
     const entries: ClientHistoryEntry[] = [];
 
     appointments.forEach((a) => {
-      const serviceNames = a.services.map((s) => s.service?.name).filter(Boolean).join(', ');
+      const serviceNames = a.services
+        .map((s) => s.service?.name)
+        .filter(Boolean)
+        .join(', ');
       entries.push({
         id: `apt-${a.id}`,
         type: 'APPOINTMENT',
@@ -314,12 +343,14 @@ export class ClientAuthService {
         id: `sale-${s.id}`,
         type: 'SALE',
         date: s.createdAt.toISOString(),
-        networkName: s.customerId ? (networkNameByCustomer.get(s.customerId) ?? 'Negócio') : 'Negócio',
+        networkName: s.customerId
+          ? networkNameByCustomer.get(s.customerId) ?? 'Negócio'
+          : 'Negócio',
         barbershopName: s.barbershop.name,
         detail: null,
         status: s.paymentStatus,
         total: Number(s.total),
-        currency: s.customerId ? (currencyByCustomer.get(s.customerId) ?? 'BRL') : 'BRL',
+        currency: s.customerId ? currencyByCustomer.get(s.customerId) ?? 'BRL' : 'BRL',
       });
     });
 
@@ -328,7 +359,9 @@ export class ClientAuthService {
         id: `walkin-${w.id}`,
         type: 'WALK_IN',
         date: w.createdAt.toISOString(),
-        networkName: w.customerId ? (networkNameByCustomer.get(w.customerId) ?? 'Negócio') : 'Negócio',
+        networkName: w.customerId
+          ? networkNameByCustomer.get(w.customerId) ?? 'Negócio'
+          : 'Negócio',
         barbershopName: w.barbershop.name,
         detail: null,
         status: w.status,
@@ -337,6 +370,8 @@ export class ClientAuthService {
       });
     });
 
-    return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 50);
+    return entries
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 50);
   }
 }

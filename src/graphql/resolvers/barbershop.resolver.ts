@@ -64,9 +64,7 @@ import {
   CreateAppointmentInput,
   UpdateAppointmentInput,
   CreateWalkInInput,
-  WalkInServiceInput,
   CreateSaleInput,
-  CreateSaleItemInput,
   UpdateSaleInput,
   UpdateNetworkInput,
   CreateResourceInput,
@@ -126,10 +124,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => Barbershop, { nullable: true })
-  async barbershop(
-    @Args('id', { type: () => Int }) id: number,
-    @CurrentUser() user: UserDTO,
-  ) {
+  async barbershop(@Args('id', { type: () => Int }) id: number, @CurrentUser() user: UserDTO) {
     return this.barbershopService.getBarbershop(user.id, id);
   }
 
@@ -169,10 +164,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Network)
-  async updateNetwork(
-    @Args('input') input: UpdateNetworkInput,
-    @CurrentUser() user: UserDTO,
-  ) {
+  async updateNetwork(@Args('input') input: UpdateNetworkInput, @CurrentUser() user: UserDTO) {
     return this.barbershopService.updateNetwork(user.id, input);
   }
 
@@ -196,7 +188,10 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => [GiftCardType])
-  async giftCards(@Args('networkId', { type: () => Int }) networkId: number, @CurrentUser() user: UserDTO) {
+  async giftCards(
+    @Args('networkId', { type: () => Int }) networkId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
     return this.barbershopService.getGiftCards(user.id, networkId);
   }
 
@@ -836,7 +831,12 @@ export class BarbershopResolver {
     @Args('depositPaid') depositPaid: boolean,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.setAppointmentDepositPaid(user.id, barbershopId, appointmentId, depositPaid);
+    return this.barbershopService.setAppointmentDepositPaid(
+      user.id,
+      barbershopId,
+      appointmentId,
+      depositPaid,
+    );
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1210,7 +1210,12 @@ export class BarbershopResolver {
     @Args('to') to: string,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.getCommissionReport(user.id, barbershopId, new Date(from), new Date(to));
+    return this.barbershopService.getCommissionReport(
+      user.id,
+      barbershopId,
+      new Date(from),
+      new Date(to),
+    );
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1221,7 +1226,12 @@ export class BarbershopResolver {
     @Args('to') to: string,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.getAdvancedReports(user.id, barbershopId, new Date(from), new Date(to));
+    return this.barbershopService.getAdvancedReports(
+      user.id,
+      barbershopId,
+      new Date(from),
+      new Date(to),
+    );
   }
 
   // ============ LISTA DE ESPERA ============
@@ -1311,7 +1321,12 @@ export class BarbershopResolver {
     @Args('inactiveDays', { type: () => Int, nullable: true }) inactiveDays: number,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.previewMarketingSegment(user.id, barbershopId, segment, inactiveDays);
+    return this.barbershopService.previewMarketingSegment(
+      user.id,
+      barbershopId,
+      segment,
+      inactiveDays,
+    );
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1394,7 +1409,12 @@ export class BarbershopResolver {
     @Args('endDate', { nullable: true }) endDate: string,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.getSubscriptionRevenueReport(user.id, barbershopId, startDate, endDate);
+    return this.barbershopService.getSubscriptionRevenueReport(
+      user.id,
+      barbershopId,
+      startDate,
+      endDate,
+    );
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

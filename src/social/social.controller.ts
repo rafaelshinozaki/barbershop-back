@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, Res, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -43,6 +43,8 @@ export class SocialController {
     }
     const { barbershopId, error } = await this.socialService.handleOAuthCallback(code, state);
     const target = `${frontendUrl}/barbershops/${barbershopId}/social`;
-    return res.redirect(error ? `${target}?socialError=${encodeURIComponent(error)}` : `${target}?socialConnected=1`);
+    return res.redirect(
+      error ? `${target}?socialError=${encodeURIComponent(error)}` : `${target}?socialConnected=1`,
+    );
   }
 }

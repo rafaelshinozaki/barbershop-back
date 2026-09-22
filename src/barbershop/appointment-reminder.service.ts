@@ -48,8 +48,13 @@ export class AppointmentReminderService {
 
     for (const appt of appointments) {
       try {
-        const serviceNames = appt.services.map((s) => s.service?.name).filter(Boolean).join(', ');
-        const appointmentDate = appt.startAt.toLocaleDateString('pt-BR', { timeZone: appt.barbershop.timezone });
+        const serviceNames = appt.services
+          .map((s) => s.service?.name)
+          .filter(Boolean)
+          .join(', ');
+        const appointmentDate = appt.startAt.toLocaleDateString('pt-BR', {
+          timeZone: appt.barbershop.timezone,
+        });
         const appointmentTime = appt.startAt.toLocaleTimeString('pt-BR', {
           hour: '2-digit',
           minute: '2-digit',
@@ -76,10 +81,15 @@ export class AppointmentReminderService {
               appt.customer.email,
             );
           } catch (emailError) {
-            this.logger.error(`Erro ao enviar lembrete por e-mail do agendamento #${appt.id}:`, emailError);
+            this.logger.error(
+              `Erro ao enviar lembrete por e-mail do agendamento #${appt.id}:`,
+              emailError,
+            );
           }
         } else {
-          this.logger.warn(`Agendamento #${appt.id}: cliente sem e-mail, lembrete por e-mail não enviado.`);
+          this.logger.warn(
+            `Agendamento #${appt.id}: cliente sem e-mail, lembrete por e-mail não enviado.`,
+          );
         }
 
         if (this.whatsappService.isConfigured()) {
@@ -94,10 +104,15 @@ export class AppointmentReminderService {
                 time: appointmentTime,
               });
             } catch (whatsappError) {
-              this.logger.error(`Erro ao enviar lembrete por WhatsApp do agendamento #${appt.id}:`, whatsappError);
+              this.logger.error(
+                `Erro ao enviar lembrete por WhatsApp do agendamento #${appt.id}:`,
+                whatsappError,
+              );
             }
           } else {
-            this.logger.warn(`Agendamento #${appt.id}: telefone do cliente não normalizável para WhatsApp.`);
+            this.logger.warn(
+              `Agendamento #${appt.id}: telefone do cliente não normalizável para WhatsApp.`,
+            );
           }
         }
       } catch (error) {

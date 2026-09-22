@@ -9,7 +9,6 @@ export class ThrottleInterceptor {
     return next.handle().pipe(
       catchError((error) => {
         if (error instanceof ThrottlerException) {
-          const response = context.switchToHttp().getResponse();
           const request = context.switchToHttp().getRequest();
 
           // Determinar o tipo de endpoint baseado na URL

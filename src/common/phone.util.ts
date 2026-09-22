@@ -9,7 +9,10 @@
 // melhor esforço enquanto o mercado for majoritariamente BR; se o produto
 // expandir pra outros países, isso precisa de um campo de país explícito
 // por cliente em vez de adivinhar pelo tamanho do número.
-export function normalizePhoneToE164(raw: string | null | undefined, defaultCountryCode = '55'): string | null {
+export function normalizePhoneToE164(
+  raw: string | null | undefined,
+  defaultCountryCode = '55',
+): string | null {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, '');
   if (!digits) return null;

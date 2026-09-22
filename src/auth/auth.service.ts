@@ -6,9 +6,7 @@ import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
-import * as https from 'https';
 import { randomUUID } from 'crypto';
-import { TokenPayload } from './interfaces/token-payload.interface';
 import { UserDTO } from './users/dto/user.dto';
 import { IpLocationService } from '@/common/ip-location.service';
 
@@ -88,7 +86,7 @@ export class AuthService {
 
     // Configuração melhorada do cookie
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-    
+
     // Para cross-domain cookies, não definir domain deixa o navegador usar o domínio do servidor
     // Se frontend e backend estão em domínios diferentes, domain deve ser undefined
     res.cookie('Authentication', token, {
@@ -118,7 +116,7 @@ export class AuthService {
     });
   }
 
-  async logoutOtherSessions(user: UserDTO, req: Request) {
+  async logoutOtherSessions(user: UserDTO, _req: Request) {
     // Buscar todas as sessões ativas do usuário exceto a atual (por
     // sessionToken, não por IP — várias sessões podem compartilhar IP)
     const otherSessions = await (this.prisma as any).activeSession?.findMany({

@@ -122,7 +122,8 @@ export class PublicBookingResolver {
       serviceName: service?.name ?? '',
       price: service ? Number(service.price) : 0,
       currency: appointment.barbershop.currency,
-      depositAmount: appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,
+      depositAmount:
+        appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,
     };
   }
 
@@ -151,8 +152,16 @@ export class PublicBookingResolver {
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => Boolean)
-  async createOrUpdateReview(@CurrentClient() client: CurrentClientUser, @Args('input') input: CreateReviewInput) {
-    await this.barbershopService.createOrUpdateReview(client.id, input.barbershopId, input.rating, input.comment);
+  async createOrUpdateReview(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('input') input: CreateReviewInput,
+  ) {
+    await this.barbershopService.createOrUpdateReview(
+      client.id,
+      input.barbershopId,
+      input.rating,
+      input.comment,
+    );
     return true;
   }
 
@@ -176,7 +185,10 @@ export class PublicBookingResolver {
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => SubscribeToPlanResultType)
-  async subscribeToPlan(@CurrentClient() client: CurrentClientUser, @Args('input') input: SubscribeToPlanInput) {
+  async subscribeToPlan(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('input') input: SubscribeToPlanInput,
+  ) {
     return this.barbershopService.subscribeToPlan(
       client.id,
       input.barbershopId,

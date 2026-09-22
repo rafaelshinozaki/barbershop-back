@@ -1,6 +1,6 @@
 import { ObjectType, Field, Int } from '@nestjs/graphql';
 import { NotificationPreference } from './notification.type';
-import { UserRole, MembershipStatus } from './enums';
+import { MembershipStatus } from './enums';
 
 @ObjectType()
 export class LinkedSocialAccountType {

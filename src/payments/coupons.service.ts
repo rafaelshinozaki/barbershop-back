@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { addMonths, isAfter, isBefore } from 'date-fns';
+import { isAfter, isBefore } from 'date-fns';
 
 export enum COUPON_TYPE {
   PERCENTAGE = 'PERCENTAGE',
@@ -38,9 +38,7 @@ export class CouponsService {
   }) {
     this.logger.log(`Creating coupon with code: ${data.code}`);
 
-    const applicablePlansJson = data.applicablePlans 
-      ? JSON.stringify(data.applicablePlans) 
-      : null;
+    const applicablePlansJson = data.applicablePlans ? JSON.stringify(data.applicablePlans) : null;
 
     const coupon = await this.prisma.coupon.create({
       data: {
@@ -132,45 +130,39 @@ export class CouponsService {
       const totalMonths = userSubscriptions.reduce((total, sub) => {
         const endDate = sub.cancelationDate || new Date();
         const months = Math.floor(
-          (endDate.getTime() - sub.startSubDate.getTime()) / 
-          (1000 * 60 * 60 * 24 * 30)
+          (endDate.getTime() - sub.startSubDate.getTime()) / (1000 * 60 * 60 * 24 * 30),
         );
         return total + months;
       }, 0);
 
       if (totalMonths < coupon.minSubscriptionMonths) {
-        return { 
-          isValid: false, 
-          error: `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura` 
+        return {
+          isValid: false,
+          error: `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura`,
         };
       }
     }
 
     // Calcular desconto
     let discountAmount = 0;
-    let finalAmount = originalAmount;
 
     switch (coupon.type) {
       case COUPON_TYPE.PERCENTAGE:
         discountAmount = (originalAmount * Number(coupon.value)) / 100;
-        finalAmount = originalAmount - discountAmount;
         break;
 
       case COUPON_TYPE.FIXED_AMOUNT:
         discountAmount = Number(coupon.value);
-        finalAmount = Math.max(0, originalAmount - discountAmount);
         break;
 
       case COUPON_TYPE.FREE_MONTH:
         // Para o próximo mês gratuito, o desconto é o valor da mensalidade
         discountAmount = originalAmount;
-        finalAmount = 0;
         break;
 
       case COUPON_TYPE.FREE_SUBSCRIPTION:
         // Para assinatura gratuita, o desconto é o valor total
         discountAmount = originalAmount;
-        finalAmount = 0;
         break;
 
       default:
@@ -185,11 +177,7 @@ export class CouponsService {
     };
   }
 
-  async applyCoupon(
-    couponId: number,
-    userId: number,
-    paymentId: number,
-  ) {
+  async applyCoupon(couponId: number, userId: number, paymentId: number) {
     this.logger.log(`Applying coupon ${couponId} to payment ${paymentId}`);
 
     // Registrar uso do cupom pelo usuário
@@ -276,7 +264,7 @@ export class CouponsService {
       },
     });
 
-    return userCoupons.map(uc => uc.coupon);
+    return userCoupons.map((uc) => uc.coupon);
   }
 
   async getAllCoupons() {
@@ -350,4 +338,4 @@ export class CouponsService {
 
     return coupon;
   }
-} 
+}

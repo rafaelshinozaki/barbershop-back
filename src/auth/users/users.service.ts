@@ -18,7 +18,6 @@ import { Role } from '../interfaces/roles';
 import * as bcrypt from 'bcryptjs';
 import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
-import { CustomErrorMessage } from '@/common/errors';
 import { S3Service } from '@/aws/s3.service';
 import { SmartLogger } from '@/common/logger.util';
 import { v4 as uuidv4 } from 'uuid';
@@ -437,10 +436,14 @@ export class UserService {
       };
       const pref = userDto.notificationPreference;
       const fields = [
-        'newsEmail', 'newsInApp',
-        'promotionsEmail', 'promotionsInApp',
-        'securityEmail', 'securityInApp',
-        'instabilityEmail', 'instabilityInApp',
+        'newsEmail',
+        'newsInApp',
+        'promotionsEmail',
+        'promotionsInApp',
+        'securityEmail',
+        'securityInApp',
+        'instabilityEmail',
+        'instabilityInApp',
       ] as const;
       for (const field of fields) {
         if (pref[field] !== undefined) {
@@ -690,7 +693,10 @@ export class UserService {
     });
 
     let user = existingLink
-      ? await this.prisma.user.findUnique({ where: { id: existingLink.userId }, select: this.socialUserSelect })
+      ? await this.prisma.user.findUnique({
+          where: { id: existingLink.userId },
+          select: this.socialUserSelect,
+        })
       : await this.prisma.user.findFirst({
           where: { email },
           orderBy: { createdAt: 'asc' },
@@ -1206,8 +1212,7 @@ export class UserService {
     // (e se a conta está ativa) só pela resposta do login. Mesmo princípio
     // já aplicado em forgotPass(), que sempre retorna sucesso independente
     // do email existir.
-    const invalidCredentials = () =>
-      new UnauthorizedException('Invalid credentials');
+    const invalidCredentials = () => new UnauthorizedException('Invalid credentials');
 
     if (!user) {
       this.recordFailedLogin(email);
@@ -1729,7 +1734,11 @@ export class UserService {
     this.logger.log(`Verifying login code - loginId: ${loginId}`);
 
     const entry = this._loginCodes.get(loginId);
-    this.logger.log(`Found entry: ${entry ? { email: entry.email, used: entry.used, attempts: entry.attempts } : 'null'}`);
+    this.logger.log(
+      `Found entry: ${
+        entry ? { email: entry.email, used: entry.used, attempts: entry.attempts } : 'null'
+      }`,
+    );
 
     if (!entry || entry.used) {
       this.logger.error(
@@ -1743,9 +1752,7 @@ export class UserService {
     }
     if (entry.code !== code) {
       entry.attempts += 1;
-      this.logger.error(
-        `Invalid verification code - code mismatch, attempts: ${entry.attempts}`,
-      );
+      this.logger.error(`Invalid verification code - code mismatch, attempts: ${entry.attempts}`);
       if (entry.attempts >= LOGIN_CODE_MAX_ATTEMPTS) {
         this._loginCodes.delete(loginId);
         throw new UnauthorizedException('Invalid or expired verification code');

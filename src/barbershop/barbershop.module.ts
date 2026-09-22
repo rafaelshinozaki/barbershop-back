@@ -12,7 +12,15 @@ import { AwsModule } from '../aws/aws.module';
 import { StripeModule } from '../stripe/stripe.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, WhatsappModule, AuthModule, UserModule, AwsModule, StripeModule],
+  imports: [
+    PrismaModule,
+    EmailModule,
+    WhatsappModule,
+    AuthModule,
+    UserModule,
+    AwsModule,
+    StripeModule,
+  ],
   providers: [BarbershopService, EmployeeInviteService, AppointmentReminderService],
   controllers: [EmployeeInviteController],
   exports: [BarbershopService, EmployeeInviteService],
