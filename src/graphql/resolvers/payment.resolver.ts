@@ -259,14 +259,24 @@ export class PaymentResolver {
 
       const setupIntent = await this.stripeService.createSetupIntent(stripeCustomerId);
 
-      this.logger.log(`Created setup intent ${setupIntent.id} for user ${userId} with client_secret: ${setupIntent.client_secret?.substring(0, 30)}...`);
-      this.logger.log(`SetupIntent details: ${JSON.stringify({
-        id: setupIntent.id,
-        status: setupIntent.status,
-        customer: setupIntent.customer,
-        usage: setupIntent.usage,
-        payment_method_types: setupIntent.payment_method_types
-      }, null, 2)}`);
+      this.logger.log(
+        `Created setup intent ${
+          setupIntent.id
+        } for user ${userId} with client_secret: ${setupIntent.client_secret?.substring(0, 30)}...`,
+      );
+      this.logger.log(
+        `SetupIntent details: ${JSON.stringify(
+          {
+            id: setupIntent.id,
+            status: setupIntent.status,
+            customer: setupIntent.customer,
+            usage: setupIntent.usage,
+            payment_method_types: setupIntent.payment_method_types,
+          },
+          null,
+          2,
+        )}`,
+      );
       return setupIntent;
     } catch (error) {
       this.logger.error(`Error creating setup intent for user ${userId}:`, error);

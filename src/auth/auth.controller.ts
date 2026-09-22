@@ -198,7 +198,11 @@ export class AuthController {
     const currentUserId = this.getCurrentSessionUserId(req);
 
     if (currentUserId) {
-      const result = await this.userService.linkSocialAccountToUser(currentUserId, user.email, provider);
+      const result = await this.userService.linkSocialAccountToUser(
+        currentUserId,
+        user.email,
+        provider,
+      );
       let redirectUrl = `${frontendUrl}/profile?linked=${provider}`;
       if (!result.ok) {
         redirectUrl = `${frontendUrl}/profile?linkError=${result.reason}`;

@@ -1,5 +1,15 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
-import { IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { TreatmentCategory } from '../types/enums';
 
 @InputType()

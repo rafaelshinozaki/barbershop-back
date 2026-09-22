@@ -72,7 +72,11 @@ export class ClientAuthController {
     const currentClientId = this.getCurrentSessionClientId(req);
 
     if (currentClientId) {
-      const result = await this.clientAuthService.linkSocialAccountToClient(currentClientId, user.email, provider);
+      const result = await this.clientAuthService.linkSocialAccountToClient(
+        currentClientId,
+        user.email,
+        provider,
+      );
       let redirectUrl = `${frontendUrl}/client/account?linked=${provider}`;
       if (!result.ok) {
         redirectUrl = `${frontendUrl}/client/account?linkError=${result.reason}`;
@@ -81,7 +85,11 @@ export class ClientAuthController {
       return;
     }
 
-    const account = await this.clientAuthService.findOrCreateSocialAccount(user.email, user.displayName, provider);
+    const account = await this.clientAuthService.findOrCreateSocialAccount(
+      user.email,
+      user.displayName,
+      provider,
+    );
     this.clientAuthService.issueCookie(account, res);
     res.redirect(`${frontendUrl}/client/account`);
   }

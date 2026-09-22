@@ -88,7 +88,7 @@ export class AuthService {
 
     // Configuração melhorada do cookie
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-    
+
     // Para cross-domain cookies, não definir domain deixa o navegador usar o domínio do servidor
     // Se frontend e backend estão em domínios diferentes, domain deve ser undefined
     res.cookie('Authentication', token, {

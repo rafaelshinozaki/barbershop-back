@@ -188,8 +188,7 @@ export class Barbershop {
 
   @Field(() => [String], {
     nullable: true,
-    description:
-      'Módulos disponíveis conforme o plano do dono (ex: clients, queue, appointments)',
+    description: 'Módulos disponíveis conforme o plano do dono (ex: clients, queue, appointments)',
   })
   availableModules?: string[];
 

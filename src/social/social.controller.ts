@@ -43,6 +43,8 @@ export class SocialController {
     }
     const { barbershopId, error } = await this.socialService.handleOAuthCallback(code, state);
     const target = `${frontendUrl}/barbershops/${barbershopId}/social`;
-    return res.redirect(error ? `${target}?socialError=${encodeURIComponent(error)}` : `${target}?socialConnected=1`);
+    return res.redirect(
+      error ? `${target}?socialError=${encodeURIComponent(error)}` : `${target}?socialConnected=1`,
+    );
   }
 }

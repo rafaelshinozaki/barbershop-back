@@ -664,7 +664,9 @@ export class PaymentsService {
 
       if (existingPaymentIntent.status === 'succeeded') {
         // PaymentIntent is already confirmed, use the existing one
-        this.logger.log(`PaymentIntent ${paymentIntentId} is already succeeded, skipping confirmation`);
+        this.logger.log(
+          `PaymentIntent ${paymentIntentId} is already succeeded, skipping confirmation`,
+        );
         paymentIntent = existingPaymentIntent;
       } else {
         // PaymentIntent needs to be confirmed

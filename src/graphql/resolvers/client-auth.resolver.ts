@@ -3,7 +3,11 @@ import { UseGuards } from '@nestjs/common';
 import { ClientAuthService } from '@/client-auth/client-auth.service';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
-import { ClientAccountType, ClientHistoryEntryType, ClientLinkedSocialAccountType } from '../types/client-auth.type';
+import {
+  ClientAccountType,
+  ClientHistoryEntryType,
+  ClientLinkedSocialAccountType,
+} from '../types/client-auth.type';
 import { Network } from '../types/barbershop.type';
 import { ClientSignupInput, ClientLoginInput } from '../dto/client-auth.dto';
 
@@ -17,9 +21,20 @@ export class ClientAuthResolver {
     @Context() context: any,
   ): Promise<ClientAccountType> {
     const { res } = context;
-    const account = await this.clientAuthService.signup(input.email, input.password, input.name, input.phone);
+    const account = await this.clientAuthService.signup(
+      input.email,
+      input.password,
+      input.name,
+      input.phone,
+    );
     this.clientAuthService.issueCookie(account, res);
-    return { id: account.id, email: account.email, name: account.name, phone: account.phone ?? undefined, avatarUrl: account.avatarUrl ?? undefined };
+    return {
+      id: account.id,
+      email: account.email,
+      name: account.name,
+      phone: account.phone ?? undefined,
+      avatarUrl: account.avatarUrl ?? undefined,
+    };
   }
 
   @Mutation(() => ClientAccountType)
@@ -30,7 +45,13 @@ export class ClientAuthResolver {
     const { res } = context;
     const account = await this.clientAuthService.validateCredentials(input.email, input.password);
     this.clientAuthService.issueCookie(account, res);
-    return { id: account.id, email: account.email, name: account.name, phone: account.phone ?? undefined, avatarUrl: account.avatarUrl ?? undefined };
+    return {
+      id: account.id,
+      email: account.email,
+      name: account.name,
+      phone: account.phone ?? undefined,
+      avatarUrl: account.avatarUrl ?? undefined,
+    };
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)
@@ -61,13 +82,19 @@ export class ClientAuthResolver {
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => [Network])
-  async addClientFavorite(@CurrentClient() client: CurrentClientUser, @Args('networkId') networkId: number) {
+  async addClientFavorite(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('networkId') networkId: number,
+  ) {
     return this.clientAuthService.addFavorite(client.id, networkId);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => [Network])
-  async removeClientFavorite(@CurrentClient() client: CurrentClientUser, @Args('networkId') networkId: number) {
+  async removeClientFavorite(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('networkId') networkId: number,
+  ) {
     return this.clientAuthService.removeFavorite(client.id, networkId);
   }
 
@@ -86,7 +113,10 @@ export class ClientAuthResolver {
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => Boolean)
-  async unlinkClientSocialAccount(@CurrentClient() client: CurrentClientUser, @Args('provider') provider: string) {
+  async unlinkClientSocialAccount(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('provider') provider: string,
+  ) {
     await this.clientAuthService.unlinkSocialAccount(client.id, provider);
     return true;
   }

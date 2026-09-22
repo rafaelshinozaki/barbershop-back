@@ -8,7 +8,7 @@ describe('FriendInviteController', () => {
   let friendInviteService: any;
 
   const mockRequest = {
-    user: { id: 1 }
+    user: { id: 1 },
   };
 
   const mockInvite = {
@@ -21,15 +21,15 @@ describe('FriendInviteController', () => {
     createdAt: new Date('2023-12-01'),
     inviter: {
       fullName: 'Test Inviter',
-      email: 'inviter@test.com'
-    }
+      email: 'inviter@test.com',
+    },
   };
 
   const mockInviteStats = {
     totalSent: 5,
     totalAccepted: 3,
     totalPending: 2,
-    acceptanceRate: 60
+    acceptanceRate: 60,
   };
 
   beforeEach(async () => {
@@ -38,7 +38,7 @@ describe('FriendInviteController', () => {
       getSentInvites: jest.fn(),
       acceptInvite: jest.fn(),
       validateInvite: jest.fn(),
-      getInviteStats: jest.fn()
+      getInviteStats: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -46,9 +46,9 @@ describe('FriendInviteController', () => {
       providers: [
         {
           provide: FriendInviteService,
-          useValue: mockFriendInviteService
-        }
-      ]
+          useValue: mockFriendInviteService,
+        },
+      ],
     }).compile();
 
     controller = module.get<FriendInviteController>(FriendInviteController);
@@ -64,7 +64,7 @@ describe('FriendInviteController', () => {
       // Arrange
       const createInviteDto = {
         friendEmail: 'friend@test.com',
-        sentVia: 'EMAIL'
+        sentVia: 'EMAIL',
       };
 
       friendInviteService.createInvite.mockResolvedValue(mockInvite);
@@ -76,7 +76,7 @@ describe('FriendInviteController', () => {
       expect(friendInviteService.createInvite).toHaveBeenCalledWith(
         mockRequest.user.id,
         createInviteDto.friendEmail,
-        createInviteDto.sentVia
+        createInviteDto.sentVia,
       );
       expect(result).toEqual(mockInvite);
     });
@@ -85,23 +85,23 @@ describe('FriendInviteController', () => {
       // Arrange
       const createInviteDto = {
         friendEmail: 'friend@test.com',
-        sentVia: 'EMAIL'
+        sentVia: 'EMAIL',
       };
 
       friendInviteService.createInvite.mockRejectedValue(
-        new BadRequestException('Você já convidou este email')
+        new BadRequestException('Você já convidou este email'),
       );
 
       // Act & Assert
-      await expect(controller.createInvite(mockRequest as any, createInviteDto))
-        .rejects
-        .toThrow(new BadRequestException('Você já convidou este email'));
+      await expect(controller.createInvite(mockRequest as any, createInviteDto)).rejects.toThrow(
+        new BadRequestException('Você já convidou este email'),
+      );
     });
 
     it('should use default sentVia if not provided', async () => {
       // Arrange
       const createInviteDto = {
-        friendEmail: 'friend@test.com'
+        friendEmail: 'friend@test.com',
       };
 
       friendInviteService.createInvite.mockResolvedValue(mockInvite);
@@ -113,7 +113,7 @@ describe('FriendInviteController', () => {
       expect(friendInviteService.createInvite).toHaveBeenCalledWith(
         mockRequest.user.id,
         createInviteDto.friendEmail,
-        undefined // Should use service default
+        undefined, // Should use service default
       );
     });
   });
@@ -127,23 +127,23 @@ describe('FriendInviteController', () => {
           acceptedByUser: {
             id: 2,
             fullName: 'Friend User',
-            email: 'friend@test.com'
+            email: 'friend@test.com',
           },
           inviterCoupon: {
             id: 1,
             code: 'FRIEND_INVITER_1_ABC123',
             name: 'Convite Aceito - 1 Mês Grátis',
             value: 1,
-            type: 'FREE_MONTH'
+            type: 'FREE_MONTH',
           },
           friendCoupon: {
             id: 2,
             code: 'FRIEND_FRIEND_1_DEF456',
             name: 'Convite de Amigo - 1 Mês Grátis',
             value: 1,
-            type: 'FREE_MONTH'
-          }
-        }
+            type: 'FREE_MONTH',
+          },
+        },
       ];
 
       friendInviteService.getSentInvites.mockResolvedValue(mockSentInvites);
@@ -178,9 +178,9 @@ describe('FriendInviteController', () => {
         invite: {
           ...mockInvite,
           status: 'ACCEPTED',
-          acceptedByUserId: mockRequest.user.id
+          acceptedByUserId: mockRequest.user.id,
         },
-        hasBenefits: true
+        hasBenefits: true,
       };
 
       friendInviteService.acceptInvite.mockResolvedValue(mockAcceptResult);
@@ -189,10 +189,7 @@ describe('FriendInviteController', () => {
       const result = await controller.acceptInvite(mockRequest as any, token);
 
       // Assert
-      expect(friendInviteService.acceptInvite).toHaveBeenCalledWith(
-        token,
-        mockRequest.user.id
-      );
+      expect(friendInviteService.acceptInvite).toHaveBeenCalledWith(token, mockRequest.user.id);
       expect(result).toEqual(mockAcceptResult);
     });
 
@@ -205,9 +202,9 @@ describe('FriendInviteController', () => {
         invite: {
           ...mockInvite,
           status: 'REJECTED',
-          acceptedByUserId: mockRequest.user.id
+          acceptedByUserId: mockRequest.user.id,
         },
-        hasBenefits: false
+        hasBenefits: false,
       };
 
       friendInviteService.acceptInvite.mockResolvedValue(mockRejectResult);
@@ -226,13 +223,13 @@ describe('FriendInviteController', () => {
       const token = 'invalid-token';
 
       friendInviteService.acceptInvite.mockRejectedValue(
-        new NotFoundException('Convite não encontrado')
+        new NotFoundException('Convite não encontrado'),
       );
 
       // Act & Assert
-      await expect(controller.acceptInvite(mockRequest as any, token))
-        .rejects
-        .toThrow(new NotFoundException('Convite não encontrado'));
+      await expect(controller.acceptInvite(mockRequest as any, token)).rejects.toThrow(
+        new NotFoundException('Convite não encontrado'),
+      );
     });
   });
 
@@ -246,8 +243,8 @@ describe('FriendInviteController', () => {
           id: 1,
           friendEmail: 'friend@test.com',
           inviterName: 'Test Inviter',
-          expiresAt: new Date('2024-02-01')
-        }
+          expiresAt: new Date('2024-02-01'),
+        },
       };
 
       friendInviteService.validateInvite.mockResolvedValue(mockValidationResult);
@@ -265,7 +262,7 @@ describe('FriendInviteController', () => {
       const token = 'invalid-token';
       const mockValidationResult = {
         valid: false,
-        reason: 'Convite não encontrado'
+        reason: 'Convite não encontrado',
       };
 
       friendInviteService.validateInvite.mockResolvedValue(mockValidationResult);
@@ -283,7 +280,7 @@ describe('FriendInviteController', () => {
       const token = 'expired-token';
       const mockValidationResult = {
         valid: false,
-        reason: 'Convite expirado'
+        reason: 'Convite expirado',
       };
 
       friendInviteService.validateInvite.mockResolvedValue(mockValidationResult);
@@ -316,7 +313,7 @@ describe('FriendInviteController', () => {
         totalSent: 0,
         totalAccepted: 0,
         totalPending: 0,
-        acceptanceRate: 0
+        acceptanceRate: 0,
       };
 
       friendInviteService.getInviteStats.mockResolvedValue(emptyStats);
@@ -342,8 +339,8 @@ describe('FriendInviteController', () => {
           id: 1,
           friendEmail: 'friend@test.com',
           inviterName: 'Test Inviter',
-          expiresAt: new Date('2024-02-01')
-        }
+          expiresAt: new Date('2024-02-01'),
+        },
       };
       friendInviteService.validateInvite.mockResolvedValue(validationResult);
 
@@ -352,7 +349,7 @@ describe('FriendInviteController', () => {
         success: true,
         message: 'Convite aceito com sucesso! Ambos ganharam 1 mês grátis.',
         invite: { ...mockInvite, status: 'ACCEPTED' },
-        hasBenefits: true
+        hasBenefits: true,
       };
       friendInviteService.acceptInvite.mockResolvedValue(acceptResult);
 
@@ -366,8 +363,8 @@ describe('FriendInviteController', () => {
 
       // Act - Accept invite
       const acceptResultFinal = await controller.acceptInvite(
-        { user: { id: 2 } } as any, 
-        mockInvite.inviteToken
+        { user: { id: 2 } } as any,
+        mockInvite.inviteToken,
       );
       expect(acceptResultFinal.success).toBe(true);
       expect(acceptResultFinal.hasBenefits).toBe(true);
@@ -380,7 +377,7 @@ describe('FriendInviteController', () => {
         success: false,
         message: 'Este convite não pode ser usado por usuários que já possuem uma conta.',
         invite: { ...mockInvite, status: 'REJECTED' },
-        hasBenefits: false
+        hasBenefits: false,
       };
 
       friendInviteService.acceptInvite.mockResolvedValue(rejectResult);

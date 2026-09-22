@@ -47,10 +47,10 @@ export class SocialService {
     if (!this.isConfigured()) {
       throw new BadRequestException('Integração com Meta não configurada nesta instância.');
     }
-    const state = this.jwtService.sign(
-      { barbershopId, userId } as OAuthStatePayload,
-      { secret: this.config.get<string>('JWT_SECRET'), expiresIn: '10m' },
-    );
+    const state = this.jwtService.sign({ barbershopId, userId } as OAuthStatePayload, {
+      secret: this.config.get<string>('JWT_SECRET'),
+      expiresIn: '10m',
+    });
     const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI');
     const scope = [
       'pages_show_list',
@@ -76,12 +76,17 @@ export class SocialService {
   // algo falhar no meio do caminho — não deixa exceção estourar até o
   // controller porque o usuário está no meio de um redirect do navegador,
   // não numa chamada GraphQL que ele veria o erro estruturado.
-  async handleOAuthCallback(code: string, state: string): Promise<{ barbershopId: number; error?: string }> {
+  async handleOAuthCallback(
+    code: string,
+    state: string,
+  ): Promise<{ barbershopId: number; error?: string }> {
     let payload: OAuthStatePayload;
     try {
       payload = this.jwtService.verify(state, { secret: this.config.get<string>('JWT_SECRET') });
     } catch {
-      throw new BadRequestException('Link de conexão expirado ou inválido. Tente conectar de novo.');
+      throw new BadRequestException(
+        'Link de conexão expirado ou inválido. Tente conectar de novo.',
+      );
     }
     const { barbershopId } = payload;
 
@@ -92,11 +97,18 @@ export class SocialService {
 
       const shortLivedRes = await fetch(
         this.graphUrl('/oauth/access_token') +
-          `?${new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, client_secret: appSecret, code })}`,
+          `?${new URLSearchParams({
+            client_id: appId,
+            redirect_uri: redirectUri,
+            client_secret: appSecret,
+            code,
+          })}`,
       );
       const shortLived = await shortLivedRes.json();
       if (!shortLived.access_token) {
-        throw new Error(shortLived.error?.message || 'Falha ao trocar o código pelo token de acesso.');
+        throw new Error(
+          shortLived.error?.message || 'Falha ao trocar o código pelo token de acesso.',
+        );
       }
 
       const longLivedRes = await fetch(
@@ -111,7 +123,9 @@ export class SocialService {
       const longLived = await longLivedRes.json();
       const userToken = longLived.access_token || shortLived.access_token;
 
-      const pagesRes = await fetch(this.graphUrl('/me/accounts') + `?${new URLSearchParams({ access_token: userToken })}`);
+      const pagesRes = await fetch(
+        this.graphUrl('/me/accounts') + `?${new URLSearchParams({ access_token: userToken })}`,
+      );
       const pagesData = await pagesRes.json();
       const page = pagesData.data?.[0];
       if (!page) {
@@ -122,7 +136,10 @@ export class SocialService {
 
       const igRes = await fetch(
         this.graphUrl(`/${page.id}`) +
-          `?${new URLSearchParams({ fields: 'instagram_business_account{id,username}', access_token: page.access_token })}`,
+          `?${new URLSearchParams({
+            fields: 'instagram_business_account{id,username}',
+            access_token: page.access_token,
+          })}`,
       );
       const igData = await igRes.json();
       const igAccount = igData.instagram_business_account;
@@ -151,7 +168,10 @@ export class SocialService {
       return { barbershopId };
     } catch (err) {
       this.logger.error(`Erro ao conectar rede social da barbearia #${barbershopId}:`, err);
-      return { barbershopId, error: err instanceof Error ? err.message : 'Erro ao conectar conta.' };
+      return {
+        barbershopId,
+        error: err instanceof Error ? err.message : 'Erro ao conectar conta.',
+      };
     }
   }
 
@@ -181,7 +201,9 @@ export class SocialService {
     contentType?: string,
   ): Promise<{ uploadUrl: string; imageKey: string }> {
     await this.barbershopService.getBarbershop(userId, barbershopId);
-    const imageKey = `social-posts/${barbershopId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExtension}`;
+    const imageKey = `social-posts/${barbershopId}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.${fileExtension}`;
     const uploadUrl = await this.s3Service.getUploadUrl(imageKey, contentType);
     return { uploadUrl, imageKey };
   }
@@ -269,7 +291,9 @@ export class SocialService {
   private async publishPost(postId: number): Promise<void> {
     const post = await this.prisma.socialPost.findUnique({ where: { id: postId } });
     if (!post || post.status !== 'SCHEDULED') return;
-    const connection = await this.prisma.socialConnection.findUnique({ where: { barbershopId: post.barbershopId } });
+    const connection = await this.prisma.socialConnection.findUnique({
+      where: { barbershopId: post.barbershopId },
+    });
     if (!connection) {
       await this.prisma.socialPost.update({
         where: { id: postId },
@@ -295,7 +319,8 @@ export class SocialService {
           }),
         });
         const json = await res.json();
-        if (!json.post_id && !json.id) throw new Error(json.error?.message || 'Falha ao publicar no Facebook.');
+        if (!json.post_id && !json.id)
+          throw new Error(json.error?.message || 'Falha ao publicar no Facebook.');
         facebookPostId = json.post_id || json.id;
       } catch (err) {
         errors.push(`Facebook: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
@@ -304,28 +329,36 @@ export class SocialService {
 
     if (post.postToInstagram && connection.instagramBusinessAccountId) {
       try {
-        const containerRes = await fetch(this.graphUrl(`/${connection.instagramBusinessAccountId}/media`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            caption: post.caption,
-            access_token: connection.facebookAccessToken,
-          }),
-        });
+        const containerRes = await fetch(
+          this.graphUrl(`/${connection.instagramBusinessAccountId}/media`),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image_url: imageUrl,
+              caption: post.caption,
+              access_token: connection.facebookAccessToken,
+            }),
+          },
+        );
         const containerJson = await containerRes.json();
-        if (!containerJson.id) throw new Error(containerJson.error?.message || 'Falha ao preparar mídia do Instagram.');
+        if (!containerJson.id)
+          throw new Error(containerJson.error?.message || 'Falha ao preparar mídia do Instagram.');
 
-        const publishRes = await fetch(this.graphUrl(`/${connection.instagramBusinessAccountId}/media_publish`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            creation_id: containerJson.id,
-            access_token: connection.facebookAccessToken,
-          }),
-        });
+        const publishRes = await fetch(
+          this.graphUrl(`/${connection.instagramBusinessAccountId}/media_publish`),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              creation_id: containerJson.id,
+              access_token: connection.facebookAccessToken,
+            }),
+          },
+        );
         const publishJson = await publishRes.json();
-        if (!publishJson.id) throw new Error(publishJson.error?.message || 'Falha ao publicar no Instagram.');
+        if (!publishJson.id)
+          throw new Error(publishJson.error?.message || 'Falha ao publicar no Instagram.');
         instagramMediaId = publishJson.id;
       } catch (err) {
         errors.push(`Instagram: ${err instanceof Error ? err.message : 'erro desconhecido'}`);

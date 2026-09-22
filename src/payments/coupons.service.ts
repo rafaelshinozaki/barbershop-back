@@ -38,9 +38,7 @@ export class CouponsService {
   }) {
     this.logger.log(`Creating coupon with code: ${data.code}`);
 
-    const applicablePlansJson = data.applicablePlans 
-      ? JSON.stringify(data.applicablePlans) 
-      : null;
+    const applicablePlansJson = data.applicablePlans ? JSON.stringify(data.applicablePlans) : null;
 
     const coupon = await this.prisma.coupon.create({
       data: {
@@ -132,16 +130,15 @@ export class CouponsService {
       const totalMonths = userSubscriptions.reduce((total, sub) => {
         const endDate = sub.cancelationDate || new Date();
         const months = Math.floor(
-          (endDate.getTime() - sub.startSubDate.getTime()) / 
-          (1000 * 60 * 60 * 24 * 30)
+          (endDate.getTime() - sub.startSubDate.getTime()) / (1000 * 60 * 60 * 24 * 30),
         );
         return total + months;
       }, 0);
 
       if (totalMonths < coupon.minSubscriptionMonths) {
-        return { 
-          isValid: false, 
-          error: `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura` 
+        return {
+          isValid: false,
+          error: `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura`,
         };
       }
     }
@@ -185,11 +182,7 @@ export class CouponsService {
     };
   }
 
-  async applyCoupon(
-    couponId: number,
-    userId: number,
-    paymentId: number,
-  ) {
+  async applyCoupon(couponId: number, userId: number, paymentId: number) {
     this.logger.log(`Applying coupon ${couponId} to payment ${paymentId}`);
 
     // Registrar uso do cupom pelo usuário
@@ -276,7 +269,7 @@ export class CouponsService {
       },
     });
 
-    return userCoupons.map(uc => uc.coupon);
+    return userCoupons.map((uc) => uc.coupon);
   }
 
   async getAllCoupons() {
@@ -350,4 +343,4 @@ export class CouponsService {
 
     return coupon;
   }
-} 
+}

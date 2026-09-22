@@ -1,14 +1,10 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Body,
-  Param,
-  UseGuards,
-  Request,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { EmployeeInviteService, CreateEmployeeInviteInput, AcceptEmployeeInviteInput } from './employee-invite.service';
+import {
+  EmployeeInviteService,
+  CreateEmployeeInviteInput,
+  AcceptEmployeeInviteInput,
+} from './employee-invite.service';
 
 @Controller('employee-invites')
 export class EmployeeInviteController {

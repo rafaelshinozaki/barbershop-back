@@ -1,12 +1,4 @@
-import {
-  Resolver,
-  Query,
-  Mutation,
-  Args,
-  Int,
-  ResolveField,
-  Parent,
-} from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UserService } from '../../auth/users/users.service';
 import { User, UserSystemConfig, Address, TrialStatus } from '../types/user.type';

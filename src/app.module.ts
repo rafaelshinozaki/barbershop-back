@@ -123,16 +123,17 @@ import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
       formatError: (formattedError) => {
         // Evita "Converting circular structure to JSON" - retorna apenas campos serializáveis
         try {
-          const ext = formattedError.extensions as Record<string, unknown> | undefined
-          const code = typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined
+          const ext = formattedError.extensions as Record<string, unknown> | undefined;
+          const code =
+            typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined;
           return {
             message: String(formattedError.message ?? 'Internal server error'),
             locations: formattedError.locations,
             path: formattedError.path,
             extensions: code !== undefined ? { code } : undefined,
-          }
+          };
         } catch {
-          return { message: 'Internal server error' }
+          return { message: 'Internal server error' };
         }
       },
       // Playground/introspection/debug expõem todo o schema (incluindo a

@@ -150,7 +150,9 @@ async function bootstrap() {
     }
   };
 
-  logger.log(`🌐 Configurando CORS para origins: ${corsOrigins.join(', ')} + subdomínios de tenant`);
+  logger.log(
+    `🌐 Configurando CORS para origins: ${corsOrigins.join(', ')} + subdomínios de tenant`,
+  );
 
   app.enableCors({
     origin: (origin, callback) => {

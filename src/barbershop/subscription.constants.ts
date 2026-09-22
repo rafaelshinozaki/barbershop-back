@@ -5,4 +5,4 @@
  * configurável em Network/Barbershop. Usado só pra calcular o relatório de
  * repasse devido; o sistema não transfere dinheiro sozinho pra barbearia.
  */
-export const PLATFORM_SUBSCRIPTION_FEE_PERCENT = 15
+export const PLATFORM_SUBSCRIPTION_FEE_PERCENT = 15;

@@ -66,7 +66,8 @@ export class NetworkResolver {
   @Query(() => String, { nullable: true })
   async getNetworkLogoUrl(@CurrentUser() user: UserDTO): Promise<string | null> {
     const network = await this.barbershopService.getMyNetwork(user.id);
-    const logoKey = network && 'logoKey' in network ? (network as { logoKey?: string }).logoKey : null;
+    const logoKey =
+      network && 'logoKey' in network ? (network as { logoKey?: string }).logoKey : null;
     if (!logoKey) return null;
     return this.s3Service.getDownloadUrl(logoKey);
   }

@@ -87,10 +87,7 @@ export class BarbershopService {
   /**
    * Verifica se um módulo está disponível para a barbearia conforme o plano do dono.
    */
-  async canAccessModule(
-    barbershopId: number,
-    module: BarbershopModule,
-  ): Promise<boolean> {
+  async canAccessModule(barbershopId: number, module: BarbershopModule): Promise<boolean> {
     const plan = await this.getBarbershopPlan(barbershopId);
     // Sem assinatura ativa = tratado como plano Basic, não como zero acesso —
     // precisa ficar consistente com getAvailableModules().
@@ -520,7 +517,10 @@ export class BarbershopService {
   // Label de DNS válido: minúsculas, números, hífen no meio; 3 a 63
   // caracteres. String vazia limpa (volta pra null) — usado quando o dono
   // quer desativar o subdomínio sem excluir a barbearia.
-  private async resolveSubdomainUpdate(barbershopId: number, rawSubdomain: string): Promise<string | null> {
+  private async resolveSubdomainUpdate(
+    barbershopId: number,
+    rawSubdomain: string,
+  ): Promise<string | null> {
     const trimmed = rawSubdomain.trim().toLowerCase();
     if (trimmed === '') return null;
     if (!/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/.test(trimmed)) {
@@ -699,7 +699,15 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     barberId: number,
-    data: Partial<{ name: string; phone: string; email: string; avatarUrl: string; specialization: string; specialties: TreatmentCategory[]; isActive: boolean }>,
+    data: Partial<{
+      name: string;
+      phone: string;
+      email: string;
+      avatarUrl: string;
+      specialization: string;
+      specialties: TreatmentCategory[];
+      isActive: boolean;
+    }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const barber = await this.prisma.barber.findFirst({
@@ -745,7 +753,10 @@ export class BarbershopService {
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },
     });
-    if (!user) throw new BadRequestException('O funcionário ainda não criou a conta. Peça que aceite o convite por email primeiro.');
+    if (!user)
+      throw new BadRequestException(
+        'O funcionário ainda não criou a conta. Peça que aceite o convite por email primeiro.',
+      );
     await this.userService.forgotPass({ email });
     return true;
   }
@@ -1079,29 +1090,55 @@ export class BarbershopService {
 
   async createBarberSchedule(
     userId: number,
-    input: { barberId: number; dayOfWeek: number; startTime: string; endTime: string; breakStart?: string; breakEnd?: string },
+    input: {
+      barberId: number;
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+      breakStart?: string;
+      breakEnd?: string;
+    },
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
     await this.ensureBarbershopAccess(userId, barber.barbershopId);
     return this.prisma.barberSchedule.create({
-      data: { barberId: input.barberId, dayOfWeek: input.dayOfWeek, startTime: input.startTime, endTime: input.endTime, breakStart: input.breakStart, breakEnd: input.breakEnd },
+      data: {
+        barberId: input.barberId,
+        dayOfWeek: input.dayOfWeek,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        breakStart: input.breakStart,
+        breakEnd: input.breakEnd,
+      },
     });
   }
 
   async updateBarberSchedule(
     userId: number,
     id: number,
-    data: { startTime?: string; endTime?: string; breakStart?: string; breakEnd?: string; isActive?: boolean },
+    data: {
+      startTime?: string;
+      endTime?: string;
+      breakStart?: string;
+      breakEnd?: string;
+      isActive?: boolean;
+    },
   ) {
-    const schedule = await this.prisma.barberSchedule.findUnique({ where: { id }, include: { barber: true } });
+    const schedule = await this.prisma.barberSchedule.findUnique({
+      where: { id },
+      include: { barber: true },
+    });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
     await this.ensureBarbershopAccess(userId, schedule.barber.barbershopId);
     return this.prisma.barberSchedule.update({ where: { id }, data });
   }
 
   async deleteBarberSchedule(userId: number, id: number) {
-    const schedule = await this.prisma.barberSchedule.findUnique({ where: { id }, include: { barber: true } });
+    const schedule = await this.prisma.barberSchedule.findUnique({
+      where: { id },
+      include: { barber: true },
+    });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
     await this.ensureBarbershopAccess(userId, schedule.barber.barbershopId);
     await this.prisma.barberSchedule.delete({ where: { id } });
@@ -1235,7 +1272,9 @@ export class BarbershopService {
     // lembrar de repetir o valor toda vez.
     let resolvedDeposit = depositAmount;
     if (resolvedDeposit === undefined && services[0]) {
-      const svc = await this.prisma.barbershopService.findUnique({ where: { id: services[0].serviceId } });
+      const svc = await this.prisma.barbershopService.findUnique({
+        where: { id: services[0].serviceId },
+      });
       resolvedDeposit = svc?.depositAmount ? Number(svc.depositAmount) : undefined;
     }
     return this.prisma.$transaction(async (tx) => {
@@ -1388,7 +1427,10 @@ export class BarbershopService {
     // best-effort (erro de WhatsApp/e-mail não deve impedir o cancelamento).
     if (data.status === 'CANCELLED' && appointment.status !== 'CANCELLED') {
       this.checkWaitlistOnCancellation(barbershopId, updated).catch((err) =>
-        this.logger.error(`Erro ao verificar lista de espera do agendamento #${appointmentId}:`, err),
+        this.logger.error(
+          `Erro ao verificar lista de espera do agendamento #${appointmentId}:`,
+          err,
+        ),
       );
     }
 
@@ -1401,7 +1443,10 @@ export class BarbershopService {
       appointment.status !== data.status
     ) {
       this.recordNoShowFee(barbershopId, updated, data.status).catch((err) =>
-        this.logger.error(`Erro ao registrar taxa de no-show do agendamento #${appointmentId}:`, err),
+        this.logger.error(
+          `Erro ao registrar taxa de no-show do agendamento #${appointmentId}:`,
+          err,
+        ),
       );
     }
 
@@ -1560,7 +1605,9 @@ export class BarbershopService {
       data: { status: 'NOTIFIED', notifiedAt: new Date() },
     });
 
-    const dateStr = appointment.startAt.toLocaleDateString('pt-BR', { timeZone: match.barbershop.timezone });
+    const dateStr = appointment.startAt.toLocaleDateString('pt-BR', {
+      timeZone: match.barbershop.timezone,
+    });
     const timeStr = appointment.startAt.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
@@ -1670,7 +1717,12 @@ export class BarbershopService {
     inactiveDays?: number,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
-    const customers = await this.resolveMarketingSegment(barbershop.networkId, barbershopId, segment, inactiveDays);
+    const customers = await this.resolveMarketingSegment(
+      barbershop.networkId,
+      barbershopId,
+      segment,
+      inactiveDays,
+    );
     return { recipientCount: customers.length };
   }
 
@@ -1696,7 +1748,12 @@ export class BarbershopService {
     },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
-    const customers = await this.resolveMarketingSegment(barbershop.networkId, barbershopId, data.segment, data.inactiveDays);
+    const customers = await this.resolveMarketingSegment(
+      barbershop.networkId,
+      barbershopId,
+      data.segment,
+      data.inactiveDays,
+    );
 
     let emailSentCount = 0;
     let whatsappSentCount = 0;
@@ -1730,7 +1787,10 @@ export class BarbershopService {
             await this.whatsappService.sendMarketingBlast(phone, data.message);
             whatsappSentCount++;
           } catch (err) {
-            this.logger.error(`Erro ao enviar campanha por WhatsApp pro cliente #${customer.id}:`, err);
+            this.logger.error(
+              `Erro ao enviar campanha por WhatsApp pro cliente #${customer.id}:`,
+              err,
+            );
           }
         }
       }
@@ -1765,7 +1825,15 @@ export class BarbershopService {
     6: { start: '09:00', end: '17:00' },
   };
 
-  private readonly WEEKDAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  private readonly WEEKDAY_KEYS = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ];
 
   async getPublicBarbershopByslug(slug: string) {
     const barbershop = await this.prisma.barbershop.findUnique({
@@ -1778,7 +1846,9 @@ export class BarbershopService {
     if (!barbershop || !barbershop.isActive) {
       throw new NotFoundException('Unidade não encontrada');
     }
-    const imageUrl = barbershop.photoKey ? await this.s3Service.getDownloadUrl(barbershop.photoKey) : null;
+    const imageUrl = barbershop.photoKey
+      ? await this.s3Service.getDownloadUrl(barbershop.photoKey)
+      : null;
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
     const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
     const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
@@ -1795,7 +1865,10 @@ export class BarbershopService {
       averageRating,
       reviewCount,
       isFeatured,
-      subscriptionPlans: subscriptionPlans.map((p) => ({ ...p, serviceName: p.service?.name ?? null })),
+      subscriptionPlans: subscriptionPlans.map((p) => ({
+        ...p,
+        serviceName: p.service?.name ?? null,
+      })),
     };
   }
 
@@ -1821,13 +1894,23 @@ export class BarbershopService {
     barbershopId: number,
     barberId: number,
     dayOfWeek: number,
-  ): Promise<{ start: string; end: string; breakStart?: string | null; breakEnd?: string | null } | null> {
+  ): Promise<{
+    start: string;
+    end: string;
+    breakStart?: string | null;
+    breakEnd?: string | null;
+  } | null> {
     const schedule = await this.prisma.barberSchedule.findUnique({
       where: { barberId_dayOfWeek: { barberId, dayOfWeek } },
     });
     if (schedule) {
       if (!schedule.isActive) return null;
-      return { start: schedule.startTime, end: schedule.endTime, breakStart: schedule.breakStart, breakEnd: schedule.breakEnd };
+      return {
+        start: schedule.startTime,
+        end: schedule.endTime,
+        breakStart: schedule.breakStart,
+        breakEnd: schedule.breakEnd,
+      };
     }
 
     const barbershop = await this.prisma.barbershop.findUnique({
@@ -1836,7 +1919,10 @@ export class BarbershopService {
     });
     if (barbershop?.businessHours) {
       try {
-        const parsed = JSON.parse(barbershop.businessHours) as Record<string, { start: string; end: string } | null>;
+        const parsed = JSON.parse(barbershop.businessHours) as Record<
+          string,
+          { start: string; end: string } | null
+        >;
         const dayHours = parsed[this.WEEKDAY_KEYS[dayOfWeek]];
         return dayHours ? { start: dayHours.start, end: dayHours.end } : null;
       } catch {
@@ -1853,10 +1939,17 @@ export class BarbershopService {
     return h * 60 + m;
   }
 
-  async getPublicAvailableSlots(barbershopId: number, barberId: number, serviceId: number, dateStr: string) {
+  async getPublicAvailableSlots(
+    barbershopId: number,
+    barberId: number,
+    serviceId: number,
+    dateStr: string,
+  ) {
     const [barber, service] = await Promise.all([
       this.prisma.barber.findFirst({ where: { id: barberId, barbershopId, isActive: true } }),
-      this.prisma.barbershopService.findFirst({ where: { id: serviceId, barbershopId, isActive: true } }),
+      this.prisma.barbershopService.findFirst({
+        where: { id: serviceId, barbershopId, isActive: true },
+      }),
     ]);
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
@@ -1910,7 +2003,11 @@ export class BarbershopService {
     const slots: string[] = [];
     const SLOT_GRANULARITY_MIN = 15;
 
-    for (let minutes = windowStartMin; minutes + duration <= windowEndMin; minutes += SLOT_GRANULARITY_MIN) {
+    for (
+      let minutes = windowStartMin;
+      minutes + duration <= windowEndMin;
+      minutes += SLOT_GRANULARITY_MIN
+    ) {
       if (breakStartMin != null && breakEndMin != null) {
         const overlapsBreak = minutes < breakEndMin && minutes + duration > breakStartMin;
         if (overlapsBreak) continue;
@@ -1950,8 +2047,12 @@ export class BarbershopService {
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
 
     const [barber, service] = await Promise.all([
-      this.prisma.barber.findFirst({ where: { id: input.barberId, barbershopId: input.barbershopId, isActive: true } }),
-      this.prisma.barbershopService.findFirst({ where: { id: input.serviceId, barbershopId: input.barbershopId, isActive: true } }),
+      this.prisma.barber.findFirst({
+        where: { id: input.barberId, barbershopId: input.barbershopId, isActive: true },
+      }),
+      this.prisma.barbershopService.findFirst({
+        where: { id: input.serviceId, barbershopId: input.barbershopId, isActive: true },
+      }),
     ]);
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
@@ -2296,7 +2397,9 @@ export class BarbershopService {
     return map;
   }
 
-  async getReviewSummary(barbershopId: number): Promise<{ averageRating: number | null; reviewCount: number }> {
+  async getReviewSummary(
+    barbershopId: number,
+  ): Promise<{ averageRating: number | null; reviewCount: number }> {
     const map = await this.getReviewSummaries([barbershopId]);
     return map.get(barbershopId) ?? { averageRating: null, reviewCount: 0 };
   }
@@ -2328,7 +2431,8 @@ export class BarbershopService {
     },
   ) {
     const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    if (!network || network.id !== networkId)
+      throw new ForbiddenException('Sem acesso a esta rede');
     if (data.initialValue <= 0) {
       throw new BadRequestException('O valor do cartão-presente deve ser maior que zero');
     }
@@ -2356,13 +2460,20 @@ export class BarbershopService {
 
   async getGiftCards(userId: number, networkId: number) {
     const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    if (!network || network.id !== networkId)
+      throw new ForbiddenException('Sem acesso a esta rede');
     return this.prisma.giftCard.findMany({ where: { networkId }, orderBy: { createdAt: 'desc' } });
   }
 
-  async setGiftCardActive(userId: number, networkId: number, giftCardId: number, isActive: boolean) {
+  async setGiftCardActive(
+    userId: number,
+    networkId: number,
+    giftCardId: number,
+    isActive: boolean,
+  ) {
     const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    if (!network || network.id !== networkId)
+      throw new ForbiddenException('Sem acesso a esta rede');
     const giftCard = await this.prisma.giftCard.findFirst({ where: { id: giftCardId, networkId } });
     if (!giftCard) throw new NotFoundException('Cartão-presente não encontrado');
     return this.prisma.giftCard.update({ where: { id: giftCardId }, data: { isActive } });
@@ -2374,7 +2485,9 @@ export class BarbershopService {
   private async validateGiftCard(barbershopId: number, code: string) {
     const barbershop = await this.prisma.barbershop.findUnique({ where: { id: barbershopId } });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
-    const giftCard = await this.prisma.giftCard.findUnique({ where: { code: code.trim().toUpperCase() } });
+    const giftCard = await this.prisma.giftCard.findUnique({
+      where: { code: code.trim().toUpperCase() },
+    });
     if (!giftCard || giftCard.networkId !== barbershop.networkId) {
       throw new NotFoundException('Cartão-presente não encontrado');
     }
@@ -2580,7 +2693,9 @@ export class BarbershopService {
     data: Partial<{ name: string; price: number; sessionsPerCycle: number; isActive: boolean }>,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
-    const plan = await this.prisma.clientSubscriptionPlan.findFirst({ where: { id, barbershopId } });
+    const plan = await this.prisma.clientSubscriptionPlan.findFirst({
+      where: { id, barbershopId },
+    });
     if (!plan) throw new NotFoundException('Plano não encontrado');
 
     let stripePriceId = plan.stripePriceId;
@@ -2613,7 +2728,9 @@ export class BarbershopService {
 
   async deleteSubscriptionPlan(userId: number, barbershopId: number, id: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    const plan = await this.prisma.clientSubscriptionPlan.findFirst({ where: { id, barbershopId } });
+    const plan = await this.prisma.clientSubscriptionPlan.findFirst({
+      where: { id, barbershopId },
+    });
     if (!plan) throw new NotFoundException('Plano não encontrado');
     await this.prisma.clientSubscriptionPlan.update({ where: { id }, data: { isActive: false } });
     return true;
@@ -2681,16 +2798,25 @@ export class BarbershopService {
 
   /** Aciona o SetupIntent do cliente na conta da plataforma (não Connect) pra ele salvar o cartão via Stripe Elements antes de assinar. */
   async createClientSubscriptionSetupIntent(clientAccountId: number) {
-    const clientAccount = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    const clientAccount = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+    });
     if (!clientAccount) throw new NotFoundException('Conta não encontrada');
 
     let stripeCustomerId = clientAccount.stripeCustomerId;
     if (!stripeCustomerId) {
-      const customer = await this.stripeService.createCustomer(clientAccount.email, clientAccount.name, {
-        clientAccountId: String(clientAccountId),
-      });
+      const customer = await this.stripeService.createCustomer(
+        clientAccount.email,
+        clientAccount.name,
+        {
+          clientAccountId: String(clientAccountId),
+        },
+      );
       stripeCustomerId = customer.id;
-      await this.prisma.clientAccount.update({ where: { id: clientAccountId }, data: { stripeCustomerId } });
+      await this.prisma.clientAccount.update({
+        where: { id: clientAccountId },
+        data: { stripeCustomerId },
+      });
     }
 
     const setupIntent = await this.stripeService.createSetupIntent(stripeCustomerId);
@@ -2703,7 +2829,9 @@ export class BarbershopService {
     planId: number,
     paymentMethodId: string,
   ) {
-    const clientAccount = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    const clientAccount = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+    });
     if (!clientAccount?.stripeCustomerId) {
       throw new BadRequestException('Salve um cartão antes de assinar');
     }
@@ -2718,12 +2846,19 @@ export class BarbershopService {
     if (existing) throw new BadRequestException('Você já tem uma assinatura ativa neste plano');
 
     await this.stripeService.attachPaymentMethod(paymentMethodId, clientAccount.stripeCustomerId);
-    await this.stripeService.setDefaultPaymentMethod(clientAccount.stripeCustomerId, paymentMethodId);
+    await this.stripeService.setDefaultPaymentMethod(
+      clientAccount.stripeCustomerId,
+      paymentMethodId,
+    );
 
     const stripeSubscription = await this.stripeService.createSubscription(
       clientAccount.stripeCustomerId,
       plan.stripePriceId,
-      { clientAccountId: String(clientAccountId), barbershopId: String(barbershopId), planId: String(planId) },
+      {
+        clientAccountId: String(clientAccountId),
+        barbershopId: String(barbershopId),
+        planId: String(planId),
+      },
     );
 
     const subscription = await this.prisma.clientSubscription.create({
@@ -2753,7 +2888,10 @@ export class BarbershopService {
       include: { clientAccount: true, plan: { include: { service: true } }, barbershop: true },
       orderBy: { createdAt: 'desc' },
     });
-    return subs.map((s) => ({ ...this.toClientSubscriptionResult(s), barbershopName: s.barbershop.name }));
+    return subs.map((s) => ({
+      ...this.toClientSubscriptionResult(s),
+      barbershopName: s.barbershop.name,
+    }));
   }
 
   async cancelMySubscription(clientAccountId: number, subscriptionId: number) {
@@ -2772,7 +2910,11 @@ export class BarbershopService {
   }
 
   /** Staff registra que o cliente usou uma sessão da assinatura neste ciclo (mesmo padrão manual de debitClientPackageSession — não é acionado automaticamente pelo agendamento). */
-  async redeemClientSubscriptionSession(userId: number, barbershopId: number, subscriptionId: number) {
+  async redeemClientSubscriptionSession(
+    userId: number,
+    barbershopId: number,
+    subscriptionId: number,
+  ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const subscription = await this.prisma.clientSubscription.findFirst({
       where: { id: subscriptionId, barbershopId },
@@ -2857,12 +2999,7 @@ export class BarbershopService {
     });
   }
 
-  async updateWalkInStatus(
-    userId: number,
-    barbershopId: number,
-    walkInId: number,
-    status: string,
-  ) {
+  async updateWalkInStatus(userId: number, barbershopId: number, walkInId: number, status: string) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const data: any = { status };
     if (status === 'IN_PROGRESS') data.servedAt = new Date();
@@ -2944,7 +3081,9 @@ export class BarbershopService {
       if (!data.customerId) {
         throw new BadRequestException('Selecione um cliente para resgatar pontos de fidelidade');
       }
-      const customerForRedemption = await this.prisma.customer.findUnique({ where: { id: data.customerId } });
+      const customerForRedemption = await this.prisma.customer.findUnique({
+        where: { id: data.customerId },
+      });
       if (!customerForRedemption) throw new NotFoundException('Cliente não encontrado');
       if (customerForRedemption.loyaltyPoints < data.loyaltyPointsRedeemed) {
         throw new BadRequestException('Cliente não tem pontos de fidelidade suficientes');
@@ -2982,7 +3121,8 @@ export class BarbershopService {
           giftCardId: giftCard?.id,
           giftCardAmountApplied: giftCard ? new Decimal(giftCardAmountApplied) : null,
           loyaltyPointsRedeemed: data.loyaltyPointsRedeemed || null,
-          loyaltyDiscountAmount: loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
+          loyaltyDiscountAmount:
+            loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
         },
       });
 
@@ -3007,13 +3147,18 @@ export class BarbershopService {
         barbershop?.network.loyaltyEnabled &&
         barbershop.network.loyaltyPointsPerCurrencyUnit
       ) {
-        const pointsEarned = Math.floor(finalTotal * barbershop.network.loyaltyPointsPerCurrencyUnit);
+        const pointsEarned = Math.floor(
+          finalTotal * barbershop.network.loyaltyPointsPerCurrencyUnit,
+        );
         if (pointsEarned > 0) {
           await tx.customer.update({
             where: { id: data.customerId },
             data: { loyaltyPoints: { increment: pointsEarned } },
           });
-          await tx.sale.update({ where: { id: sale.id }, data: { loyaltyPointsEarned: pointsEarned } });
+          await tx.sale.update({
+            where: { id: sale.id },
+            data: { loyaltyPointsEarned: pointsEarned },
+          });
         }
       }
 
@@ -3191,7 +3336,8 @@ export class BarbershopService {
       if (data.barberId !== undefined) updateData.barberId = data.barberId;
       if (data.saleType !== undefined) updateData.saleType = data.saleType;
       if (data.subtotal !== undefined) updateData.subtotal = new Decimal(data.subtotal);
-      if (data.discountAmount !== undefined) updateData.discountAmount = new Decimal(data.discountAmount);
+      if (data.discountAmount !== undefined)
+        updateData.discountAmount = new Decimal(data.discountAmount);
       if (data.taxAmount !== undefined) updateData.taxAmount = new Decimal(data.taxAmount);
       if (data.total !== undefined) updateData.total = new Decimal(data.total);
       if (data.paymentStatus !== undefined) {
@@ -3475,7 +3621,11 @@ export class BarbershopService {
     });
   }
 
-  async createResource(userId: number, barbershopId: number, data: { name: string; type?: string }) {
+  async createResource(
+    userId: number,
+    barbershopId: number,
+    data: { name: string; type?: string },
+  ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     return this.prisma.resource.create({
       data: { barbershopId, name: data.name, type: data.type ?? 'ROOM' },
@@ -3489,14 +3639,18 @@ export class BarbershopService {
     data: Partial<{ name: string; type: string; isActive: boolean }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    const resource = await this.prisma.resource.findFirst({ where: { id: resourceId, barbershopId } });
+    const resource = await this.prisma.resource.findFirst({
+      where: { id: resourceId, barbershopId },
+    });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
     return this.prisma.resource.update({ where: { id: resourceId }, data });
   }
 
   async deleteResource(userId: number, barbershopId: number, resourceId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    const resource = await this.prisma.resource.findFirst({ where: { id: resourceId, barbershopId } });
+    const resource = await this.prisma.resource.findFirst({
+      where: { id: resourceId, barbershopId },
+    });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
     await this.prisma.resource.delete({ where: { id: resourceId } });
     return true;
@@ -3634,7 +3788,13 @@ export class BarbershopService {
   async createConsentForm(
     userId: number,
     barbershopId: number,
-    data: { customerId: number; formType: string; category?: string; answers?: string; expiresAt?: string },
+    data: {
+      customerId: number;
+      formType: string;
+      category?: string;
+      answers?: string;
+      expiresAt?: string;
+    },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     await this.ensureModuleAccess(barbershopId, 'packages');
@@ -3768,7 +3928,12 @@ export class BarbershopService {
 
     const byBarber = new Map<
       number,
-      { totalServiceSales: number; totalProductSales: number; serviceCommission: number; productCommission: number }
+      {
+        totalServiceSales: number;
+        totalProductSales: number;
+        serviceCommission: number;
+        productCommission: number;
+      }
     >();
 
     for (const sale of sales) {
@@ -3843,7 +4008,12 @@ export class BarbershopService {
         },
       }),
       this.prisma.sale.findMany({
-        where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to }, customerId: { not: null } },
+        where: {
+          barbershopId,
+          paymentStatus: 'PAID',
+          createdAt: { gte: from, lte: to },
+          customerId: { not: null },
+        },
         select: { customerId: true },
         distinct: ['customerId'],
       }),
@@ -3876,7 +4046,8 @@ export class BarbershopService {
       }
     }
 
-    const toRate = (noShow: number, completed: number) => (noShow + completed > 0 ? noShow / (noShow + completed) : 0);
+    const toRate = (noShow: number, completed: number) =>
+      noShow + completed > 0 ? noShow / (noShow + completed) : 0;
 
     const noShowByBarber = Array.from(byBarber.entries())
       .map(([barberId, acc]) => ({
@@ -3921,12 +4092,22 @@ export class BarbershopService {
     }
 
     const topServices = Array.from(serviceSales.entries())
-      .map(([serviceId, acc]) => ({ serviceId, serviceName: acc.name, quantity: acc.quantity, revenue: acc.revenue }))
+      .map(([serviceId, acc]) => ({
+        serviceId,
+        serviceName: acc.name,
+        quantity: acc.quantity,
+        revenue: acc.revenue,
+      }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
     const topProducts = Array.from(productSales.entries())
-      .map(([productId, acc]) => ({ productId, productName: acc.name, quantity: acc.quantity, revenue: acc.revenue }))
+      .map(([productId, acc]) => ({
+        productId,
+        productName: acc.name,
+        quantity: acc.quantity,
+        revenue: acc.revenue,
+      }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
@@ -3936,7 +4117,12 @@ export class BarbershopService {
     const priorSales =
       customerIds.length > 0
         ? await this.prisma.sale.findMany({
-            where: { barbershopId, paymentStatus: 'PAID', customerId: { in: customerIds }, createdAt: { lt: from } },
+            where: {
+              barbershopId,
+              paymentStatus: 'PAID',
+              customerId: { in: customerIds },
+              createdAt: { lt: from },
+            },
             select: { customerId: true },
             distinct: ['customerId'],
           })

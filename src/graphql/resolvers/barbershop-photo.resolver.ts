@@ -10,9 +10,7 @@ export class BarbershopPhotoResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @ResolveField('imageUrl', () => String, { nullable: true })
-  async imageUrl(
-    @Parent() barbershop: { photoKey?: string | null },
-  ): Promise<string | null> {
+  async imageUrl(@Parent() barbershop: { photoKey?: string | null }): Promise<string | null> {
     if (barbershop.photoKey) {
       return this.s3Service.getDownloadUrl(barbershop.photoKey);
     }

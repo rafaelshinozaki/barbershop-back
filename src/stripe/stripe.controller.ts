@@ -26,10 +26,7 @@ export class StripeController {
   @ApiOperation({ summary: 'Stripe webhook handler' })
   @ApiResponse({ status: 200 })
   @HttpCode(200)
-  async handleWebhook(
-    @Headers('stripe-signature') signature: string,
-    @Req() req: Request,
-  ) {
+  async handleWebhook(@Headers('stripe-signature') signature: string, @Req() req: Request) {
     const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
 
     let event: Stripe.Event;
@@ -193,13 +190,18 @@ export class StripeController {
   // ============ ASSINATURA RECORRENTE DO CLIENTE ============
   // Fatura mensal cobrada com sucesso: reativa/renova o ciclo (zera
   // usedThisCycle) e registra o pagamento. amount_paid vem em centavos.
-  private async handleClientSubscriptionInvoiceSucceeded(invoice: Stripe.Invoice, stripeSubscriptionId: string) {
+  private async handleClientSubscriptionInvoiceSucceeded(
+    invoice: Stripe.Invoice,
+    stripeSubscriptionId: string,
+  ) {
     if (!stripeSubscriptionId) return;
     const subscription = await this.prisma.clientSubscription.findFirst({
       where: { stripeSubscriptionId },
     });
     if (!subscription) {
-      this.logger.warn(`No subscription (owner or client) found for Stripe subscription ID: ${stripeSubscriptionId}`);
+      this.logger.warn(
+        `No subscription (owner or client) found for Stripe subscription ID: ${stripeSubscriptionId}`,
+      );
       return;
     }
 
