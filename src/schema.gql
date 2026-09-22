@@ -1491,6 +1491,8 @@ type PublicBarbershopSearchResultType {
 }
 
 type PublicBarbershopType {
+  """Cor de destaque da franquia (Radix); null = padrão"""
+  accentColor: String
   address: String!
   averageRating: Float
   barbers: [PublicBarberType!]!
@@ -1500,6 +1502,9 @@ type PublicBarbershopType {
   country: String!
   currency: String!
   email: String!
+
+  """Tom de cinza da franquia (Radix); null = padrão"""
+  grayColor: String
   id: Int!
   imageUrl: String
   isFeatured: Boolean!
