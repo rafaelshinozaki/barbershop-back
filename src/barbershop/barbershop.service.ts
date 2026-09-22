@@ -238,8 +238,15 @@ export class BarbershopService {
         })
       )?.barbershop.network;
     if (!network) return null;
+    // Mesma regra do NetworkResolver.logoUrl: upload no S3 (URL assinada)
+    // tem prioridade sobre uma URL externa salva direto
+    const logoUrl = network.logoKey
+      ? await this.s3Service.getDownloadUrl(network.logoKey)
+      : network.logoUrl ?? null;
     return {
       networkId: network.id,
+      name: network.name,
+      logoUrl,
       accentColor: network.accentColor,
       grayColor: network.grayColor,
       canEdit: network.ownerUserId === userId,

@@ -64,11 +64,17 @@ export class Network {
   updatedAt: string;
 }
 
-/** Cores da franquia do usuário logado (dono ou equipe). */
+/** Identidade visual da franquia do usuário logado (dono ou equipe): cores, nome e logo. */
 @ObjectType()
 export class NetworkTheme {
   @Field(() => Int)
   networkId: number;
+
+  @Field({ nullable: true })
+  name?: string;
+
+  @Field({ nullable: true, description: 'Logo da franquia (mostrado no topo do app para dono e equipe)' })
+  logoUrl?: string;
 
   @Field({ nullable: true })
   accentColor?: string;
