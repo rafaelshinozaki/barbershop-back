@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { Logger, UseGuards } from '@nestjs/common';
 import { PlanService } from '../../plan/plan.service';
 import { Plan, Subscription, CreateSubscriptionResponse } from '../types/plan.type';
 import { Payment } from '../types/payment.type';
@@ -197,7 +197,9 @@ export class PlanResolver {
           try {
             await this.stripeService.cancelSubscription(existingSubscription.stripeSubscriptionId);
           } catch (stripeError) {
-            console.warn('Erro ao cancelar assinatura no Stripe:', stripeError);
+            new Logger(PlanResolver.name).warn(
+              `Erro ao cancelar assinatura no Stripe: ${stripeError}`,
+            );
             // Continuar mesmo se falhar no Stripe, pois vamos cancelar no banco
           }
         }

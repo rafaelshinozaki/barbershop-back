@@ -16,7 +16,6 @@
 //     if (isPublicRoute) return true;
 
 //     const request = context.switchToHttp().getRequest<Request>();
-//     console.log('Session in guard:', request.session); // Adicione log aqui
 
 //     if (request.session?.user?.userId) {
 //       request.user = request.session.user;

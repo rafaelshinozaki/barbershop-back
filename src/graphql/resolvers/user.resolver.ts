@@ -66,14 +66,6 @@ export class UserResolver {
   async me(@CurrentUser() user: UserDTO) {
     this.logger.log(`ME query called for user ${user.id} (${user.email})`);
 
-    // Log adicional para debug do token
-    this.logger.log('ME query - User from token:', {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role?.name,
-    });
-
     const userData = await this.prisma.user.findUnique({
       where: { id: user.id },
       include: {

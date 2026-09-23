@@ -40,12 +40,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
     if (!token) {
       this.logger.warn('No authentication token found');
     } else {
-      this.logger.log('Token found', {
-        tokenLength: token.length,
-        tokenPrefix: token.substring(0, 20) + '...',
-        headers: Object.keys(req.headers || {}),
-        cookies: Object.keys(req.cookies || {}),
-      });
+      this.logger.debug('Token found');
     }
 
     if (!token) {

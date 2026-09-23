@@ -62,17 +62,23 @@ export const shouldLogObject = (obj: any): boolean => {
   }
 };
 
-export const maskSensitiveData = (obj: any): any => {
-  if (!obj || typeof obj !== 'object') return obj;
+// Chaves que nunca vão pro log, em qualquer nível do objeto: senha/hash,
+// tokens, segredos, códigos de verificação e documento (CPF etc.)
+const SENSITIVE_KEY =
+  /pass(word)?|token|secret|api[-_]?key|authorization|cookie|session|^code$|verificationcode|iddoc|cpf|cnpj/i;
 
-  const masked = { ...obj };
+export const maskSensitiveData = (obj: any, depth = 0): any => {
+  if (!obj || typeof obj !== 'object' || depth > 5) return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) return obj.map((item) => maskSensitiveData(item, depth + 1));
 
-  for (const field of LOGGING_CONFIG.sensitiveFields) {
-    if (masked.hasOwnProperty(field)) {
-      masked[field] = '***MASKED***';
-    }
+  const masked: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    masked[key] =
+      SENSITIVE_KEY.test(key) || LOGGING_CONFIG.sensitiveFields.includes(key)
+        ? '***MASKED***'
+        : maskSensitiveData(value, depth + 1);
   }
-
   return masked;
 };
 

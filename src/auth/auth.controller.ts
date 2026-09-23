@@ -1,5 +1,5 @@
 // src\auth\auth.controller.ts
-import { Controller, Post, Res, UseGuards, Get, Req, Body } from '@nestjs/common';
+import { Controller, Post, Res, UseGuards, Get, Req, Body, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -21,6 +21,8 @@ import { JwtService } from '@nestjs/jwt';
 @ApiCookieAuth()
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
@@ -38,31 +40,15 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    console.log('Login attempt for user:', user.email, 'twoFactorEnabled:', user.twoFactorEnabled);
-
     if (user.twoFactorEnabled) {
-      console.log('User has 2FA enabled, sending verification code');
       const loginId = randomUUID();
       await this.userService.sendLoginCode(user, loginId);
-      console.log('Sending response with twoFactor: true and loginId:', loginId);
       res.send({ success: true, twoFactor: true, loginId });
       return;
     }
 
-    console.log('User does not have 2FA enabled, proceeding with normal login');
     await this.authService.login(user, req, res);
-
-    console.log('Login successful, sending response with user data');
-    console.log('User data being sent:', {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      plan: user.plan,
-      subscriptionStatus: user.subscriptionStatus,
-      userSystemConfig: user.userSystemConfig,
-    });
-    console.log('Full user object:', JSON.stringify(user, null, 2));
+    this.logger.log(`Login OK for user ${user.id}`);
 
     res.send({
       success: true,
@@ -226,9 +212,7 @@ export class AuthController {
     const redirectPath = needsCompleteSignup ? '/social-signup' : '/';
     const fullRedirectUrl = `${frontendUrl}${redirectPath}`;
 
-    console.log(
-      `${provider} OAuth redirect: ${fullRedirectUrl} (needsCompleteSignup: ${needsCompleteSignup})`,
-    );
+    this.logger.log(`${provider} OAuth redirect (needsCompleteSignup: ${needsCompleteSignup})`);
     res.redirect(fullRedirectUrl);
   }
 }

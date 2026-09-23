@@ -33,7 +33,8 @@ export class MailgunService {
   }) {
     try {
       const data = await this.client.messages.create(this.domain, options);
-      this.logger.log(JSON.stringify(data));
+      // Só o id/status — o corpo do e-mail tem links de redefinição de senha e códigos
+      this.logger.log(`Mailgun: ${data.status ?? ''} ${data.id ?? ''}`.trim());
       return data;
     } catch (error) {
       this.logger.error(error);

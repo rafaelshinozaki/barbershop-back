@@ -33,7 +33,7 @@ import {
   LOGIN_BLOCK_MINUTES,
   LOGIN_CODE_MAX_ATTEMPTS,
 } from '@/common';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 
 @Injectable()
 export class UserService {
@@ -372,13 +372,10 @@ export class UserService {
         this.logger.warn(`Failed to send welcome email to ${newUser.email}`, error);
       }
 
-      this.logger.log(`User created successfully: ${JSON.stringify(result, null, 2)}`);
+      this.logger.log(`User created successfully: ${result.id}`);
       this.logger.log(`User ID: ${result.id}`);
       this.logger.log(`User email: ${result.email}`);
       this.logger.log(`User isActive: ${result.isActive}`);
-      this.logger.log(`User role: ${JSON.stringify(result.role)}`);
-      this.logger.log(`User address: ${JSON.stringify(result.address)}`);
-      this.logger.log(`User userSystemConfig: ${JSON.stringify(result.userSystemConfig)}`);
 
       return result;
     } catch (error) {
@@ -423,7 +420,6 @@ export class UserService {
       this.logger.log(`Setting twoFactorEnabled to: ${data.twoFactorEnabled}`);
     }
 
-    this.logger.log(`Final data to update:`, JSON.stringify(data, null, 2));
     this.logger.log(`Data object keys:`, Object.keys(data));
     this.logger.log(`Data object has twoFactorEnabled:`, 'twoFactorEnabled' in data);
 
@@ -501,7 +497,7 @@ export class UserService {
     this.logger.log(
       `User updated successfully. New twoFactorEnabled: ${updatedUser.twoFactorEnabled}`,
     );
-    this.logger.log(`Updated user object:`, JSON.stringify(updatedUser, null, 2));
+    this.logger.log(`Updated user ${updatedUser.id}`);
     return updatedUser;
   }
 
@@ -1496,7 +1492,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 1000000).toString();
     const expiryTime = new Date(Date.now() + CHANGE_PASSWORD_CODE_EXPIRY_MINUTES * 60 * 1000);
 
     await this.prisma.verificationCode.create({
@@ -1506,8 +1502,6 @@ export class UserService {
         expiresAt: expiryTime,
       },
     });
-
-    console.log('UserService: Verification code saved to database');
 
     const context = {
       FullName: user.fullName,
@@ -1526,36 +1520,29 @@ export class UserService {
         'change-password-code',
         email,
       );
-      console.log('UserService: Verification code email sent');
     } catch (error) {
       this.logger.error(`Failed to send email for change-password code: ${error.message}`);
-      console.log(`DEVELOPMENT: Change-password code for ${email} is: ${code}`);
+      // Só em desenvolvimento — em produção quem lesse o log trocaria a
+      // senha de qualquer usuário
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn(`DEVELOPMENT: change-password code for ${email} is ${code}`);
+      }
     }
 
     return true;
   }
 
   async verifyChangePasswordCode(userId: number, code: string, consume = false) {
-    console.log('UserService: verifyChangePasswordCode called with:', { userId, code, consume });
-
     const record = await this.prisma.verificationCode.findFirst({
       where: { userId, used: false },
       orderBy: { createdAt: 'desc' },
     });
 
-    console.log('UserService: Found verification code record:', record);
-
     if (!record) {
-      console.log('UserService: No verification code record found');
       return false;
     }
 
-    console.log('UserService: Record expiry time:', record.expiresAt);
-    console.log('UserService: Current time:', new Date());
-    console.log('UserService: Is expired?', record.expiresAt < new Date());
-
     if (record.expiresAt < new Date()) {
-      console.log('UserService: Code is expired, marking as used');
       await this.prisma.verificationCode.update({
         where: { id: record.id },
         data: { used: true },
@@ -1563,11 +1550,9 @@ export class UserService {
       return false;
     }
 
-    console.log('UserService: Comparing codes - expected:', record.code, 'received:', code);
     if (record.code !== code) {
-      console.log('UserService: Code mismatch');
+      this.logger.warn(`Change-password code mismatch for user ${userId}`);
       const attempts = record.attempts + 1;
-      console.log('UserService: Incrementing attempts to:', attempts);
       await this.prisma.verificationCode.update({
         where: { id: record.id },
         data: {
@@ -1578,9 +1563,7 @@ export class UserService {
       return false;
     }
 
-    console.log('UserService: Code is valid');
     if (consume) {
-      console.log('UserService: Consuming code');
       await this.prisma.verificationCode.update({
         where: { id: record.id },
         data: { used: true },
@@ -1597,32 +1580,24 @@ export class UserService {
     newPassword: string,
     code: string,
   ) {
-    console.log('UserService: changePassword called with:', { userId, email, code });
-
     const valid = await this.verifyChangePasswordCode(userId, code, true);
-    console.log('UserService: Code verification result:', valid);
 
     if (!valid) {
-      console.log('UserService: Code verification failed');
       throw new UnauthorizedException('Invalid or expired verification code');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      console.log('UserService: User not found');
       throw new NotFoundException('User not found');
     }
 
     if (user.email !== email) {
-      console.log('UserService: Email mismatch');
       throw new UnauthorizedException('Invalid email');
     }
 
     const isValid = await bcrypt.compare(oldPassword, user.password);
-    console.log('UserService: Current password validation:', isValid);
 
     if (!isValid) {
-      console.log('UserService: Current password is invalid');
       throw new UnauthorizedException('Invalid current password');
     }
 
@@ -1635,7 +1610,7 @@ export class UserService {
       data: { password: hashedPassword },
     });
 
-    console.log('UserService: Password updated successfully');
+    this.logger.log(`Password changed for user ${userId}`);
 
     // Enviar email de confirmação de alteração de senha
     try {
@@ -1678,7 +1653,7 @@ export class UserService {
   }
 
   async sendTwoFactorCode(user: UserDTO) {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 1000000).toString();
 
     const context = {
       FullName: user.fullName,
@@ -1699,7 +1674,9 @@ export class UserService {
       );
     } catch (error) {
       this.logger.error(`Failed to send email for two-factor code: ${error.message}`);
-      console.log(`DEVELOPMENT: Two-factor enable code for ${user.email} is: ${code}`);
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn(`DEVELOPMENT: two-factor enable code for ${user.email} is ${code}`);
+      }
     }
 
     // Antes ficava num Set sem expiração nenhuma
@@ -1744,7 +1721,7 @@ export class UserService {
       if (previousLoginId) await this.redis.client.del(UserService.KEY.code(previousLoginId));
     });
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 1000000).toString();
 
     const context = {
       FullName: user.fullName,
@@ -1770,7 +1747,7 @@ export class UserService {
       // (ex: uma instabilidade no provedor de email vira um jeito de
       // qualquer um com acesso ao log completar o 2FA de qualquer usuário)
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`DEVELOPMENT: Login code for ${user.email} is: ${code}`);
+        this.logger.warn(`DEVELOPMENT: login code for ${user.email} is ${code}`);
       }
     }
 
@@ -2103,7 +2080,7 @@ export class UserService {
     success: Array<{ email: string; fullName: string }>;
   }> {
     this.logger.log(`Starting import of ${usersData.length} users`);
-    this.logger.log('Raw data received:', JSON.stringify(usersData, null, 2));
+    this.logger.log(`Bulk user import: ${usersData.length} rows`);
 
     const result = {
       totalProcessed: usersData.length,

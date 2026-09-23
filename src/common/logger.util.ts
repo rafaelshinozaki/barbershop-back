@@ -76,9 +76,9 @@ export class SmartLogger {
 
     if (this.isLargeObject(data)) {
       const essential = this.extractEssentialData(data, essentialKeys);
-      this.logger.log(`${message} (essential data only):`, essential);
+      this.logger.log(`${message} (essential data only):`, maskSensitiveData(essential));
     } else {
-      this.logger.log(message, data);
+      this.logger.log(message, maskSensitiveData(data));
     }
   }
 

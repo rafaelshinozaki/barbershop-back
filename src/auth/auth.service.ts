@@ -1,5 +1,5 @@
 // src\auth\auth.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EmailService } from '@/email/email.service';
 import { Request, Response } from 'express';
 
@@ -12,6 +12,7 @@ import { IpLocationService } from '@/common/ip-location.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   // Cache para localização de IPs
   private locationCache = new Map<string, { data: string; timestamp: number }>();
 
@@ -83,7 +84,7 @@ export class AuthService {
           user.email,
         );
       } catch (error) {
-        console.warn('Failed to send new login IP email:', error.message);
+        this.logger.warn(`Failed to send new login IP email: ${error.message}`);
         // Continue login process even if email fails
       }
     }
@@ -150,7 +151,7 @@ export class AuthService {
       });
 
       // Log da ação
-      console.log(`Invalidated ${otherSessions.length} sessions for user ${user.id}`);
+      this.logger.log(`Invalidated ${otherSessions.length} sessions for user ${user.id}`);
     }
   }
 
@@ -216,7 +217,7 @@ export class AuthService {
       try {
         await this.cleanupExpiredTokens();
       } catch (error) {
-        console.error('Error cleaning up expired tokens:', error);
+        this.logger.error(`Error cleaning up expired tokens: ${error}`);
       }
     }, 60 * 60 * 1000); // 1 hora
   }
