@@ -1,10 +1,10 @@
 {{!-- src/email/templates/invoice_email.hbs --}}
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fatura {{InvoiceID}} – {{AppName}}</title>
+  <title>Invoice {{InvoiceID}} – {{AppName}}</title>
   <style>
     /* Reset básico */
     body, p, h1, h2, h3, h4, h5, h6 {
@@ -105,32 +105,32 @@
   <div class="container">
     <!-- Cabeçalho -->
     <div class="header">
-      <h1>Fatura {{InvoiceID}}</h1>
+      <h1>Invoice {{InvoiceID}}</h1>
     </div>
 
     <!-- Conteúdo principal -->
     <div class="content">
-      <h2>Olá, {{FullName}}!</h2>
+      <h2>Hello, {{FullName}}!</h2>
       <p>
-        Recebemos o pagamento de <strong>{{Amount}}</strong> referente à fatura 
-        <strong>#{{InvoiceID}}</strong>, com vencimento em {{DueDate}}.
+        We received your payment of <strong>{{money Amount Currency}}</strong> for invoice 
+        <strong>#{{InvoiceID}}</strong>. Your next due date is {{date DueDate}}.
       </p>
       <p>
-        Você pode visualizar sua fatura completa no link abaixo:
+        You can view the full invoice at the link below:
       </p>
 
       <div class="button-container">
-        <a href="{{InvoiceURL}}" class="button">Ver fatura</a>
+        <a href="{{InvoiceURL}}" class="button">View invoice</a>
       </div>
     </div>
 
     <!-- Rodapé -->
     <div class="footer">
       <p>
-        Em caso de dúvidas, contate: 
+        If you have any questions, contact: 
         <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>
       </p>
-      <p>&copy; {{Year}} {{AppName}}. Todos os direitos reservados.</p>
+      <p>&copy; {{Year}} {{AppName}}. All rights reserved.</p>
     </div>
   </div>
 </body>

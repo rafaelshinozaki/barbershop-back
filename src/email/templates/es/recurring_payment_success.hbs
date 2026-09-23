@@ -42,17 +42,17 @@
           </div>
           <div class='detail-row'>
             <span class='detail-label'>Cantidad:</span>
-            <span class='detail-value'>${{Amount}}</span>
+            <span class='detail-value'>{{money Amount Currency}}</span>
           </div>
           <div class='detail-row'>
             <span class='detail-label'>Fecha de Pago:</span>
-            <span class='detail-value'>{{formatDate paymentDate}}</span>
+            <span class='detail-value'>{{date PaymentDate}}</span>
           </div>
         </div>
 
         <div class='next-payment'>
           <h3>📅 Próximo Pago</h3>
-          <p>Tu próximo pago está programado para: <strong>{{DueDate}}</strong></p>
+          <p>Tu próximo pago está programado para: <strong>{{date DueDate}}</strong></p>
           <p><em>Recibirás una notificación antes del próximo ciclo de facturación.</em></p>
         </div>
 

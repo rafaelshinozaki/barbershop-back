@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invitación al equipo - {{AppName}}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; }
+        .container { background-color: #ffffff; border-radius: 10px; padding: 30px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { color: #2563eb; font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+        .subtitle { color: #64748b; font-size: 18px; margin-bottom: 30px; }
+        .highlight { background-color: #dbeafe; border-left: 4px solid #2563eb; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .cta-button { display: inline-block; background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 20px 0; text-align: center; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Invitación para formar parte del equipo</h1>
+            <p class="subtitle">{{InviterName}} te invitó a ser {{RoleLabel}} en {{BarbershopName}}</p>
+        </div>
+
+        <div class="highlight">
+            <p style="font-size: 18px; margin: 0;">
+                Te invitaron a integrar el equipo de <strong>{{BarbershopName}}</strong> como <strong>{{RoleLabel}}</strong>.
+            </p>
+        </div>
+
+        <p>¡Hola!</p>
+        <p>{{InviterName}} te invitó a formar parte del equipo de <strong>{{BarbershopName}}</strong>. Acepta la invitación para crear tu cuenta y acceder a la plataforma.</p>
+        <p><strong>El dueño de la barbería ya se encarga de la suscripción</strong>: no necesitarás registrar una tarjeta de crédito.</p>
+
+        <div style="text-align: center;">
+            <a href="{{InviteUrl}}" class="cta-button">Crear mi cuenta y aceptar la invitación</a>
+        </div>
+
+        <p style="font-size: 14px; color: #6b7280; text-align: center;">Esta invitación vence en 30 días.</p>
+
+        <div class="footer">
+            <p>© {{AppName}}. Todos los derechos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

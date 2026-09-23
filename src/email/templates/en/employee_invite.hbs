@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team invitation - {{AppName}}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; }
+        .container { background-color: #ffffff; border-radius: 10px; padding: 30px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { color: #2563eb; font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+        .subtitle { color: #64748b; font-size: 18px; margin-bottom: 30px; }
+        .highlight { background-color: #dbeafe; border-left: 4px solid #2563eb; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .cta-button { display: inline-block; background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 20px 0; text-align: center; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Invitation to join the team</h1>
+            <p class="subtitle">{{InviterName}} invited you to join {{BarbershopName}} as {{RoleLabel}}</p>
+        </div>
+
+        <div class="highlight">
+            <p style="font-size: 18px; margin: 0;">
+                You have been invited to join the <strong>{{BarbershopName}}</strong> team as <strong>{{RoleLabel}}</strong>.
+            </p>
+        </div>
+
+        <p>Hello!</p>
+        <p>{{InviterName}} invited you to be part of the <strong>{{BarbershopName}}</strong> team. Accept the invitation to create your account and access the platform.</p>
+        <p><strong>The barbershop owner already takes care of the subscription</strong> – you will not need to add a credit card.</p>
+
+        <div style="text-align: center;">
+            <a href="{{InviteUrl}}" class="cta-button">Create my account and accept the invitation</a>
+        </div>
+
+        <p style="font-size: 14px; color: #6b7280; text-align: center;">This invitation expires in 30 days.</p>
+
+        <div class="footer">
+            <p>© {{AppName}}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

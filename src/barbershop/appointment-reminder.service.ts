@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { langForCountry, LOCALE } from '../email/language';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,10 +67,12 @@ export class AppointmentReminderService {
           .map((s) => s.service?.name)
           .filter(Boolean)
           .join(', ') || '-';
-      const appointmentDate = appt.startAt.toLocaleDateString('pt-BR', {
+      // Cliente não tem idioma salvo: língua do país da unidade
+      const lang = langForCountry(appt.barbershop.country);
+      const appointmentDate = appt.startAt.toLocaleDateString(LOCALE[lang], {
         timeZone: appt.barbershop.timezone,
       });
-      const appointmentTime = appt.startAt.toLocaleTimeString('pt-BR', {
+      const appointmentTime = appt.startAt.toLocaleTimeString(LOCALE[lang], {
         hour: '2-digit',
         minute: '2-digit',
         timeZone: appt.barbershop.timezone,
@@ -92,7 +95,12 @@ export class AppointmentReminderService {
                 AppointmentTime: appointmentTime,
                 Year: new Date().getFullYear(),
               },
-              subject: `Lembrete: seu horário em ${appt.barbershop.name}`,
+              subject: {
+                pt: `Lembrete: seu horário em ${appt.barbershop.name}`,
+                en: `Reminder: your appointment at ${appt.barbershop.name}`,
+                es: `Recordatorio: tu cita en ${appt.barbershop.name}`,
+              },
+              lang,
               meta: 'appointment-reminder',
               to: appt.customer.email,
             },

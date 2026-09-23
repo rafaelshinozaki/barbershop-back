@@ -74,7 +74,11 @@ export class AuthService {
           user.id,
           'new_login_ip',
           context,
-          'Novo login detectado',
+          {
+            pt: 'Novo login detectado',
+            en: 'New sign-in detected',
+            es: 'Nuevo inicio de sesión detectado',
+          },
           'new-login-ip',
           user.email,
         );

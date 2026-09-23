@@ -2,6 +2,7 @@ import type {
   AppointmentReminderParams,
   WaitlistSlotAvailableParams,
 } from '../whatsapp/whatsapp.service';
+import type { Localized } from '../email/language';
 
 /** E-mail pra um usuário com conta (idioma vem de UserSystemConfig). */
 export interface UserEmailJob {
@@ -9,7 +10,7 @@ export interface UserEmailJob {
   userId: number;
   template: string;
   context: Record<string, unknown>;
-  subject: string;
+  subject: string | Localized;
   meta: string;
   to: string;
 }
@@ -20,7 +21,7 @@ export interface CustomerEmailJob {
   loggedAgainstUserId: number;
   template: string;
   context: Record<string, unknown>;
-  subject: string;
+  subject: string | Localized;
   meta: string;
   to: string;
   lang?: string;

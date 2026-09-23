@@ -1,10 +1,10 @@
 {{!-- src/email/templates/reactivation_email.hbs --}}
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reative sua conta na {{AppName}}</title>
+  <title>Reactiva tu cuenta en {{AppName}}</title>
   <style>
     /* Reset básico */
     body, p, h1, h2, h3, h4, h5, h6 {
@@ -99,34 +99,34 @@
   <div class="container">
     <!-- Cabeçalho -->
     <div class="header">
-      <h1>Reative sua conta na {{AppName}}</h1>
+      <h1>Reactiva tu cuenta en {{AppName}}</h1>
     </div>
 
     <!-- Conteúdo principal -->
     <div class="content">
-      <h2>Olá, {{FullName}}!</h2>
+      <h2>¡Hola, {{FullName}}!</h2>
       <p>
-        Percebemos que sua conta na {{AppName}} está inativa há algum tempo.
-        Sentimos sua falta! Para retomar seu acesso e aproveitar todos os recursos, basta clicar no botão abaixo:
+        Notamos que tu cuenta en {{AppName}} está inactiva desde hace un tiempo.
+        ¡Te extrañamos! Para recuperar tu acceso y aprovechar todas las funciones, solo haz clic en el botón de abajo:
       </p>
 
       <div class="button-container">
-        <a href="{{ReactivationURL}}" class="button">Reativar Minha Conta</a>
+        <a href="{{ReactivationURL}}" class="button">Reactivar mi cuenta</a>
       </div>
 
       <p>
-        Se você não deseja reativar sua conta ou acha que recebeu este e-mail por engano, basta ignorar esta mensagem.
+        Si no quieres reactivar tu cuenta o crees que recibiste este correo por error, simplemente ignora este mensaje.
       </p>
 
       <p>
-        Qualquer dúvida, entre em contato com nosso suporte:
+        Si tienes dudas, contacta a nuestro soporte:
         <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>.
       </p>
     </div>
 
     <!-- Rodapé -->
     <div class="footer">
-      <p>&copy; {{Year}} {{AppName}}. Todos os direitos reservados.</p>
+      <p>&copy; {{Year}} {{AppName}}. Todos los derechos reservados.</p>
     </div>
   </div>
 </body>

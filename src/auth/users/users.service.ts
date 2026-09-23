@@ -358,7 +358,11 @@ export class UserService {
           newUser.id,
           'welcome_email',
           context,
-          'Bem-vindo ao Barbershop',
+          {
+            pt: 'Bem-vindo ao Barbershop',
+            en: 'Welcome to Barbershop',
+            es: 'Bienvenido a Barbershop',
+          },
           'welcome-email',
           newUser.email,
         );
@@ -848,7 +852,11 @@ export class UserService {
           user.id,
           'welcome_email',
           context,
-          'Bem-vindo ao Barbershop',
+          {
+            pt: 'Bem-vindo ao Barbershop',
+            en: 'Welcome to Barbershop',
+            es: 'Bienvenido a Barbershop',
+          },
           'welcome-email',
           user.email,
         );
@@ -1015,7 +1023,7 @@ export class UserService {
         user.id,
         'password_reset',
         context,
-        'Redefinição de Senha',
+        { pt: 'Redefinição de senha', en: 'Password reset', es: 'Restablecimiento de contraseña' },
         'password-reset',
         forgotPass.email,
       );
@@ -1110,7 +1118,7 @@ export class UserService {
         user.id,
         'password_changed',
         context,
-        'Senha Alterada',
+        { pt: 'Senha alterada', en: 'Password changed', es: 'Contraseña cambiada' },
         'password-changed',
         user.email,
       );
@@ -1164,7 +1172,7 @@ export class UserService {
       user.id,
       'password_changed',
       context,
-      'Senha Alterada',
+      { pt: 'Senha alterada', en: 'Password changed', es: 'Contraseña cambiada' },
       'password-changed',
       user.email,
     );
@@ -1514,7 +1522,7 @@ export class UserService {
         user.id,
         'verification_code',
         context,
-        'Código de verificação',
+        { pt: 'Código de verificação', en: 'Verification code', es: 'Código de verificación' },
         'change-password-code',
         email,
       );
@@ -1631,17 +1639,7 @@ export class UserService {
 
     // Enviar email de confirmação de alteração de senha
     try {
-      const userWithConfig = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          userSystemConfig: {
-            select: { language: true },
-          },
-        },
-      });
-
-      const lang = userWithConfig?.userSystemConfig?.language?.toLowerCase() || 'pt';
-
+      // Idioma do assunto e do template escolhido pelo EmailService
       const subjects = {
         pt: 'Senha alterada com sucesso',
         en: 'Password changed successfully',
@@ -1659,7 +1657,7 @@ export class UserService {
         user.id,
         'password_changed',
         context,
-        subjects[lang] || subjects.pt,
+        subjects,
         'password-changed-confirmation',
         user.email,
       );
@@ -1695,7 +1693,7 @@ export class UserService {
         user.id,
         'verification_code',
         context,
-        'Código de verificação',
+        { pt: 'Código de verificação', en: 'Verification code', es: 'Código de verificación' },
         'enable-2fa',
         user.email,
       );
@@ -1761,7 +1759,7 @@ export class UserService {
         user.id,
         'verification_code',
         context,
-        'Código de verificação',
+        { pt: 'Código de verificação', en: 'Verification code', es: 'Código de verificación' },
         'login-code',
         user.email,
       );
@@ -2264,7 +2262,11 @@ export class UserService {
             newUser.id,
             'welcome_email',
             context,
-            'Bem-vindo ao Barbershop',
+            {
+              pt: 'Bem-vindo ao Barbershop',
+              en: 'Welcome to Barbershop',
+              es: 'Bienvenido a Barbershop',
+            },
             'welcome-email',
             newUser.email,
           );
@@ -2414,7 +2416,11 @@ export class UserService {
             userId,
             'trial_ended',
             context,
-            'Seu trial acabou - Ative o modo viewer',
+            {
+              pt: 'Seu período de teste acabou - Ative o modo visualização',
+              en: 'Your trial has ended - Switch to viewer mode',
+              es: 'Tu período de prueba terminó - Activa el modo visualización',
+            },
             'trial-ended',
             userData.email,
           );

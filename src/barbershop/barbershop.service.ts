@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { langForCountry, LOCALE } from '../email/language';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -1784,10 +1785,12 @@ export class BarbershopService {
     // Quem está na tela da lista de espera vê a entrada virar "avisado"
     this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
 
-    const dateStr = appointment.startAt.toLocaleDateString('pt-BR', {
+    // Cliente não tem idioma salvo: língua do país da unidade
+    const lang = langForCountry(match.barbershop.country);
+    const dateStr = appointment.startAt.toLocaleDateString(LOCALE[lang], {
       timeZone: match.barbershop.timezone,
     });
-    const timeStr = appointment.startAt.toLocaleTimeString('pt-BR', {
+    const timeStr = appointment.startAt.toLocaleTimeString(LOCALE[lang], {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: match.barbershop.timezone,
@@ -1810,7 +1813,12 @@ export class BarbershopService {
               AppointmentTime: timeStr,
               Year: new Date().getFullYear(),
             },
-            subject: `Vaga disponível em ${match.barbershop.name}`,
+            subject: {
+              pt: `Vaga disponível em ${match.barbershop.name}`,
+              en: `A slot opened up at ${match.barbershop.name}`,
+              es: `Hay un horario disponible en ${match.barbershop.name}`,
+            },
+            lang,
             meta: 'waitlist-slot-available',
             to: match.customer.email,
           },
@@ -1985,6 +1993,8 @@ export class BarbershopService {
           Year: new Date().getFullYear(),
         },
         subject: data.subject ?? barbershop.name,
+        // Texto da campanha é do dono; o rodapé do template sai na língua do país da unidade
+        lang: langForCountry(barbershop.country),
         meta: 'marketing-blast',
         to: customer.email,
         campaignId: campaign.id,

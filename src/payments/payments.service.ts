@@ -446,7 +446,7 @@ export class PaymentsService {
           user.id,
           'plan_canceled_email',
           context,
-          'Plan canceled',
+          { pt: 'Plano cancelado', en: 'Plan canceled', es: 'Plan cancelado' },
           'cancel-plan',
           user.email,
         );
@@ -937,8 +937,11 @@ export class PaymentsService {
       FullName: user.fullName,
       AppName: 'Barbershop',
       InvoiceID: stripePayment.id,
-      Amount: paymentAmount.toFixed(2),
-      DueDate: new Date(nextPaymentDate).toLocaleDateString('pt-BR'),
+      // Formatados no template ({{money}}/{{date}}) no idioma do usuário
+      Amount: paymentAmount,
+      Currency: 'BRL',
+      PaymentDate: new Date(),
+      DueDate: new Date(nextPaymentDate),
       SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
     };
@@ -948,7 +951,11 @@ export class PaymentsService {
         user.id,
         'recurring_payment_success',
         context,
-        `Pagamento recorrente processado - ${plan.name}`,
+        {
+          pt: `Pagamento recorrente processado - ${plan.name}`,
+          en: `Recurring payment processed - ${plan.name}`,
+          es: `Pago recurrente procesado - ${plan.name}`,
+        },
         'recurring_payment',
         user.email,
       );
@@ -990,7 +997,8 @@ export class PaymentsService {
       FullName: user.fullName,
       AppName: 'Barbershop',
       PlanName: plan.name,
-      Amount: plan.price.toFixed(2),
+      Amount: Number(plan.price),
+      Currency: 'BRL',
       Reason: reason,
       SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
@@ -1001,7 +1009,11 @@ export class PaymentsService {
         user.id,
         'recurring_payment_failed',
         context,
-        `Falha no pagamento recorrente - ${plan.name}`,
+        {
+          pt: `Falha no pagamento recorrente - ${plan.name}`,
+          en: `Recurring payment failed - ${plan.name}`,
+          es: `Falló el pago recurrente - ${plan.name}`,
+        },
         'payment_failed',
         user.email,
       );
