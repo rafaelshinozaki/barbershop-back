@@ -320,7 +320,11 @@ export class FriendInviteService {
         InviteUrl: inviteUrl,
         AppName: 'Barbershop',
       },
-      'Convite Especial - Ganhe 1 Mês Grátis no Barbershop',
+      {
+        pt: 'Convite especial - Ganhe 1 mês grátis no Barbershop',
+        en: 'Special invitation - Get 1 month free on Barbershop',
+        es: 'Invitación especial - Gana 1 mes gratis en Barbershop',
+      },
       `Friend invite sent to ${invite.friendEmail}`,
       invite.friendEmail,
     );
@@ -341,7 +345,11 @@ export class FriendInviteService {
           CouponCode: invite.inviterCoupon.code,
           AppName: 'Barbershop',
         },
-        'Seu convite foi aceito! - 1 Mês Grátis',
+        {
+          pt: 'Seu convite foi aceito! - 1 mês grátis',
+          en: 'Your invitation was accepted! - 1 month free',
+          es: '¡Tu invitación fue aceptada! - 1 mes gratis',
+        },
         `Friend invite accepted by ${invite.acceptedByUser.email}`,
         invite.inviter.email,
       );
@@ -356,7 +364,11 @@ export class FriendInviteService {
           CouponCode: invite.friendCoupon.code,
           AppName: 'Barbershop',
         },
-        'Convite aceito! - 1 Mês Grátis',
+        {
+          pt: 'Convite aceito! - 1 mês grátis',
+          en: 'Invitation accepted! - 1 month free',
+          es: '¡Invitación aceptada! - 1 mes gratis',
+        },
         `Friend invite accepted by ${invite.acceptedByUser.email}`,
         invite.acceptedByUser.email,
       );
@@ -370,7 +382,11 @@ export class FriendInviteService {
           FriendName: invite.acceptedByUser.fullName,
           AppName: 'Barbershop',
         },
-        'Seu convite foi aceito!',
+        {
+          pt: 'Seu convite foi aceito!',
+          en: 'Your invitation was accepted!',
+          es: '¡Tu invitación fue aceptada!',
+        },
         `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
         invite.inviter.email,
       );
@@ -384,7 +400,7 @@ export class FriendInviteService {
           InviterName: invite.inviter.fullName,
           AppName: 'Barbershop',
         },
-        'Convite aceito!',
+        { pt: 'Convite aceito!', en: 'Invitation accepted!', es: '¡Invitación aceptada!' },
         `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
         invite.acceptedByUser.email,
       );
@@ -404,7 +420,11 @@ export class FriendInviteService {
         FriendName: invite.acceptedByUser.fullName,
         AppName: 'Barbershop',
       },
-      'Convite não pode ser usado',
+      {
+        pt: 'Convite não pode ser usado',
+        en: 'Invitation could not be used',
+        es: 'La invitación no se pudo usar',
+      },
       `Friend invite rejected by ${invite.acceptedByUser.email} (existing user)`,
       invite.inviter.email,
     );
@@ -418,7 +438,11 @@ export class FriendInviteService {
         InviterName: invite.inviter.fullName,
         AppName: 'Barbershop',
       },
-      'Convite não pode ser usado',
+      {
+        pt: 'Convite não pode ser usado',
+        en: 'Invitation could not be used',
+        es: 'La invitación no se pudo usar',
+      },
       `Friend invite rejected by ${invite.acceptedByUser.email} (existing user)`,
       invite.acceptedByUser.email,
     );

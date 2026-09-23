@@ -328,19 +328,29 @@ export class EmployeeInviteService {
   private async sendEmployeeInviteEmail(invite: any) {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     const inviteUrl = `${frontendUrl}/accept-employee-invite/${invite.inviteToken}`;
-    const roleLabel = invite.role === 'BarbershopManager' ? 'Gerente' : 'Barbeiro';
+    const manager = invite.role === 'BarbershopManager';
+    // Idioma de quem convidou (o convidado ainda não tem conta); o
+    // EmailService escolhe a versão certa de cada texto
+    const roleLabel = manager
+      ? { pt: 'Gerente', en: 'Manager', es: 'Gerente' }
+      : { pt: 'Barbeiro', en: 'Barber', es: 'Barbero' };
+    const shopName = invite.barbershop.name;
 
     await this.emailService.sendTemplateEmail(
       invite.inviterId,
       'employee_invite',
       {
         InviterName: invite.inviter.fullName,
-        BarbershopName: invite.barbershop.name,
+        BarbershopName: shopName,
         RoleLabel: roleLabel,
         InviteUrl: inviteUrl,
-        AppName: 'RELABLE',
+        AppName: 'Barbershop',
       },
-      `Convite para ser ${roleLabel} na ${invite.barbershop.name}`,
+      {
+        pt: `Convite para ser ${roleLabel.pt} na ${shopName}`,
+        en: `Invitation to join ${shopName} as ${roleLabel.en}`,
+        es: `Invitación para ser ${roleLabel.es} en ${shopName}`,
+      },
       `Employee invite to ${invite.email}`,
       invite.email,
     );

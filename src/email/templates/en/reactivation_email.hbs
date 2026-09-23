@@ -1,10 +1,10 @@
 {{!-- src/email/templates/reactivation_email.hbs --}}
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reative sua conta na {{AppName}}</title>
+  <title>Reactivate your {{AppName}} account</title>
   <style>
     /* Reset básico */
     body, p, h1, h2, h3, h4, h5, h6 {
@@ -99,34 +99,34 @@
   <div class="container">
     <!-- Cabeçalho -->
     <div class="header">
-      <h1>Reative sua conta na {{AppName}}</h1>
+      <h1>Reactivate your {{AppName}} account</h1>
     </div>
 
     <!-- Conteúdo principal -->
     <div class="content">
-      <h2>Olá, {{FullName}}!</h2>
+      <h2>Hello, {{FullName}}!</h2>
       <p>
-        Percebemos que sua conta na {{AppName}} está inativa há algum tempo.
-        Sentimos sua falta! Para retomar seu acesso e aproveitar todos os recursos, basta clicar no botão abaixo:
+        We noticed your {{AppName}} account has been inactive for a while.
+        We miss you! To get your access back and enjoy all features, just click the button below:
       </p>
 
       <div class="button-container">
-        <a href="{{ReactivationURL}}" class="button">Reativar Minha Conta</a>
+        <a href="{{ReactivationURL}}" class="button">Reactivate my account</a>
       </div>
 
       <p>
-        Se você não deseja reativar sua conta ou acha que recebeu este e-mail por engano, basta ignorar esta mensagem.
+        If you do not want to reactivate your account or think you received this email by mistake, just ignore this message.
       </p>
 
       <p>
-        Qualquer dúvida, entre em contato com nosso suporte:
+        If you have any questions, contact our support:
         <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>.
       </p>
     </div>
 
     <!-- Rodapé -->
     <div class="footer">
-      <p>&copy; {{Year}} {{AppName}}. Todos os direitos reservados.</p>
+      <p>&copy; {{Year}} {{AppName}}. All rights reserved.</p>
     </div>
   </div>
 </body>

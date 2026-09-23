@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import Handlebars from 'handlebars';
 import { ConfigService } from '@nestjs/config';
+import { isLocalized, LOCALE, Lang, Localized, normalizeLang, pick } from './language';
 
 // O log de e-mails guardava o contexto inteiro — inclusive o link de
 // redefinição de senha (com o token) e códigos de verificação: quem lesse a
@@ -31,8 +32,8 @@ export class EmailService {
   async sendTemplateEmail(
     userId: number,
     template: string, // ex: 'welcome_email'
-    context: Record<string, any>, // ex: { FullName, AppName, … }
-    subject: string, // ex: 'Bem-vindo ao Barbershop'
+    context: Record<string, any>, // ex: { FullName, AppName, … } — valores podem ser Localized
+    subject: string | Localized, // ex: { pt: 'Bem-vindo', en: 'Welcome', es: 'Bienvenido' }
     meta: string, // string genérica só para log
     to: string, // ex: 'rafaelsinosak@gmail.com'
   ) {
@@ -40,7 +41,7 @@ export class EmailService {
       where: { id: userId },
       select: { userSystemConfig: { select: { language: true } } },
     });
-    const lang = user?.userSystemConfig?.language?.toLowerCase() || 'pt';
+    const lang = normalizeLang(user?.userSystemConfig?.language);
     return this.renderAndSend(userId, template, context, subject, meta, to, lang);
   }
 
@@ -54,34 +55,80 @@ export class EmailService {
     loggedAgainstUserId: number,
     template: string,
     context: Record<string, any>,
-    subject: string,
+    subject: string | Localized,
     meta: string,
     to: string,
     lang = 'pt',
   ) {
-    return this.renderAndSend(loggedAgainstUserId, template, context, subject, meta, to, lang);
+    return this.renderAndSend(
+      loggedAgainstUserId,
+      template,
+      context,
+      subject,
+      meta,
+      to,
+      normalizeLang(lang),
+    );
+  }
+
+  /**
+   * Monta o e-mail no idioma do destinatário: template de
+   * templates/<idioma> (cai no pt se não houver tradução — antes caía num
+   * caminho inexistente e o envio falhava), assunto e valores Localized
+   * escolhidos pelo idioma, e helpers de data/dinheiro no formato local.
+   */
+  async render(
+    template: string,
+    context: Record<string, any>,
+    subject: string | Localized,
+    lang: Lang,
+  ): Promise<{ html: string; subject: string }> {
+    let templatePath = path.join(__dirname, 'templates', lang, `${template}.hbs`);
+    try {
+      await fs.access(templatePath);
+    } catch {
+      this.logger.warn(`Template ${template} sem versão "${lang}" — usando pt`);
+      templatePath = path.join(__dirname, 'templates', 'pt', `${template}.hbs`);
+    }
+    const source = await fs.readFile(templatePath, 'utf8');
+    const localizedContext = Object.fromEntries(
+      Object.entries(context).map(([k, v]) => [k, isLocalized(v) ? v[lang] : v]),
+    );
+    const locale = LOCALE[lang];
+    const date = (value: unknown) => {
+      if (value === undefined || value === null || value === '') return '';
+      const d = value instanceof Date ? value : new Date(value as string);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(locale);
+    };
+    const money = (value: unknown, currency?: unknown) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return String(value ?? '');
+      const code = typeof currency === 'string' && currency ? currency.toUpperCase() : 'BRL';
+      try {
+        return new Intl.NumberFormat(locale, { style: 'currency', currency: code }).format(n);
+      } catch {
+        return n.toFixed(2);
+      }
+    };
+    const html = Handlebars.compile(source)(localizedContext, {
+      helpers: { date, formatDate: date, money },
+    });
+    return { html, subject: pick(subject, lang) };
   }
 
   private async renderAndSend(
     userId: number,
     template: string,
     context: Record<string, any>,
-    subject: string,
+    subjectIn: string | Localized,
     meta: string,
     to: string,
-    lang: string,
+    lang: Lang,
   ) {
-    this.logger.log(`Enviando email (${template}) para [${to}]`);
+    this.logger.log(`Enviando email (${template}, ${lang}) para [${to}]`);
 
     try {
-      let templatePath = path.join(__dirname, 'templates', lang, `${template}.hbs`);
-      try {
-        await fs.access(templatePath);
-      } catch {
-        templatePath = path.join(__dirname, 'templates', `${template}.hbs`);
-      }
-      const source = await fs.readFile(templatePath, 'utf8');
-      const html = Handlebars.compile(source)(context);
+      const { html, subject } = await this.render(template, context, subjectIn, lang);
 
       const from = this.config.get<string>('EMAIL_FROM') || 'noreply@yourdomain.com';
 

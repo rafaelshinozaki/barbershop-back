@@ -1,10 +1,10 @@
 {{!-- src/email/templates/plan_expiring_email.hbs --}}
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Seu plano está expirando – {{AppName}}</title>
+  <title>Tu plan está por vencer – {{AppName}}</title>
   <style>
     body, p, h1, h2, h3, h4, h5, h6 {
       margin: 0;
@@ -96,20 +96,20 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Seu plano está acabando</h1>
+      <h1>Tu plan está por terminar</h1>
     </div>
     <div class="content">
-      <h2>Olá, {{FullName}}!</h2>
-      <p>Seu plano atual expirará em {{DaysLeft}} dias.</p>
-      <p>Para continuar usufruindo de todos os recursos, renove seu plano clicando abaixo:</p>
+      <h2>¡Hola, {{FullName}}!</h2>
+      <p>Tu plan actual vence en {{DaysLeft}} días.</p>
+      <p>Para seguir disfrutando de todas las funciones, renueva tu plan haciendo clic abajo:</p>
       <div class="button-container">
-        <a href="{{RenewURL}}" class="button">Renovar Plano</a>
+        <a href="{{RenewURL}}" class="button">Renovar plan</a>
       </div>
-      <p>Se você já efetuou a renovação, desconsidere esta mensagem.</p>
+      <p>Si ya renovaste, ignora este mensaje.</p>
     </div>
     <div class="footer">
-      <p>Se precisar de ajuda, envie um e-mail para <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>.</p>
-      <p>&copy; {{Year}} {{AppName}}. Todos os direitos reservados.</p>
+      <p>Si necesitas ayuda, escribe a <a href="mailto:{{SupportEmail}}">{{SupportEmail}}</a>.</p>
+      <p>&copy; {{Year}} {{AppName}}. Todos los derechos reservados.</p>
     </div>
   </div>
 </body>

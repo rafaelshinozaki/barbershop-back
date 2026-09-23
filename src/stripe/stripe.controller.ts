@@ -131,8 +131,10 @@ export class StripeController {
       FullName: subscription.user.fullName,
       AppName: 'Barbershop',
       InvoiceID: invoice.id,
-      Amount: (invoice.amount_paid / 100).toFixed(2),
-      DueDate: new Date(payment.nextPaymentDate).toLocaleDateString('pt-BR'),
+      // Formatados no template ({{money}}/{{date}}) no idioma do usuário
+      Amount: invoice.amount_paid / 100,
+      Currency: invoice.currency,
+      DueDate: new Date(payment.nextPaymentDate),
       InvoiceURL: invoice.hosted_invoice_url,
       SupportEmail: 'suporte@barbershop.com.br',
       Year: new Date().getFullYear(),
@@ -143,7 +145,11 @@ export class StripeController {
         subscription.user.id,
         'invoice_email',
         context,
-        `Pagamento recebido - Fatura ${invoice.id}`,
+        {
+          pt: `Pagamento recebido - Fatura ${invoice.id}`,
+          en: `Payment received - Invoice ${invoice.id}`,
+          es: `Pago recibido - Factura ${invoice.id}`,
+        },
         'invoice',
         subscription.user.email,
       );
