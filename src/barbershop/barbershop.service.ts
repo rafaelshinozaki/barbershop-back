@@ -1283,14 +1283,74 @@ export class BarbershopService {
 
   // ============ APPOINTMENTS ============
 
+  /**
+   * Trava a agenda do barbeiro (e do recurso, se houver) até o fim da
+   * transação. Sem isso, a checagem de conflito ("tem alguém nesse
+   * horário?") e a gravação eram passos separados: duas reservas
+   * simultâneas passavam as duas pela checagem e o mesmo horário era
+   * vendido duas vezes (reproduzido no teste de integração com 5 reservas
+   * ao mesmo tempo). Advisory lock do Postgres por barbeiro: reservas de
+   * barbeiros diferentes continuam em paralelo.
+   */
+  private async lockSchedule(tx: Prisma.TransactionClient, barberId: number, resourceId?: number) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(1, ${barberId}::int)`;
+    if (resourceId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, ${resourceId}::int)`;
+    }
+  }
+
+  // Tudo que vem por id do front precisa pertencer a esta barbearia/rede —
+  // antes dava pra agendar/vender pra cliente de outra franquia (e resgatar
+  // os pontos de fidelidade dele), ou usar barbeiro/serviço/produto de outra
+  // unidade, só trocando o id na requisição.
+  private async ensureCustomerOfNetwork(networkId: number, customerId: number) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+  }
+
+  private async ensureBarberOfBarbershop(barbershopId: number, barberId: number) {
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, barbershopId },
+      select: { id: true },
+    });
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
+  }
+
+  private async ensureItemsOfBarbershop(
+    barbershopId: number,
+    serviceIds: number[],
+    productIds: number[] = [],
+  ) {
+    const uniqueServices = [...new Set(serviceIds)];
+    const uniqueProducts = [...new Set(productIds)];
+    const [services, products] = await Promise.all([
+      uniqueServices.length
+        ? this.prisma.barbershopService.count({
+            where: { id: { in: uniqueServices }, barbershopId },
+          })
+        : 0,
+      uniqueProducts.length
+        ? this.prisma.barbershopProduct.count({
+            where: { id: { in: uniqueProducts }, barbershopId },
+          })
+        : 0,
+    ]);
+    if (services !== uniqueServices.length) throw new NotFoundException('Serviço não encontrado');
+    if (products !== uniqueProducts.length) throw new NotFoundException('Produto não encontrado');
+  }
+
   private async ensureResourceAvailable(
     barbershopId: number,
     resourceId: number,
     startAt: Date,
     endAt: Date,
     excludeAppointmentId?: number,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
-    const conflict = await this.prisma.appointment.findFirst({
+    const conflict = await client.appointment.findFirst({
       where: {
         barbershopId,
         resourceId,
@@ -1315,8 +1375,9 @@ export class BarbershopService {
     startAt: Date,
     endAt: Date,
     excludeAppointmentId?: number,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
-    const conflict = await this.prisma.appointment.findFirst({
+    const conflict = await client.appointment.findFirst({
       where: {
         barbershopId,
         barberId,
@@ -1348,11 +1409,13 @@ export class BarbershopService {
       services: Array<{ serviceId: number; quantity?: number; unitPrice: number }>;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    await this.ensureBarberAvailable(barbershopId, data.barberId, data.startAt, data.endAt);
-    if (data.resourceId) {
-      await this.ensureResourceAvailable(barbershopId, data.resourceId, data.startAt, data.endAt);
-    }
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
+    await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    await this.ensureItemsOfBarbershop(
+      barbershopId,
+      data.services.map((s) => s.serviceId),
+    );
     const { services, depositAmount, depositPaid, ...appointmentData } = data;
     // Se nenhum valor de sinal foi informado, usa o sugerido no primeiro
     // serviço (se essa unidade configurou um) — evita a equipe ter que
@@ -1365,6 +1428,26 @@ export class BarbershopService {
       resolvedDeposit = svc?.depositAmount ? Number(svc.depositAmount) : undefined;
     }
     return this.prisma.$transaction(async (tx) => {
+      // Checagem de conflito e gravação sob a mesma trava (ver lockSchedule)
+      await this.lockSchedule(tx, data.barberId, data.resourceId);
+      await this.ensureBarberAvailable(
+        barbershopId,
+        data.barberId,
+        data.startAt,
+        data.endAt,
+        undefined,
+        tx,
+      );
+      if (data.resourceId) {
+        await this.ensureResourceAvailable(
+          barbershopId,
+          data.resourceId,
+          data.startAt,
+          data.endAt,
+          undefined,
+          tx,
+        );
+      }
       const appointment = await tx.appointment.create({
         data: {
           barbershopId,
@@ -1479,33 +1562,40 @@ export class BarbershopService {
       status: string;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
+    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
     const barberId = data.barberId ?? appointment.barberId;
-    await this.ensureBarberAvailable(
-      barbershopId,
-      barberId,
-      data.startAt ?? appointment.startAt,
-      data.endAt ?? appointment.endAt,
-      appointmentId,
-    );
     const resourceId = data.resourceId ?? appointment.resourceId ?? undefined;
-    if (resourceId) {
-      await this.ensureResourceAvailable(
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.lockSchedule(tx, barberId, resourceId);
+      await this.ensureBarberAvailable(
         barbershopId,
-        resourceId,
+        barberId,
         data.startAt ?? appointment.startAt,
         data.endAt ?? appointment.endAt,
         appointmentId,
+        tx,
       );
-    }
-    const updated = await this.prisma.appointment.update({
-      where: { id: appointmentId },
-      data,
-      include: { services: { include: { service: true } }, customer: true, barber: true },
+      if (resourceId) {
+        await this.ensureResourceAvailable(
+          barbershopId,
+          resourceId,
+          data.startAt ?? appointment.startAt,
+          data.endAt ?? appointment.endAt,
+          appointmentId,
+          tx,
+        );
+      }
+      return tx.appointment.update({
+        where: { id: appointmentId },
+        data,
+        include: { services: { include: { service: true } }, customer: true, barber: true },
+      });
     });
 
     // Vaga liberada por cancelamento — avisa o primeiro da lista de espera
@@ -2185,6 +2275,8 @@ export class BarbershopService {
         throw new BadRequestException('Horário cai no intervalo do profissional');
       }
     }
+    // Checagem rápida antes de criar o cliente (a definitiva é dentro da
+    // transação, sob a trava da agenda do barbeiro)
     await this.ensureBarberAvailable(input.barbershopId, input.barberId, startAt, endAt);
 
     const networkId = barbershop.networkId;
@@ -2227,6 +2319,15 @@ export class BarbershopService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await this.lockSchedule(tx, input.barberId);
+      await this.ensureBarberAvailable(
+        input.barbershopId,
+        input.barberId,
+        startAt,
+        endAt,
+        undefined,
+        tx,
+      );
       const appointment = await tx.appointment.create({
         data: {
           barbershopId: input.barbershopId,
@@ -3159,14 +3260,23 @@ export class BarbershopService {
       loyaltyPointsRedeemed?: number;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
+    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    if (data.appointmentId) {
+      const appt = await this.prisma.appointment.findFirst({
+        where: { id: data.appointmentId, barbershopId },
+        select: { id: true },
+      });
+      if (!appt) throw new NotFoundException('Agendamento não encontrado');
+    }
+    await this.ensureItemsOfBarbershop(
+      barbershopId,
+      data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
+      data.items.filter((i) => i.productId).map((i) => i.productId as number),
+    );
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
-
-    const barbershop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
-      include: { network: true },
-    });
 
     // O cartão-presente e o resgate de pontos são calculados e validados no
     // servidor (nunca confiamos no valor que o front manda) e descontados
@@ -3229,17 +3339,29 @@ export class BarbershopService {
         },
       });
 
+      // Baixa condicional ("só se ainda tiver saldo"), dentro da transação:
+      // a checagem lá em cima é de antes — duas vendas simultâneas passavam
+      // as duas por ela e os pontos/saldo eram gastos duas vezes (o cliente
+      // ficava com pontos negativos).
       if (giftCard) {
-        await tx.giftCard.update({
-          where: { id: giftCard.id },
+        const debited = await tx.giftCard.updateMany({
+          where: { id: giftCard.id, remainingValue: { gte: giftCardAmountApplied } },
           data: { remainingValue: { decrement: giftCardAmountApplied } },
         });
+        if (debited.count === 0) {
+          throw new BadRequestException(
+            'O saldo do cartão-presente mudou enquanto a venda era registrada. Tente de novo.',
+          );
+        }
       }
       if (data.loyaltyPointsRedeemed && data.customerId) {
-        await tx.customer.update({
-          where: { id: data.customerId },
+        const debited = await tx.customer.updateMany({
+          where: { id: data.customerId, loyaltyPoints: { gte: data.loyaltyPointsRedeemed } },
           data: { loyaltyPoints: { decrement: data.loyaltyPointsRedeemed } },
         });
+        if (debited.count === 0) {
+          throw new BadRequestException('Cliente não tem pontos de fidelidade suficientes');
+        }
       }
 
       // Concede pontos de fidelidade só quando a venda já está paga — evita
