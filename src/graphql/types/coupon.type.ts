@@ -121,6 +121,10 @@ export class UpdateCouponInput {
 
   @Field({ nullable: true })
   applicablePlans?: string;
+
+  /** Desativar sem apagar (o cupom some da validação, mas o histórico fica) */
+  @Field({ nullable: true })
+  isActive?: boolean;
 }
 
 @ObjectType()

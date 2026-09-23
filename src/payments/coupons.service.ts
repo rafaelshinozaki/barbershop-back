@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { isAfter, isBefore } from 'date-fns';
@@ -16,6 +16,12 @@ export interface CouponValidationResult {
   coupon?: any;
   discountAmount?: number;
   originalAmount?: number;
+}
+
+/** Lista vazia = vale pra todos os planos (null); "[]" travaria o cupom pra nenhum. */
+function plansToJson(plans: number[] | null | undefined): string | null | undefined {
+  if (plans === undefined) return undefined;
+  return plans && plans.length ? JSON.stringify(plans) : null;
 }
 
 @Injectable()
@@ -38,22 +44,24 @@ export class CouponsService {
   }) {
     this.logger.log(`Creating coupon with code: ${data.code}`);
 
-    const applicablePlansJson = data.applicablePlans ? JSON.stringify(data.applicablePlans) : null;
+    const applicablePlansJson = plansToJson(data.applicablePlans) ?? null;
 
-    const coupon = await this.prisma.coupon.create({
-      data: {
-        code: data.code.toUpperCase(),
-        name: data.name,
-        description: data.description,
-        type: data.type,
-        value: new Prisma.Decimal(data.value),
-        maxUses: data.maxUses,
-        validFrom: data.validFrom || new Date(),
-        validUntil: data.validUntil,
-        minSubscriptionMonths: data.minSubscriptionMonths,
-        applicablePlans: applicablePlansJson,
-      },
-    });
+    const coupon = await this.withUniqueCode(() =>
+      this.prisma.coupon.create({
+        data: {
+          code: data.code.toUpperCase(),
+          name: data.name,
+          description: data.description,
+          type: data.type,
+          value: new Prisma.Decimal(data.value),
+          maxUses: data.maxUses,
+          validFrom: data.validFrom || new Date(),
+          validUntil: data.validUntil,
+          minSubscriptionMonths: data.minSubscriptionMonths,
+          applicablePlans: applicablePlansJson,
+        },
+      }),
+    );
 
     this.logger.log(`Coupon created with ID: ${coupon.id}`);
     return coupon;
@@ -71,7 +79,8 @@ export class CouponsService {
       where: { code: code.toUpperCase() },
     });
 
-    if (!coupon) {
+    // Cupom apagado no backoffice (soft delete) não vale mais
+    if (!coupon || coupon.deleted_at) {
       return { isValid: false, error: 'Cupom não encontrado' };
     }
 
@@ -177,36 +186,23 @@ export class CouponsService {
     };
   }
 
+  /** Marca o cupom como usado por este usuário e soma um uso no cupom. */
+  async registerUse(couponId: number, userId: number) {
+    await this.prisma.userCoupon.upsert({
+      where: { userId_couponId: { userId, couponId } },
+      update: { usedAt: new Date() },
+      create: { userId, couponId, usedAt: new Date() },
+    });
+    await this.prisma.coupon.update({
+      where: { id: couponId },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
   async applyCoupon(couponId: number, userId: number, paymentId: number) {
     this.logger.log(`Applying coupon ${couponId} to payment ${paymentId}`);
 
-    // Registrar uso do cupom pelo usuário
-    await this.prisma.userCoupon.upsert({
-      where: {
-        userId_couponId: {
-          userId,
-          couponId,
-        },
-      },
-      update: {
-        usedAt: new Date(),
-      },
-      create: {
-        userId,
-        couponId,
-        usedAt: new Date(),
-      },
-    });
-
-    // Incrementar contador de usos do cupom
-    await this.prisma.coupon.update({
-      where: { id: couponId },
-      data: {
-        usedCount: {
-          increment: 1,
-        },
-      },
-    });
+    await this.registerUse(couponId, userId);
 
     // Atualizar pagamento com informações do cupom
     const payment = await this.prisma.payment.findUnique({
@@ -257,8 +253,10 @@ export class CouponsService {
   }
 
   async getCouponsForUser(userId: number) {
+    // Só os que ainda dá pra usar: já usado ou apagado no backoffice não
+    // aparece como "seu cupom" no checkout
     const userCoupons = await this.prisma.userCoupon.findMany({
-      where: { userId },
+      where: { userId, usedAt: null, coupon: { deleted_at: null, isActive: true } },
       include: {
         coupon: true,
       },
@@ -286,14 +284,43 @@ export class CouponsService {
     return coupon;
   }
 
-  async updateCoupon(id: number, data: Partial<Prisma.CouponUpdateInput>) {
-    const coupon = await this.prisma.coupon.update({
-      where: { id },
-      data,
-    });
+  async updateCoupon(
+    id: number,
+    data: Omit<Partial<Prisma.CouponUpdateInput>, 'applicablePlans'> & {
+      applicablePlans?: number[] | null;
+    },
+  ) {
+    const { applicablePlans, code, ...rest } = data;
+    const coupon = await this.withUniqueCode(() =>
+      this.prisma.coupon.update({
+        where: { id },
+        data: {
+          ...rest,
+          // Mesmo formato do createCoupon: o código é sempre maiúsculo e os
+          // planos ficam como JSON numa coluna String (antes ia o array cru
+          // e o Prisma recusava a edição)
+          ...(typeof code === 'string' ? { code: code.toUpperCase() } : {}),
+          ...(applicablePlans !== undefined
+            ? { applicablePlans: plansToJson(applicablePlans) }
+            : {}),
+        },
+      }),
+    );
 
     this.logger.log(`Coupon ${id} updated`);
     return coupon;
+  }
+
+  /** Código repetido vira um erro legível em vez do P2002 cru do Prisma. */
+  private async withUniqueCode<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Já existe um cupom com esse código');
+      }
+      throw e;
+    }
   }
 
   async deleteCoupon(id: number) {

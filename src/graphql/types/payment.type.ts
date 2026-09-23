@@ -74,11 +74,25 @@ export class SetupIntent {
 
 @ObjectType()
 export class PaymentIntentResponse {
-  @Field()
-  clientSecret: string;
+  /** null quando o cupom cobriu o valor e o plano já foi ativado sem cobrança */
+  @Field(() => String, { nullable: true })
+  clientSecret: string | null;
 
-  @Field()
-  paymentIntentId: string;
+  @Field(() => String, { nullable: true })
+  paymentIntentId: string | null;
+
+  /** true = plano ativado sem passar pelo Stripe (cupom de 100%) */
+  @Field({ defaultValue: false })
+  activated: boolean;
+
+  @Field(() => Float, { nullable: true })
+  originalAmount?: number;
+
+  @Field(() => Float, { nullable: true })
+  discountAmount?: number;
+
+  @Field(() => Float, { nullable: true })
+  finalAmount?: number;
 }
 
 @ObjectType()
