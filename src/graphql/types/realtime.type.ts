@@ -8,7 +8,7 @@ export class NetworkActivityEvent {
   @Field(() => Int)
   barbershopId: number;
 
-  @Field({ description: 'APPOINTMENT | SALE | WALK_IN | CUSTOMER | BARBER' })
+  @Field({ description: 'APPOINTMENT | SALE | WALK_IN | CUSTOMER | BARBER | WAITLIST' })
   kind: string;
 
   @Field({ description: 'CREATED | UPDATED | DELETED' })
@@ -25,4 +25,13 @@ export class NotificationEvent {
 
   @Field({ nullable: true, description: 'Título da notificação nova (só em CREATED)' })
   title?: string;
+}
+
+@ObjectType({ description: 'A agenda da barbearia mudou — a página pública recarrega os horários' })
+export class PublicSlotsChangedEvent {
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field()
+  at: string;
 }

@@ -28,7 +28,6 @@ import { FailOpenRedisThrottlerStorage } from './redis/redis-throttler.storage';
 import { redisUrl } from './redis/redis-url';
 import { QueueModule } from './queue/queue.module';
 import { RealtimeModule } from './realtime/realtime.module';
-import { JwtService } from '@nestjs/jwt';
 import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
 
@@ -153,28 +152,19 @@ import { isAllowedOrigin } from './common/cors-origins';
       subscriptions: {
         'graphql-ws': {
           path: '/graphql',
-          // Recusa o socket já no handshake: origem fora da lista (o
-          // navegador não aplica CORS a WebSocket e o login é por cookie) ou
-          // sem um JWT válido. Sessão/usuário são checados de novo pelo guard
-          // em cada subscription.
+          // Recusa o socket já no handshake quando a origem não é do front
+          // (o navegador não aplica CORS a WebSocket e o login é por cookie —
+          // sem isso outro site abriria o socket com o cookie do usuário).
+          // Sem cookie a conexão é aceita como anônima: só a subscription da
+          // página pública (publicSlotsChanged) funciona; as privadas passam
+          // pelo GraphQLJwtAuthGuard, que exige login e sessão ativa.
           onConnect: (ctx) => {
             const { request } = ctx.extra as { request: IncomingMessage };
-            const headers = request.headers;
-            const origin = headers.origin;
-            if (
-              origin &&
-              !isAllowedOrigin(origin, process.env.FRONTEND_URL, process.env.TENANT_ROOT_DOMAIN)
-            ) {
-              return false;
-            }
-            const token = headers.cookie?.match(/(?:^|;\s*)Authentication=([^;]+)/)?.[1];
-            if (!token) return false;
-            try {
-              new JwtService().verify(token, { secret: process.env.JWT_SECRET });
-              return true;
-            } catch {
-              return false;
-            }
+            const origin = request.headers.origin;
+            return (
+              !origin ||
+              isAllowedOrigin(origin, process.env.FRONTEND_URL, process.env.TENANT_ROOT_DOMAIN)
+            );
           },
         },
       },

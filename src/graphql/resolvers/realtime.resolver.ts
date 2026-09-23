@@ -1,4 +1,4 @@
-import { Context, Resolver, Subscription } from '@nestjs/graphql';
+import { Args, Context, Int, Resolver, Subscription } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
@@ -6,12 +6,17 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { BarbershopService } from '../../barbershop/barbershop.service';
 import {
   NETWORK_ACTIVITY,
+  PUBLIC_SLOTS,
   NetworkActivityPayload,
   RealtimeService,
   USER_NOTIFICATIONS,
   UserNotificationsPayload,
 } from '../../realtime/realtime.service';
-import { NetworkActivityEvent, NotificationEvent } from '../types/realtime.type';
+import {
+  NetworkActivityEvent,
+  NotificationEvent,
+  PublicSlotsChangedEvent,
+} from '../types/realtime.type';
 
 type SubscriptionContext = { allowedBarbershopIds?: Set<number>; userId?: number };
 
@@ -53,5 +58,20 @@ export class RealtimeResolver {
   myNotificationEvents(@CurrentUser() user: UserDTO, @Context() context: SubscriptionContext) {
     context.userId = user.id;
     return this.realtime.pubSub.asyncIterator(USER_NOTIFICATIONS);
+  }
+
+  /**
+   * Página pública (sem login): avisa quem está escolhendo horário numa
+   * barbearia que a agenda dela mudou, pra não oferecer horário já tomado.
+   * O aviso não traz nenhum dado do agendamento.
+   */
+  @Subscription(() => PublicSlotsChangedEvent, {
+    filter: (
+      payload: { publicSlotsChanged: { barbershopId: number } },
+      variables: { barbershopId: number },
+    ) => payload.publicSlotsChanged.barbershopId === variables.barbershopId,
+  })
+  publicSlotsChanged(@Args('barbershopId', { type: () => Int }) _barbershopId: number) {
+    return this.realtime.pubSub.asyncIterator(PUBLIC_SLOTS);
   }
 }
