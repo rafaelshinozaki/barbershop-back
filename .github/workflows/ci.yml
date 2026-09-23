@@ -26,9 +26,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgresql://barbershop:barbershop@localhost:5432/barbershop?schema=public
+      REDIS_URL: redis://localhost:6379
 
     steps:
       - uses: actions/checkout@v4
@@ -80,3 +90,23 @@ jobs:
         run: pnpm seed
         env:
           SEED_DEMO: 'true'
+
+      # Sobe o app de verdade: teste unitário não pega pacote faltando no boot
+      # nem erro de ligação entre módulos (ex.: o Apollo 5 exige
+      # @as-integrations/express5 — sem ele os testes passavam e o app não
+      # subia). Valores de exemplo do .env.example; banco e Redis são os do
+      # workflow (variáveis do job têm prioridade sobre o .env).
+      - name: App sobe e responde
+        run: |
+          cp .env.example .env
+          node dist/src/main > app.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf localhost:3020/health > health.json && break
+            sleep 1
+          done
+          cat health.json || { cat app.log; exit 1; }
+          grep -q '"database":"connected"' health.json || { cat app.log; exit 1; }
+          grep -q '"redis":"connected"' health.json || { cat app.log; exit 1; }
+          curl -sf -X POST localhost:3020/graphql \
+            -H 'content-type: application/json' \
+            -d '{"query":"{ __typename }"}' | grep -q Query || { cat app.log; exit 1; }

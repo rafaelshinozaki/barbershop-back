@@ -227,6 +227,8 @@ import { isAllowedOrigin } from './common/cors-origins';
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(SecurityHeadersMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL });
+    consumer
+      .apply(SecurityHeadersMiddleware)
+      .forRoutes({ path: '{*splat}', method: RequestMethod.ALL });
   }
 }
