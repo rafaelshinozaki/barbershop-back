@@ -692,8 +692,9 @@ export class BackofficeService {
       meta: email.meta,
       createdAt: email.createdAt.toISOString(),
       userId: email.userId,
-      userName: email.user.fullName,
-      userEmail: email.user.email,
+      // E-mail pra cliente final (conta de cliente não é User) não tem usuário
+      userName: email.user?.fullName ?? '',
+      userEmail: email.user?.email ?? email.sentTo,
     }));
 
     return {

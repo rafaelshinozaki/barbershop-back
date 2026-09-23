@@ -52,7 +52,7 @@ export class EmailService {
    * userId informado (normalmente o dono da barbearia) só para auditoria.
    */
   async sendCustomerEmail(
-    loggedAgainstUserId: number,
+    loggedAgainstUserId: number | null,
     template: string,
     context: Record<string, any>,
     subject: string | Localized,
@@ -117,7 +117,7 @@ export class EmailService {
   }
 
   private async renderAndSend(
-    userId: number,
+    userId: number | null,
     template: string,
     context: Record<string, any>,
     subjectIn: string | Localized,

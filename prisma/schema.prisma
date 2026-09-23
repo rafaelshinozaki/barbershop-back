@@ -254,13 +254,13 @@ model NotificationPreference {
 
 model EmailLogger {
   id        Int      @id @default(autoincrement())
-  userId    Int
+  userId    Int? // vazio pra e-mail de cliente final (conta de cliente não é User)
   sentTo    String
   subject   String
   body      String
   meta      String
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 model LoginHistory {
@@ -608,6 +608,21 @@ model NoShowFee {
 // donos/gerentes/funcionários). Um cliente pode ter um Customer em cada
 // Network que frequenta; esta conta é o que liga esses registros entre si
 // para dar histórico e favoritos cross-negócio.
+/// Link de uso único enviado por e-mail (confirmar e-mail, redefinir senha).
+/// Guarda só o hash SHA-256 do token.
+model ClientAccountToken {
+  id              Int           @id @default(autoincrement())
+  clientAccountId Int
+  purpose         String // VERIFY_EMAIL | RESET_PASSWORD
+  tokenHash       String        @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime      @default(now())
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([clientAccountId, purpose])
+}
+
 model ClientAccount {
   id                   Int                         @id @default(autoincrement())
   createdAt            DateTime                    @default(now())
@@ -620,6 +635,13 @@ model ClientAccount {
   stripeCustomerId     String?                     // Stripe Customer na conta da própria plataforma — usado pra
                                                      // assinatura recorrente de serviço (ver ClientSubscription).
                                                      // Não é Stripe Connect: o dinheiro cai na conta da plataforma.
+  // Só com o e-mail confirmado a conta é ligada às fichas (Customer) das
+  // barbearias com esse e-mail — antes bastava cadastrar o e-mail de outra
+  // pessoa pra ver o histórico dela
+  emailVerifiedAt      DateTime?
+  language             String?                     // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
+  sessionVersion       Int                         @default(0) // sobe ao trocar a senha: derruba as sessões antigas
+  tokens               ClientAccountToken[]
   customers            Customer[]
   favorites            ClientFavorite[]
   linkedSocialAccounts ClientLinkedSocialAccount[]

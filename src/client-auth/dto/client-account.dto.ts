@@ -4,4 +4,5 @@ export type ClientAccountDTO = {
   name: string;
   phone: string | null;
   avatarUrl: string | null;
+  emailVerified: boolean;
 };

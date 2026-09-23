@@ -2322,12 +2322,11 @@ export class BarbershopService {
           }
         }
       }
-    } else if (input.clientAccountId && !customer.clientAccountId) {
-      customer = await this.prisma.customer.update({
-        where: { id: customer.id },
-        data: { clientAccountId: input.clientAccountId },
-      });
     }
+    // Ficha que já existia (achada pelo telefone digitado) NÃO é ligada à
+    // conta logada: o telefone não é confirmado, e ligar deixava qualquer um
+    // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
+    // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
     return this.prisma.$transaction(async (tx) => {
       await this.lockSchedule(tx, input.barberId);

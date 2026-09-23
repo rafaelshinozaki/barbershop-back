@@ -37,6 +37,11 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
       if (!account) {
         throw new UnauthorizedException('Conta de cliente não encontrada.');
       }
+      // Senha trocada (ou conta retomada pelo dono do e-mail) derruba os
+      // cookies emitidos antes
+      if ((decoded.v ?? 0) !== account.sessionVersion) {
+        throw new UnauthorizedException('Sessão de cliente encerrada.');
+      }
 
       req.clientUser = { id: account.id, email: account.email, name: account.name };
       return true;

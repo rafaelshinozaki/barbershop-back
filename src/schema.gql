@@ -342,9 +342,14 @@ input CheckPasswordInput {
 type ClientAccountType {
   avatarUrl: String
   email: String!
+  emailVerified: Boolean!
   id: Int!
   name: String!
   phone: String
+}
+
+input ClientForgotPasswordInput {
+  email: String!
 }
 
 type ClientHistoryEntryType {
@@ -383,8 +388,14 @@ type ClientPackageType {
   usedSessions: Int!
 }
 
+input ClientResetPasswordInput {
+  password: String!
+  token: String!
+}
+
 input ClientSignupInput {
   email: String!
+  language: String
   name: String!
   password: String!
   phone: String
@@ -1078,9 +1089,13 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
   clientLogin(input: ClientLoginInput!): ClientAccountType!
   clientLogout: Boolean!
+  clientResendVerificationEmail: Boolean!
+  clientResetPassword(input: ClientResetPasswordInput!): Boolean!
   clientSignup(input: ClientSignupInput!): ClientAccountType!
+  clientVerifyEmail(token: String!): Boolean!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
