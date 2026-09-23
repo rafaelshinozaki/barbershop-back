@@ -53,11 +53,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Antes dos testes: os de integração (*.int.spec.ts) usam o Postgres do
+      # workflow já migrado
+      - name: Migrations
+        run: npx prisma migrate deploy
+
       - name: Testes
         run: pnpm test
 
-      - name: Migrations
-        run: npx prisma migrate deploy
 
       # Sai com código 2 se o schema.prisma tiver algo que as migrations não
       # criam (ex.: campo adicionado sem `prisma migrate dev`)
