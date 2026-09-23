@@ -1,3 +1,4 @@
+import { PrismaService } from '../../prisma/prisma.service';
 import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
 import { NotFoundException, UseGuards, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -46,6 +47,7 @@ export class PublicBookingResolver {
     private readonly configService: ConfigService,
     private readonly realtime: RealtimeService,
     private readonly activity: ActivityNotificationsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -89,14 +91,21 @@ export class PublicBookingResolver {
   // Se o visitante já estiver logado como cliente da plataforma (cookie
   // ClientAuthentication), liga o agendamento à conta dele automaticamente —
   // sem exigir login pra quem não tem/não quer conta.
-  private getOptionalClientAccountId(req: any): number | undefined {
+  private async getOptionalClientAccountId(req: any): Promise<number | undefined> {
     const token = req?.cookies?.ClientAuthentication;
     if (!token) return undefined;
     try {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       }) as ClientTokenPayload;
-      return decoded.clientAccountId;
+      // Cookie de sessão encerrada (senha trocada) não vale mais
+      const account = await this.prisma.clientAccount.findUnique({
+        where: { id: decoded.clientAccountId },
+        select: { sessionVersion: true },
+      });
+      return account && (decoded.v ?? 0) === account.sessionVersion
+        ? decoded.clientAccountId
+        : undefined;
     } catch {
       return undefined;
     }
@@ -108,7 +117,7 @@ export class PublicBookingResolver {
     @Args('input') input: CreatePublicAppointmentInput,
     @Context() context: any,
   ): Promise<PublicAppointmentType> {
-    const clientAccountId = this.getOptionalClientAccountId(context.req);
+    const clientAccountId = await this.getOptionalClientAccountId(context.req);
     const appointment = await this.barbershopService.createPublicAppointment({
       ...input,
       clientAccountId,

@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { EmailModule } from '@/email/email.module';
 import { ClientAuthService } from './client-auth.service';
 import { ClientAuthController } from './client-auth.controller';
 import { GraphQLClientJwtAuthGuard } from './guards/graphql-client-jwt-auth.guard';
@@ -16,6 +17,7 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
 @Module({
   imports: [
     PrismaModule,
+    EmailModule,
     ConfigModule,
     PassportModule,
     JwtModule.registerAsync({

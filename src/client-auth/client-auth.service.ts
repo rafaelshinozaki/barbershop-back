@@ -2,14 +2,30 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Response } from 'express';
 import { PrismaService } from '@/prisma/prisma.service';
+import { EmailService } from '@/email/email.service';
+import { normalizeLang } from '@/email/language';
 import { ClientAccountDTO } from './dto/client-account.dto';
+
+export const CLIENT_TOKEN_PURPOSE = {
+  VERIFY_EMAIL: 'VERIFY_EMAIL',
+  RESET_PASSWORD: 'RESET_PASSWORD',
+} as const;
+type TokenPurpose = (typeof CLIENT_TOKEN_PURPOSE)[keyof typeof CLIENT_TOKEN_PURPOSE];
+
+const VERIFY_EMAIL_TTL_HOURS = 24;
+// Mesmo prazo do link de senha do dono (o texto do e-mail fala em "horas")
+const RESET_PASSWORD_TTL_HOURS = 2;
+
+const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 export type ClientHistoryEntry = {
   id: string;
@@ -43,6 +59,7 @@ function toDTO(account: {
   name: string;
   phone: string | null;
   avatarUrl: string | null;
+  emailVerifiedAt: Date | null;
 }): ClientAccountDTO {
   return {
     id: account.id,
@@ -50,36 +67,198 @@ function toDTO(account: {
     name: account.name,
     phone: account.phone,
     avatarUrl: account.avatarUrl,
+    emailVerified: !!account.emailVerifiedAt,
   };
 }
 
 @Injectable()
 export class ClientAuthService {
+  private readonly logger = new Logger(ClientAuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
-  // Liga (best-effort) Customers órfãos — de qualquer negócio da plataforma —
-  // que batem por email ou telefone a esta conta. É isso que dá o histórico
-  // "cross-negócio": cada Customer continua pertencendo à sua Network, só a
-  // conta do cliente une os registros na hora de consultar.
-  private async linkExistingCustomers(
-    clientAccountId: number,
-    email: string,
-    phone?: string | null,
-  ) {
+  // Liga as fichas (Customer) órfãs de qualquer negócio da plataforma com
+  // este e-mail à conta — é isso que dá o histórico "cross-negócio". Só com
+  // o e-mail CONFIRMADO: antes ligava pelo e-mail/telefone digitado no
+  // cadastro, e bastava cadastrar o e-mail de outra pessoa pra ver onde, quando
+  // e quanto ela gastou. Telefone não liga nada (não há como confirmar).
+  private async linkVerifiedCustomers(account: {
+    id: number;
+    email: string;
+    emailVerifiedAt: Date | null;
+  }) {
+    if (!account.emailVerifiedAt) return;
     await this.prisma.customer.updateMany({
-      where: {
-        clientAccountId: null,
-        OR: [{ email }, ...(phone ? [{ phone }] : [])],
-      },
-      data: { clientAccountId },
+      where: { clientAccountId: null, email: { equals: account.email, mode: 'insensitive' } },
+      data: { clientAccountId: account.id },
     });
   }
 
-  async signup(email: string, password: string, name: string, phone?: string) {
+  /** Cria um link de uso único (só o hash fica no banco) e devolve o token. */
+  private async createToken(clientAccountId: number, purpose: TokenPurpose, ttlHours: number) {
+    // Um link válido por vez: pedir outro invalida os anteriores
+    await this.prisma.clientAccountToken.updateMany({
+      where: { clientAccountId, purpose, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    const token = randomBytes(32).toString('base64url');
+    await this.prisma.clientAccountToken.create({
+      data: {
+        clientAccountId,
+        purpose,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + ttlHours * 3600_000),
+      },
+    });
+    return token;
+  }
+
+  /** Consome o token (uma vez só); inválido, usado ou vencido → erro. */
+  private async consumeToken(token: string, purpose: TokenPurpose) {
+    const record = await this.prisma.clientAccountToken.findUnique({
+      where: { tokenHash: hashToken(token || '') },
+      include: { clientAccount: true },
+    });
+    const invalid = new BadRequestException('Link inválido ou vencido. Peça um novo.');
+    if (!record || record.purpose !== purpose || record.usedAt || record.expiresAt < new Date()) {
+      throw invalid;
+    }
+    // Marca como usado só se ninguém usou antes (duas abas ao mesmo tempo)
+    const { count } = await this.prisma.clientAccountToken.updateMany({
+      where: { id: record.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (count === 0) throw invalid;
+    return record.clientAccount;
+  }
+
+  private frontendUrl() {
+    return this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+  }
+
+  /** Envia o link de confirmação; falha de envio não derruba quem chamou. */
+  async sendVerificationEmail(account: {
+    id: number;
+    email: string;
+    name: string;
+    language: string | null;
+    emailVerifiedAt: Date | null;
+  }) {
+    if (account.emailVerifiedAt) return;
+    const token = await this.createToken(
+      account.id,
+      CLIENT_TOKEN_PURPOSE.VERIFY_EMAIL,
+      VERIFY_EMAIL_TTL_HOURS,
+    );
+    try {
+      await this.emailService.sendCustomerEmail(
+        null,
+        'verify_email',
+        {
+          FullName: account.name,
+          AppName: 'Barbershop',
+          VerifyURL: `${this.frontendUrl()}/client/verify-email?token=${token}`,
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
+        { pt: 'Confirme seu e-mail', en: 'Confirm your email', es: 'Confirma tu correo' },
+        'client-verify-email',
+        account.email,
+        normalizeLang(account.language),
+      );
+    } catch (error) {
+      this.logger.error(`Falha ao enviar confirmação de e-mail do cliente ${account.id}: ${error}`);
+    }
+  }
+
+  async resendVerificationEmail(clientAccountId: number) {
+    const account = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    if (!account) throw new UnauthorizedException('Conta não encontrada.');
+    await this.sendVerificationEmail(account);
+  }
+
+  async verifyEmail(token: string) {
+    const account = await this.consumeToken(token, CLIENT_TOKEN_PURPOSE.VERIFY_EMAIL);
+    const verified = account.emailVerifiedAt
+      ? account
+      : await this.prisma.clientAccount.update({
+          where: { id: account.id },
+          data: { emailVerifiedAt: new Date() },
+        });
+    await this.linkVerifiedCustomers(verified);
+    return verified;
+  }
+
+  /**
+   * Esqueci a senha: responde igual exista ou não a conta (não dá pra usar
+   * pra descobrir quem tem cadastro). Conta só com login social também
+   * recebe — o link serve pra ela criar uma senha.
+   */
+  async requestPasswordReset(email: string) {
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (!account) {
+      this.logger.warn('Redefinição de senha de cliente pedida pra e-mail sem conta');
+      return;
+    }
+    const token = await this.createToken(
+      account.id,
+      CLIENT_TOKEN_PURPOSE.RESET_PASSWORD,
+      RESET_PASSWORD_TTL_HOURS,
+    );
+    try {
+      await this.emailService.sendCustomerEmail(
+        null,
+        'password_reset',
+        {
+          FullName: account.name,
+          AppName: 'Barbershop',
+          ResetURL: `${this.frontendUrl()}/client/reset-password?token=${token}`,
+          ExpirationHours: RESET_PASSWORD_TTL_HOURS,
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
+        { pt: 'Redefinição de senha', en: 'Password reset', es: 'Restablecimiento de contraseña' },
+        'client-password-reset',
+        account.email,
+        normalizeLang(account.language),
+      );
+    } catch (error) {
+      this.logger.error(`Falha ao enviar redefinição de senha do cliente ${account.id}: ${error}`);
+    }
+  }
+
+  /**
+   * Troca a senha pelo link do e-mail. O link prova que a pessoa tem acesso
+   * ao e-mail, então também confirma o e-mail — e derruba as sessões abertas
+   * (quem tinha cadastrado o e-mail de outra pessoa perde o acesso).
+   */
+  async resetPassword(token: string, newPassword: string) {
+    validatePassword(newPassword);
+    const account = await this.consumeToken(token, CLIENT_TOKEN_PURPOSE.RESET_PASSWORD);
+    const updated = await this.prisma.clientAccount.update({
+      where: { id: account.id },
+      data: {
+        password: await bcrypt.hash(newPassword, 10),
+        emailVerifiedAt: account.emailVerifiedAt ?? new Date(),
+        sessionVersion: { increment: 1 },
+      },
+    });
+    await this.prisma.clientAccountToken.updateMany({
+      where: { clientAccountId: account.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    await this.linkVerifiedCustomers(updated);
+    return updated;
+  }
+
+  async signup(email: string, password: string, name: string, phone?: string, language?: string) {
     const normalizedEmail = email.trim().toLowerCase();
     validatePassword(password);
 
@@ -97,10 +276,12 @@ export class ClientAuthService {
         password: passwordHash,
         name: name.trim(),
         phone: phone?.trim() || null,
+        language: language ? normalizeLang(language) : null,
       },
     });
 
-    await this.linkExistingCustomers(account.id, normalizedEmail, account.phone);
+    // Nada é ligado ainda: o histórico aparece depois de confirmar o e-mail
+    await this.sendVerificationEmail(account);
 
     return account;
   }
@@ -123,7 +304,8 @@ export class ClientAuthService {
       throw new UnauthorizedException('Email ou senha inválidos.');
     }
 
-    await this.linkExistingCustomers(account.id, account.email, account.phone);
+    // Fichas criadas desde o último login (se o e-mail já está confirmado)
+    await this.linkVerifiedCustomers(account);
 
     return account;
   }
@@ -147,6 +329,17 @@ export class ClientAuthService {
           orderBy: { createdAt: 'asc' },
         });
 
+    // O provedor confirmou o e-mail. Se a conta existente com esse e-mail
+    // ainda não estava confirmada, a senha dela pode ter sido criada por
+    // outra pessoa (cadastro com o e-mail alheio): apaga a senha e derruba as
+    // sessões, e o dono de verdade fica com a conta.
+    if (account && !account.emailVerifiedAt && account.email === normalizedEmail) {
+      account = await this.prisma.clientAccount.update({
+        where: { id: account.id },
+        data: { emailVerifiedAt: new Date(), password: null, sessionVersion: { increment: 1 } },
+      });
+    }
+
     if (account && !existingLink) {
       await this.prisma.clientLinkedSocialAccount
         .create({ data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail } })
@@ -161,6 +354,7 @@ export class ClientAuthService {
           email: normalizedEmail,
           name: name || normalizedEmail.split('@')[0],
           password: null,
+          emailVerifiedAt: new Date(),
         },
       });
       await this.prisma.clientLinkedSocialAccount.create({
@@ -168,7 +362,7 @@ export class ClientAuthService {
       });
     }
 
-    await this.linkExistingCustomers(account.id, normalizedEmail, account.phone);
+    await this.linkVerifiedCustomers(account);
     return account;
   }
 
@@ -220,8 +414,12 @@ export class ClientAuthService {
     return { ok: true };
   }
 
-  issueCookie(account: { id: number; email: string }, res: Response) {
-    const token = this.jwtService.sign({ clientAccountId: account.id, email: account.email });
+  issueCookie(account: { id: number; email: string; sessionVersion: number }, res: Response) {
+    const token = this.jwtService.sign({
+      clientAccountId: account.id,
+      email: account.email,
+      v: account.sessionVersion,
+    });
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
     res.cookie('ClientAuthentication', token, {
       httpOnly: true,

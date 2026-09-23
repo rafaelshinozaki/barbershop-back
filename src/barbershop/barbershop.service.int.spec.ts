@@ -192,6 +192,7 @@ describe('BarbershopService (integração com o banco)', () => {
     await prisma.appointment.deleteMany({ where: { barbershopId: { in: shopIds } } });
     await prisma.giftCard.deleteMany({ where: { networkId: { in: networkIds } } });
     await prisma.customer.deleteMany({ where: { networkId: { in: networkIds } } });
+    await prisma.clientAccount.deleteMany({ where: { email: { contains: `-${RUN}@` } } });
     await prisma.barberSchedule.deleteMany({
       where: { barber: { barbershopId: { in: shopIds } } },
     });
@@ -297,6 +298,42 @@ describe('BarbershopService (integração com o banco)', () => {
       const appt = await book(at(day, '11:00'));
       await service.updateAppointment(A.ownerId, A.shopId, appt!.id, { status: 'CANCELLED' });
       await expect(book(at(day, '11:00'))).resolves.toBeTruthy();
+    });
+
+    it('agendar logado com o telefone de uma ficha existente não liga a ficha à conta', async () => {
+      // Antes a ficha achada pelo telefone digitado passava pra conta logada —
+      // e com ela o histórico de outra pessoa
+      const phone = `11${RUN}77`;
+      const victim = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Vítima', phone },
+      });
+      const account = await prisma.clientAccount.create({
+        data: { email: `logado-${RUN}@test.local`, name: 'Logado', password: null },
+      });
+      await service.createPublicAppointment({
+        barbershopId: A.shopId,
+        barberId: A.barberId,
+        serviceId: A.serviceId,
+        startAt: at(day, '16:30').toISOString(),
+        customerName: 'Logado',
+        customerPhone: phone,
+        clientAccountId: account.id,
+      });
+      const after = await prisma.customer.findUnique({ where: { id: victim.id } });
+      expect(after!.clientAccountId).toBeNull();
+
+      // Telefone novo: a ficha criada já nasce na conta de quem agendou
+      await service.createPublicAppointment({
+        barbershopId: A.shopId,
+        barberId: A.barberId,
+        serviceId: A.serviceId,
+        startAt: at(day, '17:00').toISOString(),
+        customerName: 'Logado',
+        customerPhone: `11${RUN}78`,
+        clientAccountId: account.id,
+      });
+      const own = await prisma.customer.findFirst({ where: { phone: `11${RUN}78` } });
+      expect(own!.clientAccountId).toBe(account.id);
     });
 
     it('duas pessoas reservando o mesmo horário ao mesmo tempo: só uma consegue', async () => {

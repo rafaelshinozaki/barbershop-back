@@ -1,5 +1,5 @@
 import { InputType, Field } from '@nestjs/graphql';
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 @InputType()
 export class ClientSignupInput {
@@ -21,6 +21,13 @@ export class ClientSignupInput {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  /** Idioma do navegador (pt/en/es) — usado nos e-mails pra conta */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  language?: string;
 }
 
 @InputType()
@@ -28,6 +35,25 @@ export class ClientLoginInput {
   @Field()
   @IsEmail({}, { message: 'Email inválido' })
   email: string;
+
+  @Field()
+  @IsString()
+  password: string;
+}
+
+@InputType()
+export class ClientForgotPasswordInput {
+  @Field()
+  @IsEmail({}, { message: 'Email inválido' })
+  email: string;
+}
+
+@InputType()
+export class ClientResetPasswordInput {
+  @Field()
+  @IsString()
+  @MaxLength(200)
+  token: string;
 
   @Field()
   @IsString()

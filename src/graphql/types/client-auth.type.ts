@@ -16,6 +16,10 @@ export class ClientAccountType {
 
   @Field({ nullable: true })
   avatarUrl?: string;
+
+  /** Sem e-mail confirmado o histórico das barbearias não aparece */
+  @Field()
+  emailVerified: boolean;
 }
 
 @ObjectType()

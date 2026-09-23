@@ -9,49 +9,101 @@ import {
   ClientLinkedSocialAccountType,
 } from '../types/client-auth.type';
 import { Network } from '../types/barbershop.type';
-import { ClientSignupInput, ClientLoginInput } from '../dto/client-auth.dto';
+import {
+  ClientSignupInput,
+  ClientLoginInput,
+  ClientForgotPasswordInput,
+  ClientResetPasswordInput,
+} from '../dto/client-auth.dto';
+import {
+  ThrottleAuth,
+  ThrottleEmail,
+  ThrottleLogin,
+  ThrottlePasswordReset,
+} from '../../common/decorators/throttle.decorator';
+
+function toClientAccountType(account: {
+  id: number;
+  email: string;
+  name: string;
+  phone: string | null;
+  avatarUrl: string | null;
+  emailVerifiedAt: Date | null;
+}): ClientAccountType {
+  return {
+    id: account.id,
+    email: account.email,
+    name: account.name,
+    phone: account.phone ?? undefined,
+    avatarUrl: account.avatarUrl ?? undefined,
+    emailVerified: !!account.emailVerifiedAt,
+  };
+}
 
 @Resolver()
 export class ClientAuthResolver {
   constructor(private readonly clientAuthService: ClientAuthService) {}
 
+  // Mesmo limite do cadastro de dono (por IP + navegador)
+  @ThrottleAuth()
   @Mutation(() => ClientAccountType)
   async clientSignup(
     @Args('input') input: ClientSignupInput,
     @Context() context: any,
   ): Promise<ClientAccountType> {
-    const { res } = context;
     const account = await this.clientAuthService.signup(
       input.email,
       input.password,
       input.name,
       input.phone,
+      input.language,
     );
-    this.clientAuthService.issueCookie(account, res);
-    return {
-      id: account.id,
-      email: account.email,
-      name: account.name,
-      phone: account.phone ?? undefined,
-      avatarUrl: account.avatarUrl ?? undefined,
-    };
+    this.clientAuthService.issueCookie(account, context.res);
+    return toClientAccountType(account);
   }
 
+  // Antes não tinha limite nenhum: dava pra chutar senha à vontade
+  @ThrottleLogin()
   @Mutation(() => ClientAccountType)
   async clientLogin(
     @Args('input') input: ClientLoginInput,
     @Context() context: any,
   ): Promise<ClientAccountType> {
-    const { res } = context;
     const account = await this.clientAuthService.validateCredentials(input.email, input.password);
-    this.clientAuthService.issueCookie(account, res);
-    return {
-      id: account.id,
-      email: account.email,
-      name: account.name,
-      phone: account.phone ?? undefined,
-      avatarUrl: account.avatarUrl ?? undefined,
-    };
+    this.clientAuthService.issueCookie(account, context.res);
+    return toClientAccountType(account);
+  }
+
+  /** Confirma o e-mail pelo link; o histórico das barbearias passa a aparecer. */
+  @ThrottleAuth()
+  @Mutation(() => Boolean)
+  async clientVerifyEmail(@Args('token') token: string): Promise<boolean> {
+    await this.clientAuthService.verifyEmail(token);
+    return true;
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @ThrottleEmail()
+  @Mutation(() => Boolean)
+  async clientResendVerificationEmail(@CurrentClient() client: CurrentClientUser) {
+    await this.clientAuthService.resendVerificationEmail(client.id);
+    return true;
+  }
+
+  /** Sempre true (não revela se o e-mail tem conta). */
+  @ThrottlePasswordReset()
+  @Mutation(() => Boolean)
+  async clientForgotPassword(@Args('input') input: ClientForgotPasswordInput) {
+    await this.clientAuthService.requestPasswordReset(input.email);
+    return true;
+  }
+
+  /** Nova senha pelo link do e-mail; as sessões abertas caem. */
+  @ThrottleAuth()
+  @Mutation(() => Boolean)
+  async clientResetPassword(@Args('input') input: ClientResetPasswordInput) {
+    await this.clientAuthService.resetPassword(input.token, input.password);
+    return true;
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)
