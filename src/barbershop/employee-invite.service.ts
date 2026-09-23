@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
+import { langForCountry } from '../email/language';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
@@ -136,7 +137,7 @@ export class EmployeeInviteService {
       },
       include: {
         inviter: { select: { fullName: true } },
-        barbershop: { select: { name: true } },
+        barbershop: { select: { name: true, country: true } },
       },
     });
 
@@ -329,14 +330,15 @@ export class EmployeeInviteService {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     const inviteUrl = `${frontendUrl}/accept-employee-invite/${invite.inviteToken}`;
     const manager = invite.role === 'BarbershopManager';
-    // Idioma de quem convidou (o convidado ainda não tem conta); o
-    // EmailService escolhe a versão certa de cada texto
+    // O convidado ainda não tem conta nem idioma salvo: usa a língua do
+    // país da unidade (quem vai trabalhar numa unidade do México lê
+    // espanhol, mesmo que o dono use o app em português)
     const roleLabel = manager
       ? { pt: 'Gerente', en: 'Manager', es: 'Gerente' }
       : { pt: 'Barbeiro', en: 'Barber', es: 'Barbero' };
     const shopName = invite.barbershop.name;
 
-    await this.emailService.sendTemplateEmail(
+    await this.emailService.sendCustomerEmail(
       invite.inviterId,
       'employee_invite',
       {
@@ -353,6 +355,7 @@ export class EmployeeInviteService {
       },
       `Employee invite to ${invite.email}`,
       invite.email,
+      langForCountry(invite.barbershop.country),
     );
   }
 }
