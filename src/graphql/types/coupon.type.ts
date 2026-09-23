@@ -141,6 +141,23 @@ export class CouponValidationResult {
   originalAmount?: number;
 }
 
+/** Resultado de aplicar um cupom a um pagamento pendente */
+@ObjectType()
+export class ApplyCouponResult {
+  @Field()
+  success: boolean;
+
+  /** Valor do pagamento depois do desconto (0 = pagamento quitado pelo cupom) */
+  @Field(() => Float)
+  finalAmount: number;
+
+  @Field(() => Float)
+  discountAmount: number;
+
+  @Field(() => Coupon, { nullable: true })
+  coupon?: Coupon;
+}
+
 @ObjectType()
 export class CouponStats {
   @Field(() => Int)

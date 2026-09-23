@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Context, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { CouponsService } from '../../payments/coupons.service';
 import { PaymentsService } from '../../payments/payments.service';
@@ -9,6 +9,7 @@ import { Role } from '../../auth/interfaces/roles';
 import {
   Coupon,
   CouponValidationResult,
+  ApplyCouponResult,
   CouponStats,
   DeleteCouponResponse,
   CreateCouponInput,
@@ -39,14 +40,25 @@ export class CouponsResolver {
   @Query(() => CouponStats, { name: 'couponStats' })
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
-  async getCouponStats(@Args('id') id: number) {
-    return await this.couponsService.getCouponUsageStats(id);
+  async getCouponStats(@Args('id', { type: () => Int }) id: number): Promise<CouponStats> {
+    // O service devolve o cupom com os usos (formato do REST); o tipo
+    // GraphQL são os totais — antes ia o cupom cru e todo campo vinha null
+    // ("Cannot return null for non-nullable field CouponStats.totalUses")
+    const coupon = await this.couponsService.getCouponUsageStats(id);
+    const discounts = coupon.payments.map((p) => Number(p.discountAmount ?? 0));
+    const totalDiscount = discounts.reduce((sum, d) => sum + d, 0);
+    return {
+      totalUses: coupon.usedCount,
+      uniqueUsers: new Set(coupon.userCoupons.map((uc) => uc.userId)).size,
+      totalDiscount,
+      averageDiscount: discounts.length ? totalDiscount / discounts.length : 0,
+    };
   }
 
   @Mutation(() => CouponValidationResult, { name: 'validateCoupon' })
   async validateCoupon(
     @Args('code') code: string,
-    @Args('planId') planId: number,
+    @Args('planId', { type: () => Int }) planId: number,
     @Args('amount') amount: number,
     @Context() context: any,
   ) {
@@ -54,9 +66,11 @@ export class CouponsResolver {
     return await this.paymentsService.validateCoupon(code, userId, planId, amount);
   }
 
-  @Mutation(() => CouponValidationResult, { name: 'applyCoupon' })
+  // O service devolve { success, finalAmount, discountAmount, coupon } — o tipo
+  // antigo (CouponValidationResult) não batia e a resposta sempre quebrava
+  @Mutation(() => ApplyCouponResult, { name: 'applyCoupon' })
   async applyCoupon(
-    @Args('paymentId') paymentId: number,
+    @Args('paymentId', { type: () => Int }) paymentId: number,
     @Args('code') code: string,
     @Context() context: any,
   ) {
@@ -78,7 +92,10 @@ export class CouponsResolver {
   @Mutation(() => Coupon, { name: 'updateCoupon' })
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
-  async updateCoupon(@Args('id') id: number, @Args('data') data: UpdateCouponInput) {
+  async updateCoupon(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('data') data: UpdateCouponInput,
+  ) {
     const updateData = {
       ...data,
       applicablePlans: data.applicablePlans ? JSON.parse(data.applicablePlans) : undefined,
@@ -89,7 +106,7 @@ export class CouponsResolver {
   @Mutation(() => DeleteCouponResponse, { name: 'deleteCoupon' })
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN)
-  async deleteCoupon(@Args('id') id: number) {
+  async deleteCoupon(@Args('id', { type: () => Int }) id: number) {
     await this.couponsService.deleteCoupon(id);
     return { success: true, message: 'Cupom deletado com sucesso' };
   }

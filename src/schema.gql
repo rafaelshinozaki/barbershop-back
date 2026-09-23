@@ -101,6 +101,13 @@ type AdvancedReportsType {
   totalNoShow: Int!
 }
 
+type ApplyCouponResult {
+  coupon: Coupon
+  discountAmount: Float!
+  finalAmount: Float!
+  success: Boolean!
+}
+
 type Appointment {
   barberId: Int!
   barbershopId: Int!
@@ -1061,7 +1068,7 @@ type MonthlyRevenueItem {
 type Mutation {
   addClientFavorite(networkId: Float!): [Network!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
-  applyCoupon(code: String!, paymentId: Float!): CouponValidationResult!
+  applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
@@ -1117,7 +1124,7 @@ type Mutation {
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
   deleteCommissionRule(barbershopId: Int!, id: Int!): Boolean!
   deleteConsentForm(barbershopId: Int!, id: Int!): Boolean!
-  deleteCoupon(id: Float!): DeleteCouponResponse!
+  deleteCoupon(id: Int!): DeleteCouponResponse!
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
   deleteExpense(barbershopId: Int!, id: Int!): Boolean!
   deleteNotification(id: Int!): CommonResponse!
@@ -1184,7 +1191,7 @@ type Mutation {
   updateBarbershop(id: Int!, input: UpdateBarbershopInput!): Barbershop!
   updateBarbershopProduct(barbershopId: Int!, id: Int!, input: UpdateBarbershopProductInput!): BarbershopProductType!
   updateBarbershopService(barbershopId: Int!, id: Int!, input: UpdateBarbershopServiceInput!): BarbershopServiceType!
-  updateCoupon(data: UpdateCouponInput!, id: Float!): Coupon!
+  updateCoupon(data: UpdateCouponInput!, id: Int!): Coupon!
   updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
   updateInventoryItem(barbershopId: Int!, input: UpdateInventoryItemInput!, productId: Int!): InventoryItemType!
   updateNetwork(input: UpdateNetworkInput!): Network!
@@ -1200,7 +1207,7 @@ type Mutation {
   updateUserRole(role: String!, userId: Int!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
   updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
-  validateCoupon(amount: Float!, code: String!, planId: Float!): CouponValidationResult!
+  validateCoupon(amount: Float!, code: String!, planId: Int!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
   waiveNoShowFee(barbershopId: Int!, id: Int!): Boolean!
@@ -1664,7 +1671,7 @@ type Query {
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
-  couponStats(id: Float!): CouponStats!
+  couponStats(id: Int!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
