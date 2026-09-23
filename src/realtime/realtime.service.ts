@@ -18,6 +18,19 @@ export interface NetworkActivityPayload {
 
 export const NETWORK_ACTIVITY = 'NETWORK_ACTIVITY';
 
+export type NotificationAction = 'CREATED' | 'READ' | 'DELETED';
+
+export interface UserNotificationsPayload {
+  userIds: number[];
+  action: NotificationAction;
+  /** Título da notificação nova (pro aviso na tela); só em CREATED */
+  title?: string;
+}
+
+export const USER_NOTIFICATIONS = 'USER_NOTIFICATIONS';
+// Envio em lote pra milhares de usuários vira várias mensagens menores
+const USER_IDS_PER_MESSAGE = 1000;
+
 /**
  * Avisos em tempo real pros dashboards (WebSocket/GraphQL subscription).
  *
@@ -72,6 +85,25 @@ export class RealtimeService implements OnModuleDestroy {
       at: new Date().toISOString(),
     };
     await this.pubSub.publish(NETWORK_ACTIVITY, { networkActivity: payload });
+  }
+
+  /**
+   * Avisa o sininho dos usuários (criada, lida ou apagada — lida/apagada
+   * também, pra sincronizar outra aba ou outro aparelho). Nunca quebra
+   * quem chamou.
+   */
+  notifyUsers(userIds: number[], action: NotificationAction, title?: string) {
+    const ids = [...new Set(userIds)];
+    for (let i = 0; i < ids.length; i += USER_IDS_PER_MESSAGE) {
+      const payload: UserNotificationsPayload = {
+        userIds: ids.slice(i, i + USER_IDS_PER_MESSAGE),
+        action,
+        title,
+      };
+      void this.pubSub
+        .publish(USER_NOTIFICATIONS, { myNotificationEvents: payload })
+        .catch((err) => this.logger.warn(`Aviso de notificação não enviado: ${err.message}`));
+    }
   }
 
   async onModuleDestroy() {

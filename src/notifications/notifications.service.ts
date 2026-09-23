@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { SmartLogger } from '../common/logger.util';
+import { RealtimeService } from '../realtime/realtime.service';
 
 // Teto das listas do sininho (antes "não lidas" e "novas" não tinham limite)
 const MAX_LIST = 100;
@@ -13,7 +14,7 @@ const BATCH_CHUNK = 1000;
 export class NotificationsService {
   private readonly logger = new SmartLogger('NotificationsService');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly realtime: RealtimeService) {}
 
   async createNotification(data: CreateNotificationDto) {
     this.logger.log(`Creating notification for user ${data.userId}: ${data.title}`);
@@ -29,6 +30,7 @@ export class NotificationsService {
         },
       });
       this.logger.log(`Notification created successfully with ID: ${result.id}`);
+      this.realtime.notifyUsers([data.userId], 'CREATED', data.title);
       return result;
     } catch (error) {
       this.logger.error(`Error creating notification: ${error.message}`);
@@ -105,6 +107,7 @@ export class NotificationsService {
         },
       });
       this.logger.log(`Marked ${result.count} notifications as read`);
+      if (result.count > 0) this.realtime.notifyUsers([userId], 'READ');
       return result;
     } catch (error) {
       this.logger.error(`Error marking notification as read: ${error.message}`);
@@ -123,6 +126,7 @@ export class NotificationsService {
         },
       });
       this.logger.log(`Marked ${result.count} notifications as read`);
+      if (result.count > 0) this.realtime.notifyUsers([userId], 'READ');
       return result;
     } catch (error) {
       this.logger.error(`Error marking all notifications as read: ${error.message}`);
@@ -140,6 +144,7 @@ export class NotificationsService {
         },
       });
       this.logger.log(`Deleted ${result.count} notifications`);
+      if (result.count > 0) this.realtime.notifyUsers([userId], 'DELETED');
       return result;
     } catch (error) {
       this.logger.error(`Error deleting notification: ${error.message}`);
@@ -202,6 +207,11 @@ export class NotificationsService {
         if (notifications.length === 0) continue;
         const result = await this.prisma.userNotification.createMany({ data: notifications });
         count += result.count;
+        this.realtime.notifyUsers(
+          notifications.map((n) => n.userId),
+          'CREATED',
+          data.title,
+        );
       }
       this.logger.log(`Created ${count} notifications for multiple users`);
       return { count };

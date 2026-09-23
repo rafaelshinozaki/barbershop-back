@@ -8,10 +8,12 @@ import {
   NETWORK_ACTIVITY,
   NetworkActivityPayload,
   RealtimeService,
+  USER_NOTIFICATIONS,
+  UserNotificationsPayload,
 } from '../../realtime/realtime.service';
-import { NetworkActivityEvent } from '../types/realtime.type';
+import { NetworkActivityEvent, NotificationEvent } from '../types/realtime.type';
 
-type SubscriptionContext = { allowedBarbershopIds?: Set<number> };
+type SubscriptionContext = { allowedBarbershopIds?: Set<number>; userId?: number };
 
 @Resolver()
 export class RealtimeResolver {
@@ -37,5 +39,19 @@ export class RealtimeResolver {
     const shops = await this.barbershopService.getMyBarbershops(user.id);
     context.allowedBarbershopIds = new Set(shops.map((b) => b.id));
     return this.realtime.pubSub.asyncIterator(NETWORK_ACTIVITY);
+  }
+
+  /** Sininho em tempo real: só os avisos das notificações do próprio usuário. */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Subscription(() => NotificationEvent, {
+    filter: (
+      payload: { myNotificationEvents: UserNotificationsPayload },
+      _variables: unknown,
+      context: SubscriptionContext,
+    ) => context.userId != null && payload.myNotificationEvents.userIds.includes(context.userId),
+  })
+  myNotificationEvents(@CurrentUser() user: UserDTO, @Context() context: SubscriptionContext) {
+    context.userId = user.id;
+    return this.realtime.pubSub.asyncIterator(USER_NOTIFICATIONS);
   }
 }
