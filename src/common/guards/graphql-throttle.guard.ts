@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext } from '@nestjs/common';
+import { Injectable, ExecutionContext, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { GqlExecutionContext } from '@nestjs/graphql';
 
@@ -36,7 +36,9 @@ export class GraphQLThrottleGuard extends ThrottlerGuard {
         userAgent = req.headers['user-agent'] || 'unknown';
       }
     } catch (error) {
-      console.warn('Error getting request info for GraphQL throttling:', error);
+      new Logger(GraphQLThrottleGuard.name).warn(
+        `Error getting request info for GraphQL throttling: ${error}`,
+      );
     }
 
     return `${ip}-${userAgent}`;

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import { langForCountry, LOCALE } from '../email/language';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
@@ -2627,7 +2628,8 @@ export class BarbershopService {
   private generateGiftCardCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
-    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    // Vale dinheiro: gerador criptográfico, não Math.random (previsível)
+    for (let i = 0; i < 8; i++) code += chars[randomInt(chars.length)];
     return `GIFT-${code}`;
   }
 

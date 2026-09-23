@@ -36,10 +36,8 @@ export class UserController {
   @Get('me')
   async getMe(@CurrentUser() user: UserDTO) {
     this.logger.log(`getMe called for user ID: ${user.id}`);
-    this.logger.log(`Current user data: ${JSON.stringify(user, null, 2)}`);
 
     const result = await this.userService.getUserById(user.id);
-    this.logger.log(`getMe result: ${JSON.stringify(result, null, 2)}`);
 
     return result;
   }
@@ -79,10 +77,6 @@ export class UserController {
   @ApiResponse({ status: 201, description: 'User created' })
   @Post('create')
   async createUser(@Body() userData: NewUserSchema) {
-    console.log('📥 Dados recebidos no createUser:', JSON.stringify(userData, null, 2));
-    console.log('📱 Telefone recebido:', userData.phone);
-    console.log('🆔 CPF recebido:', userData.idDocNumber);
-
     const user = await this.userService.createUser(userData);
     return { success: true, data: user };
   }
