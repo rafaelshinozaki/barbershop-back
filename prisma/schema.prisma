@@ -235,6 +235,19 @@ model NotificationPreference {
   securityInApp    Boolean  @default(true)
   instabilityEmail Boolean  @default(true)
   instabilityInApp Boolean  @default(true)
+  // Atividade das unidades (avisos do sistema pro dono, gerentes e o
+  // barbeiro envolvido). E-mail desligado por padrão nas que acontecem
+  // muitas vezes por dia.
+  appointmentsEmail Boolean @default(false)
+  appointmentsInApp Boolean @default(true)
+  salesEmail       Boolean  @default(false)
+  salesInApp       Boolean  @default(true)
+  inventoryEmail   Boolean  @default(true)
+  inventoryInApp   Boolean  @default(true)
+  teamEmail        Boolean  @default(true)
+  teamInApp        Boolean  @default(true)
+  reviewsEmail     Boolean  @default(false)
+  reviewsInApp     Boolean  @default(true)
   userId           Int      @unique
   user             User     @relation(fields: [userId], references: [id])
 }

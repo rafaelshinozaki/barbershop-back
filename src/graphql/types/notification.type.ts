@@ -135,6 +135,36 @@ export class NotificationPreference {
   instabilityInApp: boolean;
 
   @Field()
+  appointmentsEmail: boolean;
+
+  @Field()
+  appointmentsInApp: boolean;
+
+  @Field()
+  salesEmail: boolean;
+
+  @Field()
+  salesInApp: boolean;
+
+  @Field()
+  inventoryEmail: boolean;
+
+  @Field()
+  inventoryInApp: boolean;
+
+  @Field()
+  teamEmail: boolean;
+
+  @Field()
+  teamInApp: boolean;
+
+  @Field()
+  reviewsEmail: boolean;
+
+  @Field()
+  reviewsInApp: boolean;
+
+  @Field()
   createdAt: string;
 
   @Field()
