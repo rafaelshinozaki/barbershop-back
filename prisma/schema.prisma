@@ -8,53 +8,53 @@ datasource db {
 }
 
 model User {
-  id                      Int                     @id @default(autoincrement())
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
-  deleted_at              DateTime?
-  email                   String
-  provider                String                  @default("local")
-  password                String
-  fullName                String
-  idDocNumber             String
-  phone                   String
-  gender                  String
-  birthdate               DateTime
-  readTerms               Boolean
-  membership              String                  @default("FREE")
-  isActive                Boolean                 @default(false)
-  stripeCustomerId        String?
-  trialStartDate          DateTime?
-  trialEndDate            DateTime?
-  isInViewerMode          Boolean                 @default(false)
-  viewerModeStartDate     DateTime?
-  roleId                  Int
-  twoFactorEnabled        Boolean                 @default(false)
-  photoKey                String?
-  ActiveSession           ActiveSession[]
-  address                 Address?
-  emailLogger             EmailLogger[]
-  notificationPreference  NotificationPreference?
-  acceptedInvites         FriendInvite[]          @relation("AcceptedBy")
-  sentInvites             FriendInvite[]          @relation("Inviter")
-  invalidatedTokens       InvalidatedToken[]
-  LoginHistory            LoginHistory[]
-  subscriptions           Subscription[]
-  role                    Role                    @relation(fields: [roleId], references: [id])
-  userCoupons             UserCoupon[]
-  notifications           UserNotification[]
-  userSystemConfig        UserSystemConfig?
-  verificationCodes       VerificationCode[]
-  passwordResetTokens     PasswordResetToken[]
-  barbershopsOwned        Barbershop[]            @relation("BarbershopOwner")
-  barberProfile           Barber?
-  networksOwned           Network[]               @relation("NetworkOwner")
-  sentEmployeeInvites     EmployeeInvite[]        @relation("EmployeeInviteInviter")
-  acceptedEmployeeInvites EmployeeInvite[]        @relation("EmployeeInviteAcceptedBy")
-  cashSessionsOpened      CashSession[]           @relation("CashSessionOpenedBy")
-  cashSessionsClosed      CashSession[]           @relation("CashSessionClosedBy")
-  expensesCreated         Expense[]               @relation("ExpenseCreatedBy")
-  linkedSocialAccounts    LinkedSocialAccount[]
+  id                  Int                @id @default(autoincrement())
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deleted_at          DateTime?
+  email               String
+  provider            String             @default("local")
+  password            String
+  fullName            String
+  idDocNumber         String
+  phone               String
+  gender              String
+  birthdate           DateTime
+  readTerms           Boolean
+  membership          String             @default("FREE")
+  isActive            Boolean            @default(false)
+  stripeCustomerId    String?
+  trialStartDate      DateTime?
+  trialEndDate        DateTime?
+  isInViewerMode      Boolean            @default(false)
+  viewerModeStartDate DateTime?
+  roleId              Int
+  twoFactorEnabled    Boolean            @default(false)
+  photoKey            String?
+  ActiveSession       ActiveSession[]
+  address             Address?
+  emailLogger         EmailLogger[]
+  notificationPreference NotificationPreference?
+  acceptedInvites     FriendInvite[]     @relation("AcceptedBy")
+  sentInvites         FriendInvite[]     @relation("Inviter")
+  invalidatedTokens   InvalidatedToken[]
+  LoginHistory        LoginHistory[]
+  subscriptions       Subscription[]
+  role                Role               @relation(fields: [roleId], references: [id])
+  userCoupons         UserCoupon[]
+  notifications       UserNotification[]
+  userSystemConfig    UserSystemConfig?
+  verificationCodes   VerificationCode[]
+  passwordResetTokens PasswordResetToken[]
+  barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
+  barberProfile      Barber?
+  networksOwned      Network[]     @relation("NetworkOwner")
+  sentEmployeeInvites    EmployeeInvite[] @relation("EmployeeInviteInviter")
+  acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
+  cashSessionsOpened     CashSession[]    @relation("CashSessionOpenedBy")
+  cashSessionsClosed     CashSession[]    @relation("CashSessionClosedBy")
+  expensesCreated        Expense[]        @relation("ExpenseCreatedBy")
+  linkedSocialAccounts   LinkedSocialAccount[]
 
   @@unique([email, provider])
 }
@@ -69,7 +69,7 @@ model LinkedSocialAccount {
   id            Int      @id @default(autoincrement())
   createdAt     DateTime @default(now())
   userId        Int
-  provider      String // google, facebook, apple
+  provider      String   // google, facebook, apple
   providerEmail String
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -224,32 +224,32 @@ model UserCoupon {
 }
 
 model NotificationPreference {
-  id                Int      @id @default(autoincrement())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  newsEmail         Boolean  @default(true)
-  newsInApp         Boolean  @default(true)
-  promotionsEmail   Boolean  @default(true)
-  promotionsInApp   Boolean  @default(true)
-  securityEmail     Boolean  @default(true)
-  securityInApp     Boolean  @default(true)
-  instabilityEmail  Boolean  @default(true)
-  instabilityInApp  Boolean  @default(true)
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  newsEmail        Boolean  @default(true)
+  newsInApp        Boolean  @default(true)
+  promotionsEmail  Boolean  @default(true)
+  promotionsInApp  Boolean  @default(true)
+  securityEmail    Boolean  @default(true)
+  securityInApp    Boolean  @default(true)
+  instabilityEmail Boolean  @default(true)
+  instabilityInApp Boolean  @default(true)
   // Atividade das unidades (avisos do sistema pro dono, gerentes e o
   // barbeiro envolvido). E-mail desligado por padrão nas que acontecem
   // muitas vezes por dia.
-  appointmentsEmail Boolean  @default(false)
-  appointmentsInApp Boolean  @default(true)
-  salesEmail        Boolean  @default(false)
-  salesInApp        Boolean  @default(true)
-  inventoryEmail    Boolean  @default(true)
-  inventoryInApp    Boolean  @default(true)
-  teamEmail         Boolean  @default(true)
-  teamInApp         Boolean  @default(true)
-  reviewsEmail      Boolean  @default(false)
-  reviewsInApp      Boolean  @default(true)
-  userId            Int      @unique
-  user              User     @relation(fields: [userId], references: [id])
+  appointmentsEmail Boolean @default(false)
+  appointmentsInApp Boolean @default(true)
+  salesEmail       Boolean  @default(false)
+  salesInApp       Boolean  @default(true)
+  inventoryEmail   Boolean  @default(true)
+  inventoryInApp   Boolean  @default(true)
+  teamEmail        Boolean  @default(true)
+  teamInApp        Boolean  @default(true)
+  reviewsEmail     Boolean  @default(false)
+  reviewsInApp     Boolean  @default(true)
+  userId           Int      @unique
+  user             User     @relation(fields: [userId], references: [id])
 }
 
 model EmailLogger {
@@ -341,22 +341,22 @@ model FriendInvite {
 }
 
 model EmployeeInvite {
-  id               Int        @id @default(autoincrement())
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  inviterId        Int
-  barbershopId     Int
-  barberId         Int
-  email            String
-  inviteToken      String     @unique
-  role             String // BarbershopEmployee | BarbershopManager
-  status           String     @default("PENDING")
-  expiresAt        DateTime
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  inviterId      Int
+  barbershopId   Int
+  barberId       Int
+  email          String
+  inviteToken    String    @unique
+  role           String    // BarbershopEmployee | BarbershopManager
+  status         String    @default("PENDING")
+  expiresAt      DateTime
   acceptedByUserId Int?
-  inviter          User       @relation("EmployeeInviteInviter", fields: [inviterId], references: [id])
-  barbershop       Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  barber           Barber     @relation(fields: [barberId], references: [id], onDelete: Cascade)
-  acceptedByUser   User?      @relation("EmployeeInviteAcceptedBy", fields: [acceptedByUserId], references: [id])
+  inviter        User      @relation("EmployeeInviteInviter", fields: [inviterId], references: [id])
+  barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  barber         Barber    @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  acceptedByUser User?     @relation("EmployeeInviteAcceptedBy", fields: [acceptedByUserId], references: [id])
 
   @@index([inviteToken])
   @@index([status])
@@ -366,28 +366,28 @@ model EmployeeInvite {
 // ============ BARBERSHOP MANAGEMENT ============
 
 model Network {
-  id                           Int                @id @default(autoincrement())
-  createdAt                    DateTime           @default(now())
-  updatedAt                    DateTime           @updatedAt
-  name                         String?
-  logoUrl                      String?
-  logoKey                      String? // S3 key for franchise logo (separate bucket path from user photos)
-  currency                     String             @default("BRL") // ISO 4217 — moeda usada por padrão nas unidades desta rede
-  city                         String?
-  description                  String?
-  mission                      String?
-  foundationYear               Int?
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  name           String?
+  logoUrl        String?
+  logoKey        String?      // S3 key for franchise logo (separate bucket path from user photos)
+  currency       String       @default("BRL") // ISO 4217 — moeda usada por padrão nas unidades desta rede
+  city           String?
+  description    String?
+  mission        String?
+  foundationYear Int?
   // Fidelidade — desativada por padrão (loyaltyEnabled=false); os dois
   // valores abaixo só importam quando ligada. pointsPerCurrencyUnit: quantos
   // pontos o cliente ganha por unidade de moeda gasta (ex.: 1.0 = 1 ponto por
   // R$1). pointValue: quanto 1 ponto vale em desconto na hora de resgatar
   // (ex.: 0.10 = R$0,10 por ponto).
-  loyaltyEnabled               Boolean            @default(false)
+  loyaltyEnabled              Boolean @default(false)
   loyaltyPointsPerCurrencyUnit Float?
   loyaltyPointValue            Float?
   // Pontos de fidelidade concedidos ao cliente que indicou, quando o
   // indicado completa sua primeira venda paga (ver CustomerReferral).
-  referralBonusPoints          Int                @default(50)
+  referralBonusPoints Int @default(50)
   // Taxa de cancelamento tardio/no-show — cobrança 100% manual, mesma
   // filosofia do sinal e do cartão-presente (staff registra o pagamento
   // depois, sem integração de pagamento nova pro cliente final). O sistema
@@ -397,22 +397,22 @@ model Network {
   // cancelar com menos que isso de antecedência do horário marcado já
   // conta como tardio e devido; NO_SHOW é sempre devido, não depende dessa
   // janela.
-  noShowFeeEnabled             Boolean            @default(false)
-  noShowFeeType                String?
-  noShowFeeValue               Float?
-  lateCancellationWindowHours  Int                @default(24)
+  noShowFeeEnabled            Boolean @default(false)
+  noShowFeeType               String?
+  noShowFeeValue              Float?
+  lateCancellationWindowHours Int     @default(24)
   // Cores do app (Radix Themes) para toda a franquia — só o dono define;
   // equipe da rede herda. null = padrão do app. Arredondamento, escala e
   // claro/escuro continuam por usuário (UserSystemConfig).
-  accentColor                  String?
-  grayColor                    String?
-  ownerUserId                  Int
-  ownerUser                    User               @relation("NetworkOwner", fields: [ownerUserId], references: [id])
-  barbershops                  Barbershop[]
-  customers                    Customer[]
-  favoritedBy                  ClientFavorite[]
-  giftCards                    GiftCard[]
-  referrals                    CustomerReferral[]
+  accentColor    String?
+  grayColor      String?
+  ownerUserId    Int
+  ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
+  barbershops    Barbershop[]
+  customers      Customer[]
+  favoritedBy    ClientFavorite[]
+  giftCards      GiftCard[]
+  referrals      CustomerReferral[]
 
   @@index([ownerUserId])
 }
@@ -443,60 +443,60 @@ model GiftCard {
 }
 
 model Barbershop {
-  id                      Int                      @id @default(autoincrement())
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  name                    String
-  slug                    String                   @unique
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  name           String
+  slug           String    @unique
   // Subdomínio próprio da unidade (ex.: "barbeariavintage" ->
   // barbeariavintage.<domínio da plataforma>) — mesma página pública que já
   // existe em /u/:slug, só que acessível por um host próprio em vez do
   // caminho. Opcional, independente do slug (que continua controlando a URL
   // /u/:slug e não é mais editável depois de criado); precisa ser um label
   // de DNS válido (minúsculas, números, hífen — validado no service).
-  subdomain               String?                  @unique
-  address                 String
-  complement1             String?
-  complement2             String?
-  city                    String
-  state                   String
-  country                 String
-  postalCode              String
-  latitude                Float? // preenchido manualmente ou por geocoding — usado na busca "perto de mim"
-  longitude               Float?
-  phone                   String
-  email                   String
-  photoKey                String?
-  timezone                String                   @default("America/Sao_Paulo")
-  currency                String                   @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
-  businessHours           String? // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
-  isActive                Boolean                  @default(true)
-  featuredUntil           DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
-  networkId               Int
-  network                 Network                  @relation(fields: [networkId], references: [id], onDelete: Cascade)
-  ownerUserId             Int? // denormalized for backward compat / quick access
-  ownerUser               User?                    @relation("BarbershopOwner", fields: [ownerUserId], references: [id])
-  barbers                 Barber[]
-  services                BarbershopService[]
-  productCategories       ProductCategory[]
-  products                BarbershopProduct[]
-  appointments            Appointment[]
-  walkIns                 WalkIn[]
-  serviceHistory          ServiceHistory[]
-  sales                   Sale[]
-  inventoryItems          InventoryItem[]
-  employeeInvites         EmployeeInvite[]
-  cashSessions            CashSession[]
-  expenses                Expense[]
-  resources               Resource[]
-  servicePackages         ServicePackage[]
-  clientPackages          ClientPackage[]
-  consentForms            ConsentForm[]
-  commissionRules         CommissionRule[]
-  reviews                 Review[]
-  waitlistEntries         WaitlistEntry[]
-  marketingCampaigns      MarketingCampaign[]
-  noShowFees              NoShowFee[]
+  subdomain      String?   @unique
+  address        String
+  complement1    String?
+  complement2    String?
+  city           String
+  state          String
+  country        String
+  postalCode     String
+  latitude       Float?    // preenchido manualmente ou por geocoding — usado na busca "perto de mim"
+  longitude      Float?
+  phone          String
+  email          String
+  photoKey       String?
+  timezone       String    @default("America/Sao_Paulo")
+  currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
+  businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
+  isActive       Boolean   @default(true)
+  featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
+  networkId      Int
+  network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  ownerUserId    Int?      // denormalized for backward compat / quick access
+  ownerUser      User?     @relation("BarbershopOwner", fields: [ownerUserId], references: [id])
+  barbers          Barber[]
+  services         BarbershopService[]
+  productCategories ProductCategory[]
+  products         BarbershopProduct[]
+  appointments     Appointment[]
+  walkIns        WalkIn[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  inventoryItems InventoryItem[]
+  employeeInvites EmployeeInvite[]
+  cashSessions   CashSession[]
+  expenses       Expense[]
+  resources      Resource[]
+  servicePackages ServicePackage[]
+  clientPackages  ClientPackage[]
+  consentForms    ConsentForm[]
+  commissionRules CommissionRule[]
+  reviews         Review[]
+  waitlistEntries WaitlistEntry[]
+  marketingCampaigns MarketingCampaign[]
+  noShowFees      NoShowFee[]
   clientSubscriptionPlans ClientSubscriptionPlan[]
   clientSubscriptions     ClientSubscription[]
   socialConnection        SocialConnection?
@@ -509,13 +509,13 @@ model Barbershop {
 }
 
 model Resource {
-  id           Int           @id @default(autoincrement())
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   barbershopId Int
   name         String
-  type         String        @default("ROOM") // CHAIR, ROOM, STATION, BED
-  isActive     Boolean       @default(true)
+  type         String   @default("ROOM") // CHAIR, ROOM, STATION, BED
+  isActive     Boolean  @default(true)
   barbershop   Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   appointments Appointment[]
 
@@ -524,29 +524,29 @@ model Resource {
 }
 
 model Customer {
-  id               Int                @id @default(autoincrement())
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  networkId        Int
-  clientAccountId  Int? // conta de cliente da plataforma (opcional) — liga o histórico deste
-  // negócio a uma conta que também compra em outros negócios
-  name             String
-  phone            String
-  email            String?
-  birthDate        DateTime?
-  notes            String?
-  isActive         Boolean            @default(true)
-  loyaltyPoints    Int                @default(0)
-  marketingOptOut  Boolean            @default(false) // não incluir em campanhas de marketing (Message Blast)
-  network          Network            @relation(fields: [networkId], references: [id], onDelete: Cascade)
-  clientAccount    ClientAccount?     @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
-  appointments     Appointment[]
-  serviceHistory   ServiceHistory[]
-  sales            Sale[]
-  walkIns          WalkIn[]
-  packages         ClientPackage[]
-  consentForms     ConsentForm[]
-  waitlistEntries  WaitlistEntry[]
+  id              Int             @id @default(autoincrement())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  networkId       Int
+  clientAccountId Int?            // conta de cliente da plataforma (opcional) — liga o histórico deste
+                                   // negócio a uma conta que também compra em outros negócios
+  name            String
+  phone           String
+  email           String?
+  birthDate       DateTime?
+  notes           String?
+  isActive        Boolean         @default(true)
+  loyaltyPoints   Int             @default(0)
+  marketingOptOut Boolean         @default(false) // não incluir em campanhas de marketing (Message Blast)
+  network         Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  clientAccount   ClientAccount?  @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+  appointments   Appointment[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  walkIns        WalkIn[]
+  packages       ClientPackage[]
+  consentForms   ConsentForm[]
+  waitlistEntries WaitlistEntry[]
   referralsMade    CustomerReferral[] @relation("ReferralsMade")
   referralReceived CustomerReferral?  @relation("ReferralReceived")
   noShowFees       NoShowFee[]
@@ -586,15 +586,15 @@ model CustomerReferral {
 // status mude de novo depois). status: PENDING (calculado, ainda não
 // cobrado), COLLECTED (staff marcou como recebido) ou WAIVED (perdoado).
 model NoShowFee {
-  id            Int         @id @default(autoincrement())
-  createdAt     DateTime    @default(now())
-  appointmentId Int         @unique
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  appointmentId Int       @unique
   customerId    Int
   barbershopId  Int
   amount        Decimal
   currency      String
-  reason        String // LATE_CANCELLATION, NO_SHOW
-  status        String      @default("PENDING") // PENDING, COLLECTED, WAIVED
+  reason        String    // LATE_CANCELLATION, NO_SHOW
+  status        String    @default("PENDING") // PENDING, COLLECTED, WAIVED
   collectedAt   DateTime?
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -628,18 +628,18 @@ model ClientAccount {
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   email                String                      @unique
-  password             String? // opcional — contas criadas só via login social não têm senha
+  password             String?                     // opcional — contas criadas só via login social não têm senha
   name                 String
   phone                String?
   avatarUrl            String?
-  stripeCustomerId     String? // Stripe Customer na conta da própria plataforma — usado pra
-  // assinatura recorrente de serviço (ver ClientSubscription).
-  // Não é Stripe Connect: o dinheiro cai na conta da plataforma.
+  stripeCustomerId     String?                     // Stripe Customer na conta da própria plataforma — usado pra
+                                                     // assinatura recorrente de serviço (ver ClientSubscription).
+                                                     // Não é Stripe Connect: o dinheiro cai na conta da plataforma.
   // Só com o e-mail confirmado a conta é ligada às fichas (Customer) das
   // barbearias com esse e-mail — antes bastava cadastrar o e-mail de outra
   // pessoa pra ver o histórico dela
   emailVerifiedAt      DateTime?
-  language             String? // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
+  language             String?                     // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
   sessionVersion       Int                         @default(0) // sobe ao trocar a senha: derruba as sessões antigas
   tokens               ClientAccountToken[]
   customers            Customer[]
@@ -695,29 +695,29 @@ model ClientFavorite {
 }
 
 model Barber {
-  id              Int                 @id @default(autoincrement())
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  barbershopId    Int
-  userId          Int?                @unique
-  staffType       String?             @default("barber") // barber | manager
-  name            String
-  phone           String
-  email           String?
-  avatarUrl       String?
-  specialization  String?
-  specialties     TreatmentCategory[] @default([])
-  isActive        Boolean             @default(true)
-  hireDate        DateTime?
-  barbershop      Barbershop          @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  user            User?               @relation(fields: [userId], references: [id])
+  id             Int              @id @default(autoincrement())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  barbershopId   Int
+  userId         Int?      @unique
+  staffType      String?          @default("barber") // barber | manager
+  name           String
+  phone          String
+  email          String?
+  avatarUrl      String?
+  specialization String?
+  specialties    TreatmentCategory[] @default([])
+  isActive       Boolean          @default(true)
+  hireDate       DateTime?
+  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  user           User?            @relation(fields: [userId], references: [id])
   employeeInvites EmployeeInvite[]
-  schedules       BarberSchedule[]
-  timeOffs        BarberTimeOff[]
-  appointments    Appointment[]
-  serviceHistory  ServiceHistory[]
-  sales           Sale[]
-  walkIns         WalkIn[]
+  schedules      BarberSchedule[]
+  timeOffs       BarberTimeOff[]
+  appointments   Appointment[]
+  serviceHistory ServiceHistory[]
+  sales          Sale[]
+  walkIns        WalkIn[]
   commissionRules CommissionRule[]
   waitlistEntries WaitlistEntry[]
 
@@ -729,9 +729,9 @@ model Barber {
 model BarberSchedule {
   id         Int      @id @default(autoincrement())
   barberId   Int
-  dayOfWeek  Int // 0=Sunday, 6=Saturday
-  startTime  String // "09:00"
-  endTime    String // "18:00"
+  dayOfWeek  Int      // 0=Sunday, 6=Saturday
+  startTime  String   // "09:00"
+  endTime    String   // "18:00"
   breakStart String?
   breakEnd   String?
   isActive   Boolean  @default(true)
@@ -748,7 +748,7 @@ model BarberTimeOff {
   barberId  Int
   startAt   DateTime
   endAt     DateTime
-  reason    String // VACATION, SICK, PERSONAL, OTHER
+  reason    String   // VACATION, SICK, PERSONAL, OTHER
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   barber    Barber   @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -783,27 +783,27 @@ enum TreatmentCategory {
 }
 
 model BarbershopService {
-  id                  Int                      @id @default(autoincrement())
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  barbershopId        Int
-  name                String
-  icon                String?
-  description         String?
-  durationMinutes     Int
-  price               Decimal
-  category            TreatmentCategory        @default(OTHER)
-  depositAmount       Decimal? // sinal sugerido pra quem agendar este serviço — cobrança continua manual
-  isActive            Boolean                  @default(true)
-  displayOrder        Int                      @default(0)
-  barbershop          Barbershop               @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  barbershopId     Int
+  name             String
+  icon             String?
+  description      String?
+  durationMinutes  Int
+  price            Decimal
+  category         TreatmentCategory @default(OTHER)
+  depositAmount    Decimal? // sinal sugerido pra quem agendar este serviço — cobrança continua manual
+  isActive         Boolean  @default(true)
+  displayOrder     Int      @default(0)
+  barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   appointmentServices AppointmentService[]
-  walkInServices      WalkInService[]
-  serviceHistory      ServiceHistory[]
-  saleItems           SaleItem[]
-  packages            ServicePackage[]
-  waitlistEntries     WaitlistEntry[]
-  subscriptionPlans   ClientSubscriptionPlan[]
+  walkInServices   WalkInService[]
+  serviceHistory   ServiceHistory[]
+  saleItems        SaleItem[]
+  packages         ServicePackage[]
+  waitlistEntries  WaitlistEntry[]
+  subscriptionPlans ClientSubscriptionPlan[]
 
   @@index([barbershopId])
   @@index([barbershopId, isActive])
@@ -811,70 +811,70 @@ model BarbershopService {
 }
 
 model ProductCategory {
-  id           Int                 @id @default(autoincrement())
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   barbershopId Int
   name         String
   icon         String?
   color        String?
-  displayOrder Int                 @default(0)
-  barbershop   Barbershop          @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  displayOrder Int      @default(0)
+  barbershop   Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   products     BarbershopProduct[]
 
   @@index([barbershopId])
 }
 
 model BarbershopProduct {
-  id             Int              @id @default(autoincrement())
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  barbershopId   Int
-  categoryId     Int?
-  name           String
-  icon           String?
-  imageKey       String? // S3 key for product photo
-  sku            String?
-  description    String?
-  salePrice      Decimal
-  costPrice      Decimal?
-  unit           String           @default("UNIT") // UNIT, ML, L, FL_OZ, G, KG, OZ
-  isActive       Boolean          @default(true)
-  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  category       ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  barbershopId Int
+  categoryId   Int?
+  name         String
+  icon         String?
+  imageKey     String?  // S3 key for product photo
+  sku          String?
+  description  String?
+  salePrice    Decimal
+  costPrice    Decimal?
+  unit         String   @default("UNIT") // UNIT, ML, L, FL_OZ, G, KG, OZ
+  isActive     Boolean  @default(true)
+  barbershop   Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  category     ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   inventoryItems InventoryItem[]
-  saleItems      SaleItem[]
+  saleItems    SaleItem[]
 
-  @@unique([barbershopId, sku])
   @@index([barbershopId])
   @@index([barbershopId, categoryId])
+  @@unique([barbershopId, sku])
   @@index([barbershopId, isActive])
 }
 
 model Appointment {
-  id             Int                  @id @default(autoincrement())
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  barbershopId   Int
-  customerId     Int
-  barberId       Int
-  resourceId     Int?
-  startAt        DateTime
-  endAt          DateTime
-  status         String               @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
-  notes          String?
-  source         String               @default("PHONE") // ONLINE, PHONE, WALK_IN
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  barbershopId Int
+  customerId   Int
+  barberId     Int
+  resourceId   Int?
+  startAt      DateTime
+  endAt        DateTime
+  status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
+  notes        String?
+  source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
   reminderSentAt DateTime?
   depositAmount  Decimal? // sinal — cobrança em pessoa, isto só registra valor combinado e se já foi pago
-  depositPaid    Boolean              @default(false)
-  barbershop     Barbershop           @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  customer       Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  barber         Barber               @relation(fields: [barberId], references: [id], onDelete: Cascade)
-  resource       Resource?            @relation(fields: [resourceId], references: [id])
-  services       AppointmentService[]
+  depositPaid    Boolean   @default(false)
+  barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  resource     Resource?      @relation(fields: [resourceId], references: [id])
+  services     AppointmentService[]
   serviceHistory ServiceHistory[]
-  sale           Sale?
-  noShowFee      NoShowFee?
+  sale         Sale?
+  noShowFee    NoShowFee?
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])
@@ -886,10 +886,10 @@ model Appointment {
 }
 
 model AppointmentService {
-  id            Int               @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   appointmentId Int
   serviceId     Int
-  quantity      Int               @default(1)
+  quantity      Int       @default(1)
   unitPrice     Decimal
   notes         String?
   appointment   Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
@@ -909,9 +909,9 @@ model WaitlistEntry {
   createdAt    DateTime           @default(now())
   barbershopId Int
   customerId   Int
-  barberId     Int? // null = qualquer barbeiro
-  serviceId    Int? // null = qualquer serviço
-  date         DateTime // dia desejado (comparado por data, sem hora)
+  barberId     Int?               // null = qualquer barbeiro
+  serviceId    Int?               // null = qualquer serviço
+  date         DateTime           // dia desejado (comparado por data, sem hora)
   notes        String?
   status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED
   notifiedAt   DateTime?
@@ -929,28 +929,28 @@ model WaitlistEntry {
 // (não uma linha por destinatário) — suficiente pra staff ver o que já foi
 // mandado e evitar repetir a mesma campanha.
 model MarketingCampaign {
-  id                  Int        @id @default(autoincrement())
-  createdAt           DateTime   @default(now())
-  barbershopId        Int
-  createdByUserId     Int
-  subject             String? // usado só no e-mail
-  message             String
-  segment             String // ALL, INACTIVE, BIRTHDAY_MONTH
-  inactiveDays        Int? // só relevante quando segment = INACTIVE
-  sentByEmail         Boolean    @default(false)
-  sentByWhatsapp      Boolean    @default(false)
-  recipientCount      Int
+  id                Int      @id @default(autoincrement())
+  createdAt         DateTime @default(now())
+  barbershopId      Int
+  createdByUserId   Int
+  subject           String?  // usado só no e-mail
+  message           String
+  segment           String   // ALL, INACTIVE, BIRTHDAY_MONTH
+  inactiveDays      Int?     // só relevante quando segment = INACTIVE
+  sentByEmail       Boolean  @default(false)
+  sentByWhatsapp    Boolean  @default(false)
+  recipientCount    Int
   // Envio é assíncrono (fila): *QueuedCount é quantos envios entraram na
   // fila (clientes com e-mail/telefone válido); *SentCount sobe conforme os
   // workers enviam; *FailedCount conta quem falhou depois de todas as
   // tentativas. Em andamento enquanto sent + failed < queued.
-  emailQueuedCount    Int        @default(0)
-  whatsappQueuedCount Int        @default(0)
-  emailSentCount      Int        @default(0)
-  whatsappSentCount   Int        @default(0)
-  emailFailedCount    Int        @default(0)
-  whatsappFailedCount Int        @default(0)
-  barbershop          Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  emailQueuedCount    Int      @default(0)
+  whatsappQueuedCount Int      @default(0)
+  emailSentCount      Int      @default(0)
+  whatsappSentCount   Int      @default(0)
+  emailFailedCount    Int      @default(0)
+  whatsappFailedCount Int      @default(0)
+  barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId, createdAt])
 }
@@ -963,17 +963,17 @@ model MarketingCampaign {
 // devolvido pela Meta no fim do fluxo OAuth — nunca é exposto no GraphQL,
 // só usado internamente pelo SocialService pra chamar a Graph API.
 model SocialConnection {
-  id                         Int        @id @default(autoincrement())
-  createdAt                  DateTime   @default(now())
-  updatedAt                  DateTime   @updatedAt
-  barbershopId               Int        @unique
-  facebookPageId             String
-  facebookPageName           String
-  facebookAccessToken        String
-  instagramBusinessAccountId String?
-  instagramUsername          String?
-  connectedByUserId          Int
-  barbershop                 Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  id                          Int      @id @default(autoincrement())
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  barbershopId                Int      @unique
+  facebookPageId              String
+  facebookPageName            String
+  facebookAccessToken         String
+  instagramBusinessAccountId  String?
+  instagramUsername           String?
+  connectedByUserId           Int
+  barbershop                  Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId])
 }
@@ -984,40 +984,40 @@ model SocialConnection {
 // poucos minutos) — não tem fila de jobs no projeto, e granularidade de
 // minutos é suficiente pra post de marketing.
 model SocialPost {
-  id               Int        @id @default(autoincrement())
-  createdAt        DateTime   @default(now())
-  barbershopId     Int
-  createdByUserId  Int
-  caption          String
-  imageKey         String // chave no S3, mesma convenção de foto de perfil/franquia
-  postToFacebook   Boolean    @default(true)
-  postToInstagram  Boolean    @default(true)
-  scheduledFor     DateTime
-  status           String     @default("SCHEDULED")
-  publishedAt      DateTime?
-  facebookPostId   String?
-  instagramMediaId String?
-  errorMessage     String?
-  barbershop       Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  id                Int       @id @default(autoincrement())
+  createdAt         DateTime  @default(now())
+  barbershopId      Int
+  createdByUserId   Int
+  caption           String
+  imageKey          String    // chave no S3, mesma convenção de foto de perfil/franquia
+  postToFacebook    Boolean   @default(true)
+  postToInstagram   Boolean   @default(true)
+  scheduledFor      DateTime
+  status            String    @default("SCHEDULED")
+  publishedAt       DateTime?
+  facebookPostId    String?
+  instagramMediaId  String?
+  errorMessage      String?
+  barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId])
   @@index([status, scheduledFor])
 }
 
 model WalkIn {
-  id             Int              @id @default(autoincrement())
-  createdAt      DateTime         @default(now())
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
   barbershopId   Int
   customerId     Int?
   barberId       Int?
   customerName   String
   customerPhone  String?
-  status         String           @default("WAITING") // WAITING, IN_PROGRESS, COMPLETED, CANCELLED
-  queuePosition  Int              @default(0)
+  status         String    @default("WAITING") // WAITING, IN_PROGRESS, COMPLETED, CANCELLED
+  queuePosition  Int       @default(0)
   servedAt       DateTime?
-  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  customer       Customer?        @relation(fields: [customerId], references: [id])
-  barber         Barber?          @relation(fields: [barberId], references: [id])
+  barbershop     Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  barber         Barber?       @relation(fields: [barberId], references: [id])
   services       WalkInService[]
   serviceHistory ServiceHistory[]
 
@@ -1027,10 +1027,10 @@ model WalkIn {
 }
 
 model WalkInService {
-  id        Int               @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   walkInId  Int
   serviceId Int
-  quantity  Int               @default(1)
+  quantity  Int       @default(1)
   notes     String?
   walkIn    WalkIn            @relation(fields: [walkInId], references: [id], onDelete: Cascade)
   service   BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -1040,24 +1040,24 @@ model WalkInService {
 }
 
 model ServiceHistory {
-  id              Int               @id @default(autoincrement())
-  barbershopId    Int
-  customerId      Int
-  barberId        Int
-  appointmentId   Int?
-  walkInId        Int?
-  serviceId       Int
-  performedAt     DateTime
-  priceCharged    Decimal
+  id             Int       @id @default(autoincrement())
+  barbershopId   Int
+  customerId     Int
+  barberId       Int
+  appointmentId  Int?
+  walkInId       Int?
+  serviceId      Int
+  performedAt    DateTime
+  priceCharged   Decimal
   durationMinutes Int?
-  notes           String?
-  barbershop      Barbershop        @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  barber          Barber            @relation(fields: [barberId], references: [id], onDelete: Cascade)
-  appointment     Appointment?      @relation(fields: [appointmentId], references: [id])
-  walkIn          WalkIn?           @relation(fields: [walkInId], references: [id])
-  service         BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  saleItems       SaleItem[]
+  notes          String?
+  barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  barber         Barber           @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  appointment    Appointment?     @relation(fields: [appointmentId], references: [id])
+  walkIn         WalkIn?          @relation(fields: [walkInId], references: [id])
+  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  saleItems      SaleItem[]
 
   @@index([barbershopId])
   @@index([customerId])
@@ -1067,33 +1067,33 @@ model ServiceHistory {
 }
 
 model Sale {
-  id                    Int          @id @default(autoincrement())
-  createdAt             DateTime     @default(now())
-  barbershopId          Int
-  customerId            Int?
-  barberId              Int?
-  appointmentId         Int?         @unique
-  cashSessionId         Int?
-  saleType              String // SERVICE, PRODUCT, MIXED
-  subtotal              Decimal
-  discountAmount        Decimal      @default(0)
-  taxAmount             Decimal      @default(0)
-  total                 Decimal
-  paymentStatus         String       @default("PENDING") // PENDING, PAID, REFUNDED, PARTIAL
-  paymentMethod         String? // CASH, CARD, PIX, etc.
-  paidAt                DateTime?
-  giftCardId            Int?
+  id             Int       @id @default(autoincrement())
+  createdAt      DateTime  @default(now())
+  barbershopId   Int
+  customerId     Int?
+  barberId       Int?
+  appointmentId  Int?      @unique
+  cashSessionId  Int?
+  saleType       String    // SERVICE, PRODUCT, MIXED
+  subtotal       Decimal
+  discountAmount Decimal   @default(0)
+  taxAmount      Decimal   @default(0)
+  total          Decimal
+  paymentStatus  String    @default("PENDING") // PENDING, PAID, REFUNDED, PARTIAL
+  paymentMethod  String?   // CASH, CARD, PIX, etc.
+  paidAt         DateTime?
+  giftCardId           Int?
   giftCardAmountApplied Decimal?
   loyaltyPointsEarned   Int?
   loyaltyPointsRedeemed Int?
   loyaltyDiscountAmount Decimal?
-  barbershop            Barbershop   @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  customer              Customer?    @relation(fields: [customerId], references: [id])
-  barber                Barber?      @relation(fields: [barberId], references: [id])
-  appointment           Appointment? @relation(fields: [appointmentId], references: [id])
-  cashSession           CashSession? @relation(fields: [cashSessionId], references: [id])
-  giftCard              GiftCard?    @relation(fields: [giftCardId], references: [id])
-  items                 SaleItem[]
+  barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer       Customer?  @relation(fields: [customerId], references: [id])
+  barber         Barber?    @relation(fields: [barberId], references: [id])
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  cashSession    CashSession? @relation(fields: [cashSessionId], references: [id])
+  giftCard       GiftCard?  @relation(fields: [giftCardId], references: [id])
+  items          SaleItem[]
 
   @@index([barbershopId])
   @@index([barbershopId, createdAt])
@@ -1105,17 +1105,17 @@ model Sale {
 }
 
 model CashSession {
-  id              Int        @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   barbershopId    Int
   openedByUserId  Int
-  openedAt        DateTime   @default(now())
+  openedAt        DateTime  @default(now())
   openingBalance  Decimal
   closedByUserId  Int?
   closedAt        DateTime?
   countedBalance  Decimal?
   expectedBalance Decimal?
   difference      Decimal?
-  status          String     @default("OPEN") // OPEN, CLOSED
+  status          String    @default("OPEN") // OPEN, CLOSED
   notes           String?
   barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   openedBy        User       @relation("CashSessionOpenedBy", fields: [openedByUserId], references: [id])
@@ -1131,10 +1131,10 @@ model Expense {
   id              Int          @id @default(autoincrement())
   barbershopId    Int
   cashSessionId   Int?
-  category        String // RENT, UTILITIES, SUPPLIES, SALARY, MAINTENANCE, OTHER
+  category        String       // RENT, UTILITIES, SUPPLIES, SALARY, MAINTENANCE, OTHER
   description     String
   amount          Decimal
-  paymentMethod   String? // CASH, CARD, PIX, TRANSFER
+  paymentMethod   String?      // CASH, CARD, PIX, TRANSFER
   expenseDate     DateTime     @default(now())
   createdByUserId Int
   createdAt       DateTime     @default(now())
@@ -1148,20 +1148,20 @@ model Expense {
 }
 
 model SaleItem {
-  id               Int                @id @default(autoincrement())
-  saleId           Int
-  itemType         String // SERVICE, PRODUCT
-  serviceId        Int?
-  productId        Int?
-  serviceHistoryId Int?
-  quantity         Int
-  unitPrice        Decimal
-  totalPrice       Decimal
-  notes            String?
-  sale             Sale               @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  service          BarbershopService? @relation(fields: [serviceId], references: [id])
-  product          BarbershopProduct? @relation(fields: [productId], references: [id])
-  serviceHistory   ServiceHistory?    @relation(fields: [serviceHistoryId], references: [id])
+  id                Int       @id @default(autoincrement())
+  saleId            Int
+  itemType          String    // SERVICE, PRODUCT
+  serviceId         Int?
+  productId         Int?
+  serviceHistoryId  Int?
+  quantity          Int
+  unitPrice         Decimal
+  totalPrice        Decimal
+  notes             String?
+  sale              Sale              @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  service           BarbershopService? @relation(fields: [serviceId], references: [id])
+  product           BarbershopProduct? @relation(fields: [productId], references: [id])
+  serviceHistory    ServiceHistory?   @relation(fields: [serviceHistoryId], references: [id])
 
   @@index([saleId])
   @@index([serviceHistoryId])
@@ -1169,19 +1169,19 @@ model SaleItem {
 }
 
 model InventoryItem {
-  id            Int                 @id @default(autoincrement())
-  barbershopId  Int
-  productId     Int
-  quantity      Decimal
-  unit          String              @default("UNIT")
-  minQuantity   Decimal?
-  lastCountedAt DateTime?
-  location      String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  barbershop    Barbershop          @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  product       BarbershopProduct   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  movements     InventoryMovement[]
+  id             Int       @id @default(autoincrement())
+  barbershopId   Int
+  productId      Int
+  quantity       Decimal
+  unit           String    @default("UNIT")
+  minQuantity    Decimal?
+  lastCountedAt  DateTime?
+  location       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  barbershop     Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  product        BarbershopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements      InventoryMovement[]
 
   @@unique([barbershopId, productId])
   @@index([barbershopId])
@@ -1190,17 +1190,17 @@ model InventoryItem {
 }
 
 model InventoryMovement {
-  id              Int           @id @default(autoincrement())
-  inventoryItemId Int
-  movementType    String // PURCHASE, SALE, ADJUSTMENT, LOSS, TRANSFER
-  quantityChange  Decimal
-  quantityBefore  Decimal
-  quantityAfter   Decimal
-  referenceType   String? // SALE, MANUAL, etc.
-  referenceId     String?
-  notes           String?
-  createdAt       DateTime      @default(now())
-  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  id               Int       @id @default(autoincrement())
+  inventoryItemId  Int
+  movementType     String    // PURCHASE, SALE, ADJUSTMENT, LOSS, TRANSFER
+  quantityChange   Decimal
+  quantityBefore   Decimal
+  quantityAfter    Decimal
+  referenceType    String?   // SALE, MANUAL, etc.
+  referenceId      String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
   @@index([inventoryItemId])
   @@index([inventoryItemId, createdAt])
@@ -1210,15 +1210,15 @@ model InventoryMovement {
 // ============ PACOTES DE SESSÃO ============
 
 model ServicePackage {
-  id             Int               @id @default(autoincrement())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   barbershopId   Int
   serviceId      Int
   name           String
   totalSessions  Int
   price          Decimal
-  isActive       Boolean           @default(true)
+  isActive       Boolean  @default(true)
   barbershop     Barbershop        @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   clientPackages ClientPackage[]
@@ -1228,15 +1228,15 @@ model ServicePackage {
 }
 
 model ClientPackage {
-  id               Int            @id @default(autoincrement())
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
   barbershopId     Int
   customerId       Int
   servicePackageId Int
-  totalSessions    Int // copiado da oferta no momento da compra
-  usedSessions     Int            @default(0)
-  status           String         @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  totalSessions    Int      // copiado da oferta no momento da compra
+  usedSessions     Int      @default(0)
+  status           String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
   barbershop       Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id])
@@ -1261,9 +1261,9 @@ model ClientPackage {
 // não transfere nada sozinho.
 
 model ClientSubscriptionPlan {
-  id               Int                  @id @default(autoincrement())
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
   barbershopId     Int
   serviceId        Int
   name             String
@@ -1271,9 +1271,9 @@ model ClientSubscriptionPlan {
   sessionsPerCycle Int? // null = ilimitado; caso contrário, nº máximo de usos por ciclo de cobrança
   stripeProductId  String?
   stripePriceId    String?
-  isActive         Boolean              @default(true)
-  barbershop       Barbershop           @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  service          BarbershopService    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  isActive         Boolean  @default(true)
+  barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  service          BarbershopService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   subscriptions    ClientSubscription[]
 
   @@index([barbershopId])
@@ -1281,20 +1281,20 @@ model ClientSubscriptionPlan {
 }
 
 model ClientSubscription {
-  id                   Int                         @id @default(autoincrement())
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
+  id                   Int       @id @default(autoincrement())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
   barbershopId         Int
   clientAccountId      Int
   planId               Int
-  stripeSubscriptionId String                      @unique
+  stripeSubscriptionId String    @unique
   // INCOMPLETE (aguardando confirmação do primeiro pagamento), ACTIVE,
   // PAST_DUE (fatura falhou), CANCELED.
-  status               String                      @default("INCOMPLETE")
+  status               String    @default("INCOMPLETE")
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
-  usedThisCycle        Int                         @default(0) // resetado a cada invoice.payment_succeeded (novo ciclo)
-  cancelAtPeriodEnd    Boolean                     @default(false)
+  usedThisCycle        Int       @default(0) // resetado a cada invoice.payment_succeeded (novo ciclo)
+  cancelAtPeriodEnd    Boolean   @default(false)
   canceledAt           DateTime?
   barbershop           Barbershop                  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   clientAccount        ClientAccount               @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
@@ -1307,10 +1307,10 @@ model ClientSubscription {
 }
 
 model ClientSubscriptionPayment {
-  id              Int                @id @default(autoincrement())
-  createdAt       DateTime           @default(now())
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
   subscriptionId  Int
-  stripeInvoiceId String             @unique
+  stripeInvoiceId String    @unique
   amount          Decimal
   status          String // SUCCEEDED, FAILED
   periodStart     DateTime?
@@ -1323,18 +1323,18 @@ model ClientSubscriptionPayment {
 // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
 model ConsentForm {
-  id            Int        @id @default(autoincrement())
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   barbershopId  Int
   customerId    Int
-  formType      String // ANAMNESIS, ALLERGY_TEST, PHOTO_CONSENT, GENERAL
-  category      String? // categoria de serviço a que se aplica, ex.: BROWS_LASHES
-  answers       String? // JSON livre com as respostas do formulário
+  formType      String    // ANAMNESIS, ALLERGY_TEST, PHOTO_CONSENT, GENERAL
+  category      String?   // categoria de serviço a que se aplica, ex.: BROWS_LASHES
+  answers       String?   // JSON livre com as respostas do formulário
   signatureName String?
   signedAt      DateTime?
   expiresAt     DateTime? // ex.: teste de alergia válido por 48h antes do serviço
-  status        String     @default("PENDING") // PENDING, SIGNED, EXPIRED
+  status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED
   barbershop    Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer      Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -1346,12 +1346,12 @@ model ConsentForm {
 // ============ COMISSÃO ============
 
 model CommissionRule {
-  id           Int        @id @default(autoincrement())
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   barbershopId Int
-  barberId     Int? // null = regra padrão da unidade, aplicada a quem não tem regra própria
-  itemType     String     @default("ALL") // SERVICE, PRODUCT, ALL
+  barberId     Int?     // null = regra padrão da unidade, aplicada a quem não tem regra própria
+  itemType     String   @default("ALL") // SERVICE, PRODUCT, ALL
   percentage   Decimal
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barber       Barber?    @relation(fields: [barberId], references: [id], onDelete: Cascade)
