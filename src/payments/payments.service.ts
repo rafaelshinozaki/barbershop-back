@@ -9,6 +9,28 @@ import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import Stripe from 'stripe';
 
+/** Cupom aplicado no checkout do plano (valores em reais). */
+interface CheckoutCoupon {
+  couponId: number;
+  originalAmount: number;
+  discountAmount: number;
+}
+
+/** Menor cobrança que o Stripe aceita em BRL. */
+const MIN_STRIPE_CHARGE = 0.5;
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+function couponFromMetadata(metadata?: Record<string, string>): CheckoutCoupon | undefined {
+  const couponId = Number(metadata?.couponId);
+  if (!couponId) return undefined;
+  return {
+    couponId,
+    originalAmount: Number(metadata?.originalAmount ?? 0),
+    discountAmount: Number(metadata?.discountAmount ?? 0),
+  };
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -584,7 +606,7 @@ export class PaymentsService {
     };
   }
 
-  async createPaymentIntentForCheckout(userId: number, planId: number) {
+  async createPaymentIntentForCheckout(userId: number, planId: number, couponCode?: string) {
     this.logger.log(`Creating payment intent for user ${userId}, plan ${planId}`);
 
     const plan = await this.prisma.plan.findFirst({
@@ -602,6 +624,42 @@ export class PaymentsService {
 
     if (!user.isActive) {
       throw new Error('User is not active');
+    }
+
+    // Cupom: valida pro usuário e o plano e cobra o valor com desconto (o
+    // desconto nunca passa do preço — cupom de valor fixo podia passar)
+    const price = Number(plan.price);
+    let coupon: CheckoutCoupon | undefined;
+    if (couponCode?.trim()) {
+      const validation = await this.couponsService.validateCoupon(
+        couponCode.trim(),
+        userId,
+        planId,
+        price,
+      );
+      if (!validation.isValid) {
+        throw new BadRequestException(validation.error || 'Cupom inválido');
+      }
+      const discountAmount = roundMoney(Math.min(price, validation.discountAmount));
+      coupon = { couponId: validation.coupon.id, originalAmount: price, discountAmount };
+    }
+    const finalAmount = roundMoney(price - (coupon?.discountAmount ?? 0));
+
+    // O Stripe não cria cobrança abaixo de R$ 0,50: cupom que cobre o valor
+    // (ex.: "1 mês grátis" do convite de amigo) ativa o plano sem cobrança
+    if (coupon && finalAmount < MIN_STRIPE_CHARGE) {
+      await this.createSubscriptionAfterPayment(userId, planId, null, {
+        ...coupon,
+        discountAmount: price,
+      });
+      return {
+        clientSecret: null,
+        paymentIntentId: null,
+        activated: true,
+        originalAmount: price,
+        discountAmount: price,
+        finalAmount: 0,
+      };
     }
 
     let customer: Stripe.Customer;
@@ -631,7 +689,7 @@ export class PaymentsService {
       });
     }
 
-    const amountInCents = Math.floor(Number(plan.price) * 100 + 0.5);
+    const amountInCents = Math.floor(finalAmount * 100 + 0.5);
     const paymentIntent = await this.stripeService.createPaymentIntent(
       amountInCents,
       'brl',
@@ -643,12 +701,22 @@ export class PaymentsService {
         userId: userId.toString(),
         planId: plan.id.toString(),
         planName: plan.name,
+        // Lidos de volta no confirmPaymentIntent pra registrar o cupom
+        ...(coupon && {
+          couponId: String(coupon.couponId),
+          originalAmount: String(coupon.originalAmount),
+          discountAmount: String(coupon.discountAmount),
+        }),
       },
     });
 
     return {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      activated: false,
+      originalAmount: price,
+      discountAmount: coupon?.discountAmount ?? 0,
+      finalAmount,
     };
   }
 
@@ -681,7 +749,12 @@ export class PaymentsService {
 
         if (userId && planId) {
           // Criar assinatura após pagamento confirmado
-          return await this.createSubscriptionAfterPayment(userId, planId, paymentIntent.id);
+          return await this.createSubscriptionAfterPayment(
+            userId,
+            planId,
+            paymentIntent.id,
+            couponFromMetadata(paymentIntent.metadata),
+          );
         }
       }
 
@@ -698,7 +771,12 @@ export class PaymentsService {
             const planId = parseInt(paymentIntent.metadata?.planId || '0');
 
             if (userId && planId) {
-              return await this.createSubscriptionAfterPayment(userId, planId, paymentIntent.id);
+              return await this.createSubscriptionAfterPayment(
+                userId,
+                planId,
+                paymentIntent.id,
+                couponFromMetadata(paymentIntent.metadata),
+              );
             }
           }
 
@@ -717,9 +795,20 @@ export class PaymentsService {
   private async createSubscriptionAfterPayment(
     userId: number,
     planId: number,
-    paymentIntentId: string,
+    paymentIntentId: string | null,
+    coupon?: CheckoutCoupon,
   ) {
     this.logger.log(`Creating subscription after payment - User: ${userId}, Plan: ${planId}`);
+
+    // Confirmar o mesmo pagamento duas vezes (duplo clique, nova tentativa)
+    // não cria outra assinatura nem gasta o cupom de novo
+    if (paymentIntentId) {
+      const existing = await this.prisma.payment.findFirst({
+        where: { transactionId: paymentIntentId },
+        include: { subscription: true },
+      });
+      if (existing?.subscription) return { success: true, subscription: existing.subscription };
+    }
 
     const plan = await this.prisma.plan.findFirst({
       where: { id: planId },
@@ -765,19 +854,27 @@ export class PaymentsService {
       } as any,
     });
 
-    // Criar registro de pagamento
+    // Criar registro de pagamento (com o valor efetivamente pago)
+    const price = Number(plan.price);
     await this.prisma.payment.create({
       data: {
         subscriptionId: subscription.id,
-        amount: new Prisma.Decimal(plan.price),
+        amount: new Prisma.Decimal(coupon ? roundMoney(price - coupon.discountAmount) : price),
         nextPaymentDate:
           plan.billingCycle === 'YEARLY' ? addYears(new Date(), 1) : addDays(new Date(), 30),
         paymentDate: new Date(),
-        paymentMethod: 'stripe',
+        paymentMethod: paymentIntentId ? 'stripe' : 'coupon',
         transactionId: paymentIntentId,
         status: PAGAMENTO_STATUS.COMPLETED,
+        ...(coupon && {
+          appliedCouponId: coupon.couponId,
+          originalAmount: new Prisma.Decimal(coupon.originalAmount),
+          discountAmount: new Prisma.Decimal(coupon.discountAmount),
+        }),
       },
     });
+
+    if (coupon) await this.couponsService.registerUse(coupon.couponId, userId);
 
     return { success: true, subscription };
   }

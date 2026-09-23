@@ -288,6 +288,7 @@ export class PaymentResolver {
   async createPaymentIntent(
     @Args('planId', { type: () => Int }) planId: number,
     @Context() context: any,
+    @Args('couponCode', { type: () => String, nullable: true }) couponCode?: string,
   ): Promise<PaymentIntentResponse> {
     const userId = context.req.user?.id;
     this.logger.log(`Creating payment intent for user ${userId}, plan ${planId}`);
@@ -301,12 +302,7 @@ export class PaymentResolver {
     }
 
     try {
-      const result = await this.paymentsService.createPaymentIntentForCheckout(userId, planId);
-
-      return {
-        clientSecret: result.clientSecret,
-        paymentIntentId: result.paymentIntentId,
-      };
+      return await this.paymentsService.createPaymentIntentForCheckout(userId, planId, couponCode);
     } catch (error) {
       this.logger.error(`Error creating payment intent for user ${userId}:`, error);
       throw new Error(error.message || 'Failed to create payment intent');

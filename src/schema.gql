@@ -1100,7 +1100,7 @@ type Mutation {
   createGiftCard(input: CreateGiftCardInput!): GiftCardType!
   createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
   createOrUpdateReview(input: CreateReviewInput!): Boolean!
-  createPaymentIntent(planId: Int!): PaymentIntentResponse!
+  createPaymentIntent(couponCode: String, planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
   createPublicAppointment(input: CreatePublicAppointmentInput!): PublicAppointmentType!
@@ -1466,8 +1466,12 @@ type Payment {
 }
 
 type PaymentIntentResponse {
-  clientSecret: String!
-  paymentIntentId: String!
+  activated: Boolean!
+  clientSecret: String
+  discountAmount: Float
+  finalAmount: Float
+  originalAmount: Float
+  paymentIntentId: String
 }
 
 type PaymentMethod {
@@ -2105,6 +2109,7 @@ input UpdateCouponInput {
   applicablePlans: String
   code: String
   description: String
+  isActive: Boolean
   maxUses: Int
   minSubscriptionMonths: Int
   name: String
