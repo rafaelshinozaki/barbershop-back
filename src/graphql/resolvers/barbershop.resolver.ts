@@ -1,5 +1,6 @@
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { RealtimeService } from '../../realtime/realtime.service';
 import {
   Barbershop,
   BarbershopCustomer,
@@ -98,6 +99,7 @@ export class BarbershopResolver {
     private readonly barbershopService: BarbershopService,
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
+    private readonly realtime: RealtimeService,
   ) {}
 
   // ============ BARBERSHOP ============
@@ -294,7 +296,9 @@ export class BarbershopResolver {
   ) {
     const { barbershopId: _, ...rest } = input;
     const data = { ...rest, birthDate: rest.birthDate ? new Date(rest.birthDate) : undefined };
-    return this.barbershopService.createCustomer(user.id, barbershopId, data);
+    const result = await this.barbershopService.createCustomer(user.id, barbershopId, data);
+    this.realtime.notify(barbershopId, 'CUSTOMER', 'CREATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -327,7 +331,9 @@ export class BarbershopResolver {
   ) {
     const data: any = { ...input };
     if (input.birthDate) data.birthDate = new Date(input.birthDate);
-    return this.barbershopService.updateCustomer(user.id, barbershopId, id, data);
+    const result = await this.barbershopService.updateCustomer(user.id, barbershopId, id, data);
+    this.realtime.notify(barbershopId, 'CUSTOMER', 'UPDATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -338,6 +344,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     await this.barbershopService.deleteCustomer(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'CUSTOMER', 'DELETED');
     return true;
   }
 
@@ -823,11 +830,13 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const { barbershopId: _b, ...rest } = input;
-    return this.barbershopService.createAppointment(user.id, barbershopId, {
+    const result = await this.barbershopService.createAppointment(user.id, barbershopId, {
       ...rest,
       startAt: new Date(input.startAt),
       endAt: new Date(input.endAt),
     });
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'CREATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -838,12 +847,14 @@ export class BarbershopResolver {
     @Args('depositPaid') depositPaid: boolean,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.setAppointmentDepositPaid(
+    const result = await this.barbershopService.setAppointmentDepositPaid(
       user.id,
       barbershopId,
       appointmentId,
       depositPaid,
     );
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -904,7 +915,9 @@ export class BarbershopResolver {
     const data: any = { ...input };
     if (input.startAt) data.startAt = new Date(input.startAt);
     if (input.endAt) data.endAt = new Date(input.endAt);
-    return this.barbershopService.updateAppointment(user.id, barbershopId, id, data);
+    const result = await this.barbershopService.updateAppointment(user.id, barbershopId, id, data);
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -915,6 +928,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     await this.barbershopService.deleteAppointment(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'DELETED');
     return true;
   }
 
@@ -928,7 +942,9 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const { barbershopId: _b, ...rest } = input;
-    return this.barbershopService.createWalkIn(user.id, barbershopId, rest);
+    const result = await this.barbershopService.createWalkIn(user.id, barbershopId, rest);
+    this.realtime.notify(barbershopId, 'WALK_IN', 'CREATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -949,7 +965,14 @@ export class BarbershopResolver {
     @Args('status') status: string,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateWalkInStatus(user.id, barbershopId, id, status);
+    const result = await this.barbershopService.updateWalkInStatus(
+      user.id,
+      barbershopId,
+      id,
+      status,
+    );
+    this.realtime.notify(barbershopId, 'WALK_IN', 'UPDATED');
+    return result;
   }
 
   // ============ SERVICE HISTORY ============
@@ -979,7 +1002,9 @@ export class BarbershopResolver {
     @Args('input') input: CreateSaleInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.createSale(user.id, barbershopId, input);
+    const result = await this.barbershopService.createSale(user.id, barbershopId, input);
+    this.realtime.notify(barbershopId, 'SALE', 'CREATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -990,7 +1015,9 @@ export class BarbershopResolver {
     @Args('input') input: UpdateSaleInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateSale(user.id, barbershopId, id, input);
+    const result = await this.barbershopService.updateSale(user.id, barbershopId, id, input);
+    this.realtime.notify(barbershopId, 'SALE', 'UPDATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1000,7 +1027,9 @@ export class BarbershopResolver {
     @Args('id', { type: () => Int }) id: number,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.deleteSale(user.id, barbershopId, id);
+    const result = await this.barbershopService.deleteSale(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'SALE', 'DELETED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

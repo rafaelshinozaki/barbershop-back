@@ -13,6 +13,7 @@ import { NetworkResolver } from './resolvers/network.resolver';
 import { ClientAuthResolver } from './resolvers/client-auth.resolver';
 import { PublicBookingResolver } from './resolvers/public-booking.resolver';
 import { SocialResolver } from './resolvers/social.resolver';
+import { RealtimeResolver } from './resolvers/realtime.resolver';
 import { AuthModule } from '../auth/auth.module';
 import { ClientAuthModule } from '../client-auth/client-auth.module';
 import { UserModule } from '../auth/users/users.module';
@@ -42,6 +43,7 @@ import { SocialModule } from '../social/social.module';
     SocialModule,
   ],
   providers: [
+    RealtimeResolver,
     AuthResolver,
     UserResolver,
     PlanResolver,

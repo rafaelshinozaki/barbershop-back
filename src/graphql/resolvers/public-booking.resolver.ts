@@ -3,6 +3,7 @@ import { NotFoundException, UseGuards, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
+import { RealtimeService } from '../../realtime/realtime.service';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
@@ -42,6 +43,7 @@ export class PublicBookingResolver {
     private readonly barbershopService: BarbershopService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -110,6 +112,8 @@ export class PublicBookingResolver {
       clientAccountId,
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    // Agendamento feito pelo cliente aparece na hora no dashboard da unidade
+    this.realtime.notify(appointment.barbershopId, 'APPOINTMENT', 'CREATED');
 
     const service = appointment.services[0]?.service;
     return {

@@ -27,6 +27,10 @@ import { RedisModule } from './redis/redis.module';
 import { FailOpenRedisThrottlerStorage } from './redis/redis-throttler.storage';
 import { redisUrl } from './redis/redis-url';
 import { QueueModule } from './queue/queue.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { JwtService } from '@nestjs/jwt';
+import type { IncomingMessage } from 'http';
+import { isAllowedOrigin } from './common/cors-origins';
 
 @Module({
   imports: [
@@ -141,7 +145,39 @@ import { QueueModule } from './queue/queue.module';
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-      context: ({ req, res }) => ({ req, res, user: req.user }),
+      // HTTP: { req, res }. WebSocket (subscriptions, graphql-ws): o
+      // request do handshake vem em extra.request — o GraphQLJwtAuthGuard lê
+      // o cookie dos headers dele, igual numa requisição HTTP.
+      context: ({ req, res, extra }) =>
+        extra?.request ? { req: extra.request } : { req, res, user: req.user },
+      subscriptions: {
+        'graphql-ws': {
+          path: '/graphql',
+          // Recusa o socket já no handshake: origem fora da lista (o
+          // navegador não aplica CORS a WebSocket e o login é por cookie) ou
+          // sem um JWT válido. Sessão/usuário são checados de novo pelo guard
+          // em cada subscription.
+          onConnect: (ctx) => {
+            const { request } = ctx.extra as { request: IncomingMessage };
+            const headers = request.headers;
+            const origin = headers.origin;
+            if (
+              origin &&
+              !isAllowedOrigin(origin, process.env.FRONTEND_URL, process.env.TENANT_ROOT_DOMAIN)
+            ) {
+              return false;
+            }
+            const token = headers.cookie?.match(/(?:^|;\s*)Authentication=([^;]+)/)?.[1];
+            if (!token) return false;
+            try {
+              new JwtService().verify(token, { secret: process.env.JWT_SECRET });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        },
+      },
       formatError: (formattedError) => {
         // Evita "Converting circular structure to JSON" - retorna apenas campos serializáveis
         try {
@@ -168,6 +204,7 @@ import { QueueModule } from './queue/queue.module';
     }),
     RedisModule,
     QueueModule,
+    RealtimeModule,
     AuthModule,
     PrismaModule,
     PlanModule,
