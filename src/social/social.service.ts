@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
-import { S3Service } from '@/aws/s3.service';
+import { PresignedUpload, S3Service } from '@/aws/s3.service';
+import { randomUUID } from 'crypto';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 
 interface OAuthStatePayload {
@@ -197,15 +198,13 @@ export class SocialService {
   async getPostImageUploadUrl(
     userId: number,
     barbershopId: number,
-    fileExtension: string,
     contentType?: string,
-  ): Promise<{ uploadUrl: string; imageKey: string }> {
+  ): Promise<PresignedUpload> {
     await this.barbershopService.getBarbershop(userId, barbershopId);
-    const imageKey = `social-posts/${barbershopId}/${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}.${fileExtension}`;
-    const uploadUrl = await this.s3Service.getUploadUrl(imageKey, contentType);
-    return { uploadUrl, imageKey };
+    return this.s3Service.createImageUpload(
+      `social-posts/${barbershopId}/${Date.now()}-${randomUUID().slice(0, 8)}`,
+      contentType,
+    );
   }
 
   async createPost(

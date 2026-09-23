@@ -1,3 +1,4 @@
+import { PresignedUploadType } from '../types/upload.type';
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UserService } from '../../auth/users/users.service';
@@ -368,21 +369,22 @@ export class UserResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
-  @Mutation(() => String)
+  @Mutation(() => PresignedUploadType)
   async getPhotoUploadUrl(
     @CurrentUser() user: UserDTO,
-    @Args('fileExtension', { nullable: true }) fileExtension?: string,
     @Args('contentType', { nullable: true }) contentType?: string,
-  ) {
-    const photoKey = `users/${user.id}/profile-photo.${fileExtension || 'jpg'}`;
-    const uploadUrl = await this.s3Service.getUploadUrl(photoKey, contentType);
+  ): Promise<PresignedUploadType> {
+    const upload = await this.s3Service.createImageUpload(
+      `users/${user.id}/profile-photo`,
+      contentType,
+    );
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { photoKey },
+      data: { photoKey: upload.key },
     });
 
-    return uploadUrl;
+    return upload;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

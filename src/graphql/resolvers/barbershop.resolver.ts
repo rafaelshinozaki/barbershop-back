@@ -1,3 +1,4 @@
+import { PresignedUploadType } from '../types/upload.type';
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
@@ -551,14 +552,13 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
-  @Mutation(() => String)
+  @Mutation(() => PresignedUploadType)
   async getProductPhotoUploadUrl(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('productId', { type: () => Int }) productId: number,
-    @Args('fileExtension', { nullable: true }) fileExtension?: string,
     @Args('contentType', { nullable: true }) contentType?: string,
     @CurrentUser() user?: UserDTO,
-  ): Promise<string> {
+  ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
     await this.barbershopService.getBarbershop(user.id, barbershopId);
     const product = await this.prisma.barbershopProduct.findFirst({
@@ -567,14 +567,15 @@ export class BarbershopResolver {
     if (!product) {
       throw new Error('Produto não encontrado');
     }
-    const ext = fileExtension || 'jpg';
-    const imageKey = `products/${barbershopId}/${productId}/photo.${ext}`;
-    const uploadUrl = await this.s3Service.getUploadUrl(imageKey, contentType);
+    const upload = await this.s3Service.createImageUpload(
+      `products/${barbershopId}/${productId}/photo`,
+      contentType,
+    );
     await this.prisma.barbershopProduct.update({
       where: { id: productId },
-      data: { imageKey },
+      data: { imageKey: upload.key },
     });
-    return uploadUrl;
+    return upload;
   }
 
   // ============ INVENTORY ============
@@ -719,23 +720,23 @@ export class BarbershopResolver {
   // ============ BARBERSHOP PHOTO ============
 
   @UseGuards(GraphQLJwtAuthGuard)
-  @Mutation(() => String)
+  @Mutation(() => PresignedUploadType)
   async getBarbershopPhotoUploadUrl(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
-    @Args('fileExtension', { nullable: true }) fileExtension?: string,
     @Args('contentType', { nullable: true }) contentType?: string,
     @CurrentUser() user?: UserDTO,
-  ): Promise<string> {
+  ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
     await this.barbershopService.getBarbershop(user.id, barbershopId);
-    const ext = fileExtension || 'jpg';
-    const photoKey = `barbershops/${barbershopId}/photo.${ext}`;
-    const uploadUrl = await this.s3Service.getUploadUrl(photoKey, contentType);
+    const upload = await this.s3Service.createImageUpload(
+      `barbershops/${barbershopId}/photo`,
+      contentType,
+    );
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
-      data: { photoKey },
+      data: { photoKey: upload.key },
     });
-    return uploadUrl;
+    return upload;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
