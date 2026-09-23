@@ -5,7 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
-import { APPOINTMENT_REMINDERS_QUEUE, SCHEDULED_JOB_OPTIONS } from '../queue/queue.constants';
+import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
 // (a cada 5 min), sem carregar milhares de linhas de uma vez
@@ -139,12 +140,10 @@ export class AppointmentReminderService {
 export class AppointmentReminderScheduler implements OnModuleInit {
   constructor(@InjectQueue(APPOINTMENT_REMINDERS_QUEUE) private readonly queue: Queue) {}
 
-  async onModuleInit() {
-    await this.queue.upsertJobScheduler(
-      'enqueue-due-reminders',
-      { every: 5 * 60 * 1000 },
-      { name: 'enqueue-due-reminders', opts: SCHEDULED_JOB_OPTIONS },
-    );
+  onModuleInit() {
+    registerSchedulers(this.queue, [
+      { id: 'enqueue-due-reminders', repeat: { every: 5 * 60 * 1000 } },
+    ]);
   }
 }
 

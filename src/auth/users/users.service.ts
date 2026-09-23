@@ -6,6 +6,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   HttpException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -99,7 +100,41 @@ export class UserService {
   // Conta falhas por email; na LOGIN_MAX_ATTEMPTS-ésima dentro da janela,
   // bloqueia por LOGIN_BLOCK_MINUTES. As chaves expiram sozinhas (antes um
   // Map que precisava de limpeza periódica pra não crescer sem limite).
+  // Com o Redis fora, o login por senha continua funcionando — só o
+  // contador de tentativas/bloqueio fica suspenso (logado). Derrubar o login
+  // de todo mundo por causa do contador seria pior.
+  private async isLoginBlocked(email: string): Promise<boolean> {
+    try {
+      return (await this.redis.client.exists(UserService.KEY.blocked(email))) === 1;
+    } catch (error) {
+      this.logger.error(`Redis indisponível (bloqueio de login ignorado): ${error.message}`);
+      return false;
+    }
+  }
+
   private async recordFailedLogin(email: string) {
+    try {
+      await this.incrementFailedLogin(email);
+    } catch (error) {
+      this.logger.error(`Redis indisponível (tentativa de login não contada): ${error.message}`);
+    }
+  }
+
+  // Código de login/2FA não tem como funcionar sem o Redis: erro claro em
+  // vez da mensagem interna do ioredis
+  private async withRedis<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Redis indisponível: ${error.message}`);
+      throw new ServiceUnavailableException(
+        'Verification temporarily unavailable. Please try again in a few minutes.',
+      );
+    }
+  }
+
+  private async incrementFailedLogin(email: string) {
     const failsKey = UserService.KEY.fails(email);
     const fails = await this.redis.client.incr(failsKey);
     if (fails === 1) await this.redis.client.expire(failsKey, LOGIN_BLOCK_MINUTES * 60);
@@ -1077,7 +1112,7 @@ export class UserService {
 
   async verifyUser(email: string, password: string) {
     this.logger.log(`Verifying user with email: ${email}`);
-    if (await this.redis.client.exists(UserService.KEY.blocked(email))) {
+    if (await this.isLoginBlocked(email)) {
       throw new UnauthorizedException('Too many login attempts. Please try again later.');
     }
     const user = await this.prisma.user.findFirst({
@@ -1180,7 +1215,7 @@ export class UserService {
 
     // Senha correta: zera o contador de tentativas falhas deste email (antes
     // ficava preso até expirar ou até o próximo bloqueio resetá-lo sozinho).
-    await this.redis.client.del(UserService.KEY.fails(email));
+    await this.redis.client.del(UserService.KEY.fails(email)).catch(() => undefined);
 
     // Histórico de login e sessão ativa são gravados em AuthService.login(),
     // não aqui — aqui a senha pode ter batido mas o 2FA ainda pode ser
@@ -1600,11 +1635,13 @@ export class UserService {
     }
 
     // Antes ficava num Set sem expiração nenhuma
-    await this.redis.client.set(
-      UserService.KEY.enable2fa(user.email, code),
-      '1',
-      'EX',
-      TWO_FACTOR_CODE_EXPIRY_MINUTES * 60,
+    await this.withRedis(() =>
+      this.redis.client.set(
+        UserService.KEY.enable2fa(user.email, code),
+        '1',
+        'EX',
+        TWO_FACTOR_CODE_EXPIRY_MINUTES * 60,
+      ),
     );
 
     return true;
@@ -1615,7 +1652,12 @@ export class UserService {
       where: { email, provider: 'local' },
     });
     // del devolve 1 só pra quem consumiu o código (uso único)
-    if (user && (await this.redis.client.del(UserService.KEY.enable2fa(email, code))) === 1) {
+    const consumed =
+      !!user &&
+      (await this.withRedis(() =>
+        this.redis.client.del(UserService.KEY.enable2fa(email, code)),
+      )) === 1;
+    if (user && consumed) {
       await this.prisma.user.update({
         where: { id: user.id },
         data: { twoFactorEnabled: true },
@@ -1629,10 +1671,10 @@ export class UserService {
     this.logger.log(`Sending login code - loginId: ${loginId}, user: ${user.email}`);
 
     // Invalidar código anterior do mesmo usuário
-    const previousLoginId = await this.redis.client.get(UserService.KEY.codeByUser(user.email));
-    if (previousLoginId) {
-      await this.redis.client.del(UserService.KEY.code(previousLoginId));
-    }
+    await this.withRedis(async () => {
+      const previousLoginId = await this.redis.client.get(UserService.KEY.codeByUser(user.email));
+      if (previousLoginId) await this.redis.client.del(UserService.KEY.code(previousLoginId));
+    });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -1665,12 +1707,14 @@ export class UserService {
     }
 
     const ttl = TWO_FACTOR_CODE_EXPIRY_MINUTES * 60;
-    await this.redis.setJson(
-      UserService.KEY.code(loginId),
-      { email: user.email, code, attempts: 0 },
-      ttl,
-    );
-    await this.redis.client.set(UserService.KEY.codeByUser(user.email), loginId, 'EX', ttl);
+    await this.withRedis(async () => {
+      await this.redis.setJson(
+        UserService.KEY.code(loginId),
+        { email: user.email, code, attempts: 0 },
+        ttl,
+      );
+      await this.redis.client.set(UserService.KEY.codeByUser(user.email), loginId, 'EX', ttl);
+    });
 
     this.logger.log(`Login code stored - loginId: ${loginId}`);
 
@@ -1682,8 +1726,8 @@ export class UserService {
 
     const codeKey = UserService.KEY.code(loginId);
     // Expirado = chave já sumiu do Redis (TTL)
-    const entry = await this.redis.getJson<{ email: string; code: string; attempts: number }>(
-      codeKey,
+    const entry = await this.withRedis(() =>
+      this.redis.getJson<{ email: string; code: string; attempts: number }>(codeKey),
     );
 
     if (!entry) {
@@ -1694,17 +1738,17 @@ export class UserService {
       entry.attempts += 1;
       this.logger.error(`Invalid verification code - code mismatch, attempts: ${entry.attempts}`);
       if (entry.attempts >= LOGIN_CODE_MAX_ATTEMPTS) {
-        await this.redis.client.del(codeKey);
+        await this.withRedis(() => this.redis.client.del(codeKey));
         throw new UnauthorizedException('Invalid or expired verification code');
       }
-      await this.redis.client.set(codeKey, JSON.stringify(entry), 'KEEPTTL');
+      await this.withRedis(() => this.redis.client.set(codeKey, JSON.stringify(entry), 'KEEPTTL'));
       throw new UnauthorizedException('Invalid verification code');
     }
     // Uso único: só a primeira verificação com o código certo consome a chave
-    if ((await this.redis.client.del(codeKey)) === 0) {
+    if ((await this.withRedis(() => this.redis.client.del(codeKey))) === 0) {
       throw new UnauthorizedException('Invalid verification code');
     }
-    await this.redis.client.del(UserService.KEY.codeByUser(entry.email));
+    await this.redis.client.del(UserService.KEY.codeByUser(entry.email)).catch(() => undefined);
     const { email } = entry;
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },

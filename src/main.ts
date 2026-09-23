@@ -16,6 +16,24 @@ async function bootstrap() {
   const logger = new Logger('main');
   const configService = app.get(ConfigService);
 
+  // Atrás de load balancer/proxy, req.ip é o IP do proxy — e como o rate
+  // limit agora é compartilhado (Redis), todos os usuários cairiam no mesmo
+  // contador. TRUST_PROXY diz ao Express quantos saltos do X-Forwarded-For
+  // confiar (ex.: 1 = um load balancer na frente). Sem proxy, deixe vazio:
+  // confiar no cabeçalho sem proxy deixa o cliente forjar o próprio IP.
+  const trustProxy = configService.get<string>('TRUST_PROXY');
+  if (trustProxy) {
+    const value = /^\d+$/.test(trustProxy)
+      ? Number(trustProxy)
+      : trustProxy === 'true'
+      ? true
+      : trustProxy === 'false'
+      ? false
+      : trustProxy;
+    app.getHttpAdapter().getInstance().set('trust proxy', value);
+    logger.log(`trust proxy = ${JSON.stringify(value)}`);
+  }
+
   // Log para debug do GraphQL
   logger.log('🚀 Iniciando aplicação...');
   logger.log('📋 Verificando configuração GraphQL...');

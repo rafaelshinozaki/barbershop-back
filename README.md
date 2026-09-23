@@ -30,6 +30,15 @@ O back precisa de um Redis (`REDIS_URL`, padrão `redis://localhost:6379`):
   cluster, mesmo com várias instâncias do back.
 - **Login**: código de verificação e bloqueio por tentativas ficam no Redis,
   valendo pra todas as instâncias.
+- **Rate limit**: os contadores do throttle também ficam no Redis, então o
+  limite (ex.: login 3 tentativas / 5 min) vale somando todas as instâncias.
+  Atrás de load balancer/proxy, defina `TRUST_PROXY` (ex.: `1`) pra o limite
+  ser por IP do cliente e não do proxy.
+
+Se o Redis cair, a API continua no ar: o rate limit e o contador de
+tentativas de login ficam suspensos, o login por senha funciona, e só o
+login por código/2FA responde "temporariamente indisponível". Filas e
+agendamentos voltam sozinhos quando o Redis volta.
 
 Local: `docker compose -f infra/compose.yaml up -d redis`. Em produção, use
 persistência (`appendonly yes`) e `maxmemory-policy noeviction` pra não

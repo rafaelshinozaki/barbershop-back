@@ -2,7 +2,8 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { SocialService } from './social.service';
-import { SCHEDULED_JOB_OPTIONS, SOCIAL_POSTS_QUEUE } from '../queue/queue.constants';
+import { SOCIAL_POSTS_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 
 // Publica posts agendados por polling a cada 5 min — granularidade de
 // minutos é suficiente pra post de marketing. Agendado pelo BullMQ (uma
@@ -12,12 +13,8 @@ import { SCHEDULED_JOB_OPTIONS, SOCIAL_POSTS_QUEUE } from '../queue/queue.consta
 export class SocialPostsSchedulerService implements OnModuleInit {
   constructor(@InjectQueue(SOCIAL_POSTS_QUEUE) private readonly queue: Queue) {}
 
-  async onModuleInit() {
-    await this.queue.upsertJobScheduler(
-      'publish-due-posts',
-      { every: 5 * 60 * 1000 },
-      { name: 'publish-due-posts', opts: SCHEDULED_JOB_OPTIONS },
-    );
+  onModuleInit() {
+    registerSchedulers(this.queue, [{ id: 'publish-due-posts', repeat: { every: 5 * 60 * 1000 } }]);
   }
 }
 

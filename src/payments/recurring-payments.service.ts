@@ -2,7 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { PaymentsService } from './payments.service';
-import { RECURRING_PAYMENTS_QUEUE, SCHEDULED_JOB_OPTIONS } from '../queue/queue.constants';
+import { RECURRING_PAYMENTS_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 
 @Injectable()
 export class RecurringPaymentsService {
@@ -89,17 +90,17 @@ export class RecurringPaymentsService {
 export class RecurringPaymentsScheduler implements OnModuleInit {
   constructor(@InjectQueue(RECURRING_PAYMENTS_QUEUE) private readonly queue: Queue) {}
 
-  async onModuleInit() {
-    await this.queue.upsertJobScheduler(
-      'process-recurring-payments',
-      { pattern: '0 0 9 * * *', tz: 'America/Sao_Paulo' },
-      { name: 'process-recurring-payments', opts: SCHEDULED_JOB_OPTIONS },
-    );
-    await this.queue.upsertJobScheduler(
-      'check-overdue-payments',
-      { pattern: '0 0 */6 * * *', tz: 'America/Sao_Paulo' },
-      { name: 'check-overdue-payments', opts: SCHEDULED_JOB_OPTIONS },
-    );
+  onModuleInit() {
+    registerSchedulers(this.queue, [
+      {
+        id: 'process-recurring-payments',
+        repeat: { pattern: '0 0 9 * * *', tz: 'America/Sao_Paulo' },
+      },
+      {
+        id: 'check-overdue-payments',
+        repeat: { pattern: '0 0 */6 * * *', tz: 'America/Sao_Paulo' },
+      },
+    ]);
   }
 }
 

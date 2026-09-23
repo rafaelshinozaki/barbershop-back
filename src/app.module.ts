@@ -3,7 +3,7 @@ import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { PlanModule } from './plan/plan.module';
 import { StripeModule } from './stripe/stripe.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
 import { PaymentsModule } from './payments/payments.module';
 import { AuthModule } from './auth/auth.module';
@@ -24,6 +24,8 @@ import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor'
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
 import { RedisModule } from './redis/redis.module';
+import { FailOpenRedisThrottlerStorage } from './redis/redis-throttler.storage';
+import { redisUrl } from './redis/redis-url';
 import { QueueModule } from './queue/queue.module';
 
 @Module({
@@ -111,20 +113,31 @@ import { QueueModule } from './queue/queue.module';
           .default('redis://localhost:6379'),
         EMAIL_RATE_PER_SECOND: Joi.number().integer().min(1).optional(),
         WHATSAPP_RATE_PER_SECOND: Joi.number().integer().min(1).optional(),
+        // Atrás de load balancer/proxy: quantos saltos confiar no
+        // X-Forwarded-For pra achar o IP real do cliente (ver main.ts)
+        TRUST_PROXY: Joi.string().optional(),
       }),
     }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60000, // 1 minuto
-        limit: 300, // 300 requisições por minuto por IP — generoso o bastante para
-        // uso normal (varias queries GraphQL em paralelo por página), mas
-        // barra flood em velocidade de rede. Rotas sensíveis (login,
-        // forgot-password, criação de conta, etc.) usam limites bem mais
-        // restritos via @ThrottleLogin()/@ThrottleAuth()/etc., que sobrescrevem
-        // este throttler 'default' (ver common/decorators/throttle.decorator.ts).
-      },
-    ]),
+    // Contadores no Redis (compartilhados entre instâncias) — ver
+    // FailOpenRedisThrottlerStorage
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        storage: new FailOpenRedisThrottlerStorage(redisUrl(config.get<string>('REDIS_URL'))),
+        throttlers: [
+          {
+            name: 'default',
+            ttl: 60000, // 1 minuto
+            limit: 300, // 300 requisições por minuto por IP — generoso o bastante para
+            // uso normal (varias queries GraphQL em paralelo por página), mas
+            // barra flood em velocidade de rede. Rotas sensíveis (login,
+            // forgot-password, criação de conta, etc.) usam limites bem mais
+            // restritos via @ThrottleLogin()/@ThrottleAuth()/etc., que sobrescrevem
+            // este throttler 'default' (ver common/decorators/throttle.decorator.ts).
+          },
+        ],
+      }),
+    }),
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
