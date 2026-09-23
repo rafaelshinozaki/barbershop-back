@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
@@ -73,6 +74,7 @@ export class BarbershopService {
     private readonly whatsappService: WhatsappService,
     private readonly stripeService: StripeService,
     private readonly notificationQueue: NotificationQueueService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -1689,6 +1691,8 @@ export class BarbershopService {
       where: { id: match.id },
       data: { status: 'NOTIFIED', notifiedAt: new Date() },
     });
+    // Quem está na tela da lista de espera vê a entrada virar "avisado"
+    this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
 
     const dateStr = appointment.startAt.toLocaleDateString('pt-BR', {
       timeZone: match.barbershop.timezone,

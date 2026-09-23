@@ -1322,6 +1322,7 @@ export class BarbershopResolver {
       date: new Date(input.date),
       notes: input.notes,
     });
+    this.realtime.notify(barbershopId, 'WAITLIST', 'CREATED');
     return this.mapWaitlistEntry(entry);
   }
 
@@ -1333,6 +1334,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     await this.barbershopService.cancelWaitlistEntry(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
     return true;
   }
 

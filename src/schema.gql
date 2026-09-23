@@ -1231,7 +1231,7 @@ type NetworkActivityEvent {
   at: String!
   barbershopId: Int!
 
-  """APPOINTMENT | SALE | WALK_IN | CUSTOMER | BARBER"""
+  """APPOINTMENT | SALE | WALK_IN | CUSTOMER | BARBER | WAITLIST"""
   kind: String!
   networkId: Int!
 }
@@ -1582,6 +1582,12 @@ type PublicServiceType {
   price: Float!
 }
 
+"""A agenda da barbearia mudou — a página pública recarrega os horários"""
+type PublicSlotsChangedEvent {
+  at: String!
+  barbershopId: Int!
+}
+
 type PublicSubscriptionPlanType {
   id: Int!
   name: String!
@@ -1902,6 +1908,7 @@ type SubscribeToPlanResultType {
 type Subscription {
   myNotificationEvents: NotificationEvent!
   networkActivity: NetworkActivityEvent!
+  publicSlotsChanged(barbershopId: Int!): PublicSlotsChangedEvent!
 }
 
 type SubscriptionPlan {

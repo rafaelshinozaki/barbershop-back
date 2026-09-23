@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { redisOptionsFromUrl, redisUrl } from '../redis/redis-url';
 
-export type ActivityKind = 'APPOINTMENT' | 'SALE' | 'WALK_IN' | 'CUSTOMER' | 'BARBER';
+export type ActivityKind = 'APPOINTMENT' | 'SALE' | 'WALK_IN' | 'CUSTOMER' | 'BARBER' | 'WAITLIST';
 export type ActivityAction = 'CREATED' | 'UPDATED' | 'DELETED';
 
 export interface NetworkActivityPayload {
@@ -17,6 +17,11 @@ export interface NetworkActivityPayload {
 }
 
 export const NETWORK_ACTIVITY = 'NETWORK_ACTIVITY';
+
+// Página pública de agendamento: "a agenda desta barbearia mudou" (sem
+// nenhum dado do agendamento) — quem está escolhendo horário recarrega os
+// horários livres.
+export const PUBLIC_SLOTS = 'PUBLIC_SLOTS';
 
 export type NotificationAction = 'CREATED' | 'READ' | 'DELETED';
 
@@ -85,6 +90,11 @@ export class RealtimeService implements OnModuleDestroy {
       at: new Date().toISOString(),
     };
     await this.pubSub.publish(NETWORK_ACTIVITY, { networkActivity: payload });
+    if (kind === 'APPOINTMENT') {
+      await this.pubSub.publish(PUBLIC_SLOTS, {
+        publicSlotsChanged: { barbershopId, at: payload.at },
+      });
+    }
   }
 
   /**
