@@ -762,7 +762,7 @@ type CreateSubscriptionResponse {
   checkoutUrl: String
   clientSecret: String
   message: String
-  subscription: Subscription
+  subscription: PlanSubscription
   success: Boolean!
 }
 
@@ -1224,6 +1224,18 @@ type Network {
   updatedAt: String!
 }
 
+"""Algo mudou numa barbearia — o dashboard recarrega os dados"""
+type NetworkActivityEvent {
+  """CREATED | UPDATED | DELETED"""
+  action: String!
+  at: String!
+  barbershopId: Int!
+
+  """APPOINTMENT | SALE | WALK_IN | CUSTOMER"""
+  kind: String!
+  networkId: Int!
+}
+
 type NetworkDashboardEvent {
   customerName: String
   date: String!
@@ -1445,6 +1457,21 @@ type PlanDistribution {
   plans: ChartData!
 }
 
+type PlanSubscription {
+  cancelationDate: String
+  createdAt: String!
+  id: Int!
+  payments: [Payment!]
+  plan: Plan!
+  planId: Int!
+  startSubDate: String!
+  status: String!
+  stripeCustomerId: String
+  stripeSubscriptionId: String
+  updatedAt: String!
+  userId: Int!
+}
+
 type ProcessAllRecurringPaymentsResponse {
   message: String!
   processedAt: String!
@@ -1634,7 +1661,7 @@ type Query {
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
   myReview(barbershopId: Int!): MyReviewType
-  mySubscriptions: [Subscription!]!
+  mySubscriptions: [PlanSubscription!]!
   myUnreadNotifications: [UserNotification!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
@@ -1864,18 +1891,7 @@ type SubscribeToPlanResultType {
 }
 
 type Subscription {
-  cancelationDate: String
-  createdAt: String!
-  id: Int!
-  payments: [Payment!]
-  plan: Plan!
-  planId: Int!
-  startSubDate: String!
-  status: String!
-  stripeCustomerId: String
-  stripeSubscriptionId: String
-  updatedAt: String!
-  userId: Int!
+  networkActivity: NetworkActivityEvent!
 }
 
 type SubscriptionPlan {

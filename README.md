@@ -35,6 +35,14 @@ O back precisa de um Redis (`REDIS_URL`, padrão `redis://localhost:6379`):
   Atrás de load balancer/proxy, defina `TRUST_PROXY` (ex.: `1`) pra o limite
   ser por IP do cliente e não do proxy.
 
+- **Tempo real (WebSocket)**: dashboards recebem avisos de venda,
+  agendamento, fila e cliente por GraphQL subscription (`graphql-ws`, em
+  `/graphql`), distribuídos entre instâncias pelo pub/sub do Redis. O
+  handshake exige o cookie de login e uma origem da lista de CORS
+  (`src/common/cors-origins.ts`). Se houver Nginx/load balancer na frente, ele
+  precisa repassar o upgrade de WebSocket (`Upgrade`/`Connection`) em
+  `/graphql`.
+
 Se o Redis cair, a API continua no ar: o rate limit e o contador de
 tentativas de login ficam suspensos, o login por senha funciona, e só o
 login por código/2FA responde "temporariamente indisponível". Filas e

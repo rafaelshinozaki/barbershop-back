@@ -8,6 +8,7 @@ import * as cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
+import { corsOriginList, isAllowedOrigin } from './common/cors-origins';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -133,39 +134,11 @@ async function bootstrap() {
   //   }),
   // );
 
-  // CORS: libera localmente e os domínios de produção
+  // CORS: libera localmente e os domínios de produção (lista em
+  // common/cors-origins.ts, compartilhada com o WebSocket)
   const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-  const corsOrigins = [
-    frontendUrl,
-    'http://localhost:5173', // front em dev
-    'http://localhost:3020', // front em dev
-    'http://localhost:5000', // front em dev
-    'http://localhost:5174', // front em dev (porta alternativa)
-    'http://localhost:5175', // front em dev (porta alternativa)
-    'http://localhost:5176', // front em dev (porta alternativa)
-    'http://localhost:5177', // front em dev (porta alternativa)
-    'http://localhost:5178', // front em dev (porta alternativa)
-    'https://barbershop-front-ten.vercel.app', // domínio Vercel (produção)
-    'https://barbershop.zeero.dev.br', // domínio de produção
-    'https://zeero.dev.br', // domínio alternativo
-  ];
-
-  // Subdomínio próprio de barbearia (ex.: barbeariavintage.<domínio da
-  // plataforma>, ou barbeariavintage.localhost em dev) não cabe numa lista
-  // fixa de origins — libera qualquer host terminando em ".localhost"
-  // (qualquer porta, só dev) ou em ".${TENANT_ROOT_DOMAIN}" quando essa env
-  // var estiver configurada (produção, depois que o domínio existir).
+  const corsOrigins = corsOriginList(frontendUrl);
   const tenantRootDomain = configService.get<string>('TENANT_ROOT_DOMAIN');
-  const isTenantSubdomainOrigin = (origin: string): boolean => {
-    try {
-      const hostname = new URL(origin).hostname;
-      if (hostname.endsWith('.localhost')) return true;
-      if (tenantRootDomain && hostname.endsWith(`.${tenantRootDomain}`)) return true;
-      return false;
-    } catch {
-      return false;
-    }
-  };
 
   logger.log(
     `🌐 Configurando CORS para origins: ${corsOrigins.join(', ')} + subdomínios de tenant`,
@@ -173,7 +146,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || corsOrigins.includes(origin) || isTenantSubdomainOrigin(origin)) {
+      if (!origin || isAllowedOrigin(origin, frontendUrl, tenantRootDomain)) {
         callback(null, true);
       } else {
         callback(new Error(`Origin ${origin} não permitida por CORS`));

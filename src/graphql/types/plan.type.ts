@@ -34,7 +34,9 @@ export class Plan {
   deleted_at?: string;
 }
 
-@ObjectType()
+// Nome GraphQL "PlanSubscription": "Subscription" é o tipo raiz das
+// subscriptions (WebSocket) e não pode ser usado por um tipo comum
+@ObjectType('PlanSubscription')
 export class Subscription {
   @Field(() => Int)
   id: number;

@@ -4,6 +4,20 @@ import { GqlExecutionContext } from '@nestjs/graphql';
 
 @Injectable()
 export class GraphQLThrottleGuard extends ThrottlerGuard {
+  // Subscription (WebSocket) não tem resposta HTTP pra pôr os headers de
+  // rate limit — o guard base quebrava com "reading 'header'". O socket já
+  // exige login e origem permitida no handshake (app.module.ts), e cada
+  // subscription é uma conexão longa, não uma rajada de requisições.
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (
+      context.getType<'http' | 'graphql'>() === 'graphql' &&
+      GqlExecutionContext.create(context).getInfo()?.operation?.operation === 'subscription'
+    ) {
+      return true;
+    }
+    return super.canActivate(context);
+  }
+
   protected async getTracker(req: Record<string, any>): Promise<string> {
     // Handle GraphQL context safely
     let ip = 'unknown';
