@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { RealtimeService } from '../realtime/realtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
@@ -49,6 +50,7 @@ export class EmployeeInviteService {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     private readonly barbershopService: BarbershopService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -117,6 +119,8 @@ export class EmployeeInviteService {
         staffType,
       },
     });
+    // Funcionário convidado já entra na equipe (card "Funcionários")
+    this.realtime.notify(input.barbershopId, 'BARBER', 'CREATED');
 
     const invite = await this.prisma.employeeInvite.create({
       data: {

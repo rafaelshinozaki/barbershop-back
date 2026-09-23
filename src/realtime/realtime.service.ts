@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { redisOptionsFromUrl, redisUrl } from '../redis/redis-url';
 
-export type ActivityKind = 'APPOINTMENT' | 'SALE' | 'WALK_IN' | 'CUSTOMER';
+export type ActivityKind = 'APPOINTMENT' | 'SALE' | 'WALK_IN' | 'CUSTOMER' | 'BARBER';
 export type ActivityAction = 'CREATED' | 'UPDATED' | 'DELETED';
 
 export interface NetworkActivityPayload {

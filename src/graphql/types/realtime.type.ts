@@ -8,7 +8,7 @@ export class NetworkActivityEvent {
   @Field(() => Int)
   barbershopId: number;
 
-  @Field({ description: 'APPOINTMENT | SALE | WALK_IN | CUSTOMER' })
+  @Field({ description: 'APPOINTMENT | SALE | WALK_IN | CUSTOMER | BARBER' })
   kind: string;
 
   @Field({ description: 'CREATED | UPDATED | DELETED' })
