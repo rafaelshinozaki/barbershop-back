@@ -1304,6 +1304,15 @@ type NotificationCount {
   unreadCount: Int!
 }
 
+"""Mudança no sininho do usuário — a tela recarrega lista e contagem"""
+type NotificationEvent {
+  """CREATED | READ | DELETED"""
+  action: String!
+
+  """Título da notificação nova (só em CREATED)"""
+  title: String
+}
+
 type NotificationPreference {
   createdAt: String!
   id: Int!
@@ -1891,6 +1900,7 @@ type SubscribeToPlanResultType {
 }
 
 type Subscription {
+  myNotificationEvents: NotificationEvent!
   networkActivity: NetworkActivityEvent!
 }
 

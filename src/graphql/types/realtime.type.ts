@@ -17,3 +17,12 @@ export class NetworkActivityEvent {
   @Field()
   at: string;
 }
+
+@ObjectType({ description: 'Mudança no sininho do usuário — a tela recarrega lista e contagem' })
+export class NotificationEvent {
+  @Field({ description: 'CREATED | READ | DELETED' })
+  action: string;
+
+  @Field({ nullable: true, description: 'Título da notificação nova (só em CREATED)' })
+  title?: string;
+}
