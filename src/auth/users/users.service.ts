@@ -19,7 +19,7 @@ import { Role } from '../interfaces/roles';
 import * as bcrypt from 'bcryptjs';
 import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
-import { S3Service } from '@/aws/s3.service';
+import { PresignedUpload, S3Service } from '@/aws/s3.service';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -2039,22 +2039,14 @@ export class UserService {
     });
   }
 
-  async generatePhotoUploadUrl(
-    userId: number,
-    fileExtension?: string,
-    contentType?: string,
-  ): Promise<string> {
-    // Validar extensão do arquivo
-    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    const extension = fileExtension?.toLowerCase().replace('.', '') || 'jpg';
-
-    if (!allowedExtensions.includes(extension)) {
-      throw new BadRequestException('Invalid file extension. Allowed: jpg, jpeg, png, gif, webp');
-    }
-
-    const key = `users/${userId}/${uuidv4()}.${extension}`;
-    await this.prisma.user.update({ where: { id: userId }, data: { photoKey: key } });
-    return this.s3Service.getUploadUrl(key, contentType);
+  async generatePhotoUploadUrl(userId: number, contentType?: string): Promise<PresignedUpload> {
+    // Tipo e tamanho validados no S3Service (a extensão sai do tipo)
+    const upload = await this.s3Service.createImageUpload(
+      `users/${userId}/${uuidv4()}`,
+      contentType,
+    );
+    await this.prisma.user.update({ where: { id: userId }, data: { photoKey: upload.key } });
+    return upload;
   }
 
   async getPhotoDownloadUrl(userId: number): Promise<string> {

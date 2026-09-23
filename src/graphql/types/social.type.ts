@@ -44,12 +44,3 @@ export class SocialPostType {
   @Field()
   createdAt: string;
 }
-
-@ObjectType()
-export class SocialPostImageUploadUrlType {
-  @Field()
-  uploadUrl: string;
-
-  @Field()
-  imageKey: string;
-}

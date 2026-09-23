@@ -53,13 +53,9 @@ export class UserController {
 
   @UseGuards(JwtAuthGuard)
   @Post('me/photo-url')
-  getPhotoUploadUrl(
-    @CurrentUser() user: UserDTO,
-    @Body() body?: { fileExtension?: string; contentType?: string },
-  ) {
-    return this.userService
-      .generatePhotoUploadUrl(user.id, body?.fileExtension, body?.contentType)
-      .then((uploadUrl) => ({ uploadUrl }));
+  getPhotoUploadUrl(@CurrentUser() user: UserDTO, @Body() body?: { contentType?: string }) {
+    // { url, fields, key }: POST multipart pro S3 (ver S3Service.createImageUpload)
+    return this.userService.generatePhotoUploadUrl(user.id, body?.contentType);
   }
 
   @UseGuards(JwtAuthGuard)

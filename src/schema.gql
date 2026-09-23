@@ -1132,11 +1132,11 @@ type Mutation {
   disconnectSocialAccount(barbershopId: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
-  getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String): String!
-  getNetworkLogoUploadUrl(contentType: String, fileExtension: String): String!
-  getPhotoUploadUrl(contentType: String, fileExtension: String): String!
-  getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String, productId: Int!): String!
-  getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String, fileExtension: String!): SocialPostImageUploadUrlType!
+  getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
+  getNetworkLogoUploadUrl(contentType: String): PresignedUploadType!
+  getPhotoUploadUrl(contentType: String): PresignedUploadType!
+  getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, productId: Int!): PresignedUploadType!
+  getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
   login(input: LoginInput!): User!
   logout: Boolean!
   logoutOtherSessions: Boolean!
@@ -1499,6 +1499,12 @@ type PlanSubscription {
   stripeSubscriptionId: String
   updatedAt: String!
   userId: Int!
+}
+
+type PresignedUploadType {
+  fields: [UploadFormFieldType!]!
+  key: String!
+  url: String!
 }
 
 type ProcessAllRecurringPaymentsResponse {
@@ -1880,11 +1886,6 @@ type SocialConnectionType {
   instagramUsername: String
 }
 
-type SocialPostImageUploadUrlType {
-  imageKey: String!
-  uploadUrl: String!
-}
-
 type SocialPostType {
   caption: String!
   createdAt: String!
@@ -2252,6 +2253,11 @@ input UpdateUserSystemConfigInput {
   radius: String
   scaling: String
   theme: String
+}
+
+type UploadFormFieldType {
+  name: String!
+  value: String!
 }
 
 type User {

@@ -15,6 +15,7 @@ import { AwsModule } from './aws/aws.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BackofficeModule } from './backoffice/backoffice.module';
 import { BarbershopModule } from './barbershop/barbershop.module';
+import { queryLimitsPlugin } from './graphql/query-limits.plugin';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -192,6 +193,8 @@ import { isAllowedOrigin } from './common/cors-origins';
       introspection: process.env.NODE_ENV !== 'production',
       debug: process.env.NODE_ENV !== 'production',
       sortSchema: true,
+      // Profundidade e nº de campos (aliases contam) por operação
+      plugins: [queryLimitsPlugin()],
     }),
     RedisModule,
     QueueModule,

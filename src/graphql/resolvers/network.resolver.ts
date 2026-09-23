@@ -1,3 +1,4 @@
+import { PresignedUploadType } from '../types/upload.type';
 import { Resolver, Query, Mutation, Args, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { Network } from '../types/barbershop.type';
@@ -28,26 +29,27 @@ export class NetworkResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
-  @Mutation(() => String)
+  @Mutation(() => PresignedUploadType)
   async getNetworkLogoUploadUrl(
     @CurrentUser() user: UserDTO,
-    @Args('fileExtension', { nullable: true }) fileExtension?: string,
     @Args('contentType', { nullable: true }) contentType?: string,
-  ): Promise<string> {
+  ): Promise<PresignedUploadType> {
     const network = await this.barbershopService.getMyNetwork(user.id);
     if (!network) {
       throw new Error('Franquia não encontrada');
     }
-    const ext = fileExtension || 'jpg';
-    const logoKey = `networks/${network.id}/logo.${ext}`;
-    const uploadUrl = await this.s3Service.getUploadUrl(logoKey, contentType);
+    const upload = await this.s3Service.createImageUpload(
+      `networks/${network.id}/logo`,
+      contentType,
+    );
+    const logoKey = upload.key;
 
     await this.prisma.network.update({
       where: { id: network.id },
       data: { logoKey, logoUrl: null } as { logoKey: string; logoUrl: null },
     });
 
-    return uploadUrl;
+    return upload;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
