@@ -45,14 +45,24 @@ input AdjustInventoryInput {
 }
 
 input AdminNotificationPreferenceInput {
+  appointmentsEmail: Boolean
+  appointmentsInApp: Boolean
   instabilityEmail: Boolean
   instabilityInApp: Boolean
+  inventoryEmail: Boolean
+  inventoryInApp: Boolean
   newsEmail: Boolean
   newsInApp: Boolean
   promotionsEmail: Boolean
   promotionsInApp: Boolean
+  reviewsEmail: Boolean
+  reviewsInApp: Boolean
+  salesEmail: Boolean
+  salesInApp: Boolean
   securityEmail: Boolean
   securityInApp: Boolean
+  teamEmail: Boolean
+  teamInApp: Boolean
 }
 
 type AdminProcessAllRecurringPaymentsResponse {
@@ -1314,16 +1324,26 @@ type NotificationEvent {
 }
 
 type NotificationPreference {
+  appointmentsEmail: Boolean!
+  appointmentsInApp: Boolean!
   createdAt: String!
   id: Int!
   instabilityEmail: Boolean!
   instabilityInApp: Boolean!
+  inventoryEmail: Boolean!
+  inventoryInApp: Boolean!
   newsEmail: Boolean!
   newsInApp: Boolean!
   promotionsEmail: Boolean!
   promotionsInApp: Boolean!
+  reviewsEmail: Boolean!
+  reviewsInApp: Boolean!
+  salesEmail: Boolean!
+  salesInApp: Boolean!
   securityEmail: Boolean!
   securityInApp: Boolean!
+  teamEmail: Boolean!
+  teamInApp: Boolean!
   updatedAt: String!
 }
 
@@ -2125,14 +2145,24 @@ input UpdateNetworkInput {
 }
 
 input UpdateNotificationPreferenceInput {
+  appointmentsEmail: Boolean
+  appointmentsInApp: Boolean
   instabilityEmail: Boolean!
   instabilityInApp: Boolean!
+  inventoryEmail: Boolean
+  inventoryInApp: Boolean
   newsEmail: Boolean!
   newsInApp: Boolean!
   promotionsEmail: Boolean!
   promotionsInApp: Boolean!
+  reviewsEmail: Boolean
+  reviewsInApp: Boolean
+  salesEmail: Boolean
+  salesInApp: Boolean
   securityEmail: Boolean!
   securityInApp: Boolean!
+  teamEmail: Boolean
+  teamInApp: Boolean
 }
 
 input UpdatePlanInput {

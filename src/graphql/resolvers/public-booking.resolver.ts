@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { RealtimeService } from '../../realtime/realtime.service';
+import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
@@ -44,6 +45,7 @@ export class PublicBookingResolver {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly realtime: RealtimeService,
+    private readonly activity: ActivityNotificationsService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -117,6 +119,7 @@ export class PublicBookingResolver {
     // O agendamento público pode ter cadastrado um cliente novo (card
     // "Clientes" da visão geral)
     this.realtime.notify(appointment.barbershopId, 'CUSTOMER', 'CREATED');
+    void this.activity.appointmentCreated(appointment.id, null);
 
     const service = appointment.services[0]?.service;
     return {
@@ -169,6 +172,7 @@ export class PublicBookingResolver {
       input.rating,
       input.comment,
     );
+    void this.activity.reviewPosted(input.barbershopId, client.id, input.rating, input.comment);
     return true;
   }
 

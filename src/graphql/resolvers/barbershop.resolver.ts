@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
+import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import {
   Barbershop,
   BarbershopCustomer,
@@ -100,6 +101,7 @@ export class BarbershopResolver {
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
     private readonly realtime: RealtimeService,
+    private readonly activity: ActivityNotificationsService,
   ) {}
 
   // ============ BARBERSHOP ============
@@ -842,6 +844,7 @@ export class BarbershopResolver {
       endAt: new Date(input.endAt),
     });
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'CREATED');
+    void this.activity.appointmentCreated(result.id, user.id);
     return result;
   }
 
@@ -921,8 +924,18 @@ export class BarbershopResolver {
     const data: any = { ...input };
     if (input.startAt) data.startAt = new Date(input.startAt);
     if (input.endAt) data.endAt = new Date(input.endAt);
+    // Status anterior pra avisar só na mudança (concluído/cancelado/falta)
+    const before = input.status
+      ? await this.prisma.appointment.findFirst({
+          where: { id, barbershopId },
+          select: { status: true },
+        })
+      : null;
     const result = await this.barbershopService.updateAppointment(user.id, barbershopId, id, data);
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    if (input.status && before && before.status !== input.status) {
+      void this.activity.appointmentStatusChanged(id, input.status, user.id);
+    }
     return result;
   }
 
@@ -950,6 +963,7 @@ export class BarbershopResolver {
     const { barbershopId: _b, ...rest } = input;
     const result = await this.barbershopService.createWalkIn(user.id, barbershopId, rest);
     this.realtime.notify(barbershopId, 'WALK_IN', 'CREATED');
+    void this.activity.walkInCreated(result.id, user.id);
     return result;
   }
 
@@ -1010,6 +1024,7 @@ export class BarbershopResolver {
   ) {
     const result = await this.barbershopService.createSale(user.id, barbershopId, input);
     this.realtime.notify(barbershopId, 'SALE', 'CREATED');
+    void this.activity.saleCreated(result.id, user.id);
     return result;
   }
 

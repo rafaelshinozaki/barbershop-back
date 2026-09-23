@@ -16,6 +16,7 @@ import { AuthModule } from '../auth/auth.module';
 import { UserModule } from '../auth/users/users.module';
 import { AwsModule } from '../aws/aws.module';
 import { StripeModule } from '../stripe/stripe.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StripeModule } from '../stripe/stripe.module';
     UserModule,
     AwsModule,
     StripeModule,
+    NotificationsModule,
     BullModule.registerQueue({ name: APPOINTMENT_REMINDERS_QUEUE }),
   ],
   providers: [

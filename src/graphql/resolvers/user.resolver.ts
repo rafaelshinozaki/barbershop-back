@@ -100,6 +100,16 @@ export class UserResolver {
       securityInApp: false,
       instabilityEmail: false,
       instabilityInApp: false,
+      appointmentsEmail: false,
+      appointmentsInApp: false,
+      salesEmail: false,
+      salesInApp: false,
+      inventoryEmail: false,
+      inventoryInApp: false,
+      teamEmail: false,
+      teamInApp: false,
+      reviewsEmail: false,
+      reviewsInApp: false,
     };
 
     const result = {

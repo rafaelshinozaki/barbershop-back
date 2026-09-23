@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { ActivityNotificationsService } from './activity-notifications.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 
@@ -9,7 +10,7 @@ import { AuthModule } from '../auth/auth.module';
 // (padrão usado por todos os outros módulos de resolver deste app).
 @Module({
   imports: [PrismaModule, AuthModule],
-  providers: [NotificationsService],
-  exports: [NotificationsService],
+  providers: [NotificationsService, ActivityNotificationsService],
+  exports: [NotificationsService, ActivityNotificationsService],
 })
 export class NotificationsModule {}

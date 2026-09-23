@@ -263,6 +263,57 @@ export class UpdateNotificationPreferenceInput {
   @Field()
   @IsBoolean()
   instabilityInApp: boolean;
+
+  // Atividade das unidades — opcionais (clientes antigos não mandam)
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  appointmentsEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  appointmentsInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  salesEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  salesInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  inventoryEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  inventoryInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  teamEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  teamInApp?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  reviewsEmail?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  reviewsInApp?: boolean;
 }
 
 @InputType()

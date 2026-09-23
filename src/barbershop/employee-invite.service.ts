@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { RealtimeService } from '../realtime/realtime.service';
+import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
@@ -51,6 +52,7 @@ export class EmployeeInviteService {
     private readonly config: ConfigService,
     private readonly barbershopService: BarbershopService,
     private readonly realtime: RealtimeService,
+    private readonly activity: ActivityNotificationsService,
   ) {}
 
   /**
@@ -313,6 +315,7 @@ export class EmployeeInviteService {
       where: { id: invite.id },
       data: { status: 'ACCEPTED', acceptedByUserId: newUser.id },
     });
+    void this.activity.memberJoined(invite.barberId, newUser.id);
 
     return {
       success: true,

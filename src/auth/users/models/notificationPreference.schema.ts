@@ -8,4 +8,14 @@ export class NotificationPreferenceSchema {
   securityInApp: boolean;
   instabilityEmail: boolean;
   instabilityInApp: boolean;
+  appointmentsEmail: boolean;
+  appointmentsInApp: boolean;
+  salesEmail: boolean;
+  salesInApp: boolean;
+  inventoryEmail: boolean;
+  inventoryInApp: boolean;
+  teamEmail: boolean;
+  teamInApp: boolean;
+  reviewsEmail: boolean;
+  reviewsInApp: boolean;
 }
