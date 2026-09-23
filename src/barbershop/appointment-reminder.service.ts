@@ -1,9 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
+import { NotificationQueueService } from '../queue/notification-queue.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
+import { APPOINTMENT_REMINDERS_QUEUE, SCHEDULED_JOB_OPTIONS } from '../queue/queue.constants';
+
+// Quantos agendamentos processa por execução — o resto fica pra próxima
+// (a cada 5 min), sem carregar milhares de linhas de uma vez
+const BATCH_SIZE = 500;
 
 @Injectable()
 export class AppointmentReminderService {
@@ -11,22 +17,22 @@ export class AppointmentReminderService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emailService: EmailService,
+    private readonly notificationQueue: NotificationQueueService,
     private readonly whatsappService: WhatsappService,
   ) {}
 
   /**
-   * A cada 30 minutos, envia lembrete por e-mail e (se configurado) por
-   * WhatsApp para agendamentos que começam dentro das próximas 24h e ainda
-   * não foram lembrados. Os dois canais são independentes — falha em um não
-   * afeta o outro, e o WhatsApp só é tentado se WHATSAPP_ACCESS_TOKEN/
-   * WHATSAPP_PHONE_NUMBER_ID estiverem configurados (ver .env.example).
+   * Enfileira lembrete (e-mail e, se configurado, WhatsApp) dos agendamentos
+   * que começam nas próximas 24h e ainda não foram lembrados.
+   *
+   * Antes enviava um por um dentro do cron e marcava como lembrado mesmo se
+   * o envio falhasse — quem pegava uma instabilidade do Mailgun nunca
+   * recebia. Agora cada agendamento é "reservado" com um update condicional
+   * (reminderSentAt ainda null), então duas execuções simultâneas nunca
+   * enviam o mesmo lembrete, e o envio em si fica na fila com novas
+   * tentativas.
    */
-  @Cron(CronExpression.EVERY_30_MINUTES, {
-    name: 'send-appointment-reminders',
-    timeZone: 'America/Sao_Paulo',
-  })
-  async handleAppointmentReminders() {
+  async enqueueDueReminders() {
     const now = new Date();
     const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -41,90 +47,114 @@ export class AppointmentReminderService {
         barbershop: true,
         services: { include: { service: true } },
       },
+      orderBy: { startAt: 'asc' },
+      take: BATCH_SIZE,
     });
+    if (appointments.length === 0) return 0;
 
-    if (appointments.length === 0) return;
-    this.logger.log(`Enviando lembrete para ${appointments.length} agendamento(s)...`);
-
+    let enqueued = 0;
     for (const appt of appointments) {
-      try {
-        const serviceNames = appt.services
+      const claimed = await this.prisma.appointment.updateMany({
+        where: { id: appt.id, reminderSentAt: null },
+        data: { reminderSentAt: new Date() },
+      });
+      if (claimed.count === 0) continue; // outra execução já pegou
+
+      const serviceNames =
+        appt.services
           .map((s) => s.service?.name)
           .filter(Boolean)
-          .join(', ');
-        const appointmentDate = appt.startAt.toLocaleDateString('pt-BR', {
-          timeZone: appt.barbershop.timezone,
-        });
-        const appointmentTime = appt.startAt.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: appt.barbershop.timezone,
-        });
+          .join(', ') || '-';
+      const appointmentDate = appt.startAt.toLocaleDateString('pt-BR', {
+        timeZone: appt.barbershop.timezone,
+      });
+      const appointmentTime = appt.startAt.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: appt.barbershop.timezone,
+      });
 
+      try {
         if (appt.customer.email) {
-          try {
-            await this.emailService.sendCustomerEmail(
-              appt.barbershop.ownerUserId ?? 0,
-              'appointment_reminder',
-              {
+          await this.notificationQueue.email(
+            {
+              kind: 'customer',
+              loggedAgainstUserId: appt.barbershop.ownerUserId ?? 0,
+              template: 'appointment_reminder',
+              context: {
                 CustomerName: appt.customer.name,
                 BarbershopName: appt.barbershop.name,
                 BarbershopAddress: `${appt.barbershop.address}, ${appt.barbershop.city} - ${appt.barbershop.state}`,
                 BarbershopPhone: appt.barbershop.phone,
-                ServiceNames: serviceNames || '-',
+                ServiceNames: serviceNames,
                 AppointmentDate: appointmentDate,
                 AppointmentTime: appointmentTime,
                 Year: new Date().getFullYear(),
               },
-              `Lembrete: seu horário em ${appt.barbershop.name}`,
-              'appointment-reminder',
-              appt.customer.email,
-            );
-          } catch (emailError) {
-            this.logger.error(
-              `Erro ao enviar lembrete por e-mail do agendamento #${appt.id}:`,
-              emailError,
-            );
-          }
-        } else {
-          this.logger.warn(
-            `Agendamento #${appt.id}: cliente sem e-mail, lembrete por e-mail não enviado.`,
+              subject: `Lembrete: seu horário em ${appt.barbershop.name}`,
+              meta: 'appointment-reminder',
+              to: appt.customer.email,
+            },
+            `appointment-reminder-email-${appt.id}`,
           );
         }
 
-        if (this.whatsappService.isConfigured()) {
-          const phone = normalizePhoneToE164(appt.customer.phone);
-          if (phone) {
-            try {
-              await this.whatsappService.sendAppointmentReminder(phone, {
+        const phone = this.whatsappService.isConfigured()
+          ? normalizePhoneToE164(appt.customer.phone)
+          : null;
+        if (phone) {
+          await this.notificationQueue.whatsapp(
+            {
+              kind: 'appointment-reminder',
+              to: phone,
+              params: {
                 customerName: appt.customer.name,
-                serviceNames: serviceNames || '-',
+                serviceNames,
                 barbershopName: appt.barbershop.name,
                 date: appointmentDate,
                 time: appointmentTime,
-              });
-            } catch (whatsappError) {
-              this.logger.error(
-                `Erro ao enviar lembrete por WhatsApp do agendamento #${appt.id}:`,
-                whatsappError,
-              );
-            }
-          } else {
-            this.logger.warn(
-              `Agendamento #${appt.id}: telefone do cliente não normalizável para WhatsApp.`,
-            );
-          }
+              },
+            },
+            `appointment-reminder-whatsapp-${appt.id}`,
+          );
         }
+        enqueued++;
       } catch (error) {
-        this.logger.error(`Erro ao processar lembrete do agendamento #${appt.id}:`, error);
-      } finally {
-        // Marca como processado mesmo em caso de falha/sem e-mail, para não
-        // reprocessar o mesmo agendamento a cada execução do cron.
-        await this.prisma.appointment.update({
-          where: { id: appt.id },
-          data: { reminderSentAt: new Date() },
-        });
+        // Não conseguiu nem enfileirar (Redis fora): libera a reserva pra
+        // próxima execução tentar de novo
+        this.logger.error(`Erro ao enfileirar lembrete do agendamento #${appt.id}:`, error);
+        await this.prisma.appointment
+          .update({ where: { id: appt.id }, data: { reminderSentAt: null } })
+          .catch(() => undefined);
       }
     }
+
+    this.logger.log(`Lembretes enfileirados: ${enqueued}`);
+    return enqueued;
+  }
+}
+
+/** Registra a execução periódica — uma só no cluster, não uma por instância. */
+@Injectable()
+export class AppointmentReminderScheduler implements OnModuleInit {
+  constructor(@InjectQueue(APPOINTMENT_REMINDERS_QUEUE) private readonly queue: Queue) {}
+
+  async onModuleInit() {
+    await this.queue.upsertJobScheduler(
+      'enqueue-due-reminders',
+      { every: 5 * 60 * 1000 },
+      { name: 'enqueue-due-reminders', opts: SCHEDULED_JOB_OPTIONS },
+    );
+  }
+}
+
+@Processor(APPOINTMENT_REMINDERS_QUEUE)
+export class AppointmentReminderProcessor extends WorkerHost {
+  constructor(private readonly reminders: AppointmentReminderService) {
+    super();
+  }
+
+  async process() {
+    return this.reminders.enqueueDueReminders();
   }
 }

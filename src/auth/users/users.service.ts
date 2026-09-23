@@ -20,6 +20,7 @@ import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
 import { S3Service } from '@/aws/s3.service';
 import { SmartLogger } from '@/common/logger.util';
+import { RedisService } from '@/redis/redis.service';
 import { v4 as uuidv4 } from 'uuid';
 import {
   PLANO_STATUS,
@@ -58,26 +59,24 @@ export class UserService {
     securityInApp: true,
   };
 
-  private _temp = new Set<string>();
-  private _tempExpiry = new Map<string, number>();
-  private _loginCodes = new Map<
-    string,
-    { email: string; code: string; expiresAt: number; used: boolean; attempts: number }
-  >();
-  private _loginAttempts = new Map<
-    string,
-    { attempts: number; blockedUntil: number; lastAttemptAt: number }
-  >();
+  // Código de login, bloqueio por tentativas e código de ativação do 2FA
+  // ficam no Redis (com expiração), não em Map na memória: com mais de uma
+  // instância do back, o código gerado numa era validado na outra.
+  private static readonly KEY = {
+    fails: (email: string) => `auth:login-fails:${email}`,
+    blocked: (email: string) => `auth:login-blocked:${email}`,
+    code: (loginId: string) => `auth:login-code:${loginId}`,
+    codeByUser: (email: string) => `auth:login-code-user:${email}`,
+    enable2fa: (email: string, code: string) => `auth:2fa-enable:${email}:${code}`,
+  };
 
   constructor(
     private prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly s3Service: S3Service,
     private readonly configService: ConfigService,
-  ) {
-    // Iniciar limpeza automática de tokens expirados
-    this.scheduleTokenCleanup();
-  }
+    private readonly redis: RedisService,
+  ) {}
 
   private validatePassword(password: string) {
     const hasSpecialCharacter = (password: string) => /[^\w\s]/.test(password);
@@ -97,70 +96,19 @@ export class UserService {
     }
   }
 
-  private recordFailedLogin(email: string) {
-    const now = Date.now();
-    let entry = this._loginAttempts.get(email);
-    if (!entry || entry.blockedUntil <= now) {
-      entry = { attempts: 0, blockedUntil: 0, lastAttemptAt: now };
-    }
-    entry.attempts += 1;
-    entry.lastAttemptAt = now;
-    if (entry.attempts >= LOGIN_MAX_ATTEMPTS) {
-      entry.blockedUntil = now + LOGIN_BLOCK_MINUTES * 60 * 1000;
-      entry.attempts = 0;
-    }
-    this._loginAttempts.set(email, entry);
-  }
-
-  // Método para agendar limpeza de tokens expirados
-  private scheduleTokenCleanup(): void {
-    // Limpar tokens expirados a cada 30 minutos
-    setInterval(() => {
-      this.cleanupExpiredTokens();
-    }, 30 * 60 * 1000); // 30 minutos
-  }
-
-  // Método para limpar tokens expirados
-  private cleanupExpiredTokens(): void {
-    const now = Date.now();
-    let cleanedCount = 0;
-
-    for (const [tokenKey, expiryTime] of this._tempExpiry.entries()) {
-      if (now >= expiryTime) {
-        this._temp.delete(tokenKey);
-        this._tempExpiry.delete(tokenKey);
-        cleanedCount++;
-      }
-    }
-
-    if (cleanedCount > 0) {
-      this.logger.log(`Cleaned ${cleanedCount} expired password reset tokens`);
-    }
-
-    this.cleanupStaleLoginAttempts();
-  }
-
-  // _loginAttempts nunca era limpo: como recordFailedLogin() roda até para
-  // emails que não existem, um atacante conseguia inflar esse Map
-  // indefinidamente (um entry por email tentado) só martelando o login com
-  // emails inventados — memory-exhaustion DoS. Purga entries sem atividade
-  // recente e sem bloqueio ativo.
-  private cleanupStaleLoginAttempts(): void {
-    const now = Date.now();
-    const staleAfterMs = LOGIN_BLOCK_MINUTES * 60 * 1000;
-    let cleanedCount = 0;
-
-    for (const [email, entry] of this._loginAttempts.entries()) {
-      const isBlocked = entry.blockedUntil > now;
-      const isStale = now - entry.lastAttemptAt > staleAfterMs;
-      if (!isBlocked && isStale) {
-        this._loginAttempts.delete(email);
-        cleanedCount++;
-      }
-    }
-
-    if (cleanedCount > 0) {
-      this.logger.log(`Cleaned ${cleanedCount} stale login-attempt entries`);
+  // Conta falhas por email; na LOGIN_MAX_ATTEMPTS-ésima dentro da janela,
+  // bloqueia por LOGIN_BLOCK_MINUTES. As chaves expiram sozinhas (antes um
+  // Map que precisava de limpeza periódica pra não crescer sem limite).
+  private async recordFailedLogin(email: string) {
+    const failsKey = UserService.KEY.fails(email);
+    const fails = await this.redis.client.incr(failsKey);
+    if (fails === 1) await this.redis.client.expire(failsKey, LOGIN_BLOCK_MINUTES * 60);
+    if (fails >= LOGIN_MAX_ATTEMPTS) {
+      await this.redis.client
+        .multi()
+        .set(UserService.KEY.blocked(email), '1', 'EX', LOGIN_BLOCK_MINUTES * 60)
+        .del(failsKey)
+        .exec();
     }
   }
 
@@ -1129,8 +1077,7 @@ export class UserService {
 
   async verifyUser(email: string, password: string) {
     this.logger.log(`Verifying user with email: ${email}`);
-    const attempt = this._loginAttempts.get(email);
-    if (attempt && attempt.blockedUntil > Date.now()) {
+    if (await this.redis.client.exists(UserService.KEY.blocked(email))) {
       throw new UnauthorizedException('Too many login attempts. Please try again later.');
     }
     const user = await this.prisma.user.findFirst({
@@ -1215,25 +1162,25 @@ export class UserService {
     const invalidCredentials = () => new UnauthorizedException('Invalid credentials');
 
     if (!user) {
-      this.recordFailedLogin(email);
+      await this.recordFailedLogin(email);
       throw invalidCredentials();
     }
 
     // Verificar se o usuário está ativo
     if (!user.isActive) {
-      this.recordFailedLogin(email);
+      await this.recordFailedLogin(email);
       throw invalidCredentials();
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      this.recordFailedLogin(email);
+      await this.recordFailedLogin(email);
       throw invalidCredentials();
     }
 
     // Senha correta: zera o contador de tentativas falhas deste email (antes
     // ficava preso até expirar ou até o próximo bloqueio resetá-lo sozinho).
-    this._loginAttempts.delete(email);
+    await this.redis.client.del(UserService.KEY.fails(email));
 
     // Histórico de login e sessão ativa são gravados em AuthService.login(),
     // não aqui — aqui a senha pode ter batido mas o 2FA ainda pode ser
@@ -1652,22 +1599,27 @@ export class UserService {
       console.log(`DEVELOPMENT: Two-factor enable code for ${user.email} is: ${code}`);
     }
 
-    this._temp.add(`${user.email}.enable2fa.${code}`);
+    // Antes ficava num Set sem expiração nenhuma
+    await this.redis.client.set(
+      UserService.KEY.enable2fa(user.email, code),
+      '1',
+      'EX',
+      TWO_FACTOR_CODE_EXPIRY_MINUTES * 60,
+    );
 
     return true;
   }
 
   async verifyTwoFactorCode(email: string, code: string) {
-    const key = `${email}.enable2fa.${code}`;
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },
     });
-    if (user && this._temp.has(key)) {
+    // del devolve 1 só pra quem consumiu o código (uso único)
+    if (user && (await this.redis.client.del(UserService.KEY.enable2fa(email, code))) === 1) {
       await this.prisma.user.update({
         where: { id: user.id },
         data: { twoFactorEnabled: true },
       });
-      this._temp.delete(key);
       return true;
     }
     throw new UnauthorizedException('Invalid verification code');
@@ -1676,14 +1628,10 @@ export class UserService {
   async sendLoginCode(user: UserDTO, loginId: string) {
     this.logger.log(`Sending login code - loginId: ${loginId}, user: ${user.email}`);
 
-    // Invalidar códigos anteriores do mesmo usuário
-    for (const [existingLoginId, entry] of this._loginCodes.entries()) {
-      if (entry.email === user.email && !entry.used) {
-        this.logger.log(
-          `Invalidating previous code for user ${user.email} - loginId: ${existingLoginId}`,
-        );
-        this._loginCodes.delete(existingLoginId);
-      }
+    // Invalidar código anterior do mesmo usuário
+    const previousLoginId = await this.redis.client.get(UserService.KEY.codeByUser(user.email));
+    if (previousLoginId) {
+      await this.redis.client.del(UserService.KEY.code(previousLoginId));
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -1716,16 +1664,15 @@ export class UserService {
       }
     }
 
-    this._loginCodes.set(loginId, {
-      email: user.email,
-      code,
-      expiresAt: Date.now() + TWO_FACTOR_CODE_EXPIRY_MINUTES * 60 * 1000,
-      used: false,
-      attempts: 0,
-    });
+    const ttl = TWO_FACTOR_CODE_EXPIRY_MINUTES * 60;
+    await this.redis.setJson(
+      UserService.KEY.code(loginId),
+      { email: user.email, code, attempts: 0 },
+      ttl,
+    );
+    await this.redis.client.set(UserService.KEY.codeByUser(user.email), loginId, 'EX', ttl);
 
     this.logger.log(`Login code stored - loginId: ${loginId}`);
-    this.logger.log(`Total login codes in memory: ${this._loginCodes.size}`);
 
     return true;
   }
@@ -1733,33 +1680,31 @@ export class UserService {
   async verifyLoginCode(loginId: string, code: string) {
     this.logger.log(`Verifying login code - loginId: ${loginId}`);
 
-    const entry = this._loginCodes.get(loginId);
-    this.logger.log(
-      `Found entry: ${
-        entry ? { email: entry.email, used: entry.used, attempts: entry.attempts } : 'null'
-      }`,
+    const codeKey = UserService.KEY.code(loginId);
+    // Expirado = chave já sumiu do Redis (TTL)
+    const entry = await this.redis.getJson<{ email: string; code: string; attempts: number }>(
+      codeKey,
     );
 
-    if (!entry || entry.used) {
-      this.logger.error(
-        `Invalid verification code - entry exists: ${!!entry}, used: ${entry?.used}`,
-      );
+    if (!entry) {
+      this.logger.error('Invalid verification code - no active code for this loginId');
       throw new UnauthorizedException('Invalid verification code');
-    }
-    if (entry.expiresAt < Date.now()) {
-      this._loginCodes.delete(loginId);
-      throw new UnauthorizedException('Invalid or expired verification code');
     }
     if (entry.code !== code) {
       entry.attempts += 1;
       this.logger.error(`Invalid verification code - code mismatch, attempts: ${entry.attempts}`);
       if (entry.attempts >= LOGIN_CODE_MAX_ATTEMPTS) {
-        this._loginCodes.delete(loginId);
+        await this.redis.client.del(codeKey);
         throw new UnauthorizedException('Invalid or expired verification code');
       }
-      this._loginCodes.set(loginId, entry);
+      await this.redis.client.set(codeKey, JSON.stringify(entry), 'KEEPTTL');
       throw new UnauthorizedException('Invalid verification code');
     }
+    // Uso único: só a primeira verificação com o código certo consome a chave
+    if ((await this.redis.client.del(codeKey)) === 0) {
+      throw new UnauthorizedException('Invalid verification code');
+    }
+    await this.redis.client.del(UserService.KEY.codeByUser(entry.email));
     const { email } = entry;
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },
@@ -1773,8 +1718,6 @@ export class UserService {
       },
     });
     if (user) {
-      entry.used = true;
-      this._loginCodes.set(loginId, entry);
       const sub = user.subscriptions?.[0];
       const { password: _pw, ...userWithoutPassword } = user as any;
       return {

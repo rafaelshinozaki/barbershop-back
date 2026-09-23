@@ -1316,6 +1316,10 @@ export class BarbershopResolver {
       recipientCount: c.recipientCount,
       emailSentCount: c.emailSentCount,
       whatsappSentCount: c.whatsappSentCount,
+      emailQueuedCount: c.emailQueuedCount ?? 0,
+      whatsappQueuedCount: c.whatsappQueuedCount ?? 0,
+      emailFailedCount: c.emailFailedCount ?? 0,
+      whatsappFailedCount: c.whatsappFailedCount ?? 0,
       createdAt: c.createdAt.toISOString(),
     };
   }

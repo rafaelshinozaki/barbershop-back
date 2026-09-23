@@ -32,8 +32,6 @@ export class MailgunService {
     html?: string;
   }) {
     try {
-      const apiKey = this.config.get<string>('MAILGUN_API_KEY');
-      this.logger.log(`Mailgun debug → domain: ${this.domain}, key: ${apiKey?.slice(0, 6)}…`);
       const data = await this.client.messages.create(this.domain, options);
       this.logger.log(JSON.stringify(data));
       return data;

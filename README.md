@@ -18,6 +18,23 @@ O projeto usa Prisma para interagir com o banco de dados. Primeiro, configure se
 DATABASE_URL="file:./dev.db"
 ```
 
+## Redis (filas e login)
+
+O back precisa de um Redis (`REDIS_URL`, padrão `redis://localhost:6379`):
+
+- **Filas (BullMQ)**: e-mails e WhatsApp (lembretes, lista de espera,
+  campanhas) são enviados em segundo plano, com novas tentativas e limite de
+  envios por segundo (`EMAIL_RATE_PER_SECOND`, `WHATSAPP_RATE_PER_SECOND`).
+- **Tarefas agendadas**: lembretes de agendamento (a cada 5 min), cobranças
+  recorrentes (9h) e posts sociais (a cada 5 min) rodam uma vez só no
+  cluster, mesmo com várias instâncias do back.
+- **Login**: código de verificação e bloqueio por tentativas ficam no Redis,
+  valendo pra todas as instâncias.
+
+Local: `docker compose -f infra/compose.yaml up -d redis`. Em produção, use
+persistência (`appendonly yes`) e `maxmemory-policy noeviction` pra não
+perder jobs. O `/health` mostra `redis: connected`.
+
 ## Documentação da API
 
 Após iniciar a aplicação, acesse `http://localhost:3000/swagger` para visualizar a documentação gerada pelo Swagger.

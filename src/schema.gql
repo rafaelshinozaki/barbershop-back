@@ -1004,6 +1004,12 @@ input LoginInput {
 type MarketingCampaignType {
   barbershopId: Int!
   createdAt: String!
+
+  """E-mails que falharam após todas as tentativas"""
+  emailFailedCount: Int!
+
+  """E-mails colocados na fila (clientes com e-mail)"""
+  emailQueuedCount: Int!
   emailSentCount: Int!
   id: Int!
   inactiveDays: Int
@@ -1013,6 +1019,12 @@ type MarketingCampaignType {
   sentByEmail: Boolean!
   sentByWhatsapp: Boolean!
   subject: String
+
+  """WhatsApps que falharam após todas as tentativas"""
+  whatsappFailedCount: Int!
+
+  """WhatsApps colocados na fila (telefone válido)"""
+  whatsappQueuedCount: Int!
   whatsappSentCount: Int!
 }
 

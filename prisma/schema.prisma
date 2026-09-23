@@ -288,6 +288,11 @@ model UserNotification {
   actionText String?
   userId     Int
   user       User     @relation(fields: [userId], references: [id])
+
+  // Sininho: lista (userId + ordem por data) e contagem de não lidas/novas
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@index([userId, isNew])
 }
 
 model InvalidatedToken {
@@ -900,8 +905,16 @@ model MarketingCampaign {
   sentByEmail       Boolean  @default(false)
   sentByWhatsapp    Boolean  @default(false)
   recipientCount    Int
-  emailSentCount    Int      @default(0)
-  whatsappSentCount Int      @default(0)
+  // Envio é assíncrono (fila): *QueuedCount é quantos envios entraram na
+  // fila (clientes com e-mail/telefone válido); *SentCount sobe conforme os
+  // workers enviam; *FailedCount conta quem falhou depois de todas as
+  // tentativas. Em andamento enquanto sent + failed < queued.
+  emailQueuedCount    Int      @default(0)
+  whatsappQueuedCount Int      @default(0)
+  emailSentCount      Int      @default(0)
+  whatsappSentCount   Int      @default(0)
+  emailFailedCount    Int      @default(0)
+  whatsappFailedCount Int      @default(0)
   barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId, createdAt])

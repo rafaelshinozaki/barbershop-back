@@ -73,7 +73,10 @@ export class NetworkTheme {
   @Field({ nullable: true })
   name?: string;
 
-  @Field({ nullable: true, description: 'Logo da franquia (mostrado no topo do app para dono e equipe)' })
+  @Field({
+    nullable: true,
+    description: 'Logo da franquia (mostrado no topo do app para dono e equipe)',
+  })
   logoUrl?: string;
 
   @Field({ nullable: true })
@@ -1400,6 +1403,19 @@ export class MarketingCampaignType {
 
   @Field(() => Int)
   whatsappSentCount: number;
+
+  // Envio é pela fila: os contadores sobem aos poucos depois da criação
+  @Field(() => Int, { description: 'E-mails colocados na fila (clientes com e-mail)' })
+  emailQueuedCount: number;
+
+  @Field(() => Int, { description: 'WhatsApps colocados na fila (telefone válido)' })
+  whatsappQueuedCount: number;
+
+  @Field(() => Int, { description: 'E-mails que falharam após todas as tentativas' })
+  emailFailedCount: number;
+
+  @Field(() => Int, { description: 'WhatsApps que falharam após todas as tentativas' })
+  whatsappFailedCount: number;
 
   @Field()
   createdAt: string;

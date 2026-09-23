@@ -23,6 +23,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
+import { RedisModule } from './redis/redis.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -102,6 +104,13 @@ import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
         AWS_SECRET_ACCESS_KEY: Joi.string().required(),
         AWS_REGION: Joi.string().required(),
         S3_BUCKET: Joi.string().required(),
+
+        // Filas (BullMQ) e estado compartilhado entre instâncias
+        REDIS_URL: Joi.string()
+          .uri({ scheme: ['redis', 'rediss'] })
+          .default('redis://localhost:6379'),
+        EMAIL_RATE_PER_SECOND: Joi.number().integer().min(1).optional(),
+        WHATSAPP_RATE_PER_SECOND: Joi.number().integer().min(1).optional(),
       }),
     }),
     ThrottlerModule.forRoot([
@@ -144,6 +153,8 @@ import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
       debug: process.env.NODE_ENV !== 'production',
       sortSchema: true,
     }),
+    RedisModule,
+    QueueModule,
     AuthModule,
     PrismaModule,
     PlanModule,
