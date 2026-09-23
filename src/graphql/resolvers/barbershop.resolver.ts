@@ -359,7 +359,9 @@ export class BarbershopResolver {
   ) {
     const { barbershopId: _, hireDate, ...rest } = input;
     const data = { ...rest, hireDate: hireDate ? new Date(hireDate) : undefined };
-    return this.barbershopService.createBarber(user.id, barbershopId, data);
+    const result = await this.barbershopService.createBarber(user.id, barbershopId, data);
+    this.realtime.notify(barbershopId, 'BARBER', 'CREATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -379,7 +381,9 @@ export class BarbershopResolver {
     @Args('input') input: UpdateBarberInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateBarber(user.id, barbershopId, id, input);
+    const result = await this.barbershopService.updateBarber(user.id, barbershopId, id, input);
+    this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -390,6 +394,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     await this.barbershopService.deleteBarber(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'BARBER', 'DELETED');
     return true;
   }
 
@@ -401,6 +406,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     await this.barbershopService.reactivateBarber(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
     return true;
   }
 

@@ -114,6 +114,9 @@ export class PublicBookingResolver {
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
     // Agendamento feito pelo cliente aparece na hora no dashboard da unidade
     this.realtime.notify(appointment.barbershopId, 'APPOINTMENT', 'CREATED');
+    // O agendamento público pode ter cadastrado um cliente novo (card
+    // "Clientes" da visão geral)
+    this.realtime.notify(appointment.barbershopId, 'CUSTOMER', 'CREATED');
 
     const service = appointment.services[0]?.service;
     return {
