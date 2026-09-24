@@ -185,6 +185,43 @@ export class ActivityNotificationsService {
     });
   }
 
+  /** Cliente remarcou pelo link do e-mail (sem login). */
+  appointmentRescheduled(appointmentId: number, previousStartAt: Date) {
+    return this.run('appointmentRescheduled', async () => {
+      const appt = await this.loadAppointment(appointmentId);
+      if (!appt) return;
+      await this.deliver(appt.barbershopId, 'appointments', {
+        barberId: appt.barberId,
+        actorUserId: null,
+        path: 'appointments',
+        type: NotificationType.INFO,
+        key: `appt-rescheduled:${appointmentId}:${appt.startAt.getTime()}`,
+        build: (f) => {
+          const v = {
+            c: appt.customer.name,
+            b: appt.barber.name,
+            from: f.date(previousStartAt),
+            to: f.date(appt.startAt),
+          };
+          return {
+            pt: {
+              title: 'Cliente remarcou',
+              message: `${v.c} mudou o horário com ${v.b} de ${v.from} para ${v.to}.`,
+            },
+            en: {
+              title: 'Customer rescheduled',
+              message: `${v.c} moved the appointment with ${v.b} from ${v.from} to ${v.to}.`,
+            },
+            es: {
+              title: 'Cliente reprogramó',
+              message: `${v.c} cambió la cita con ${v.b} del ${v.from} al ${v.to}.`,
+            },
+          };
+        },
+      });
+    });
+  }
+
   /** Cliente chegou sem horário marcado (fila de walk-in). */
   walkInCreated(walkInId: number, actorUserId: number | null) {
     return this.run('walkInCreated', async () => {

@@ -1,4 +1,5 @@
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
+import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
 import {
   Injectable,
   Logger,
@@ -2630,6 +2631,43 @@ export class BarbershopService {
     return slots;
   }
 
+  /**
+   * Horário escolhido pelo cliente (agendar ou remarcar pela página pública):
+   * revalida no servidor a janela de trabalho e o intervalo — nunca confia só
+   * na lista de horários que o cliente buscou antes (pode estar desatualizada
+   * ou ter sido manipulada). Dia da semana e hora de parede no fuso da
+   * unidade, não do servidor. O conflito com outros horários é checado por
+   * quem chama, dentro da transação.
+   */
+  private async ensurePublicSlot(
+    barbershop: { id: number; timezone: string | null },
+    barberId: number,
+    durationMinutes: number,
+    startAtInput: string,
+  ) {
+    const startAt = new Date(startAtInput);
+    if (isNaN(startAt.getTime()) || startAt <= new Date()) {
+      throw new BadRequestException('Horário inválido');
+    }
+    const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
+    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
+    const window = await this.getWorkingWindow(barbershop.id, barberId, local.dayOfWeek);
+    if (!window) throw new BadRequestException('Profissional não atende nesse dia');
+    const startMin = local.minutesOfDay;
+    const endMin = startMin + durationMinutes;
+    if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
+      throw new BadRequestException('Horário fora do expediente do profissional');
+    }
+    if (window.breakStart && window.breakEnd) {
+      const breakStartMin = this.toMinutes(window.breakStart);
+      const breakEndMin = this.toMinutes(window.breakEnd);
+      if (startMin < breakEndMin && endMin > breakStartMin) {
+        throw new BadRequestException('Horário cai no intervalo do profissional');
+      }
+    }
+    return { startAt, endAt };
+  }
+
   async createPublicAppointment(input: {
     barbershopId: number;
     barberId: number;
@@ -2663,31 +2701,12 @@ export class BarbershopService {
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
 
-    const startAt = new Date(input.startAt);
-    if (isNaN(startAt.getTime()) || startAt <= new Date()) {
-      throw new BadRequestException('Horário inválido');
-    }
-    const endAt = new Date(startAt.getTime() + service.durationMinutes * 60000);
-
-    // Revalida a janela de trabalho e a ausência de conflito no servidor —
-    // nunca confia apenas na lista de horários que o próprio cliente buscou
-    // antes (pode estar desatualizada ou ter sido manipulada).
-    // Dia da semana e hora de parede no fuso da unidade, não do servidor
-    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
-    const window = await this.getWorkingWindow(input.barbershopId, input.barberId, local.dayOfWeek);
-    if (!window) throw new BadRequestException('Profissional não atende nesse dia');
-    const startMin = local.minutesOfDay;
-    const endMin = startMin + service.durationMinutes;
-    if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
-      throw new BadRequestException('Horário fora do expediente do profissional');
-    }
-    if (window.breakStart && window.breakEnd) {
-      const breakStartMin = this.toMinutes(window.breakStart);
-      const breakEndMin = this.toMinutes(window.breakEnd);
-      if (startMin < breakEndMin && endMin > breakStartMin) {
-        throw new BadRequestException('Horário cai no intervalo do profissional');
-      }
-    }
+    const { startAt, endAt } = await this.ensurePublicSlot(
+      barbershop,
+      input.barberId,
+      service.durationMinutes,
+      input.startAt,
+    );
     // Checagem rápida antes de criar o cliente (a definitiva é dentro da
     // transação, sob a trava da agenda do barbeiro)
     await this.ensureBarberAvailable(input.barbershopId, input.barberId, startAt, endAt);
@@ -2730,7 +2749,7 @@ export class BarbershopService {
     // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       await this.lockSchedule(tx, input.barberId);
       await this.ensureBarberAvailable(
         input.barbershopId,
@@ -2761,6 +2780,256 @@ export class BarbershopService {
         include: { barbershop: true, barber: true, services: { include: { service: true } } },
       });
     });
+
+    // Confirmação por e-mail com o link pra cancelar/remarcar (best-effort:
+    // o horário já está marcado, e-mail fora do ar não desfaz nada)
+    const confirmationEmail = input.customerEmail?.trim() || customer!.email;
+    if (created && confirmationEmail) {
+      this.sendAppointmentEmail(created.id, 'appointment_confirmation', confirmationEmail).catch(
+        (err) =>
+          this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
+      );
+    }
+    return created;
+  }
+
+  /**
+   * Confirmação ou aviso de horário remarcado, com o link "gerenciar
+   * agendamento" (cancelar/remarcar sem login). Vai pela fila de e-mail.
+   */
+  private async sendAppointmentEmail(
+    appointmentId: number,
+    template: 'appointment_confirmation' | 'appointment_rescheduled',
+    to: string,
+  ) {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        customer: true,
+        barber: true,
+        barbershop: { include: { network: true } },
+        services: { include: { service: true } },
+      },
+    });
+    if (!appt) return;
+    const shop = appt.barbershop;
+    // Cliente não tem idioma salvo: língua do país da unidade
+    const lang = langForCountry(shop.country);
+    const serviceNames =
+      appt.services
+        .map((s) => s.service?.name)
+        .filter(Boolean)
+        .join(', ') || '-';
+    const subjects = {
+      appointment_confirmation: {
+        pt: `Horário confirmado em ${shop.name}`,
+        en: `Appointment confirmed at ${shop.name}`,
+        es: `Cita confirmada en ${shop.name}`,
+      },
+      appointment_rescheduled: {
+        pt: `Horário remarcado em ${shop.name}`,
+        en: `Appointment rescheduled at ${shop.name}`,
+        es: `Cita reprogramada en ${shop.name}`,
+      },
+    };
+    await this.notificationQueue.email(
+      {
+        kind: 'customer',
+        loggedAgainstUserId: shop.ownerUserId ?? 0,
+        template,
+        context: {
+          CustomerName: appt.customer.name,
+          BarbershopName: shop.name,
+          BarbershopAddress: `${shop.address}, ${shop.city} - ${shop.state}`,
+          BarbershopPhone: shop.phone,
+          BarberName: appt.barber.name,
+          ServiceNames: serviceNames,
+          AppointmentDate: appt.startAt.toLocaleDateString(LOCALE[lang], {
+            timeZone: shop.timezone,
+          }),
+          AppointmentTime: appt.startAt.toLocaleTimeString(LOCALE[lang], {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: shop.timezone,
+          }),
+          CancellationWindowHours: shop.network.lateCancellationWindowHours,
+          ManageURL: appointmentManageUrl(appt.id),
+          Year: new Date().getFullYear(),
+        },
+        subject: subjects[template],
+        lang,
+        meta: template.replace('_', '-'),
+        to,
+      },
+      // Uma confirmação por agendamento; remarcação, uma por novo horário
+      template === 'appointment_confirmation'
+        ? `appointment-confirmation-${appt.id}`
+        : `appointment-rescheduled-${appt.id}-${appt.startAt.getTime()}`,
+    );
+  }
+
+  // ============ CLIENTE GERENCIA O PRÓPRIO HORÁRIO (link do e-mail) ============
+  // Como no Booksy: pelo link da confirmação/lembrete o cliente cancela ou
+  // remarca sem login, até a janela da política de cancelamento da rede
+  // (Network.lateCancellationWindowHours). Dentro da janela, só falando com
+  // a unidade — assim o cliente nunca cai numa taxa de cancelamento tardio
+  // por um clique; quem decide é a barbearia.
+
+  private async loadManagedAppointment(token: string) {
+    const id = verifyAppointmentToken(token);
+    const appt = id
+      ? await this.prisma.appointment.findUnique({
+          where: { id },
+          include: {
+            customer: true,
+            barber: true,
+            barbershop: { include: { network: true } },
+            services: { include: { service: true } },
+          },
+        })
+      : null;
+    // Mesma resposta pra link adulterado e agendamento apagado
+    if (!appt) throw new NotFoundException('Link inválido ou agendamento não encontrado');
+    const windowHours = appt.barbershop.network.lateCancellationWindowHours;
+    const changeDeadline = new Date(appt.startAt.getTime() - windowHours * 3600000);
+    const canChange = appt.status === 'CONFIRMED' && new Date() < changeDeadline;
+    return { appt, windowHours, changeDeadline, canChange };
+  }
+
+  private ensureChangeable(loaded: { canChange: boolean; appt: { status: string } }) {
+    if (loaded.canChange) return;
+    if (loaded.appt.status === 'CANCELLED') {
+      throw new BadRequestException('Este agendamento já foi cancelado');
+    }
+    if (loaded.appt.status !== 'CONFIRMED') {
+      throw new BadRequestException('Este agendamento não pode mais ser alterado');
+    }
+    throw new BadRequestException(
+      'O prazo para cancelar ou remarcar pelo link já passou. Fale com a barbearia.',
+    );
+  }
+
+  async getManagedAppointment(token: string) {
+    const { appt, windowHours, changeDeadline, canChange } = await this.loadManagedAppointment(
+      token,
+    );
+    const service = appt.services[0]?.service;
+    const shop = appt.barbershop;
+    return {
+      id: appt.id,
+      status: appt.status,
+      startAt: appt.startAt.toISOString(),
+      endAt: appt.endAt.toISOString(),
+      canChange,
+      changeDeadline: changeDeadline.toISOString(),
+      cancellationWindowHours: windowHours,
+      customerName: appt.customer.name,
+      barbershopId: shop.id,
+      barbershopName: shop.name,
+      barbershopSlug: shop.slug,
+      barbershopPhone: shop.phone,
+      barbershopAddress: `${shop.address}, ${shop.city} - ${shop.state}`,
+      timezone: shop.timezone,
+      barberId: appt.barberId,
+      barberName: appt.barber.name,
+      serviceId: service?.id ?? null,
+      serviceName: service?.name ?? '',
+      price: service ? Number(appt.services[0].unitPrice) : 0,
+      currency: shop.currency,
+    };
+  }
+
+  async cancelManagedAppointment(token: string) {
+    const loaded = await this.loadManagedAppointment(token);
+    this.ensureChangeable(loaded);
+    const { appt } = loaded;
+    // Condicional no status: dois cliques (ou a unidade mudando ao mesmo
+    // tempo) não cancelam duas vezes nem passam por cima de outro status
+    const updated = await this.prisma.appointment.updateMany({
+      where: { id: appt.id, status: 'CONFIRMED' },
+      data: { status: 'CANCELLED' },
+    });
+    if (updated.count === 0) {
+      throw new BadRequestException('Este agendamento não pode mais ser alterado');
+    }
+    this.checkWaitlistOnCancellation(appt.barbershopId, appt).catch((err) =>
+      this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
+    );
+    return { id: appt.id, barbershopId: appt.barbershopId };
+  }
+
+  async rescheduleManagedAppointment(token: string, startAtInput: string) {
+    const loaded = await this.loadManagedAppointment(token);
+    this.ensureChangeable(loaded);
+    const { appt } = loaded;
+    const service = appt.services[0]?.service;
+    if (!service)
+      throw new BadRequestException('Este agendamento não pode ser remarcado pelo link');
+    // O profissional precisa continuar atendendo pela página pública
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: appt.barberId, isActive: true, ...BOOKABLE_STAFF },
+      select: { id: true },
+    });
+    if (!barber) {
+      throw new BadRequestException(
+        'Este profissional não está mais disponível. Fale com a barbearia.',
+      );
+    }
+    const durationMs = appt.endAt.getTime() - appt.startAt.getTime();
+    const { startAt } = await this.ensurePublicSlot(
+      appt.barbershop,
+      appt.barberId,
+      Math.round(durationMs / 60000),
+      startAtInput,
+    );
+    const endAt = new Date(startAt.getTime() + durationMs);
+    if (startAt.getTime() === appt.startAt.getTime()) {
+      throw new BadRequestException('Escolha um horário diferente do atual');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockSchedule(tx, appt.barberId, appt.resourceId ?? undefined);
+      await this.ensureBarberAvailable(
+        appt.barbershopId,
+        appt.barberId,
+        startAt,
+        endAt,
+        appt.id,
+        tx,
+      );
+      if (appt.resourceId) {
+        await this.ensureResourceAvailable(
+          appt.barbershopId,
+          appt.resourceId,
+          startAt,
+          endAt,
+          appt.id,
+          tx,
+        );
+      }
+      const moved = await tx.appointment.updateMany({
+        where: { id: appt.id, status: 'CONFIRMED', startAt: appt.startAt },
+        // Horário novo ganha lembrete novo
+        data: { startAt, endAt, reminderSentAt: null },
+      });
+      if (moved.count === 0) {
+        throw new BadRequestException(
+          'Este agendamento mudou enquanto você remarcava. Abra o link de novo.',
+        );
+      }
+    });
+
+    // Horário antigo ficou livre: pode ser a vaga de alguém da lista de espera
+    this.checkWaitlistOnCancellation(appt.barbershopId, appt).catch((err) =>
+      this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
+    );
+    const to = appt.customer.email;
+    if (to) {
+      this.sendAppointmentEmail(appt.id, 'appointment_rescheduled', to).catch((err) =>
+        this.logger.error(`Erro ao avisar remarcação do agendamento #${appt.id}:`, err),
+      );
+    }
+    return { id: appt.id, barbershopId: appt.barbershopId, previousStartAt: appt.startAt };
   }
 
   // ============ BUSCA PÚBLICA (marketplace) ============

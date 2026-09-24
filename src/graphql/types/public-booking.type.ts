@@ -294,4 +294,71 @@ export class PublicAppointmentType {
 
   @Field(() => Float, { nullable: true })
   depositAmount?: number;
+
+  @Field({ description: 'Token do link "gerenciar agendamento" (o mesmo do e-mail)' })
+  manageToken: string;
+}
+
+/** Agendamento aberto pelo link do e-mail (cliente cancela/remarca sem login). */
+@ObjectType()
+export class ManagedAppointmentType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  status: string;
+
+  @Field()
+  startAt: string;
+
+  @Field()
+  endAt: string;
+
+  @Field({ description: 'Ainda dá pra cancelar/remarcar pelo link' })
+  canChange: boolean;
+
+  @Field({ description: 'Até quando dá pra mudar pelo link (política de cancelamento)' })
+  changeDeadline: string;
+
+  @Field(() => Int)
+  cancellationWindowHours: number;
+
+  @Field()
+  customerName: string;
+
+  @Field(() => Int)
+  barbershopId: number;
+
+  @Field()
+  barbershopName: string;
+
+  @Field()
+  barbershopSlug: string;
+
+  @Field({ nullable: true })
+  barbershopPhone?: string;
+
+  @Field()
+  barbershopAddress: string;
+
+  @Field({ nullable: true })
+  timezone?: string;
+
+  @Field(() => Int)
+  barberId: number;
+
+  @Field()
+  barberName: string;
+
+  @Field(() => Int, { nullable: true })
+  serviceId?: number | null;
+
+  @Field()
+  serviceName: string;
+
+  @Field(() => Float)
+  price: number;
+
+  @Field()
+  currency: string;
 }

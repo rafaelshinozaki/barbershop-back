@@ -1,10 +1,10 @@
-{{!-- src/email/templates/es/appointment_reminder.hbs --}}
+{{!-- src/email/templates/es/appointment_confirmation.hbs --}}
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Recordatorio de cita — {{BarbershopName}}</title>
+  <title>Cita confirmada — {{BarbershopName}}</title>
   <style>
     body, p, h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
@@ -32,16 +32,17 @@
     </div>
     <div class="content">
       <h2>¡Hola, {{CustomerName}}!</h2>
-      <p>Te recordamos tu próxima cita:</p>
+      <p>Tu cita está confirmada:</p>
       <div class="details">
         <p><strong>Servicio:</strong> {{ServiceNames}}</p>
+        <p><strong>Profesional:</strong> {{BarberName}}</p>
         <p><strong>Fecha:</strong> {{AppointmentDate}}</p>
         <p><strong>Hora:</strong> {{AppointmentTime}}</p>
         <p><strong>Ubicación:</strong> {{BarbershopAddress}}</p>
       </div>
-      <p>¿Necesitas reprogramar o cancelar? Hazlo con el enlace de abajo hasta {{CancellationWindowHours}} h antes de tu cita (después, llámanos al {{BarbershopPhone}}).</p>
+      <p>¿Necesitas reprogramar o cancelar? Hazlo con el enlace de abajo hasta {{CancellationWindowHours}} h antes de tu cita. Después, llámanos al {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{ManageURL}}">Gestionar cita</a></p>
-      <p>¡Nos vemos pronto!</p>
+      <p>¡Nos vemos!</p>
     </div>
     <div class="footer">
       <p>&copy; {{Year}} {{BarbershopName}}.</p>

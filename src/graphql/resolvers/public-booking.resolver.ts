@@ -14,6 +14,7 @@ import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.d
 import {
   PublicBarbershopType,
   PublicAppointmentType,
+  ManagedAppointmentType,
   PublicBarbershopSearchResultType,
   ReviewType,
   MyReviewType,
@@ -31,6 +32,7 @@ import {
 } from '../dto/public-booking.dto';
 import { ThrottleAuth, ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
+import { createAppointmentToken } from '@/barbershop/appointment-link';
 
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
 // pensada pra ser acessada por qualquer visitante (a página de uma unidade
@@ -161,7 +163,41 @@ export class PublicBookingResolver {
       currency: appointment.barbershop.currency,
       depositAmount:
         appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,
+      // Quem acabou de agendar já pode cancelar/remarcar pela tela de confirmação
+      manageToken: createAppointmentToken(appointment.id),
     };
+  }
+
+  // ---- Cliente gerencia o próprio horário pelo link do e-mail ----
+  // O token é assinado (HMAC) e só abre aquele agendamento; o limite de
+  // tentativas segura quem tentar adivinhar.
+
+  @ThrottleAuth()
+  @Query(() => ManagedAppointmentType)
+  async managedAppointment(@Args('token') token: string) {
+    return this.barbershopService.getManagedAppointment(token);
+  }
+
+  @ThrottleAuth()
+  @Mutation(() => ManagedAppointmentType)
+  async cancelManagedAppointment(@Args('token') token: string) {
+    const { id, barbershopId } = await this.barbershopService.cancelManagedAppointment(token);
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    void this.activity.appointmentStatusChanged(id, 'CANCELLED', null);
+    return this.barbershopService.getManagedAppointment(token);
+  }
+
+  @ThrottlePublicBooking()
+  @Mutation(() => ManagedAppointmentType)
+  async rescheduleManagedAppointment(
+    @Args('token') token: string,
+    @Args('startAt') startAt: string,
+  ) {
+    const { id, barbershopId, previousStartAt } =
+      await this.barbershopService.rescheduleManagedAppointment(token, startAt);
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    void this.activity.appointmentRescheduled(id, previousStartAt);
+    return this.barbershopService.getManagedAppointment(token);
   }
 
   @Query(() => [ReviewType])

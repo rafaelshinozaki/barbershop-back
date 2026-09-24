@@ -8,6 +8,7 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
 import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
+import { appointmentManageUrl } from './appointment-link';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
 // (a cada 5 min), sem carregar milhares de linhas de uma vez
@@ -46,7 +47,7 @@ export class AppointmentReminderService {
       },
       include: {
         customer: true,
-        barbershop: true,
+        barbershop: { include: { network: { select: { lateCancellationWindowHours: true } } } },
         services: { include: { service: true } },
       },
       orderBy: { startAt: 'asc' },
@@ -93,6 +94,9 @@ export class AppointmentReminderService {
                 ServiceNames: serviceNames,
                 AppointmentDate: appointmentDate,
                 AppointmentTime: appointmentTime,
+                // Link pra cancelar/remarcar sem login (até a janela da política)
+                CancellationWindowHours: appt.barbershop.network.lateCancellationWindowHours,
+                ManageURL: appointmentManageUrl(appt.id),
                 Year: new Date().getFullYear(),
               },
               subject: {
