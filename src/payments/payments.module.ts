@@ -15,6 +15,9 @@ import { FriendInviteService } from './friend-invite.service';
 import { FriendInviteController } from './friend-invite.controller';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeModule } from '../stripe/stripe.module';
+// O webhook do Stripe fica aqui (e não no StripeModule) porque precisa do
+// PaymentsService pra concluir checkout e renovação
+import { StripeController } from '../stripe/stripe.controller';
 import { EmailModule } from '../email/email.module';
 import { AuthModule } from '@/auth/auth.module';
 
@@ -25,7 +28,7 @@ import { AuthModule } from '@/auth/auth.module';
     EmailModule,
     AuthModule,
   ],
-  controllers: [PaymentsController, CouponsController, FriendInviteController],
+  controllers: [PaymentsController, CouponsController, FriendInviteController, StripeController],
   providers: [
     PaymentsService,
     RecurringPaymentsService,
