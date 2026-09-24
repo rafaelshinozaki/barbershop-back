@@ -269,3 +269,21 @@ Sem login no Google nem chave de API:
 - **A unidade não apaga avaliação:** apagar a ficha do cliente mantém a
   avaliação (sem o nome). Excluir a conta de cliente (LGPD) apaga as
   avaliações dela, inclusive as feitas pelo link.
+- **Responder e denunciar:** dono e gerente veem todas as avaliações da
+  unidade e respondem publicamente (a resposta aparece na página); editar
+  troca, vazio apaga. Avaliação abusiva é denunciada com o motivo e vai pra
+  moderação do admin da plataforma, que oculta (sai da página e da nota
+  média) ou mantém (encerra a denúncia). Profissional não vê o painel.
+
+## 12. Feriados e fechamentos
+
+- Gerente e dono cadastram um dia (ou vários, até 60) **fechado** ou com
+  **horário especial**, com um motivo opcional. Todos da equipe veem.
+- Dia fechado: a página pública não oferece nem aceita horário (inclusive
+  remarcação pelo link e "próximo horário disponível"). Horário especial
+  limita o expediente de cada profissional; num dia normalmente fechado
+  (ex.: domingo), abre pra quem não tem folga marcada nesse dia da semana.
+- Antes de salvar, a equipe vê quem já estava agendado fora do horário; pode
+  cancelar esses horários avisando cada cliente por e-mail, com o motivo. A
+  agenda da equipe não é bloqueada (dá pra marcar uma exceção).
+- A página pública mostra os fechamentos dos próximos 60 dias.

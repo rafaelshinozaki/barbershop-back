@@ -585,6 +585,39 @@ input CloseCashSessionInput {
   notes: String
 }
 
+type ClosureImpactType {
+  barberName: String!
+  customerName: String!
+  hasEmail: Boolean!
+  id: Int!
+  startAt: DateTime!
+}
+
+input ClosureInput {
+  """Cancelar e avisar os agendamentos afetados"""
+  cancelAffected: Boolean
+  closeTime: String
+
+  """YYYY-MM-DD"""
+  date: String!
+
+  """Último dia (inclusive), pra vários dias"""
+  endDate: String
+
+  """Horário especial; sem = fechado o dia todo"""
+  openTime: String
+  reason: String
+}
+
+type ClosureType {
+  closeTime: String
+
+  """YYYY-MM-DD no fuso da unidade"""
+  date: String!
+  openTime: String
+  reason: String
+}
+
 type CommissionReportRow {
   barberId: Int!
   barberName: String!
@@ -1220,6 +1253,25 @@ type ManagedAppointmentType {
   timezone: String
 }
 
+type ManagedReviewType {
+  barbershopName: String
+  barbershopSlug: String
+  comment: String
+  createdAt: DateTime!
+
+  """Ocultada pela moderação (fora da página e da nota)"""
+  hidden: Boolean!
+  id: Int!
+  rating: Int!
+  repliedAt: DateTime
+  reply: String
+  reportReason: String
+
+  """Denunciada (aguardando moderação)"""
+  reportedAt: DateTime
+  reviewerName: String!
+}
+
 type MarketingCampaignType {
   barbershopId: Int!
   createdAt: String!
@@ -1337,6 +1389,7 @@ type Mutation {
   deleteBarberSchedule(id: Int!): Boolean!
   deleteBarberTimeOff(id: Int!): Boolean!
   deleteBarbershop(id: Int!): Boolean!
+  deleteBarbershopClosure(barbershopId: Int!, date: String!): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
   deleteCalendarFeed(barbershopId: Int!, scope: String!): Boolean!
@@ -1371,6 +1424,7 @@ type Mutation {
   markAllNotificationsAsRead: CommonResponse!
   markNoShowFeeCollected(barbershopId: Int!, id: Int!): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
+  moderateReview(hide: Boolean!, reviewId: Int!): Boolean!
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
   payBarber(barbershopId: Int!, input: PayBarberInput!): BarberPayoutType!
   processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
@@ -1387,6 +1441,8 @@ type Mutation {
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
+  replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
+  reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
   requestTwoFactorCode: Boolean!
@@ -1398,6 +1454,7 @@ type Mutation {
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
+  setBarbershopClosure(barbershopId: Int!, input: ClosureInput!): SetClosureResultType!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
@@ -1880,6 +1937,7 @@ type PublicBarbershopType {
   averageRating: Float
   barbers: [PublicBarberType!]!
   city: String!
+  closures: [ClosureType!]!
   complement1: String
   complement2: String
   country: String!
@@ -1961,6 +2019,7 @@ type Query {
   barbershop(id: Int!): Barbershop
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
+  barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
@@ -1980,6 +2039,7 @@ type Query {
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
   clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
+  closureImpact(barbershopId: Int!, input: ClosureInput!): [ClosureImpactType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
@@ -2009,6 +2069,7 @@ type Query {
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   lookupGiftCard(barbershopId: Int!, code: String!): GiftCardType!
   managedAppointment(token: String!): ManagedAppointmentType!
+  managedReviews(barbershopId: Int!): [ManagedReviewType!]!
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   me: User!
   myBarbershops: [Barbershop!]!
@@ -2039,6 +2100,7 @@ type Query {
   publicNextAvailableSlot(barberId: Int, barbershopId: Int!, fromDate: String, serviceIds: [Int!]!): PublicNextSlotType
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
+  reportedReviews: [ManagedReviewType!]!
   resources(barbershopId: Int!): [ResourceType!]!
   reviewRequest(token: String!): ReviewRequestType!
   roleDistribution: RoleDistribution!
@@ -2106,6 +2168,8 @@ type ReviewType {
   createdAt: String!
   id: Int!
   rating: Int!
+  repliedAt: String
+  reply: String
   reviewerName: String!
 }
 
@@ -2212,6 +2276,12 @@ input SetBarberPayConfigInput {
   fixedAmount: Float
   payPeriod: String
   payType: String!
+}
+
+type SetClosureResultType {
+  affectedCount: Int!
+  cancelledCount: Int!
+  dates: [String!]!
 }
 
 input SetCommissionRuleInput {

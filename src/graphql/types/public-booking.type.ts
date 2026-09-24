@@ -245,6 +245,22 @@ export class SharedLocationOverviewType {
   asMember: SharedLocationLinkType[];
 }
 
+/** Dia fechado (sem horário) ou com horário especial */
+@ObjectType()
+export class ClosureType {
+  @Field({ description: 'YYYY-MM-DD no fuso da unidade' })
+  date: string;
+
+  @Field({ nullable: true })
+  openTime?: string | null;
+
+  @Field({ nullable: true })
+  closeTime?: string | null;
+
+  @Field({ nullable: true })
+  reason?: string | null;
+}
+
 @ObjectType()
 export class PublicBarbershopType {
   @Field(() => Int)
@@ -323,6 +339,10 @@ export class PublicBarbershopType {
   /** Espaços onde este profissional independente atende */
   @Field(() => [SharedLocationShopType], { defaultValue: [] })
   sharedLocationHosts: SharedLocationShopType[];
+
+  /** Feriados e fechamentos dos próximos 60 dias */
+  @Field(() => [ClosureType], { defaultValue: [] })
+  closures: ClosureType[];
 }
 
 @ObjectType()
@@ -383,6 +403,13 @@ export class ReviewType {
 
   @Field()
   reviewerName: string;
+
+  /** Resposta pública da unidade */
+  @Field({ nullable: true })
+  reply?: string | null;
+
+  @Field({ nullable: true })
+  repliedAt?: string | null;
 }
 
 @ObjectType()

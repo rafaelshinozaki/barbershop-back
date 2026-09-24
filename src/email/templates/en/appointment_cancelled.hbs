@@ -39,6 +39,7 @@
         <p><strong>Date:</strong> {{AppointmentDate}}</p>
         <p><strong>Time:</strong> {{AppointmentTime}}</p>
         <p><strong>Location:</strong> {{BarbershopAddress}}</p>
+        {{#if Reason}}<p><strong>Reason:</strong> {{Reason}}</p>{{/if}}
       </div>
       <p>Want another time? Pick a new one on the business page or call {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{BookURL}}">Book again</a></p>
