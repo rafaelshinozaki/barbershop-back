@@ -110,6 +110,7 @@ export class AccountDeletionService {
     // dá pra tentar de novo — cobrança seguindo depois da exclusão seria o
     // pior cenário
     await this.barbershopService.cancelClientSubscriptionsOfBarbershops(shopIds);
+    await this.barbershopService.cancelChairRentsOfBarbershops(shopIds);
     const activePlans = await this.prisma.subscription.findMany({
       where: { userId, status: PLANO_STATUS.ACTIVE },
     });

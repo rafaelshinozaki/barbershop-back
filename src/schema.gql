@@ -148,6 +148,11 @@ type AppointmentServiceType {
   unitPrice: Float!
 }
 
+type AuthorizeChairRentResultType {
+  clientSecret: String
+  link: ChairRentType!
+}
+
 type BackofficeDashboard {
   planDistribution: PlanDistribution!
   roleDistribution: RoleDistribution!
@@ -325,6 +330,30 @@ type CashSessionType {
   openedByName: String
   openingBalance: Float!
   status: String!
+}
+
+type ChairRentPaymentType {
+  amount: Float!
+  createdAt: DateTime!
+  currency: String!
+  id: Int!
+  periodEnd: DateTime
+  periodStart: DateTime
+  receiptPdfUrl: String
+  receiptUrl: String
+  status: String!
+}
+
+type ChairRentType {
+  amount: Float
+  currency: String
+  isHost: Boolean!
+  linkId: Int!
+  paidUntil: DateTime
+  payoutDue: Float
+  platformFeePercent: Float!
+  status: String!
+  totalReceived: Float!
 }
 
 input ChangePasswordInput {
@@ -1128,6 +1157,7 @@ type Mutation {
   addClientFavorite(networkId: Float!): [Network!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
+  authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelManagedAppointment(token: String!): ManagedAppointmentType!
   cancelMySubscription(subscriptionId: Int!): Boolean!
@@ -1243,6 +1273,7 @@ type Mutation {
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
+  setChairRent(amount: Float, barbershopId: Int!, id: Int!): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
@@ -1745,6 +1776,7 @@ type Query {
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
+  chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
@@ -1970,6 +2002,7 @@ type SetupIntent {
 type SharedLocationLinkType {
   createdAt: DateTime!
   id: Int!
+  rent: ChairRentType!
   shop: SharedLocationShopType!
   status: String!
 }

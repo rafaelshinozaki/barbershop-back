@@ -86,6 +86,83 @@ export class SharedLocationShopType {
   state: string;
 }
 
+/** Aluguel da cadeira de um vínculo de espaço compartilhado. */
+@ObjectType()
+export class ChairRentType {
+  @Field(() => Int)
+  linkId: number;
+
+  /** Quem está vendo é o espaço (true) ou o profissional (false) */
+  @Field()
+  isHost: boolean;
+
+  /** NONE | AWAITING_PAYMENT | INCOMPLETE | ACTIVE | PAST_DUE */
+  @Field()
+  status: string;
+
+  @Field(() => Float, { nullable: true })
+  amount?: number | null;
+
+  @Field({ nullable: true })
+  currency?: string | null;
+
+  /** Pago até (fim do período da última fatura paga) */
+  @Field({ nullable: true })
+  paidUntil?: Date | null;
+
+  @Field(() => Float)
+  totalReceived: number;
+
+  @Field(() => Float)
+  platformFeePercent: number;
+
+  /** Só pro espaço: total recebido menos a taxa da plataforma */
+  @Field(() => Float, { nullable: true })
+  payoutDue?: number | null;
+}
+
+@ObjectType()
+export class ChairRentPaymentType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  createdAt: Date;
+
+  @Field(() => Float)
+  amount: number;
+
+  @Field()
+  currency: string;
+
+  /** SUCCEEDED | FAILED */
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  periodStart?: Date | null;
+
+  @Field({ nullable: true })
+  periodEnd?: Date | null;
+
+  /** Recibo do Stripe (página) */
+  @Field({ nullable: true })
+  receiptUrl?: string | null;
+
+  @Field({ nullable: true })
+  receiptPdfUrl?: string | null;
+}
+
+@ObjectType()
+export class AuthorizeChairRentResultType {
+  @Field(() => ChairRentType)
+  link: ChairRentType;
+
+  /** Cartão pediu confirmação (3D Secure): o front confirma com isto */
+  @Field({ nullable: true })
+  clientSecret?: string | null;
+}
+
 @ObjectType()
 export class SharedLocationLinkType {
   @Field(() => Int)
@@ -101,6 +178,9 @@ export class SharedLocationLinkType {
   /** A barbearia do outro lado */
   @Field(() => SharedLocationShopType)
   shop: SharedLocationShopType;
+
+  @Field(() => ChairRentType)
+  rent: ChairRentType;
 }
 
 @ObjectType()

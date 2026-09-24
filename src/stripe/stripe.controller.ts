@@ -20,6 +20,7 @@ import { Role } from '@/auth/interfaces/roles';
 import { StripeService } from './stripe.service';
 import { Request } from 'express';
 import { PaymentsService } from '../payments/payments.service';
+import { ChairRentService } from '../barbershop/chair-rent.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -32,6 +33,7 @@ export class StripeController {
     private emailService: EmailService,
     private stripeService: StripeService,
     private paymentsService: PaymentsService,
+    private chairRent: ChairRentService,
   ) {}
 
   @Post('webhook')
@@ -109,6 +111,8 @@ export class StripeController {
     });
 
     if (!subscription) {
+      // Aluguel da cadeira (espaço compartilhado) ou assinatura do cliente
+      if (await this.chairRent.handleInvoice(invoice, true)) return;
       await this.handleClientSubscriptionInvoiceSucceeded(invoice, subscriptionId);
       return;
     }
@@ -200,6 +204,7 @@ export class StripeController {
     });
 
     if (!subscription) {
+      if (await this.chairRent.handleInvoice(invoice, false)) return;
       await this.handleClientSubscriptionInvoiceFailed(subscriptionId);
       return;
     }
@@ -357,6 +362,7 @@ export class StripeController {
     });
 
     if (!dbSubscription) {
+      if (await this.chairRent.handleSubscriptionDeleted(subscription.id)) return;
       await this.prisma.clientSubscription.updateMany({
         where: { stripeSubscriptionId: subscription.id },
         data: { status: 'CANCELED', canceledAt: new Date() },

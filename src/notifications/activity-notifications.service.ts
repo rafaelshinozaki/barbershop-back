@@ -421,6 +421,109 @@ export class ActivityNotificationsService {
     });
   }
 
+  /** Aluguel da cadeira (espaço compartilhado): cobrança definida, paga, recusada ou encerrada. */
+  chairRentEvent(
+    toBarbershopId: number,
+    event: 'set' | 'changed' | 'started' | 'paid' | 'failed' | 'stopped',
+    otherShopName: string,
+    amountText: string,
+    actorUserId: number | null,
+    key: string,
+  ) {
+    return this.run('chairRentEvent', async () => {
+      const texts = {
+        set: {
+          pt: [
+            'Aluguel da cadeira',
+            `${otherShopName} definiu o aluguel mensal de ${amountText}. Autorize o cartão para começar.`,
+          ],
+          en: [
+            'Chair rent',
+            `${otherShopName} set a monthly rent of ${amountText}. Authorize your card to start.`,
+          ],
+          es: [
+            'Alquiler de la silla',
+            `${otherShopName} definió el alquiler mensual de ${amountText}. Autoriza tu tarjeta para empezar.`,
+          ],
+        },
+        changed: {
+          pt: [
+            'Aluguel da cadeira alterado',
+            `${otherShopName} mudou o aluguel para ${amountText} a partir da próxima cobrança.`,
+          ],
+          en: [
+            'Chair rent changed',
+            `${otherShopName} changed the rent to ${amountText} starting next billing.`,
+          ],
+          es: [
+            'Alquiler de la silla modificado',
+            `${otherShopName} cambió el alquiler a ${amountText} desde el próximo cobro.`,
+          ],
+        },
+        started: {
+          pt: [
+            'Aluguel autorizado',
+            `${otherShopName} autorizou a cobrança mensal de ${amountText}.`,
+          ],
+          en: [
+            'Rent authorized',
+            `${otherShopName} authorized the monthly charge of ${amountText}.`,
+          ],
+          es: [
+            'Alquiler autorizado',
+            `${otherShopName} autorizó el cobro mensual de ${amountText}.`,
+          ],
+        },
+        paid: {
+          pt: ['Aluguel recebido', `Aluguel de ${otherShopName} pago: ${amountText}.`],
+          en: ['Rent received', `Rent from ${otherShopName} paid: ${amountText}.`],
+          es: ['Alquiler recibido', `Alquiler de ${otherShopName} pagado: ${amountText}.`],
+        },
+        failed: {
+          pt: [
+            'Aluguel recusado',
+            `A cobrança do aluguel (${otherShopName}, ${amountText}) foi recusada. É preciso trocar o cartão.`,
+          ],
+          en: [
+            'Rent declined',
+            `The rent charge (${otherShopName}, ${amountText}) was declined. The card needs to be updated.`,
+          ],
+          es: [
+            'Alquiler rechazado',
+            `El cobro del alquiler (${otherShopName}, ${amountText}) fue rechazado. Hay que cambiar la tarjeta.`,
+          ],
+        },
+        stopped: {
+          pt: [
+            'Aluguel encerrado',
+            `A cobrança do aluguel da cadeira com ${otherShopName} foi encerrada.`,
+          ],
+          en: ['Rent ended', `The chair rent billing with ${otherShopName} was ended.`],
+          es: [
+            'Alquiler terminado',
+            `El cobro del alquiler de la silla con ${otherShopName} terminó.`,
+          ],
+        },
+      }[event];
+      await this.deliver(toBarbershopId, 'team', {
+        actorUserId,
+        path: 'shared-location',
+        type:
+          event === 'failed'
+            ? NotificationType.WARNING
+            : event === 'paid'
+            ? NotificationType.SUCCESS
+            : NotificationType.INFO,
+        key,
+        build: () => ({
+          pt: { title: texts.pt[0], message: texts.pt[1] },
+          en: { title: texts.en[0], message: texts.en[1] },
+          es: { title: texts.es[0], message: texts.es[1] },
+        }),
+      });
+    });
+  }
+
   /** Cliente avaliou a unidade (nova ou atualizada). */
   reviewPosted(
     barbershopId: number,

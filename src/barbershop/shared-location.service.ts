@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { BarbershopService } from './barbershop.service';
+import { ChairRentService } from './chair-rent.service';
 
 export type SharedLocationStatus = 'PENDING' | 'ACTIVE' | 'DECLINED' | 'REMOVED';
 
@@ -28,6 +29,7 @@ export class SharedLocationService {
     private readonly prisma: PrismaService,
     private readonly barbershopService: BarbershopService,
     private readonly activity: ActivityNotificationsService,
+    private readonly chairRent: ChairRentService,
   ) {}
 
   /** O espaço (host) convida o negócio do profissional, pelo link da página dele. */
@@ -125,9 +127,17 @@ export class SharedLocationService {
     if (link.status !== 'ACTIVE' && link.status !== 'PENDING') {
       throw new BadRequestException('Esse vínculo já foi encerrado');
     }
+    // Saiu do espaço: a cobrança do aluguel para junto
+    await this.barbershopService.cancelChairRentsOfBarbershops([], link.id);
     await this.prisma.sharedLocationMember.update({
       where: { id: link.id },
-      data: { status: 'REMOVED', respondedAt: new Date() },
+      data: {
+        status: 'REMOVED',
+        respondedAt: new Date(),
+        rentStatus: 'NONE',
+        rentAmount: null,
+        rentStripePriceId: null,
+      },
     });
     const fromHost = link.hostBarbershopId === fromBarbershopId;
     void this.activity.sharedLocationEvent(
@@ -159,18 +169,24 @@ export class SharedLocationService {
       }),
     ]);
     return {
-      asHost: asHost.map((l) => ({
-        id: l.id,
-        status: l.status,
-        createdAt: l.createdAt,
-        shop: l.member,
-      })),
-      asMember: asMember.map((l) => ({
-        id: l.id,
-        status: l.status,
-        createdAt: l.createdAt,
-        shop: l.host,
-      })),
+      asHost: await Promise.all(
+        asHost.map(async (l) => ({
+          id: l.id,
+          status: l.status,
+          createdAt: l.createdAt,
+          shop: l.member,
+          rent: await this.chairRent.view(l.id, barbershopId),
+        })),
+      ),
+      asMember: await Promise.all(
+        asMember.map(async (l) => ({
+          id: l.id,
+          status: l.status,
+          createdAt: l.createdAt,
+          shop: l.host,
+          rent: await this.chairRent.view(l.id, barbershopId),
+        })),
+      ),
     };
   }
 
@@ -204,6 +220,7 @@ export class SharedLocationService {
       status: l.status,
       createdAt: l.createdAt,
       shop: viewerBarbershopId === l.hostBarbershopId ? l.member : l.host,
+      rent: await this.chairRent.view(l.id, viewerBarbershopId),
     };
   }
 

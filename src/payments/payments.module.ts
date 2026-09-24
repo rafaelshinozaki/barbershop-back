@@ -1,3 +1,4 @@
+import { BarbershopModule } from '../barbershop/barbershop.module';
 //src\payments\payments.module.ts
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
@@ -27,6 +28,8 @@ import { AuthModule } from '@/auth/auth.module';
     StripeModule,
     EmailModule,
     AuthModule,
+    // Webhook do Stripe também recebe as faturas do aluguel da cadeira
+    BarbershopModule,
   ],
   controllers: [PaymentsController, CouponsController, FriendInviteController, StripeController],
   providers: [

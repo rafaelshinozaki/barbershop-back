@@ -339,6 +339,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       email as never,
       stripe as never,
       payments,
+      // Nenhuma fatura destes testes é de aluguel da cadeira
+      { handleInvoice: async () => false, handleSubscriptionDeleted: async () => false } as never,
     );
     const deliver = (event: unknown) =>
       controller.handleWebhook('sig', { rawBody: Buffer.from(JSON.stringify(event)) } as never);

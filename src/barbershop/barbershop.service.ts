@@ -848,6 +848,7 @@ export class BarbershopService {
     // Antes as assinaturas dos clientes sumiam do banco junto com a unidade
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
+    await this.cancelChairRentsOfBarbershops([id]);
     await this.prisma.barbershop.delete({ where: { id } });
   }
 
@@ -872,6 +873,39 @@ export class BarbershopService {
       await this.prisma.clientSubscription.update({
         where: { id: sub.id },
         data: { status: 'CANCELED', canceledAt: new Date(), cancelAtPeriodEnd: false },
+      });
+    }
+  }
+
+  /**
+   * Aluguel da cadeira (espaço compartilhado) em que a unidade é o espaço ou
+   * o profissional: cancela a cobrança mensal no Stripe antes de apagar a
+   * unidade/conta ou de encerrar o vínculo — senão o profissional seguia
+   * pagando por um espaço que não existe mais.
+   */
+  async cancelChairRentsOfBarbershops(barbershopIds: number[], onlyLinkId?: number) {
+    if (barbershopIds.length === 0 && !onlyLinkId) return;
+    const links = await this.prisma.sharedLocationMember.findMany({
+      where: onlyLinkId
+        ? { id: onlyLinkId, rentStripeSubscriptionId: { not: null } }
+        : {
+            rentStripeSubscriptionId: { not: null },
+            OR: [
+              { hostBarbershopId: { in: barbershopIds } },
+              { memberBarbershopId: { in: barbershopIds } },
+            ],
+          },
+      select: { id: true, rentStripeSubscriptionId: true },
+    });
+    for (const link of links) {
+      try {
+        await this.stripeService.cancelSubscription(link.rentStripeSubscriptionId!);
+      } catch (error: any) {
+        if (error?.code !== 'resource_missing') throw error;
+      }
+      await this.prisma.sharedLocationMember.update({
+        where: { id: link.id },
+        data: { rentStripeSubscriptionId: null, rentStatus: 'NONE' },
       });
     }
   }
