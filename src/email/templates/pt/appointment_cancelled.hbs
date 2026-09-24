@@ -39,6 +39,7 @@
         <p><strong>Data:</strong> {{AppointmentDate}}</p>
         <p><strong>Horário:</strong> {{AppointmentTime}}</p>
         <p><strong>Local:</strong> {{BarbershopAddress}}</p>
+        {{#if Reason}}<p><strong>Motivo:</strong> {{Reason}}</p>{{/if}}
       </div>
       <p>Quer marcar outro? Escolha um novo horário pela página da barbearia ou ligue para {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{BookURL}}">Agendar de novo</a></p>

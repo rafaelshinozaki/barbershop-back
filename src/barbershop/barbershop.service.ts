@@ -2602,6 +2602,41 @@ export class BarbershopService {
     return fallback ? { ...fallback } : null;
   }
 
+  /**
+   * Expediente num dia específico, com os fechamentos da unidade (feriado,
+   * reforma): dia fechado não tem expediente; horário especial limita o do
+   * profissional — ou abre um dia que normalmente é fechado, pra quem não
+   * tem folga marcada nesse dia da semana.
+   */
+  async getWorkingWindowOn(barbershopId: number, barberId: number, dateStr: string) {
+    const dayOfWeek = dayOfWeekOf(dateStr);
+    const [window, closure] = await Promise.all([
+      this.getWorkingWindow(barbershopId, barberId, dayOfWeek),
+      this.prisma.barbershopClosure.findUnique({
+        where: { barbershopId_date: { barbershopId, date: dateStr } },
+      }),
+    ]);
+    if (!closure) return window;
+    if (!closure.openTime || !closure.closeTime) return null;
+    const open = this.toMinutes(closure.openTime);
+    const close = this.toMinutes(closure.closeTime);
+    if (!window) {
+      const ownSchedule = await this.prisma.barberSchedule.findUnique({
+        where: { barberId_dayOfWeek: { barberId, dayOfWeek } },
+        select: { id: true },
+      });
+      // Folga marcada nesse dia da semana continua sendo folga
+      if (ownSchedule) return null;
+      return { start: closure.openTime, end: closure.closeTime, breakStart: null, breakEnd: null };
+    }
+    const start = Math.max(this.toMinutes(window.start), open);
+    const end = Math.min(this.toMinutes(window.end), close);
+    if (start >= end) return null;
+    const hhmm = (m: number) =>
+      `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return { ...window, start: hhmm(start), end: hhmm(end) };
+  }
+
   private toMinutes(time: string): number {
     const [h, m] = time.split(':').map(Number);
     return h * 60 + m;
@@ -2763,8 +2798,7 @@ export class BarbershopService {
     dateStr: string,
     timeZone: string,
   ) {
-    const dayOfWeek = dayOfWeekOf(dateStr);
-    const window = await this.getWorkingWindow(barbershopId, barber.id, dayOfWeek);
+    const window = await this.getWorkingWindowOn(barbershopId, barber.id, dateStr);
     if (!window) return [];
     const barberIds = await this.samePersonBarberIds(barber.id, barber.userId);
 
@@ -2849,7 +2883,7 @@ export class BarbershopService {
     }
     const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
     const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
-    const window = await this.getWorkingWindow(barbershop.id, barberId, local.dayOfWeek);
+    const window = await this.getWorkingWindowOn(barbershop.id, barberId, local.dateStr);
     if (!window) throw new BadRequestException('Profissional não atende nesse dia');
     const startMin = local.minutesOfDay;
     const endMin = startMin + durationMinutes;
@@ -3039,10 +3073,16 @@ export class BarbershopService {
    * Confirmação ou aviso de horário remarcado, com o link "gerenciar
    * agendamento" (cancelar/remarcar sem login). Vai pela fila de e-mail.
    */
+  /** Cancelamento pela unidade (ex.: fechamento no dia), com o motivo no e-mail */
+  notifyAppointmentCancelled(appointmentId: number, to: string, reason?: string | null) {
+    return this.sendAppointmentEmail(appointmentId, 'appointment_cancelled', to, reason);
+  }
+
   private async sendAppointmentEmail(
     appointmentId: number,
     template: 'appointment_confirmation' | 'appointment_rescheduled' | 'appointment_cancelled',
     to: string,
+    reason?: string | null,
   ) {
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
@@ -3104,6 +3144,7 @@ export class BarbershopService {
           // "Adicionar à agenda" (Google, Outlook, .ics pro Apple e outros)
           ...appointmentCalendarLinks(appt, createAppointmentToken(appt.id)),
           BookURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/u/${shop.slug}`,
+          Reason: reason || null,
           Year: new Date().getFullYear(),
         },
         subject: subjects[template],
@@ -3529,7 +3570,8 @@ export class BarbershopService {
 
   async getBarbershopReviews(barbershopId: number) {
     const reviews = await this.prisma.review.findMany({
-      where: { barbershopId },
+      // Oculta pela moderação (denúncia aceita) não aparece
+      where: { barbershopId, hiddenAt: null },
       include: {
         clientAccount: { select: { name: true } },
         customer: { select: { name: true } },
@@ -3544,6 +3586,8 @@ export class BarbershopService {
       createdAt: r.createdAt.toISOString(),
       // Logado: nome da conta; pelo link do e-mail: nome da ficha
       reviewerName: this.privacyName(r.clientAccount?.name ?? r.customer?.name ?? 'Cliente'),
+      reply: r.reply,
+      repliedAt: r.repliedAt?.toISOString() ?? null,
     }));
   }
 
@@ -3554,7 +3598,7 @@ export class BarbershopService {
     if (barbershopIds.length === 0) return map;
     const groups = await this.prisma.review.groupBy({
       by: ['barbershopId'],
-      where: { barbershopId: { in: barbershopIds } },
+      where: { barbershopId: { in: barbershopIds }, hiddenAt: null },
       _avg: { rating: true },
       _count: true,
     });

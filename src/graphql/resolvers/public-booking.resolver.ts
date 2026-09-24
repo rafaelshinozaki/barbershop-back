@@ -9,6 +9,7 @@ import { ActivityNotificationsService } from '../../notifications/activity-notif
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { SharedLocationService } from '@/barbershop/shared-location.service';
 import { ReviewRequestService } from '@/barbershop/review-request.service';
+import { ClosureService } from '@/barbershop/closure.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
@@ -60,6 +61,7 @@ export class PublicBookingResolver {
     private readonly prisma: PrismaService,
     private readonly sharedLocation: SharedLocationService,
     private readonly reviewRequests: ReviewRequestService,
+    private readonly closures: ClosureService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -67,8 +69,12 @@ export class PublicBookingResolver {
     return this.withSharedLocation(await this.barbershopService.getPublicBarbershopByslug(slug));
   }
 
-  private async withSharedLocation<T extends { id: number }>(shop: T) {
-    return { ...shop, ...(await this.sharedLocation.publicLinks(shop.id)) };
+  private async withSharedLocation<T extends { id: number; timezone?: string | null }>(shop: T) {
+    const [links, closures] = await Promise.all([
+      this.sharedLocation.publicLinks(shop.id),
+      this.closures.upcomingPublic(shop.id, shop.timezone),
+    ]);
+    return { ...shop, ...links, closures };
   }
 
   // Mesma página pública, resolvida pelo subdomínio próprio da unidade em

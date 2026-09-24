@@ -4,6 +4,8 @@ import { SharedLocationService } from './shared-location.service';
 import { ChairRentService, ChairRentScheduler, ChairRentProcessor } from './chair-rent.service';
 import { PayrollService } from './payroll.service';
 import { ReviewRequestService } from './review-request.service';
+import { ClosureService } from './closure.service';
+import { ReviewManagementService } from './review-management.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { Module } from '@nestjs/common';
@@ -53,11 +55,15 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AppointmentReminderScheduler,
     AppointmentReminderProcessor,
     ReviewRequestService,
+    ClosureService,
+    ReviewManagementService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
     ReviewRequestService,
+    ClosureService,
+    ReviewManagementService,
     EmployeeInviteService,
     AccountDeletionService,
     SharedLocationService,

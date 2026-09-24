@@ -523,6 +523,7 @@ model Barbershop {
   @@index([isActive])
   @@index([slug])
   calendarFeeds   CalendarFeed[]
+  closures        BarbershopClosure[]
 }
 
 model Resource {
@@ -691,6 +692,15 @@ model Review {
   // Ficha apagada pela unidade: a avaliação continua (sem o nome) — a
   // unidade não some com avaliação ruim apagando o cliente
   customer        Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Resposta pública da unidade (dono/gerente), como no Booksy
+  reply           String?
+  repliedAt       DateTime?
+  repliedByUserId Int?
+  // Denúncia (avaliação abusiva): o admin da plataforma modera; oculta sai
+  // da página e da nota média
+  reportedAt      DateTime?
+  reportReason    String?
+  hiddenAt        DateTime?
 
   @@unique([barbershopId, clientAccountId])
   @@unique([barbershopId, customerId])
@@ -1579,3 +1589,18 @@ model CalendarFeed {
   @@index([barbershopId])
 }
 
+// Feriado, reforma, evento: a unidade fechada o dia todo ou com horário
+// especial. Bloqueia a página pública (e aparece na agenda da equipe).
+model BarbershopClosure {
+  id              Int        @id @default(autoincrement())
+  createdAt       DateTime   @default(now())
+  barbershopId    Int
+  date            String // YYYY-MM-DD no fuso da unidade
+  openTime        String? // horário especial ("10:00"); sem = fechado o dia todo
+  closeTime       String?
+  reason          String?
+  createdByUserId Int?
+  barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@unique([barbershopId, date])
+}
