@@ -15,3 +15,5 @@ export const ThrottleLogin = () => NestThrottle({ default: { limit: 3, ttl: 3000
 export const ThrottlePasswordReset = () => NestThrottle({ default: { limit: 2, ttl: 900000 } }); // 2 tentativas por 15 minutos
 export const ThrottleEmail = () => NestThrottle({ default: { limit: 10, ttl: 3600000 } }); // 10 envios por hora
 export const ThrottlePublicBooking = () => NestThrottle({ default: { limit: 5, ttl: 600000 } }); // 5 agendamentos por IP a cada 10 minutos
+// Consultas públicas que varrem vários dias da agenda (próximo horário livre)
+export const ThrottleSlotSearch = () => NestThrottle({ default: { limit: 30, ttl: 60000 } }); // 30 por minuto

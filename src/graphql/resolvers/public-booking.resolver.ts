@@ -14,6 +14,7 @@ import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.d
 import {
   PublicBarbershopType,
   PublicAppointmentType,
+  PublicNextSlotType,
   ManagedAppointmentType,
   PublicBarbershopSearchResultType,
   ReviewType,
@@ -30,7 +31,11 @@ import {
   CreateReviewInput,
   SubscribeToPlanInput,
 } from '../dto/public-booking.dto';
-import { ThrottleAuth, ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
+import {
+  ThrottleAuth,
+  ThrottlePublicBooking,
+  ThrottleSlotSearch,
+} from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
 import { createAppointmentToken } from '@/barbershop/appointment-link';
 
@@ -91,11 +96,36 @@ export class PublicBookingResolver {
   @Query(() => [String])
   async publicAvailableSlots(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
-    @Args('barberId', { type: () => Int }) barberId: number,
-    @Args('serviceId', { type: () => Int }) serviceId: number,
     @Args('date') date: string,
+    /** Sem profissional: "qualquer profissional" (livre com pelo menos um) */
+    @Args('barberId', { type: () => Int, nullable: true }) barberId?: number | null,
+    /** Um serviço (compatibilidade) ou vários, em sequência */
+    @Args('serviceId', { type: () => Int, nullable: true }) serviceId?: number | null,
+    @Args('serviceIds', { type: () => [Int], nullable: true }) serviceIds?: number[] | null,
   ) {
-    return this.barbershopService.getPublicAvailableSlots(barbershopId, barberId, serviceId, date);
+    return this.barbershopService.getPublicAvailableSlots(
+      barbershopId,
+      barberId ?? null,
+      serviceIds?.length ? serviceIds : serviceId != null ? [serviceId] : [],
+      date,
+    );
+  }
+
+  /** Próximo horário livre (do profissional ou, sem ele, de qualquer um) */
+  @Query(() => PublicNextSlotType, { nullable: true })
+  @ThrottleSlotSearch()
+  async publicNextAvailableSlot(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('serviceIds', { type: () => [Int] }) serviceIds: number[],
+    @Args('barberId', { type: () => Int, nullable: true }) barberId?: number | null,
+    @Args('fromDate', { nullable: true }) fromDate?: string | null,
+  ) {
+    return this.barbershopService.getPublicNextAvailableSlot(
+      barbershopId,
+      barberId ?? null,
+      serviceIds,
+      fromDate,
+    );
   }
 
   // Se o visitante já estiver logado como cliente da plataforma (cookie
@@ -138,8 +168,10 @@ export class PublicBookingResolver {
     @Context() context: any,
   ): Promise<PublicAppointmentType> {
     const clientAccountId = await this.getOptionalClientAccountId(context.req);
+    const { serviceId, serviceIds, ...rest } = input;
     const appointment = await this.barbershopService.createPublicAppointment({
-      ...input,
+      ...rest,
+      serviceIds: serviceIds?.length ? serviceIds : serviceId != null ? [serviceId] : [],
       clientAccountId,
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
@@ -150,7 +182,11 @@ export class PublicBookingResolver {
     this.realtime.notify(appointment.barbershopId, 'CUSTOMER', 'CREATED');
     void this.activity.appointmentCreated(appointment.id, null);
 
-    const service = appointment.services[0]?.service;
+    const serviceNames = appointment.services
+      .map((s) => s.service?.name)
+      .filter(Boolean)
+      .join(' + ');
+    const price = appointment.services.reduce((sum, s) => sum + Number(s.unitPrice), 0);
     return {
       id: appointment.id,
       startAt: appointment.startAt.toISOString(),
@@ -158,8 +194,8 @@ export class PublicBookingResolver {
       status: appointment.status,
       barbershopName: appointment.barbershop.name,
       barberName: appointment.barber.name,
-      serviceName: service?.name ?? '',
-      price: service ? Number(service.price) : 0,
+      serviceName: serviceNames,
+      price,
       currency: appointment.barbershop.currency,
       depositAmount:
         appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,

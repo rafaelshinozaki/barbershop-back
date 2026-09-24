@@ -54,13 +54,22 @@ export class CreatePublicAppointmentInput {
   @IsInt()
   barbershopId: number;
 
-  @Field(() => Int)
+  /** Sem profissional: "qualquer profissional" (o sistema escolhe um livre) */
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
   @IsInt()
-  barberId: number;
+  barberId?: number | null;
 
-  @Field(() => Int)
+  /** Um serviço (compatibilidade) — ou serviceIds, pra vários em sequência */
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
   @IsInt()
-  serviceId: number;
+  serviceId?: number | null;
+
+  @Field(() => [Int], { nullable: true })
+  @IsOptional()
+  @IsInt({ each: true })
+  serviceIds?: number[] | null;
 
   @Field()
   @IsString()

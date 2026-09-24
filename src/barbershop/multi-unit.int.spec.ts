@@ -243,7 +243,7 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     const slots = await service.getPublicAvailableSlots(
       shops[1].shopId,
       proInB,
-      shops[1].serviceId,
+      [shops[1].serviceId],
       day,
     );
     expect(slots).not.toContain(at(day, '16:00').toISOString());
@@ -296,7 +296,7 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
       await service.getPublicAvailableSlots(
         shop.shopId,
         proInB,
-        shop.serviceId,
+        [shop.serviceId],
         new Date(Date.now() + 5 * DAY).toISOString().slice(0, 10),
       ),
     ).toEqual([]);
