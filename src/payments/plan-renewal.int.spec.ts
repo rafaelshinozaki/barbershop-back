@@ -5,7 +5,7 @@
  * job diário cobrava de novo todo dia; (2) o plano pago pelo checkout nunca
  * renovava nem vencia; (3) o webhook duplicava pagamento em evento repetido.
  */
-import { InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService } from './coupons.service';
@@ -72,6 +72,12 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       charges.push({ amount: p.amount, key: p.idempotencyKey });
       return pi;
     },
+    retrieveSetupIntent: async (id: string) => ({
+      id,
+      customer: id === 'seti_other' ? 'cus_de_outro' : 'cus_x',
+      payment_method: 'pm_fresh',
+      status: 'succeeded',
+    }),
     getSubscription: async () => ({ current_period_start: 1, current_period_end: 2 }),
     handleWebhookEvent: async (payload: string) => JSON.parse(payload),
   };
@@ -458,6 +464,54 @@ describe('Cobrança dos planos (integração com o banco)', () => {
         }),
       ).rejects.toBeInstanceOf(InternalServerErrorException);
       payments.finalizeRenewalPayment = original;
+    });
+
+    it('plano em atraso: cartão novo vira o do plano e cobra na hora (tela + webhook juntos = uma cobrança)', async () => {
+      // Plano pago que falhou hoje (a tentativa diária não voltaria hoje)
+      const sub = await activeSub();
+      const periodEnd = new Date(Date.now() - DAY);
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { planId: basicId, currentPeriodEnd: periodEnd, renewalFailedAt: new Date() },
+      });
+      await prisma.payment.create({
+        data: {
+          subscriptionId: sub.id,
+          amount: new Prisma.Decimal(100),
+          paymentDate: new Date(),
+          nextPaymentDate: new Date(),
+          paymentMethod: 'stripe',
+          status: 'FAILED',
+          renewalKey: `${sub.id}:${periodEnd.toISOString()}:1`,
+        },
+      });
+      // A tentativa diária de hoje já foi: o job não cobra de novo
+      const before = charges.length;
+      await payments.processRecurringPayments();
+      expect(charges.length).toBe(before);
+
+      // Cartão de outra pessoa não passa
+      await expect(payments.useSavedCardForPlan('seti_other', userId)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+
+      const [fromScreen] = await Promise.all([
+        payments.useSavedCardForPlan('seti_new', userId),
+        deliver({ type: 'setup_intent.succeeded', data: { object: { id: 'seti_new' } } }),
+      ]);
+      expect(fromScreen.overdue).toBe(true);
+      expect(defaultPm).toBe('pm_fresh');
+      expect(charges.slice(before)).toEqual([expect.objectContaining({ amount: 10000 })]);
+      const after = await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } });
+      expect(after.renewalFailedAt).toBeNull();
+      expect(after.currentPeriodEnd!.getTime()).toBe(periodEnd.getTime() + 30 * DAY);
+
+      // Plano em dia: salvar outro cartão só troca o cartão, não cobra
+      expect(await payments.useSavedCardForPlan('seti_new', userId)).toEqual({
+        overdue: false,
+        outcome: null,
+      });
+      expect(charges.length).toBe(before + 1);
     });
   });
 });

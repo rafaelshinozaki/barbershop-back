@@ -202,6 +202,10 @@ export class StripeService {
     return await this.stripe.invoices.retrieve(invoiceId);
   }
 
+  async retrieveSetupIntent(setupIntentId: string) {
+    return await this.stripe.setupIntents.retrieve(setupIntentId);
+  }
+
   async createSetupIntent(customerId: string) {
     return await this.stripe.setupIntents.create({
       customer: customerId,

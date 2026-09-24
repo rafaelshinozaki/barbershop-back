@@ -12,6 +12,7 @@ import {
   ConfirmPaymentIntentResponse,
   DeletePaymentMethodResponse,
   ChangePlanResponse,
+  UseSavedCardResponse,
 } from '../types/payment.type';
 import { Subscription } from '../types/plan.type';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
@@ -384,6 +385,17 @@ export class PaymentResolver {
       this.logger.error(`Error deleting payment method for user ${userId}:`, error);
       throw new Error(error.message || 'Failed to delete payment method');
     }
+  }
+
+  /** Depois de salvar um cartão: vira o do plano e, se estiver em atraso, cobra na hora. */
+  @Mutation(() => UseSavedCardResponse)
+  async useSavedCardForPlan(
+    @Args('setupIntentId', { type: () => String }) setupIntentId: string,
+    @Context() context: any,
+  ): Promise<UseSavedCardResponse> {
+    const userId = context.req.user?.id;
+    if (!userId) throw new Error('User not authenticated');
+    return this.paymentsService.useSavedCardForPlan(setupIntentId, userId);
   }
 
   @Mutation(() => ChangePlanResponse)

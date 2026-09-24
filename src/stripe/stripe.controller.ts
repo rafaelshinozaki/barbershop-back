@@ -77,6 +77,12 @@ export class StripeController {
         case 'payment_intent.succeeded':
           await this.handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
           break;
+        case 'setup_intent.succeeded':
+          // Cartão novo do dono: plano em atraso é cobrado na hora
+          await this.paymentsService.useSavedCardForPlan(
+            (event.data.object as Stripe.SetupIntent).id,
+          );
+          break;
         case 'payment_intent.payment_failed':
           await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
           break;
