@@ -257,6 +257,10 @@ export class UpdateBarberInput {
 
   @Field({ nullable: true })
   userId?: number;
+
+  /** Cargo: basic | barber | reception | manager */
+  @Field({ nullable: true })
+  staffType?: string;
 }
 
 // ============ BarberSchedule ============

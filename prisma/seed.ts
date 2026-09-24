@@ -220,6 +220,8 @@ const SEED_USER_EMAILS = [
   'cayo.carlos@barbershop.com',
   'bianca.silverio@barbershop.com',
   'minion.cayo@barbershop.com',
+  'julia.recepcao@barbershop.com',
+  'pedro.basico@barbershop.com',
   'marcos.andrade@barbershop.com',
   'tiago.moura@barbershop.com',
 ];
@@ -366,6 +368,16 @@ async function main() {
         {
           email: 'minion.cayo@barbershop.com',
           fullName: 'Minion Cayo',
+          role: 'BarbershopEmployee',
+        },
+        {
+          email: 'julia.recepcao@barbershop.com',
+          fullName: 'Julia Recepção',
+          role: 'BarbershopEmployee',
+        },
+        {
+          email: 'pedro.basico@barbershop.com',
+          fullName: 'Pedro Básico',
           role: 'BarbershopEmployee',
         },
       ];
@@ -518,6 +530,38 @@ async function main() {
         console.log(`  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`);
       } else if (existingBarbershop) {
         console.log('Green Barbershop already exists, skipping...');
+      }
+
+      // Um funcionário de cada cargo na Green Barbershop (também em bancos que
+      // já tinham a unidade): recepção e barbeiro básico
+      const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+      const staffByCargo = [
+        {
+          email: 'julia.recepcao@barbershop.com',
+          name: 'Julia Recepção',
+          staffType: 'reception',
+          specialization: 'Recepção',
+          phone: '(12) 99757-3001',
+        },
+        {
+          email: 'pedro.basico@barbershop.com',
+          name: 'Pedro Básico',
+          staffType: 'basic',
+          specialization: 'Corte masculino',
+          phone: '(12) 99757-3002',
+        },
+      ];
+      for (const staff of green ? staffByCargo : []) {
+        const user = createdSeedUsers.find((u) => u.email === staff.email);
+        if (!user) continue;
+        const exists = await prisma.barber.findFirst({
+          where: { barbershopId: green!.id, userId: user.id },
+        });
+        if (exists) continue;
+        console.log(`Adding ${staff.name} (${staff.staffType}) to Green Barbershop...`);
+        await prisma.barber.create({
+          data: { barbershopId: green!.id, userId: user.id, isActive: true, ...staff },
+        });
       }
     }
 

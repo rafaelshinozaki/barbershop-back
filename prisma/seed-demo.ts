@@ -142,6 +142,36 @@ const SEED_USER_PROFILES: Record<
       country: 'BR',
     },
   },
+  'julia.recepcao@barbershop.com': {
+    phone: '+5512991110008',
+    cpfBase: '274913580',
+    birthdate: '1998-03-14',
+    gender: 'female',
+    address: {
+      userId: 0,
+      zipcode: '12243-000',
+      street: 'Rua Paulo Setúbal, 310',
+      neighborhood: 'Vila Adyana',
+      city: 'São José dos Campos',
+      state: 'SP',
+      country: 'BR',
+    },
+  },
+  'pedro.basico@barbershop.com': {
+    phone: '+5512991110009',
+    cpfBase: '381604725',
+    birthdate: '2003-08-22',
+    gender: 'male',
+    address: {
+      userId: 0,
+      zipcode: '12236-000',
+      street: 'Rua Ana Gonçalves da Cunha, 45',
+      neighborhood: 'Parque Industrial',
+      city: 'São José dos Campos',
+      state: 'SP',
+      country: 'BR',
+    },
+  },
   'minion.cayo@barbershop.com': {
     phone: '+5512991110005',
     cpfBase: '862415730',
@@ -338,6 +368,26 @@ const ROLE_NOTIFICATIONS: Record<string, NotificationSeed[]> = {
       isRead: true,
       actionUrl: '/barbershops/{shop}/cashier',
       actionText: 'Ver caixa',
+      daysAgo: 0,
+    },
+  ],
+  'julia.recepcao@barbershop.com': [
+    {
+      title: 'Novo agendamento',
+      message: 'Um cliente agendou pela página pública para amanhã às 10:00.',
+      type: 'info',
+      actionUrl: '/barbershops/{shop}/appointments',
+      actionText: 'Ver agenda',
+      daysAgo: 0,
+    },
+  ],
+  'pedro.basico@barbershop.com': [
+    {
+      title: 'Agenda de amanhã',
+      message: 'Você tem 3 atendimentos marcados para amanhã.',
+      type: 'info',
+      actionUrl: '/barbershops/{shop}/appointments',
+      actionText: 'Ver agenda',
       daysAgo: 0,
     },
   ],
@@ -747,7 +797,7 @@ async function seedGreenOperations(
   const existingStaff = await prisma.barber.findMany({ where: { barbershopId: shopId } });
   for (const b of existingStaff) {
     const specialties: TreatmentCategory[] =
-      b.staffType === 'manager'
+      b.staffType === 'manager' || b.staffType === 'reception'
         ? []
         : b.name === 'Cayo Carlos'
         ? ['HAIR', 'BEARD', 'COMBO']
@@ -783,7 +833,8 @@ async function seedGreenOperations(
     });
   }
   const barbers = await prisma.barber.findMany({
-    where: { barbershopId: shopId, staffType: { not: 'manager' } },
+    // Quem atende: gerente e recepção não têm agenda
+    where: { barbershopId: shopId, staffType: { notIn: ['manager', 'reception'] } },
   });
 
   // Agenda semanal (seg-sáb) com almoço, e férias do Minion no mês que vem

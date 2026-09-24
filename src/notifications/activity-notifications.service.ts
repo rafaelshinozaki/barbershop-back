@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { staffRoleLabel } from '../barbershop/staff-roles';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { NotificationType } from './dto/create-notification.dto';
@@ -281,7 +282,7 @@ export class ActivityNotificationsService {
         select: { barbershopId: true, name: true, staffType: true },
       });
       if (!barber) return;
-      const manager = barber.staffType === 'manager';
+      const label = staffRoleLabel(barber.staffType);
       await this.deliver(barber.barbershopId, 'team', {
         actorUserId: newUserId,
         path: 'barbers',
@@ -290,21 +291,15 @@ export class ActivityNotificationsService {
         build: (_f, shop) => ({
           pt: {
             title: 'Novo membro na equipe',
-            message: `${barber.name} aceitou o convite e entrou em ${shop.name} como ${
-              manager ? 'gerente' : 'barbeiro'
-            }.`,
+            message: `${barber.name} aceitou o convite e entrou em ${shop.name} como ${label.pt}.`,
           },
           en: {
             title: 'New team member',
-            message: `${barber.name} accepted the invite and joined ${shop.name} as ${
-              manager ? 'manager' : 'barber'
-            }.`,
+            message: `${barber.name} accepted the invite and joined ${shop.name} as ${label.en}.`,
           },
           es: {
             title: 'Nuevo miembro del equipo',
-            message: `${barber.name} aceptó la invitación y entró en ${shop.name} como ${
-              manager ? 'gerente' : 'barbero'
-            }.`,
+            message: `${barber.name} aceptó la invitación y entró en ${shop.name} como ${label.es}.`,
           },
         }),
       });
@@ -455,7 +450,13 @@ export class ActivityNotificationsService {
           where: {
             isActive: true,
             userId: { not: null },
-            OR: [{ staffType: 'manager' }, ...(opts.barberId ? [{ id: opts.barberId }] : [])],
+            // Gerente recebe tudo; a recepção, o que é da agenda; o barbeiro,
+            // o que é dele
+            OR: [
+              { staffType: 'manager' },
+              ...(category === 'appointments' ? [{ staffType: 'reception' }] : []),
+              ...(opts.barberId ? [{ id: opts.barberId }] : []),
+            ],
           },
           select: { userId: true },
         },

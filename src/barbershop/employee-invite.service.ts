@@ -8,9 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { BarbershopService } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
+import { isStaffType, StaffType, staffRoleLabel } from './staff-roles';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
-export type StaffType = 'barber' | 'manager';
 
 export interface CreateEmployeeInviteInput {
   barbershopId: number;
@@ -18,6 +18,8 @@ export interface CreateEmployeeInviteInput {
   name: string;
   phone: string;
   role: EmployeeRole;
+  /** Cargo na unidade: basic | barber | reception | manager (padrão: pelo role) */
+  staffType?: StaffType;
   specialization?: string;
   hireDate?: string;
 }
@@ -106,7 +108,13 @@ export class EmployeeInviteService {
       throw new BadRequestException('Já existe um funcionário com este email nesta barbearia');
     }
 
-    const staffType: StaffType = input.role === 'BarbershopManager' ? 'manager' : 'barber';
+    if (input.staffType !== undefined && !isStaffType(input.staffType)) {
+      throw new BadRequestException('Cargo inválido');
+    }
+    const staffType: StaffType =
+      input.role === 'BarbershopManager' ? 'manager' : input.staffType ?? 'barber';
+    // Gerente tem conta de gerente; os outros cargos, de funcionário
+    const role: EmployeeRole = staffType === 'manager' ? 'BarbershopManager' : 'BarbershopEmployee';
     const inviteToken = randomBytes(32).toString('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
@@ -118,7 +126,12 @@ export class EmployeeInviteService {
         phone,
         email,
         specialization:
-          input.specialization?.trim() || (staffType === 'barber' ? undefined : 'Gerente'),
+          input.specialization?.trim() ||
+          (staffType === 'manager'
+            ? 'Gerente'
+            : staffType === 'reception'
+            ? 'Recepção'
+            : undefined),
         hireDate: input.hireDate ? new Date(input.hireDate) : undefined,
         staffType,
       },
@@ -133,12 +146,13 @@ export class EmployeeInviteService {
         barberId: barber.id,
         email,
         inviteToken,
-        role: input.role,
+        role,
         expiresAt,
       },
       include: {
         inviter: { select: { fullName: true } },
         barbershop: { select: { name: true, country: true } },
+        barber: { select: { staffType: true } },
       },
     });
 
@@ -330,13 +344,14 @@ export class EmployeeInviteService {
   private async sendEmployeeInviteEmail(invite: any) {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     const inviteUrl = `${frontendUrl}/accept-employee-invite/${invite.inviteToken}`;
-    const manager = invite.role === 'BarbershopManager';
     // O convidado ainda não tem conta nem idioma salvo: usa a língua do
     // país da unidade (quem vai trabalhar numa unidade do México lê
     // espanhol, mesmo que o dono use o app em português)
-    const roleLabel = manager
-      ? { pt: 'Gerente', en: 'Manager', es: 'Gerente' }
-      : { pt: 'Barbeiro', en: 'Barber', es: 'Barbero' };
+    const label = staffRoleLabel(
+      invite.barber?.staffType ?? (invite.role === 'BarbershopManager' ? 'manager' : 'barber'),
+    );
+    const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+    const roleLabel = { pt: cap(label.pt), en: cap(label.en), es: cap(label.es) };
     const shopName = invite.barbershop.name;
 
     await this.emailService.sendCustomerEmail(
