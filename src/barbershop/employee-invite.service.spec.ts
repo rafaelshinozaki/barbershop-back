@@ -18,7 +18,7 @@ describe('EmployeeInviteService — idioma do convite', () => {
     {} as never,
     {} as never,
   );
-  const send = (country: string, role = 'BarbershopBarber') =>
+  const send = (country: string, role = 'BarbershopBarber', staffType?: string) =>
     (
       service as unknown as { sendEmployeeInviteEmail: (i: unknown) => Promise<void> }
     ).sendEmployeeInviteEmail({
@@ -28,6 +28,7 @@ describe('EmployeeInviteService — idioma do convite', () => {
       email: 'novo@x.com',
       inviter: { fullName: 'Dono' },
       barbershop: { name: 'Green', country },
+      barber: staffType ? { staffType } : undefined,
     });
 
   beforeEach(() => (sent.length = 0));
@@ -56,5 +57,15 @@ describe('EmployeeInviteService — idioma do convite', () => {
       en: 'Invitation to join Green as Manager',
       es: 'Invitación para ser Gerente en Green',
     });
+  });
+
+  it.each([
+    ['reception', { pt: 'Recepcionista', en: 'Receptionist', es: 'Recepcionista' }],
+    ['basic', { pt: 'Barbeiro básico', en: 'Basic barber', es: 'Barbero básico' }],
+    ['barber', { pt: 'Barbeiro', en: 'Barber', es: 'Barbero' }],
+  ])('cargo %s aparece com o nome certo no convite', async (staffType, label) => {
+    await send('BR', 'BarbershopEmployee', staffType);
+    const [, , context] = sent[0] as [unknown, unknown, { RoleLabel: unknown }];
+    expect(context.RoleLabel).toEqual(label);
   });
 });

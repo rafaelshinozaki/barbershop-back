@@ -593,6 +593,12 @@ describe('BarbershopService (integração com o banco)', () => {
     let managerUserId: number;
     const denied = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(ForbiddenException);
 
+    let receptionUserId: number;
+    let basicUserId: number;
+    let basicBarberId: number;
+    let receptionBarberId: number;
+    let strangerId: number;
+
     beforeAll(async () => {
       const role = await prisma.role.findFirstOrThrow({ where: { name: 'BarbershopOwner' } });
       managerUserId = (await createUser('gerente', role.id)).id;
@@ -605,6 +611,41 @@ describe('BarbershopService (integração com o banco)', () => {
           staffType: 'manager',
         },
       });
+      receptionUserId = (await createUser('recepcao', role.id)).id;
+      receptionBarberId = (
+        await prisma.barber.create({
+          data: {
+            barbershopId: A.shopId,
+            name: 'Recepção A',
+            phone: '11955555555',
+            userId: receptionUserId,
+            staffType: 'reception',
+          },
+        })
+      ).id;
+      basicUserId = (await createUser('basico', role.id)).id;
+      basicBarberId = (
+        await prisma.barber.create({
+          data: {
+            barbershopId: A.shopId,
+            name: 'Básico A',
+            phone: '11966666666',
+            userId: basicUserId,
+            staffType: 'basic',
+          },
+        })
+      ).id;
+      // Cliente que nunca agendou com o barbeiro A
+      strangerId = (
+        await prisma.customer.create({
+          data: {
+            networkId: A.networkId,
+            name: `Desconhecido ${RUN}`,
+            phone: `119${RUN}`.slice(0, 13),
+            email: `desconhecido-${RUN}@test.local`,
+          },
+        })
+      ).id;
     });
 
     it('barbeiro atende, mas não mexe em financeiro, preços, equipe nem apaga a unidade', async () => {
@@ -624,7 +665,7 @@ describe('BarbershopService (integração com o banco)', () => {
       expect((await service.getNetworkDashboardStats(barber)).totalBarbershops).toBe(0);
     });
 
-    it('barbeiro (como o "Staffer" do Booksy): só a própria agenda e sem o contato dos clientes', async () => {
+    it('barbeiro (o "Staffer" do Booksy): só a própria agenda; contato só de quem agendou com ele', async () => {
       const barber = A.staffUserId;
       const own = (await book(at(day, '11:00'), { userId: barber }))!;
       const other = (await book(at(day, '11:00'), { barberId: A.otherBarberId }))!;
@@ -654,21 +695,25 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(networkSeen).toContain(own.id);
       expect(networkSeen).not.toContain(other.id);
 
-      // Clientes: vê e cadastra, mas sem telefone/e-mail — e não busca por eles
+      // Clientes: vê o contato de quem agendou com ele; dos outros, só o nome
       const customer = await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } });
-      const listed = (await service.getCustomers(barber, A.shopId)).find(
-        (c) => c.id === A.customerId,
-      )!;
-      expect(listed).toMatchObject({ name: customer.name, phone: '', email: null });
-      expect(await service.getCustomer(barber, A.shopId, A.customerId)).toMatchObject({
+      const stranger = await prisma.customer.findUniqueOrThrow({ where: { id: strangerId } });
+      const listed = await service.getCustomers(barber, A.shopId, { limit: 500 });
+      expect(listed.find((c) => c.id === A.customerId)).toMatchObject({ phone: customer.phone });
+      expect(listed.find((c) => c.id === strangerId)).toMatchObject({
+        name: stranger.name,
+        phone: '',
+        email: null,
+      });
+      expect(await service.getCustomer(barber, A.shopId, strangerId)).toMatchObject({
         phone: '',
         email: null,
       });
       expect((await service.getAppointment(barber, A.shopId, own.id)).customer).toMatchObject({
-        phone: '',
-        email: null,
+        phone: customer.phone,
       });
-      expect(await service.getCustomers(barber, A.shopId, { search: customer.phone })).toEqual([]);
+      // Busca por telefone não serve pra confirmar o de ninguém
+      expect(await service.getCustomers(barber, A.shopId, { search: stranger.phone })).toEqual([]);
 
       // O dono vê tudo
       expect(
@@ -682,6 +727,130 @@ describe('BarbershopService (integração com o banco)', () => {
         where: { appointmentId: { in: [own.id, other.id] } },
       });
       await prisma.appointment.deleteMany({ where: { id: { in: [own.id, other.id] } } });
+    });
+
+    it('barbeiro básico: só a própria agenda, clientes só pelo nome, sem vendas, fila nem lista de espera', async () => {
+      const basic = basicUserId;
+      expect(await service.getMyAccessLevel(basic, A.shopId)).toBe('basic');
+      const own = (await book(at(day, '14:00'), { userId: basic, barberId: basicBarberId }))!;
+      const other = (await book(at(day, '14:00'), { barberId: A.otherBarberId }))!;
+      const seen = (await service.getAppointments(basic, A.shopId, { limit: 500 })).map(
+        (a) => a.id,
+      );
+      expect(seen).toContain(own.id);
+      expect(seen).not.toContain(other.id);
+      await denied(book(at(day, '14:30'), { userId: basic, barberId: A.otherBarberId }));
+
+      // Nem do próprio cliente vê o contato
+      expect((await service.getAppointment(basic, A.shopId, own.id)).customer).toMatchObject({
+        phone: '',
+        email: null,
+      });
+      const listed = await service.getCustomers(basic, A.shopId, { limit: 500 });
+      expect(listed.every((c) => c.phone === '' && c.email === null)).toBe(true);
+      // Cadastra cliente (na hora de agendar)
+      const created = await service.createCustomer(basic, A.shopId, {
+        name: 'Novo pelo básico',
+        phone: '11977776666',
+      });
+      expect(created.id).toBeTruthy();
+
+      await denied(service.getSales(basic, A.shopId));
+      await denied(
+        service.createSale(basic, A.shopId, {
+          barberId: basicBarberId,
+          saleType: 'SERVICE',
+          items: [],
+          subtotal: 10,
+          total: 10,
+        }),
+      );
+      await denied(service.getWalkIns(basic, A.shopId));
+      await denied(service.getWaitlistEntries(basic, A.shopId));
+      await denied(service.getCurrentCashSession(basic, A.shopId));
+
+      await prisma.appointmentService.deleteMany({
+        where: { appointmentId: { in: [own.id, other.id] } },
+      });
+      await prisma.appointment.deleteMany({ where: { id: { in: [own.id, other.id] } } });
+      await prisma.customer.delete({ where: { id: created.id } });
+    });
+
+    it('recepção: agenda de todos, cadastro completo dos clientes e o caixa; sem relatórios nem configurações', async () => {
+      const reception = receptionUserId;
+      expect(await service.getMyAccessLevel(reception, A.shopId)).toBe('reception');
+      // Agenda de todos: marca pra qualquer barbeiro, mas ela mesma não atende
+      const forOther = (await book(at(day, '15:30'), {
+        userId: reception,
+        barberId: A.otherBarberId,
+      }))!;
+      await expect(
+        book(at(day, '15:30'), { userId: reception, barberId: receptionBarberId }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(
+        (await service.getAppointments(reception, A.shopId, { limit: 500 })).map((a) => a.id),
+      ).toContain(forOther.id);
+      await expect(
+        service.updateAppointment(reception, A.shopId, forOther.id, { notes: 'confirmado' }),
+      ).resolves.toBeTruthy();
+
+      // Clientes: vê o contato de todos, busca por telefone e edita
+      const stranger = await prisma.customer.findUniqueOrThrow({ where: { id: strangerId } });
+      expect(await service.getCustomer(reception, A.shopId, strangerId)).toMatchObject({
+        phone: stranger.phone,
+      });
+      expect(
+        (await service.getCustomers(reception, A.shopId, { search: stranger.phone })).map(
+          (c) => c.id,
+        ),
+      ).toEqual([strangerId]);
+      await expect(
+        service.updateCustomer(reception, A.shopId, strangerId, { notes: 'prefere manhã' }),
+      ).resolves.toBeTruthy();
+      await denied(service.deleteCustomer(reception, A.shopId, strangerId));
+
+      // Vendas de todos (é quem fecha a conta no balcão), sem editar/apagar
+      const sale = await service.createSale(reception, A.shopId, {
+        barberId: A.otherBarberId,
+        saleType: 'SERVICE',
+        items: [],
+        subtotal: 10,
+        total: 10,
+      });
+      const sales = (await service.getSales(reception, A.shopId)) as any;
+      expect((Array.isArray(sales) ? sales : sales.items).map((x: any) => x.id)).toContain(sale.id);
+      await denied(service.deleteSale(reception, A.shopId, sale.id));
+
+      // Fora: relatórios, despesas, histórico do caixa, catálogo, equipe, horários
+      await denied(service.getExpenses(reception, A.shopId));
+      await denied(service.getFinancialSummary(reception, A.shopId, new Date(0), new Date()));
+      await denied(service.getCashSessions(reception, A.shopId));
+      await denied(service.getAdvancedReports(reception, A.shopId, new Date(0), new Date()));
+      await denied(service.updateService(reception, A.shopId, A.serviceId, { price: 1 }));
+      await denied(service.deleteBarber(reception, A.shopId, A.otherBarberId));
+      await denied(
+        service.createBarberTimeOff(reception, {
+          barberId: A.otherBarberId,
+          startAt: at(day, '08:00').toISOString(),
+          endAt: at(day, '08:30').toISOString(),
+        }),
+      );
+      expect((await service.getNetworkDashboardStats(reception)).totalBarbershops).toBe(0);
+      // Na rede, vê a agenda da unidade inteira
+      expect((await service.getNetworkAppointments(reception)).map((a) => a.id)).toContain(
+        forOther.id,
+      );
+
+      await prisma.appointmentService.deleteMany({ where: { appointmentId: forOther.id } });
+      await prisma.appointment.delete({ where: { id: forOther.id } });
+    });
+
+    it('recepção não aparece pra agendar na página pública', async () => {
+      const shop = await prisma.barbershop.findUniqueOrThrow({ where: { id: A.shopId } });
+      const pub = await service.getPublicBarbershopByslug(shop.slug);
+      const ids = pub.barbers.map((b: { id: number }) => b.id);
+      expect(ids).toContain(basicBarberId);
+      expect(ids).not.toContain(receptionBarberId);
     });
 
     it('barbeiro mexe só na própria folga', async () => {

@@ -2091,6 +2091,7 @@ input UpdateBarberInput {
   phone: String
   specialization: String
   specialties: [TreatmentCategory!]
+  staffType: String
   userId: Float
 }
 

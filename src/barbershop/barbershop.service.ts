@@ -14,6 +14,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
+import { isStaffType, StaffType } from './staff-roles';
 import {
   dayOfWeekOf,
   monthRangeUtc,
@@ -66,8 +67,30 @@ const NETWORK_ACCENT_COLORS = [
 ] as const;
 const NETWORK_GRAY_COLORS = ['auto', 'gray', 'mauve', 'slate', 'sage', 'olive', 'sand'] as const;
 
-export type AccessLevel = 'barber' | 'manager' | 'owner';
-const ACCESS_RANK: Record<AccessLevel, number> = { barber: 1, manager: 2, owner: 3 };
+/**
+ * Cargos na unidade, como no Booksy (do mais restrito ao dono):
+ * - basic (Barbeiro básico): só a própria agenda; clientes só pelo nome
+ * - barber (Barbeiro): a própria agenda, as próprias vendas, fila e pacotes;
+ *   contato só dos clientes que já agendaram com ele
+ * - reception (Recepção): agenda de todos, cadastro completo dos clientes e
+ *   o caixa do dia (abrir, vender, fechar) — sem relatórios nem configurações
+ * - manager (Gerente): quase tudo do dono
+ * - owner (Dono): tudo, inclusive apagar a unidade
+ */
+export type AccessLevel = 'basic' | 'barber' | 'reception' | 'manager' | 'owner';
+const ACCESS_RANK: Record<AccessLevel, number> = {
+  basic: 1,
+  barber: 2,
+  reception: 3,
+  manager: 4,
+  owner: 5,
+};
+/** Recepção não atende: não aparece pra agendar nem recebe agendamento */
+const BOOKABLE_STAFF = {
+  OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
+} satisfies Prisma.BarberWhereInput;
+/** Cargos que veem só a própria agenda (e as próprias vendas) */
+const OWN_AGENDA_ONLY: AccessLevel[] = ['basic', 'barber'];
 
 @Injectable()
 export class BarbershopService {
@@ -225,7 +248,7 @@ export class BarbershopService {
       select: { staffType: true },
     });
     if (!staff) return null;
-    return staff.staffType === 'manager' ? 'manager' : 'barber';
+    return isStaffType(staff.staffType) ? staff.staffType : 'barber';
   }
 
   /** Mesmo controle, pra quem está fora deste service (fotos, redes sociais…). */
@@ -243,12 +266,12 @@ export class BarbershopService {
   }
 
   /**
-   * Agenda/folga de um barbeiro: gerente e dono mexem em qualquer um; o
-   * barbeiro, só na própria.
+   * Horário/folga de um barbeiro: gerente e dono mexem em qualquer um; o
+   * barbeiro (e o básico), só no próprio. Recepção não mexe em horário.
    */
   private async ensureCanManageBarber(userId: number, barbershopId: number, barberId: number) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
-    if (barbershop.accessLevel !== 'barber') return barbershop;
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.manager) return barbershop;
     const own = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId, userId, isActive: true },
       select: { id: true },
@@ -260,14 +283,15 @@ export class BarbershopService {
   }
 
   /**
-   * Como o "Staffer" do Booksy: o barbeiro vê e mexe só na própria agenda.
-   * Devolve o id de barbeiro dele (null pra gerente e dono, que veem tudo).
+   * Como no Booksy: barbeiro e barbeiro básico veem e mexem só na própria
+   * agenda. Devolve o id de barbeiro dele (null pra recepção, gerente e dono,
+   * que veem todas).
    */
   private async ownBarberIdIfBarber(
     userId: number,
     barbershop: { id: number; accessLevel: AccessLevel },
   ): Promise<number | null> {
-    if (barbershop.accessLevel !== 'barber') return null;
+    if (!OWN_AGENDA_ONLY.includes(barbershop.accessLevel)) return null;
     const me = await this.prisma.barber.findFirst({
       where: { barbershopId: barbershop.id, userId, isActive: true },
       select: { id: true },
@@ -283,27 +307,45 @@ export class BarbershopService {
   }
 
   /**
-   * Como no Booksy, o barbeiro não vê telefone nem e-mail dos clientes (quem
-   * liga e manda mensagem é a unidade). Gerente e dono veem tudo.
+   * De quais clientes a pessoa vê telefone e e-mail (como no Booksy):
+   * recepção, gerente e dono, de todos; barbeiro, só dos que já agendaram com
+   * ele; barbeiro básico, de nenhum.
    */
-  private hideContactFor<T extends { phone?: string | null; email?: string | null } | null>(
-    level: AccessLevel,
-    customer: T,
-  ): T {
-    if (level !== 'barber' || !customer) return customer;
+  private async contactVisibility(
+    userId: number,
+    barbershop: { id: number; accessLevel: AccessLevel },
+  ): Promise<(customerId: number | null | undefined) => boolean> {
+    if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.reception) return () => true;
+    if (barbershop.accessLevel === 'basic') return () => false;
+    const own = await this.ownBarberIdIfBarber(userId, barbershop);
+    const mine = await this.prisma.appointment.findMany({
+      where: { barberId: own ?? -1 },
+      select: { customerId: true },
+      distinct: ['customerId'],
+    });
+    const ids = new Set(mine.map((a) => a.customerId));
+    return (customerId) => customerId != null && ids.has(customerId);
+  }
+
+  private hideContact<
+    T extends { id: number; phone?: string | null; email?: string | null } | null,
+  >(canSee: (customerId: number) => boolean, customer: T): T {
+    if (!customer || canSee(customer.id)) return customer;
     return { ...customer, phone: '', email: null };
   }
 
-  private hideAppointmentContactFor<T extends { customer?: any }>(level: AccessLevel, appt: T): T {
-    return appt?.customer ? { ...appt, customer: this.hideContactFor(level, appt.customer) } : appt;
+  private hideAppointmentContact<T extends { customer?: any }>(
+    canSee: (customerId: number) => boolean,
+    appt: T,
+  ): T {
+    return appt?.customer ? { ...appt, customer: this.hideContact(canSee, appt.customer) } : appt;
   }
 
-  private hideWalkInContactFor<T extends { customerPhone?: string | null; customer?: any }>(
-    level: AccessLevel,
-    walkIn: T,
-  ): T {
-    if (level !== 'barber' || !walkIn) return walkIn;
-    return { ...this.hideAppointmentContactFor(level, walkIn), customerPhone: null };
+  private hideWalkInContact<
+    T extends { customerId?: number | null; customerPhone?: string | null; customer?: any },
+  >(canSee: (customerId: number | null | undefined) => boolean, walkIn: T): T {
+    if (!walkIn || canSee(walkIn.customerId)) return walkIn;
+    return { ...this.hideAppointmentContact(canSee, walkIn), customerPhone: null };
   }
 
   /** Verifica acesso à barbearia (usado por EmployeeInviteService). */
@@ -685,7 +727,7 @@ export class BarbershopService {
   }
 
   async getBarbershop(userId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, id);
+    await this.ensureBarbershopAccess(userId, id, 'basic');
     const barbershop = await this.prisma.barbershop.findUnique({
       where: { id },
     });
@@ -806,7 +848,7 @@ export class BarbershopService {
         'Informe pelo menos telefone ou email para cadastrar o cliente.',
       );
     }
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     return this.prisma.customer.create({
       data: {
         networkId: barbershop.networkId,
@@ -822,13 +864,14 @@ export class BarbershopService {
     barbershopId: number,
     filters?: { isActive?: boolean; search?: string; limit?: number; offset?: number },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const where: any = { networkId: barbershop.networkId };
     if (filters?.isActive !== undefined) where.isActive = filters.isActive;
     if (filters?.search) {
       where.OR = [{ name: { contains: filters.search, mode: 'insensitive' } }];
-      // Barbeiro não vê o contato: buscar por ele confirmaria o telefone de alguém
-      if (barbershop.accessLevel !== 'barber') {
+      // Quem não vê o contato de todos não busca por ele (confirmaria o
+      // telefone de alguém)
+      if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.reception) {
         where.OR.push(
           { phone: { contains: filters.search } },
           { email: { contains: filters.search, mode: 'insensitive' } },
@@ -841,16 +884,17 @@ export class BarbershopService {
       take: filters?.limit ?? 50,
       skip: filters?.offset ?? 0,
     });
-    return customers.map((c) => this.hideContactFor(barbershop.accessLevel, c));
+    const canSee = await this.contactVisibility(userId, barbershop);
+    return customers.map((c) => this.hideContact(canSee, c));
   }
 
   async getCustomer(userId: number, barbershopId: number, customerId: number) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
-    return this.hideContactFor(barbershop.accessLevel, customer);
+    return this.hideContact(await this.contactVisibility(userId, barbershop), customer);
   }
 
   async updateCustomer(
@@ -867,7 +911,7 @@ export class BarbershopService {
       marketingOptOut: boolean;
     }>,
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
@@ -929,7 +973,7 @@ export class BarbershopService {
   }
 
   async getBarbers(userId: number, barbershopId: number, activeOnly?: boolean) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const where: any = { barbershopId };
     if (activeOnly) where.isActive = true;
     return this.prisma.barber.findMany({
@@ -951,6 +995,7 @@ export class BarbershopService {
       specialization: string;
       specialties: TreatmentCategory[];
       isActive: boolean;
+      staffType: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
@@ -958,6 +1003,24 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
     });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (data.staffType !== undefined) {
+      if (!isStaffType(data.staffType)) throw new BadRequestException('Cargo inválido');
+      // Quem vira recepção deixa de atender: não pode ter horário marcado
+      if (data.staffType === 'reception' && barber.staffType !== 'reception') {
+        const upcoming = await this.prisma.appointment.count({
+          where: {
+            barberId,
+            startAt: { gte: new Date() },
+            status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
+          },
+        });
+        if (upcoming > 0) {
+          throw new BadRequestException(
+            'Esse profissional tem agendamentos marcados. Remarque-os antes de passar pra recepção.',
+          );
+        }
+      }
+    }
     return this.prisma.barber.update({ where: { id: barberId }, data });
   }
 
@@ -1034,7 +1097,7 @@ export class BarbershopService {
   }
 
   async getServices(userId: number, barbershopId: number, activeOnly?: boolean) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const where: any = { barbershopId };
     if (activeOnly) where.isActive = true;
     return this.prisma.barbershopService.findMany({
@@ -1319,7 +1382,7 @@ export class BarbershopService {
   // ============ BARBER SCHEDULE ============
 
   async getBarberSchedules(userId: number, barbershopId: number, barberId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     return this.prisma.barberSchedule.findMany({
       where: { barberId, isActive: true },
       orderBy: { dayOfWeek: 'asc' },
@@ -1425,7 +1488,7 @@ export class BarbershopService {
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: barberId } });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
-    await this.ensureBarbershopAccess(userId, barber.barbershopId);
+    await this.ensureBarbershopAccess(userId, barber.barbershopId, 'basic');
     const where: any = { barberId };
     if (filters?.startAt || filters?.endAt) {
       where.AND = [];
@@ -1470,7 +1533,7 @@ export class BarbershopService {
 
   private async ensureBarberOfBarbershop(barbershopId: number, barberId: number) {
     const barber = await this.prisma.barber.findFirst({
-      where: { id: barberId, barbershopId },
+      where: { id: barberId, barbershopId, ...BOOKABLE_STAFF },
       select: { id: true },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
@@ -1566,7 +1629,7 @@ export class BarbershopService {
       services: Array<{ serviceId: number; quantity?: number; unitPrice: number }>;
     },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
     if (ownBarberId !== null && data.barberId !== ownBarberId) {
       throw new ForbiddenException('Seu cargo só permite agendar na sua própria agenda.');
@@ -1632,7 +1695,10 @@ export class BarbershopService {
         include: { services: true, customer: true, barber: true },
       });
     });
-    return created && this.hideAppointmentContactFor(barbershop.accessLevel, created);
+    return (
+      created &&
+      this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), created)
+    );
   }
 
   async getAppointments(
@@ -1648,7 +1714,7 @@ export class BarbershopService {
       offset?: number;
     },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const where: any = { barbershopId };
     if (filters?.barberId) where.barberId = filters.barberId;
     // Barbeiro vê só a própria agenda
@@ -1668,7 +1734,8 @@ export class BarbershopService {
       take: filters?.limit ?? 50,
       skip: filters?.offset ?? 0,
     });
-    return appointments.map((a) => this.hideAppointmentContactFor(barbershop.accessLevel, a));
+    const canSee = await this.contactVisibility(userId, barbershop);
+    return appointments.map((a) => this.hideAppointmentContact(canSee, a));
   }
 
   async getNetworkAppointments(
@@ -1697,7 +1764,9 @@ export class BarbershopService {
         { barbershop: { network: { ownerUserId: userId } } },
         {
           barbershop: {
-            barbers: { some: { userId, isActive: true, staffType: 'manager' } },
+            barbers: {
+              some: { userId, isActive: true, staffType: { in: ['manager', 'reception'] } },
+            },
           },
         },
         { barber: { userId, isActive: true } },
@@ -1718,14 +1787,17 @@ export class BarbershopService {
   }
 
   async getAppointment(userId: number, barbershopId: number, appointmentId: number) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
       include: { services: { include: { service: true } }, customer: true, barber: true },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
     this.ensureOwnAppointment(await this.ownBarberIdIfBarber(userId, barbershop), appointment);
-    return this.hideAppointmentContactFor(barbershop.accessLevel, appointment);
+    return this.hideAppointmentContact(
+      await this.contactVisibility(userId, barbershop),
+      appointment,
+    );
   }
 
   async updateAppointment(
@@ -1742,7 +1814,7 @@ export class BarbershopService {
       status: string;
     }>,
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
     });
@@ -1812,7 +1884,7 @@ export class BarbershopService {
       );
     }
 
-    return this.hideAppointmentContactFor(barbershop.accessLevel, updated);
+    return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
   private async recordNoShowFee(
@@ -1912,7 +1984,8 @@ export class BarbershopService {
       include: { customer: true, barber: true, service: true },
       orderBy: { createdAt: 'asc' },
     });
-    return entries.map((e) => this.hideAppointmentContactFor(barbershop.accessLevel, e));
+    const canSee = await this.contactVisibility(userId, barbershop);
+    return entries.map((e) => this.hideAppointmentContact(canSee, e));
   }
 
   async createWaitlistEntry(
@@ -1925,7 +1998,7 @@ export class BarbershopService {
       data: { ...data, barbershopId },
       include: { customer: true, barber: true, service: true },
     });
-    return this.hideAppointmentContactFor(barbershop.accessLevel, entry);
+    return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), entry);
   }
 
   async cancelWaitlistEntry(userId: number, barbershopId: number, id: number) {
@@ -2254,7 +2327,7 @@ export class BarbershopService {
       where: { slug },
       include: {
         services: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } },
-        barbers: { where: { isActive: true }, orderBy: { name: 'asc' } },
+        barbers: { where: { isActive: true, ...BOOKABLE_STAFF }, orderBy: { name: 'asc' } },
         network: { select: { accentColor: true, grayColor: true } },
       },
     });
@@ -2364,7 +2437,9 @@ export class BarbershopService {
     dateStr: string,
   ) {
     const [barber, service] = await Promise.all([
-      this.prisma.barber.findFirst({ where: { id: barberId, barbershopId, isActive: true } }),
+      this.prisma.barber.findFirst({
+        where: { id: barberId, barbershopId, isActive: true, ...BOOKABLE_STAFF },
+      }),
       this.prisma.barbershopService.findFirst({
         where: { id: serviceId, barbershopId, isActive: true },
       }),
@@ -2466,7 +2541,12 @@ export class BarbershopService {
 
     const [barber, service] = await Promise.all([
       this.prisma.barber.findFirst({
-        where: { id: input.barberId, barbershopId: input.barbershopId, isActive: true },
+        where: {
+          id: input.barberId,
+          barbershopId: input.barbershopId,
+          isActive: true,
+          ...BOOKABLE_STAFF,
+        },
       }),
       this.prisma.barbershopService.findFirst({
         where: { id: input.serviceId, barbershopId: input.barbershopId, isActive: true },
@@ -3458,7 +3538,8 @@ export class BarbershopService {
       take: filters?.limit ?? 50,
       skip: filters?.offset ?? 0,
     });
-    return walkIns.map((w) => this.hideWalkInContactFor(barbershop.accessLevel, w));
+    const canSee = await this.contactVisibility(userId, barbershop);
+    return walkIns.map((w) => this.hideWalkInContact(canSee, w));
   }
 
   async updateWalkInStatus(userId: number, barbershopId: number, walkInId: number, status: string) {
@@ -3754,13 +3835,8 @@ export class BarbershopService {
     if (filters?.barberId) where.barberId = filters.barberId;
     // Barbeiro vê só as próprias vendas (o faturamento da unidade é do dono
     // e do gerente)
-    if (shop.accessLevel === 'barber') {
-      const me = await this.prisma.barber.findFirst({
-        where: { barbershopId, userId, isActive: true },
-        select: { id: true },
-      });
-      where.barberId = me?.id ?? -1;
-    }
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, shop);
+    if (ownBarberId !== null) where.barberId = ownBarberId;
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
     if (filters?.from || filters?.to) {
       where.createdAt = {};
@@ -3899,7 +3975,7 @@ export class BarbershopService {
   }
 
   async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const existing = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -3927,7 +4003,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { countedBalance: number; notes?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const session = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -4106,7 +4182,7 @@ export class BarbershopService {
   // ============ RESOURCES ============
 
   async getResources(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     return this.prisma.resource.findMany({
       where: { barbershopId },
       orderBy: { name: 'asc' },
