@@ -172,6 +172,13 @@ describe('Pagamento da equipe (integração)', () => {
       baseAmount: 100,
     });
 
+    // Data que não existe e período de décadas: recusados
+    await expect(payroll.preview(ownerId, shopId, ana, '2026-02-31', MONTH_TO)).rejects.toThrow(
+      'Período inválido',
+    );
+    await expect(payroll.preview(ownerId, shopId, ana, '2000-01-01', MONTH_TO)).rejects.toThrow(
+      'no máximo',
+    );
     await payroll.setConfig(ownerId, shopId, ana, { payType: 'GREATER_OF', fixedAmount: 80 });
     expect((await payroll.preview(ownerId, shopId, ana, MONTH_FROM, MONTH_TO)).baseAmount).toBe(
       100,

@@ -36,6 +36,7 @@ export type ClientHistoryEntry = {
   date: string;
   networkName: string;
   barbershopName: string;
+  barbershopSlug?: string;
   detail: string | null;
   status: string;
   total: number | null;
@@ -595,7 +596,7 @@ export class ClientAuthService {
       this.prisma.appointment.findMany({
         where: { customerId: { in: customerIds } },
         include: {
-          barbershop: { select: { name: true } },
+          barbershop: { select: { name: true, slug: true } },
           services: { include: { service: { select: { name: true } } } },
         },
         orderBy: { startAt: 'desc' },
@@ -628,6 +629,7 @@ export class ClientAuthService {
         date: a.startAt.toISOString(),
         networkName: networkNameByCustomer.get(a.customerId) ?? 'Negócio',
         barbershopName: a.barbershop.name,
+        barbershopSlug: a.barbershop.slug,
         detail: serviceNames || null,
         status: a.status,
         total: null,

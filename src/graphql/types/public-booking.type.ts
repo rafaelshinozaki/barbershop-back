@@ -492,4 +492,8 @@ export class ManagedAppointmentType {
 
   @Field()
   currency: string;
+
+  /** Link de gerenciar (só na lista de próximos horários do cliente logado) */
+  @Field({ nullable: true })
+  manageToken?: string;
 }

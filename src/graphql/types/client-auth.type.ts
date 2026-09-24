@@ -43,6 +43,10 @@ export class ClientHistoryEntryType {
   @Field()
   barbershopName: string;
 
+  /** Pra "agendar de novo" (página pública da unidade) */
+  @Field({ nullable: true })
+  barbershopSlug?: string;
+
   @Field({ nullable: true })
   detail?: string;
 

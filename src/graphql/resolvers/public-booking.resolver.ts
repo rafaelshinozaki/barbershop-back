@@ -200,6 +200,13 @@ export class PublicBookingResolver {
     return this.barbershopService.getManagedAppointment(token);
   }
 
+  /** Próximos horários do cliente logado, com o link pra remarcar/cancelar */
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => [ManagedAppointmentType])
+  async myUpcomingAppointments(@CurrentClient() client: CurrentClientUser) {
+    return this.barbershopService.getClientUpcomingAppointments(client.id);
+  }
+
   @Query(() => [ReviewType])
   async barbershopReviews(@Args('barbershopId', { type: () => Int }) barbershopId: number) {
     return this.barbershopService.getBarbershopReviews(barbershopId);

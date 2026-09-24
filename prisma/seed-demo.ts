@@ -1908,6 +1908,253 @@ async function ensureSharedLocation(prisma: PrismaClient) {
   }
 }
 
+/**
+ * Aluguel da cadeira pago direto ao espaço: o Studio Navalha paga R$ 450/mês à
+ * Green por PIX/dinheiro — dois meses pagos, um atrasado e o do mês em aberto.
+ * Cada pagamento vira despesa "Aluguel" no Studio Navalha.
+ */
+async function ensureChairRent(prisma: PrismaClient) {
+  const [green, navalha] = await Promise.all(
+    ['green-barbershop', 'studio-navalha'].map((slug) =>
+      prisma.barbershop.findUnique({ where: { slug } }),
+    ),
+  );
+  if (!green || !navalha) return;
+  const link = await prisma.sharedLocationMember.findUnique({
+    where: {
+      hostBarbershopId_memberBarbershopId: {
+        hostBarbershopId: green.id,
+        memberBarbershopId: navalha.id,
+      },
+    },
+  });
+  if (!link || link.status !== 'ACTIVE' || link.rentBillingMode === 'MANUAL') return;
+  console.log('Chair rent: Studio Navalha pays Green monthly (PIX/cash)...');
+  const now = new Date();
+  const day = Math.min(now.getUTCDate(), 28);
+  const due = (monthsAgo: number) =>
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, day, 12));
+  await prisma.sharedLocationMember.update({
+    where: { id: link.id },
+    data: {
+      rentAmount: 450,
+      rentCurrency: green.currency,
+      rentBillingMode: 'MANUAL',
+      rentStatus: 'ACTIVE',
+      rentStartedAt: due(3),
+    },
+  });
+  const rows = [
+    { monthsAgo: 3, method: 'PIX' },
+    { monthsAgo: 2, method: 'CASH' },
+    { monthsAgo: 1, method: null }, // atrasado
+    { monthsAgo: 0, method: null }, // do mês
+  ];
+  for (const r of rows) {
+    const dueDate = due(r.monthsAgo);
+    const paidAt = r.method ? new Date(dueDate.getTime() + 2 * 86_400_000) : null;
+    const expense =
+      r.method && navalha.ownerUserId
+        ? await prisma.expense.create({
+            data: {
+              barbershopId: navalha.id,
+              category: 'RENT',
+              description: `Aluguel da cadeira — ${green.name}`,
+              amount: 450,
+              paymentMethod: r.method,
+              expenseDate: paidAt!,
+              createdByUserId: navalha.ownerUserId,
+            },
+          })
+        : null;
+    await prisma.chairRentPayment.create({
+      data: {
+        sharedLocationMemberId: link.id,
+        amount: 450,
+        currency: green.currency,
+        status: r.method ? 'SUCCEEDED' : 'DUE',
+        method: r.method ?? 'OTHER',
+        dueDate,
+        paidAt,
+        periodStart: dueDate,
+        periodEnd: due(r.monthsAgo - 1),
+        recordedByUserId: r.method ? green.ownerUserId : null,
+        memberExpenseId: expense?.id ?? null,
+        notes: r.method === 'CASH' ? 'Pago no balcão' : null,
+      },
+    });
+  }
+}
+
+/**
+ * Pagamento da equipe da Green nos dois últimos meses fechados: cada um com a
+ * sua forma de pagamento, gorjetas, um vale no meio do mês e o pagamento no
+ * dia 5 do mês seguinte (despesa "Salário"). Só meses passados — o mês atual
+ * fica em aberto pra demonstrar a prévia.
+ */
+async function ensurePayroll(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green || !green.ownerUserId) return;
+  if (await prisma.barberPayout.count({ where: { barbershopId: green.id } })) return;
+  const barbers = await prisma.barber.findMany({
+    where: {
+      barbershopId: green.id,
+      isActive: true,
+      OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
+    },
+    orderBy: { id: 'asc' },
+  });
+  if (barbers.length === 0) return;
+  console.log('Payroll: Green team pay for the last two months...');
+  const rules = await prisma.commissionRule.findMany({ where: { barbershopId: green.id } });
+  const pct = (barberId: number, itemType: string) =>
+    Number(
+      (
+        rules.find((r) => r.barberId === barberId && r.itemType === itemType) ??
+        rules.find((r) => r.barberId === barberId && r.itemType === 'ALL') ??
+        rules.find((r) => r.barberId == null && r.itemType === itemType) ??
+        rules.find((r) => r.barberId == null && r.itemType === 'ALL')
+      )?.percentage ?? 0,
+    );
+  const now = new Date();
+  // Mês em BRT: começo do dia 1 às 03:00 UTC
+  const monthStart = (monthsAgo: number) =>
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1, 3));
+  const configs: Array<{ payType: string; fixed: number | null }> = [
+    { payType: 'COMMISSION', fixed: null },
+    { payType: 'FIXED_PLUS_COMMISSION', fixed: 1200 },
+    { payType: 'GREATER_OF', fixed: 2000 },
+    { payType: 'FIXED', fixed: 2500 },
+  ];
+  for (const [i, barber] of barbers.entries()) {
+    const c = configs[i % configs.length];
+    await prisma.barberPayConfig.upsert({
+      where: { barberId: barber.id },
+      create: {
+        barberId: barber.id,
+        barbershopId: green.id,
+        payType: c.payType,
+        fixedAmount: c.fixed,
+      },
+      update: {},
+    });
+    for (const monthsAgo of [2, 1]) {
+      const start = monthStart(monthsAgo);
+      const end = new Date(monthStart(monthsAgo - 1).getTime() - 1);
+      const sales = await prisma.sale.findMany({
+        where: {
+          barbershopId: green.id,
+          barberId: barber.id,
+          paymentStatus: 'PAID',
+          createdAt: { gte: start, lte: end },
+        },
+        include: { items: true },
+      });
+      let serviceSales = 0;
+      let productSales = 0;
+      let commission = 0;
+      for (const sale of sales) {
+        for (const item of sale.items) {
+          const total = Number(item.totalPrice);
+          if (item.itemType === 'PRODUCT') productSales += total;
+          else serviceSales += total;
+          commission += (total * pct(barber.id, item.itemType)) / 100;
+        }
+      }
+      commission = Math.round(commission * 100) / 100;
+      const fixed = c.fixed ?? 0;
+      const base =
+        c.payType === 'FIXED'
+          ? fixed
+          : c.payType === 'FIXED_PLUS_COMMISSION'
+          ? fixed + commission
+          : c.payType === 'GREATER_OF'
+          ? Math.max(fixed, commission)
+          : commission;
+      const tips = 40 + ((barber.id * 17 + monthsAgo * 23) % 90);
+      const advance = 200;
+      const advanceDate = new Date(start.getTime() + 14 * 86_400_000);
+      const advanceExpense = await prisma.expense.create({
+        data: {
+          barbershopId: green.id,
+          category: 'SALARY',
+          description: `Vale — ${barber.name}`,
+          amount: advance,
+          paymentMethod: 'PIX',
+          expenseDate: advanceDate,
+          createdByUserId: green.ownerUserId,
+        },
+      });
+      const total = Math.max(0, Math.round((base + tips - advance) * 100) / 100);
+      const paidAt = new Date(
+        monthStart(monthsAgo - 1).getTime() + 4 * 86_400_000 + 15 * 3_600_000,
+      );
+      const method = i % 2 === 0 ? 'PIX' : 'TRANSFER';
+      const payoutExpense = await prisma.expense.create({
+        data: {
+          barbershopId: green.id,
+          category: 'SALARY',
+          description: `Pagamento — ${barber.name}`,
+          amount: total,
+          paymentMethod: method,
+          expenseDate: paidAt,
+          createdByUserId: green.ownerUserId,
+        },
+      });
+      const payout = await prisma.barberPayout.create({
+        data: {
+          barbershopId: green.id,
+          barberId: barber.id,
+          periodStart: start,
+          periodEnd: end,
+          payType: c.payType,
+          serviceSales,
+          productSales,
+          salesCount: sales.length,
+          commission,
+          fixedAmount: c.payType === 'COMMISSION' ? 0 : fixed,
+          baseAmount: base,
+          tips,
+          bonuses: 0,
+          deductions: 0,
+          advances: advance,
+          total,
+          currency: green.currency,
+          method,
+          paidAt,
+          expenseId: payoutExpense.id,
+          createdByUserId: green.ownerUserId,
+        },
+      });
+      await prisma.barberPayEntry.createMany({
+        data: [
+          {
+            barbershopId: green.id,
+            barberId: barber.id,
+            type: 'TIP',
+            amount: tips,
+            date: new Date(start.getTime() + 9 * 86_400_000),
+            notes: 'Gorjetas no cartão',
+            payoutId: payout.id,
+            createdByUserId: green.ownerUserId,
+          },
+          {
+            barbershopId: green.id,
+            barberId: barber.id,
+            type: 'ADVANCE',
+            amount: advance,
+            method: 'PIX',
+            date: advanceDate,
+            payoutId: payout.id,
+            expenseId: advanceExpense.id,
+            createdByUserId: green.ownerUserId,
+          },
+        ],
+      });
+    }
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -1945,5 +2192,7 @@ export async function seedDemoData(prisma: PrismaClient) {
   await ensureOtherShops(prisma, clientAccounts);
   await ensureMultiUnitStaff(prisma);
   await ensureSharedLocation(prisma);
+  await ensureChairRent(prisma);
+  await ensurePayroll(prisma);
   await seedNotifications(prisma, green.id);
 }
