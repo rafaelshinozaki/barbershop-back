@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel } from './staff-roles';
 
@@ -22,6 +22,9 @@ export interface CreateEmployeeInviteInput {
   staffType?: StaffType;
   specialization?: string;
   hireDate?: string;
+  /** Vínculo temporário (freelancer): início e fim, ISO. Vazio = sem limite */
+  accessStartsAt?: string | null;
+  accessEndsAt?: string | null;
 }
 
 export interface AcceptEmployeeInviteAddress {
@@ -71,14 +74,18 @@ export class EmployeeInviteService {
       throw new BadRequestException('Email é obrigatório para enviar o convite');
     }
 
-    const existingUser = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
-    });
+    // Profissional que já tem conta (trabalha em outra unidade, é freelancer
+    // ou dono de outra barbearia) aceita o convite com a conta dele
+    const existingUser = await this.prisma.user.findFirst({ where: { email } });
     if (existingUser) {
-      throw new BadRequestException(
-        'Já existe um usuário com este email. Funcionários devem usar um email ainda não cadastrado.',
-      );
+      const alreadyInTeam = await this.prisma.barber.findFirst({
+        where: { barbershopId: input.barbershopId, userId: existingUser.id, isActive: true },
+      });
+      if (alreadyInTeam) {
+        throw new BadRequestException('Essa pessoa já está na equipe desta unidade');
+      }
     }
+    const period = parseEngagementPeriod(input.accessStartsAt, input.accessEndsAt);
 
     const existingInvite = await this.prisma.employeeInvite.findFirst({
       where: {
@@ -134,6 +141,7 @@ export class EmployeeInviteService {
             : undefined),
         hireDate: input.hireDate ? new Date(input.hireDate) : undefined,
         staffType,
+        ...period,
       },
     });
     // Funcionário convidado já entra na equipe (card "Funcionários")
@@ -156,8 +164,17 @@ export class EmployeeInviteService {
       },
     });
 
-    await this.sendEmployeeInviteEmail(invite);
-    return { barber, invite };
+    // E-mail é best-effort: se o provedor falhar, o convite continua valendo
+    // (antes a requisição dava erro com o convite já criado, e tentar de novo
+    // esbarrava em "já existe um convite pendente"). A tela oferece o link.
+    let emailSent = true;
+    try {
+      await this.sendEmployeeInviteEmail(invite);
+    } catch (error) {
+      emailSent = false;
+      this.logger.error(`Convite ${invite.id}: e-mail não enviado`, error as Error);
+    }
+    return { barber, invite, emailSent };
   }
 
   /**
@@ -169,6 +186,7 @@ export class EmployeeInviteService {
       include: {
         inviter: { select: { fullName: true } },
         barbershop: { select: { name: true, address: true } },
+        barber: { select: { staffType: true, accessStartsAt: true, accessEndsAt: true } },
       },
     });
 
@@ -182,12 +200,21 @@ export class EmployeeInviteService {
       throw new BadRequestException('Este convite expirou');
     }
 
+    const existingAccount = await this.prisma.user.findFirst({
+      where: { email: invite.email },
+      select: { id: true },
+    });
     return {
       valid: true,
       email: invite.email,
       barbershopName: invite.barbershop.name,
       inviterName: invite.inviter.fullName,
       role: invite.role,
+      staffType: invite.barber?.staffType ?? null,
+      accessStartsAt: invite.barber?.accessStartsAt ?? null,
+      accessEndsAt: invite.barber?.accessEndsAt ?? null,
+      // Já tem conta: entra com ela pra aceitar (não cria outra)
+      existingAccount: !!existingAccount,
     };
   }
 
@@ -339,6 +366,56 @@ export class EmployeeInviteService {
       email: newUser.email,
       message: 'Conta criada com sucesso. Faça login para acessar.',
     };
+  }
+
+  /**
+   * Aceita o convite com a conta que a pessoa já tem (logada): entra na
+   * equipe de mais uma unidade, sem criar outra conta. O e-mail da conta
+   * tem que ser o do convite.
+   */
+  async acceptInviteAsUser(inviteToken: string, userId: number) {
+    const invite = await this.prisma.employeeInvite.findUnique({ where: { inviteToken } });
+    if (!invite) throw new NotFoundException('Convite não encontrado');
+    if (invite.status !== 'PENDING') {
+      throw new BadRequestException('Este convite já foi utilizado');
+    }
+    if (invite.expiresAt < new Date()) {
+      throw new BadRequestException('Este convite expirou');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.email.toLowerCase() !== invite.email.toLowerCase()) {
+      throw new BadRequestException(
+        'Este convite foi enviado para outro e-mail. Entre com a conta desse e-mail para aceitar.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Quem já passou por esta unidade e saiu tem o vínculo antigo (desligado):
+      // ele fica como histórico (vendas, comissões) e o novo passa a valer
+      await tx.barber.updateMany({
+        where: {
+          barbershopId: invite.barbershopId,
+          userId,
+          id: { not: invite.barberId },
+          isActive: false,
+        },
+        data: { userId: null },
+      });
+      const active = await tx.barber.findFirst({
+        where: { barbershopId: invite.barbershopId, userId, isActive: true },
+      });
+      if (active) {
+        throw new BadRequestException('Você já está na equipe desta unidade');
+      }
+      await tx.barber.update({ where: { id: invite.barberId }, data: { userId } });
+      await tx.employeeInvite.update({
+        where: { id: invite.id },
+        data: { status: 'ACCEPTED', acceptedByUserId: userId },
+      });
+    });
+    this.realtime.notify(invite.barbershopId, 'BARBER', 'UPDATED');
+    void this.activity.memberJoined(invite.barberId, userId);
+    return { success: true, barbershopId: invite.barbershopId };
   }
 
   private async sendEmployeeInviteEmail(invite: any) {

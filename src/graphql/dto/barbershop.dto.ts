@@ -261,6 +261,13 @@ export class UpdateBarberInput {
   /** Cargo: basic | barber | reception | manager */
   @Field({ nullable: true })
   staffType?: string;
+
+  /** Vínculo temporário: início e fim (ISO). null limpa */
+  @Field(() => String, { nullable: true })
+  accessStartsAt?: string | null;
+
+  @Field(() => String, { nullable: true })
+  accessEndsAt?: string | null;
 }
 
 // ============ BarberSchedule ============

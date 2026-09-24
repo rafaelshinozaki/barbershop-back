@@ -89,6 +89,47 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
 const BOOKABLE_STAFF = {
   OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
 } satisfies Prisma.BarberWhereInput;
+/**
+ * Vínculo valendo agora: ativo e dentro do período (freelancer com data de
+ * início/fim). Fora dele a pessoa não entra na unidade nem aparece pra agendar.
+ */
+function currentEngagement(now = new Date()): Prisma.BarberWhereInput {
+  return {
+    isActive: true,
+    AND: [
+      { OR: [{ accessStartsAt: null }, { accessStartsAt: { lte: now } }] },
+      { OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: now } }] },
+    ],
+  };
+}
+/** O atendimento cai dentro do período do vínculo? */
+function withinEngagement(
+  barber: { accessStartsAt: Date | null; accessEndsAt: Date | null },
+  startAt: Date,
+): boolean {
+  return (
+    (!barber.accessStartsAt || startAt >= barber.accessStartsAt) &&
+    (!barber.accessEndsAt || startAt <= barber.accessEndsAt)
+  );
+}
+/** Valida o período do vínculo temporário (datas ISO ou null = sem limite) */
+export function parseEngagementPeriod(
+  start: string | Date | null | undefined,
+  end: string | Date | null | undefined,
+): { accessStartsAt: Date | null; accessEndsAt: Date | null } {
+  const toDate = (v: string | Date | null | undefined) => {
+    if (v == null || v === '') return null;
+    const d = new Date(v);
+    if (isNaN(d.getTime())) throw new BadRequestException('Data do vínculo inválida');
+    return d;
+  };
+  const accessStartsAt = toDate(start);
+  const accessEndsAt = toDate(end);
+  if (accessStartsAt && accessEndsAt && accessEndsAt < accessStartsAt) {
+    throw new BadRequestException('O fim do vínculo não pode ser antes do início');
+  }
+  return { accessStartsAt, accessEndsAt };
+}
 /** Cargos que veem só a própria agenda (e as próprias vendas) */
 const OWN_AGENDA_ONLY: AccessLevel[] = ['basic', 'barber'];
 
@@ -191,8 +232,13 @@ export class BarbershopService {
   /** Lança BadRequestException se a unidade já estiver no limite de profissionais do plano. */
   async ensureBarberLimitNotExceeded(barbershopId: number) {
     const limits = await this.getPlanLimitsForBarbershop(barbershopId);
+    // Freelancer com vínculo encerrado não ocupa vaga
     const currentCount = await this.prisma.barber.count({
-      where: { barbershopId, isActive: true },
+      where: {
+        barbershopId,
+        isActive: true,
+        OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: new Date() } }],
+      },
     });
     if (currentCount >= limits.maxBarbersPerShop) {
       throw new BadRequestException(
@@ -244,7 +290,7 @@ export class BarbershopService {
       return 'owner';
     }
     const staff = await this.prisma.barber.findFirst({
-      where: { barbershopId: barbershop.id, userId, isActive: true },
+      where: { barbershopId: barbershop.id, userId, ...currentEngagement() },
       select: { staffType: true },
     });
     if (!staff) return null;
@@ -392,7 +438,7 @@ export class BarbershopService {
       owned ??
       (
         await this.prisma.barber.findFirst({
-          where: { userId, isActive: true },
+          where: { userId, ...currentEngagement() },
           select: { barbershop: { select: { network: true } } },
         })
       )?.barbershop.network;
@@ -468,7 +514,7 @@ export class BarbershopService {
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
-          { barbers: { some: { userId, isActive: true, staffType: 'manager' } } },
+          { barbers: { some: { userId, staffType: 'manager', ...currentEngagement() } } },
         ],
       },
     });
@@ -687,11 +733,12 @@ export class BarbershopService {
 
     const owner = await this.prisma.user.findUnique({ where: { id: userId } });
     if (owner) {
-      const alreadyLinked = await this.prisma.barber.findUnique({ where: { userId } });
+      // O dono entra na equipe de cada unidade dele (a agenda dele é uma só:
+      // o mesmo horário não é vendido em duas unidades)
       await this.prisma.barber.create({
         data: {
           barbershopId: barbershop.id,
-          userId: alreadyLinked ? undefined : userId,
+          userId,
           name: owner.fullName,
           phone: owner.phone ?? data.phone,
           email: owner.email,
@@ -719,7 +766,7 @@ export class BarbershopService {
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
-          { barbers: { some: { userId, isActive: true } } },
+          { barbers: { some: { userId, ...currentEngagement() } } },
         ],
       },
       orderBy: { name: 'asc' },
@@ -996,6 +1043,8 @@ export class BarbershopService {
       specialties: TreatmentCategory[];
       isActive: boolean;
       staffType: string;
+      accessStartsAt: string | Date | null;
+      accessEndsAt: string | Date | null;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
@@ -1003,6 +1052,12 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
     });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    const period = parseEngagementPeriod(
+      data.accessStartsAt === undefined ? barber.accessStartsAt : data.accessStartsAt,
+      data.accessEndsAt === undefined ? barber.accessEndsAt : data.accessEndsAt,
+    );
+    if (data.accessStartsAt !== undefined) data.accessStartsAt = period.accessStartsAt;
+    if (data.accessEndsAt !== undefined) data.accessEndsAt = period.accessEndsAt;
     if (data.staffType !== undefined) {
       if (!isStaffType(data.staffType)) throw new BadRequestException('Cargo inválido');
       // Quem vira recepção deixa de atender: não pode ter horário marcado
@@ -1513,7 +1568,17 @@ export class BarbershopService {
    * barbeiros diferentes continuam em paralelo.
    */
   private async lockSchedule(tx: Prisma.TransactionClient, barberId: number, resourceId?: number) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(1, ${barberId}::int)`;
+    // Quem tem conta pode atender em várias unidades: a trava é da pessoa,
+    // pra duas unidades não venderem o mesmo horário dela ao mesmo tempo
+    const barber = await tx.barber.findUnique({
+      where: { id: barberId },
+      select: { userId: true },
+    });
+    if (barber?.userId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(3, ${barber.userId}::int)`;
+    } else {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(1, ${barberId}::int)`;
+    }
     if (resourceId) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, ${resourceId}::int)`;
     }
@@ -1585,6 +1650,17 @@ export class BarbershopService {
     }
   }
 
+  /** Os vínculos da mesma pessoa em todas as unidades (ou só este, sem conta) */
+  private async samePersonBarberIds(
+    barberId: number,
+    userId: number | null | undefined,
+    client: Prisma.TransactionClient = this.prisma,
+  ): Promise<number[]> {
+    if (!userId) return [barberId];
+    const all = await client.barber.findMany({ where: { userId }, select: { id: true } });
+    return [...new Set([barberId, ...all.map((b) => b.id)])];
+  }
+
   // Faltava checar conflito por BARBEIRO (só existia para resourceId) — dois
   // agendamentos podiam ser criados para o mesmo profissional no mesmo
   // horário sem nenhum aviso. Usado tanto pelo fluxo de staff quanto pelo
@@ -1597,18 +1673,34 @@ export class BarbershopService {
     excludeAppointmentId?: number,
     client: Prisma.TransactionClient = this.prisma,
   ) {
+    const barber = await client.barber.findFirst({
+      where: { id: barberId, barbershopId },
+      select: { userId: true, accessStartsAt: true, accessEndsAt: true },
+    });
+    if (barber && !withinEngagement(barber, startAt)) {
+      throw new BadRequestException(
+        'Esse horário está fora do período deste profissional na unidade',
+      );
+    }
+    // A mesma pessoa pode atender em outras unidades: o horário dela é um só
+    const barberIds = await this.samePersonBarberIds(barberId, barber?.userId, client);
     const conflict = await client.appointment.findFirst({
       where: {
-        barbershopId,
-        barberId,
+        barberId: { in: barberIds },
         id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
         status: { notIn: ['CANCELLED', 'NO_SHOW'] },
         startAt: { lt: endAt },
         endAt: { gt: startAt },
       },
+      select: { barbershopId: true },
     });
     if (conflict) {
-      throw new BadRequestException('Este profissional já tem um agendamento nesse horário');
+      // De outra unidade só diz que está ocupado — nada do atendimento de lá
+      throw new BadRequestException(
+        conflict.barbershopId === barbershopId
+          ? 'Este profissional já tem um agendamento nesse horário'
+          : 'Este profissional já está ocupado em outra unidade nesse horário',
+      );
     }
   }
 
@@ -1765,11 +1857,15 @@ export class BarbershopService {
         {
           barbershop: {
             barbers: {
-              some: { userId, isActive: true, staffType: { in: ['manager', 'reception'] } },
+              some: {
+                userId,
+                staffType: { in: ['manager', 'reception'] },
+                ...currentEngagement(),
+              },
             },
           },
         },
-        { barber: { userId, isActive: true } },
+        { barber: { userId, ...currentEngagement() } },
       ],
     };
     if (filters?.status) where.status = filters.status;
@@ -2327,7 +2423,16 @@ export class BarbershopService {
       where: { slug },
       include: {
         services: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } },
-        barbers: { where: { isActive: true, ...BOOKABLE_STAFF }, orderBy: { name: 'asc' } },
+        barbers: {
+          where: {
+            isActive: true,
+            AND: [
+              BOOKABLE_STAFF,
+              { OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: new Date() } }] },
+            ],
+          },
+          orderBy: { name: 'asc' },
+        },
         network: { select: { accentColor: true, grayColor: true } },
       },
     });
@@ -2461,15 +2566,17 @@ export class BarbershopService {
     const dayOfWeek = dayOfWeekOf(dateStr);
     const window = await this.getWorkingWindow(barbershopId, barberId, dayOfWeek);
     if (!window) return [];
+    const barberIds = await this.samePersonBarberIds(barberId, barber.userId);
 
     const duration = service.durationMinutes;
     const dayStart = zonedTimeToUtc(dateStr, 0, timeZone);
     const dayEnd = zonedTimeToUtc(nextDateStr(dateStr), 0, timeZone);
 
     const [appointments, timeOffs] = await Promise.all([
+      // Ocupado aqui ou em outra unidade onde a pessoa também atende
       this.prisma.appointment.findMany({
         where: {
-          barberId,
+          barberId: { in: barberIds },
           status: { notIn: ['CANCELLED', 'NO_SHOW'] },
           startAt: { lt: dayEnd },
           endAt: { gt: dayStart },
@@ -2477,7 +2584,7 @@ export class BarbershopService {
         select: { startAt: true, endAt: true },
       }),
       this.prisma.barberTimeOff.findMany({
-        where: { barberId, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
+        where: { barberId: { in: barberIds }, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
         select: { startAt: true, endAt: true },
       }),
     ]);
@@ -2510,6 +2617,7 @@ export class BarbershopService {
       const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
       if (slotStart <= now) continue;
+      if (!withinEngagement(barber, slotStart)) continue;
 
       const overlapsBusy = busyRanges.some(
         (r) => slotStart.getTime() < r.end && slotEnd.getTime() > r.start,

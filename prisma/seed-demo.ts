@@ -1803,6 +1803,73 @@ async function ensureOtherShops(prisma: PrismaClient, clientAccounts: { id: numb
   }
 }
 
+/**
+ * Profissionais em mais de uma unidade (uma conta, um vínculo por unidade):
+ * - Bianca também é gerente da Green Centro (mesmo dono)
+ * - Minion é freelancer na Barbearia Vintage (outro dono) aos sábados, com
+ *   vínculo temporário: começou há 30 dias e vai até daqui 60
+ */
+async function ensureMultiUnitStaff(prisma: PrismaClient) {
+  const links = [
+    {
+      email: 'bianca.silverio@barbershop.com',
+      slug: 'green-barbershop-centro',
+      staffType: 'manager',
+      specialization: 'Gerente',
+      period: {},
+      saturdayOnly: false,
+    },
+    {
+      email: 'minion.cayo@barbershop.com',
+      slug: 'barbearia-vintage',
+      staffType: 'barber',
+      specialization: 'Freelancer aos sábados',
+      period: { accessStartsAt: atBrt(-30, 0), accessEndsAt: atBrt(60, 23) },
+      saturdayOnly: true,
+    },
+  ];
+  for (const l of links) {
+    const [user, shop] = await Promise.all([
+      prisma.user.findUnique({ where: { email_provider: { email: l.email, provider: 'local' } } }),
+      prisma.barbershop.findUnique({ where: { slug: l.slug } }),
+    ]);
+    if (!user || !shop) continue;
+    if (await prisma.barber.findFirst({ where: { barbershopId: shop.id, userId: user.id } })) {
+      continue;
+    }
+    console.log(`Linking ${user.fullName} to ${shop.name} (${l.staffType})...`);
+    const barber = await prisma.barber.create({
+      data: {
+        barbershopId: shop.id,
+        userId: user.id,
+        name: user.fullName,
+        phone: user.phone ?? '(12) 99700-3001',
+        email: user.email,
+        staffType: l.staffType,
+        specialization: l.specialization,
+        specialties: l.staffType === 'manager' ? [] : ['HAIR'],
+        ...l.period,
+      },
+    });
+    if (l.saturdayOnly) {
+      await prisma.barberSchedule.create({
+        data: { barberId: barber.id, dayOfWeek: 6, startTime: '08:00', endTime: '16:00' },
+      });
+      for (let day = 0; day <= 5; day++) {
+        await prisma.barberSchedule.create({
+          data: {
+            barberId: barber.id,
+            dayOfWeek: day,
+            startTime: '08:00',
+            endTime: '16:00',
+            isActive: false,
+          },
+        });
+      }
+    }
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -1838,5 +1905,6 @@ export async function seedDemoData(prisma: PrismaClient) {
   await seedGreenOperations(prisma, green.id, clientAccounts);
   if (green.ownerUserId) await ensureSecondUnit(prisma, green.networkId, green.ownerUserId);
   await ensureOtherShops(prisma, clientAccounts);
+  await ensureMultiUnitStaff(prisma);
   await seedNotifications(prisma, green.id);
 }
