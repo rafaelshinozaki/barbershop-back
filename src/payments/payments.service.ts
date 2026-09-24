@@ -938,9 +938,58 @@ export class PaymentsService {
     return { processed: due.length, renewed };
   }
 
+  /**
+   * Cartão novo salvo pelo dono (SetupIntent confirmado): vira o cartão do
+   * plano e, se o plano está em atraso, a cobrança sai na hora — como no
+   * Booksy, atualizar o cartão já regulariza, sem esperar a tentativa do dia
+   * seguinte. Chamado pela tela e pelo webhook; os dois juntos cobram uma vez
+   * só (mesma renewalKey).
+   */
+  async useSavedCardForPlan(
+    setupIntentId: string,
+    expectedUserId?: number,
+  ): Promise<{ overdue: boolean; outcome: string | null }> {
+    const setupIntent = await this.stripeService.retrieveSetupIntent(setupIntentId);
+    const customerId =
+      typeof setupIntent.customer === 'string' ? setupIntent.customer : setupIntent.customer?.id;
+    const paymentMethodId =
+      typeof setupIntent.payment_method === 'string'
+        ? setupIntent.payment_method
+        : setupIntent.payment_method?.id;
+    const user = customerId
+      ? await this.prisma.user.findFirst({ where: { stripeCustomerId: customerId } })
+      : null;
+    // SetupIntent de cliente final (assinatura de serviço) ou de outra pessoa
+    if (!user || (expectedUserId !== undefined && user.id !== expectedUserId)) {
+      if (expectedUserId !== undefined) throw new BadRequestException('Cartão não encontrado');
+      return { overdue: false, outcome: null };
+    }
+    if (setupIntent.status !== 'succeeded' || !paymentMethodId) {
+      if (expectedUserId !== undefined) {
+        throw new BadRequestException('O cartão ainda não foi confirmado');
+      }
+      return { overdue: false, outcome: null };
+    }
+    await this.stripeService.setDefaultPaymentMethod(customerId!, paymentMethodId);
+
+    const overdue = await this.prisma.subscription.findFirst({
+      where: {
+        userId: user.id,
+        status: PLANO_STATUS.ACTIVE,
+        stripeSubscriptionId: null,
+        renewalFailedAt: { not: null },
+        currentPeriodEnd: { lte: new Date() },
+      },
+    });
+    if (!overdue) return { overdue: false, outcome: null };
+    const outcome = await this.renewSubscription(overdue.id, { ignoreDailyLimit: true });
+    return { overdue: true, outcome };
+  }
+
   /** Renova uma assinatura se estiver vencida (nada acontece se não estiver). */
   async renewSubscription(
     subscriptionId: number,
+    opts: { ignoreDailyLimit?: boolean } = {},
   ): Promise<'renewed' | 'not_due' | 'in_progress' | 'failed' | 'expired'> {
     const sub = await this.prisma.subscription.findUnique({
       where: { id: subscriptionId },
@@ -978,8 +1027,8 @@ export class PaymentsService {
       if (outcome !== 'failed') return outcome;
     }
 
-    // Uma tentativa por dia
-    if (sub.renewalFailedAt) {
+    // Uma tentativa por dia (cartão novo cadastrado tenta na hora)
+    if (sub.renewalFailedAt && !opts.ignoreDailyLimit) {
       const lastAttempt = await this.prisma.payment.findFirst({
         where: { renewalKey: { startsWith: keyPrefix } },
         orderBy: { createdAt: 'desc' },

@@ -624,6 +624,66 @@ describe('BarbershopService (integração com o banco)', () => {
       expect((await service.getNetworkDashboardStats(barber)).totalBarbershops).toBe(0);
     });
 
+    it('barbeiro (como o "Staffer" do Booksy): só a própria agenda e sem o contato dos clientes', async () => {
+      const barber = A.staffUserId;
+      const own = (await book(at(day, '11:00'), { userId: barber }))!;
+      const other = (await book(at(day, '11:00'), { barberId: A.otherBarberId }))!;
+
+      // Agenda: só a dele, mesmo pedindo a do colega
+      const seen = (await service.getAppointments(barber, A.shopId, { limit: 500 })).map(
+        (a) => a.id,
+      );
+      expect(seen).toContain(own.id);
+      expect(seen).not.toContain(other.id);
+      const asked = await service.getAppointments(barber, A.shopId, {
+        barberId: A.otherBarberId,
+        limit: 500,
+      });
+      expect(asked.every((a) => a.barberId === A.barberId)).toBe(true);
+      await expect(service.getAppointment(barber, A.shopId, other.id)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(
+        service.updateAppointment(barber, A.shopId, other.id, { notes: 'x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await denied(
+        service.updateAppointment(barber, A.shopId, own.id, { barberId: A.otherBarberId }),
+      );
+      await denied(book(at(day, '11:30'), { userId: barber, barberId: A.otherBarberId }));
+      const networkSeen = (await service.getNetworkAppointments(barber)).map((a) => a.id);
+      expect(networkSeen).toContain(own.id);
+      expect(networkSeen).not.toContain(other.id);
+
+      // Clientes: vê e cadastra, mas sem telefone/e-mail — e não busca por eles
+      const customer = await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } });
+      const listed = (await service.getCustomers(barber, A.shopId)).find(
+        (c) => c.id === A.customerId,
+      )!;
+      expect(listed).toMatchObject({ name: customer.name, phone: '', email: null });
+      expect(await service.getCustomer(barber, A.shopId, A.customerId)).toMatchObject({
+        phone: '',
+        email: null,
+      });
+      expect((await service.getAppointment(barber, A.shopId, own.id)).customer).toMatchObject({
+        phone: '',
+        email: null,
+      });
+      expect(await service.getCustomers(barber, A.shopId, { search: customer.phone })).toEqual([]);
+
+      // O dono vê tudo
+      expect(
+        (await service.getAppointments(A.ownerId, A.shopId, { limit: 500 })).map((a) => a.id),
+      ).toEqual(expect.arrayContaining([own.id, other.id]));
+      expect(await service.getCustomer(A.ownerId, A.shopId, A.customerId)).toMatchObject({
+        phone: customer.phone,
+      });
+
+      await prisma.appointmentService.deleteMany({
+        where: { appointmentId: { in: [own.id, other.id] } },
+      });
+      await prisma.appointment.deleteMany({ where: { id: { in: [own.id, other.id] } } });
+    });
+
     it('barbeiro mexe só na própria folga', async () => {
       const barber = A.staffUserId;
       const own = await service.createBarberTimeOff(barber, {
@@ -669,7 +729,7 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(ownerIds).toEqual(expect.arrayContaining([own.id, other.id]));
     });
 
-    it('gerente opera a unidade (inclusive o caixa); relatórios avançados, comissões e apagar a unidade são só do dono', async () => {
+    it('gerente (como no Booksy) faz quase tudo do dono: caixa, relatórios, comissões; só apagar a unidade é do dono', async () => {
       expect(await service.getMyAccessLevel(managerUserId, A.shopId)).toBe('manager');
       await expect(
         service.updateService(managerUserId, A.shopId, A.serviceId, { price: 55 }),
@@ -680,8 +740,14 @@ describe('BarbershopService (integração com o banco)', () => {
       });
       // Gerente toca o caixa: despesas e resumo da unidade
       await expect(service.getExpenses(managerUserId, A.shopId)).resolves.toBeTruthy();
-      await denied(service.getAdvancedReports(managerUserId, A.shopId, new Date(0), new Date()));
-      await denied(service.setCommissionRule(managerUserId, A.shopId, { percentage: 10 }));
+      // Relatório avançado depende do plano, não do cargo
+      await service
+        .getAdvancedReports(managerUserId, A.shopId, new Date(0), new Date())
+        .catch((e) => expect(e.message).not.toMatch(/cargo/));
+      const rule = await service.setCommissionRule(managerUserId, A.shopId, { percentage: 10 });
+      await service.deleteCommissionRule(managerUserId, A.shopId, rule.id);
+      // Contato dos clientes: gerente vê
+      expect((await service.getCustomer(managerUserId, A.shopId, A.customerId)).phone).not.toBe('');
       await denied(service.deleteBarbershop(managerUserId, A.shopId));
 
       expect(await service.getMyAccessLevel(A.ownerId, A.shopId)).toBe('owner');

@@ -73,6 +73,17 @@ export class SetupIntent {
 }
 
 @ObjectType()
+export class UseSavedCardResponse {
+  /** O plano estava em atraso (e a cobrança foi tentada com o cartão novo) */
+  @Field()
+  overdue: boolean;
+
+  /** renewed | failed | in_progress | expired | not_due — null se não estava em atraso */
+  @Field(() => String, { nullable: true })
+  outcome: string | null;
+}
+
+@ObjectType()
 export class PaymentIntentResponse {
   /** null quando o cupom cobriu o valor e o plano já foi ativado sem cobrança */
   @Field(() => String, { nullable: true })

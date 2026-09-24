@@ -1244,6 +1244,7 @@ type Mutation {
   updateUserRole(role: String!, userId: Int!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
   updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
+  useSavedCardForPlan(setupIntentId: String!): UseSavedCardResponse!
   validateCoupon(amount: Float!, code: String!, planId: Int!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
@@ -2308,6 +2309,11 @@ input UpdateUserSystemConfigInput {
 type UploadFormFieldType {
   name: String!
   value: String!
+}
+
+type UseSavedCardResponse {
+  outcome: String
+  overdue: Boolean!
 }
 
 type User {
