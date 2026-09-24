@@ -1,5 +1,9 @@
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
-import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
+import {
+  appointmentManageUrl,
+  createAppointmentToken,
+  verifyAppointmentToken,
+} from './appointment-link';
 import {
   Injectable,
   Logger,
@@ -1822,6 +1826,17 @@ export class BarbershopService {
         include: { services: true, customer: true, barber: true },
       });
     });
+    // Marcado pela equipe (telefone, balcão): o cliente também recebe a
+    // confirmação com o link pra remarcar/cancelar, como no agendamento online
+    if (created && created.status === 'CONFIRMED' && created.customer.email) {
+      this.sendAppointmentEmail(
+        created.id,
+        'appointment_confirmation',
+        created.customer.email,
+      ).catch((err) =>
+        this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
+      );
+    }
     return (
       created &&
       this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), created)
@@ -2013,6 +2028,24 @@ export class BarbershopService {
           err,
         ),
       );
+    }
+
+    // A equipe mudou o horário ou cancelou: o cliente fica sabendo (antes só
+    // descobria no lembrete, ou chegando na barbearia)
+    const to = updated.customer.email;
+    if (to && updated.startAt > new Date()) {
+      const moved = updated.startAt.getTime() !== appointment.startAt.getTime();
+      const cancelledNow = data.status === 'CANCELLED' && appointment.status !== 'CANCELLED';
+      const template = cancelledNow
+        ? 'appointment_cancelled'
+        : moved && updated.status === 'CONFIRMED'
+        ? 'appointment_rescheduled'
+        : null;
+      if (template) {
+        this.sendAppointmentEmail(updated.id, template, to).catch((err) =>
+          this.logger.error(`Erro ao avisar o cliente do agendamento #${appointmentId}:`, err),
+        );
+      }
     }
 
     return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
@@ -2833,7 +2866,7 @@ export class BarbershopService {
    */
   private async sendAppointmentEmail(
     appointmentId: number,
-    template: 'appointment_confirmation' | 'appointment_rescheduled',
+    template: 'appointment_confirmation' | 'appointment_rescheduled' | 'appointment_cancelled',
     to: string,
   ) {
     const appt = await this.prisma.appointment.findUnique({
@@ -2865,6 +2898,11 @@ export class BarbershopService {
         en: `Appointment rescheduled at ${shop.name}`,
         es: `Cita reprogramada en ${shop.name}`,
       },
+      appointment_cancelled: {
+        pt: `Horário cancelado em ${shop.name}`,
+        en: `Appointment cancelled at ${shop.name}`,
+        es: `Cita cancelada en ${shop.name}`,
+      },
     };
     await this.notificationQueue.email(
       {
@@ -2888,6 +2926,7 @@ export class BarbershopService {
           }),
           CancellationWindowHours: shop.network.lateCancellationWindowHours,
           ManageURL: appointmentManageUrl(appt.id),
+          BookURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/u/${shop.slug}`,
           Year: new Date().getFullYear(),
         },
         subject: subjects[template],
@@ -2898,6 +2937,8 @@ export class BarbershopService {
       // Uma confirmação por agendamento; remarcação, uma por novo horário
       template === 'appointment_confirmation'
         ? `appointment-confirmation-${appt.id}`
+        : template === 'appointment_cancelled'
+        ? `appointment-cancelled-${appt.id}`
         : `appointment-rescheduled-${appt.id}-${appt.startAt.getTime()}`,
     );
   }
@@ -2971,6 +3012,30 @@ export class BarbershopService {
       price: service ? Number(appt.services[0].unitPrice) : 0,
       currency: shop.currency,
     };
+  }
+
+  /**
+   * Próximos horários do cliente logado (fichas ligadas à conta pelo e-mail
+   * confirmado), com o mesmo link de gerenciar do e-mail — remarcar e
+   * cancelar direto da conta, como no Booksy.
+   */
+  async getClientUpcomingAppointments(clientAccountId: number) {
+    const appts = await this.prisma.appointment.findMany({
+      where: {
+        customer: { clientAccountId },
+        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        endAt: { gte: new Date() },
+      },
+      select: { id: true },
+      orderBy: { startAt: 'asc' },
+      take: 20,
+    });
+    return Promise.all(
+      appts.map(async (a) => {
+        const token = createAppointmentToken(a.id);
+        return { ...(await this.getManagedAppointment(token)), manageToken: token };
+      }),
+    );
   }
 
   async cancelManagedAppointment(token: string) {

@@ -131,6 +131,7 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     await prisma.barberSchedule.deleteMany({ where: { barberId } });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
+    await prisma.clientAccount.deleteMany({ where: { email: { endsWith: `-${RUN}@test.local` } } });
     await prisma.barbershopService.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
@@ -238,5 +239,84 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
         data: { lateCancellationWindowHours: 24 },
       });
     }
+  });
+
+  it('conta do cliente: próximos horários com o link de gerenciar, só os dele e só os que valem', async () => {
+    const account = await prisma.clientAccount.create({
+      data: {
+        email: `conta-${RUN}@test.local`,
+        name: 'Cliente Conta',
+        emailVerifiedAt: new Date(),
+      },
+    });
+    const other = await prisma.clientAccount.create({
+      data: { email: `outra-${RUN}@test.local`, name: 'Outra', emailVerifiedAt: new Date() },
+    });
+    const phone = `7${RUN.slice(-12)}`;
+    const mine = await book('09:00', phone);
+    const phone2 = `8${RUN.slice(-12)}`;
+    const cancelled = await book('09:30', phone2);
+    await prisma.customer.updateMany({
+      where: { networkId, phone: { in: [phone, phone2] } },
+      data: { clientAccountId: account.id },
+    });
+    await service.cancelManagedAppointment(createAppointmentToken(cancelled!.id));
+
+    const upcoming = await service.getClientUpcomingAppointments(account.id);
+    expect(upcoming.map((u) => u.id)).toEqual([mine!.id]);
+    expect(upcoming[0]).toMatchObject({
+      manageToken: createAppointmentToken(mine!.id),
+      canChange: true,
+      barbershopSlug: `link-${RUN}`,
+    });
+    expect(await service.getClientUpcomingAppointments(other.id)).toEqual([]);
+  });
+
+  it('horário marcado, remarcado ou cancelado pela equipe: o cliente recebe o aviso', async () => {
+    const withEmail = await prisma.customer.create({
+      data: {
+        networkId,
+        name: 'Por Telefone',
+        phone: `5${RUN.slice(-12)}`,
+        email: `fone-${RUN}@test.local`,
+      },
+    });
+    const noEmail = await prisma.customer.create({
+      data: { networkId, name: 'Sem Email', phone: `6${RUN.slice(-12)}` },
+    });
+    const sentTo = (template: string, to: string) =>
+      emails.filter((e) => e.template === template && e.to === to).length;
+    const create = (customerId: number, hhmm: string) =>
+      service.createAppointment(ownerId, shopId, {
+        customerId,
+        barberId,
+        startAt: new Date(at(hhmm)),
+        endAt: new Date(new Date(at(hhmm)).getTime() + 30 * 60000),
+        services: [{ serviceId, unitPrice: 50 }],
+      });
+
+    const appt = await create(withEmail.id, '13:00');
+    await waitForEmail('appointment_confirmation');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(sentTo('appointment_confirmation', `fone-${RUN}@test.local`)).toBe(1);
+
+    // Só a observação mudou: nada
+    await service.updateAppointment(ownerId, shopId, appt!.id, { notes: 'traz a foto' });
+    await service.updateAppointment(ownerId, shopId, appt!.id, {
+      startAt: new Date(at('13:30')),
+      endAt: new Date(new Date(at('13:30')).getTime() + 30 * 60000),
+    });
+    await service.updateAppointment(ownerId, shopId, appt!.id, { status: 'CANCELLED' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(sentTo('appointment_rescheduled', `fone-${RUN}@test.local`)).toBe(1);
+    expect(sentTo('appointment_cancelled', `fone-${RUN}@test.local`)).toBe(1);
+    const cancelled = emails.find((e) => e.template === 'appointment_cancelled')!;
+    expect(cancelled.context.BookURL).toContain(`/u/link-${RUN}`);
+
+    // Cliente sem e-mail: nada sai, e o agendamento funciona igual
+    const before = emails.length;
+    await create(noEmail.id, '14:30');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(emails.length).toBe(before);
   });
 });

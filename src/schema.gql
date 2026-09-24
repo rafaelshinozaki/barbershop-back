@@ -495,6 +495,7 @@ input ClientForgotPasswordInput {
 
 type ClientHistoryEntryType {
   barbershopName: String!
+  barbershopSlug: String
   currency: String
   date: String!
   detail: String
@@ -1195,6 +1196,7 @@ type ManagedAppointmentType {
   customerName: String!
   endAt: String!
   id: Int!
+  manageToken: String
   price: Float!
   serviceId: Int
   serviceName: String!
@@ -1997,6 +1999,7 @@ type Query {
   myReview(barbershopId: Int!): MyReviewType
   mySubscriptions: [PlanSubscription!]!
   myUnreadNotifications: [UserNotification!]!
+  myUpcomingAppointments: [ManagedAppointmentType!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
   overduePayments: [Payment!]!

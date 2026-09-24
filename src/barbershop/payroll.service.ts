@@ -13,6 +13,7 @@ export type EntryType = (typeof ENTRY_TYPES)[number];
 export const PAY_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
 
 const MAX_AMOUNT = 1_000_000;
+const MAX_PERIOD_DAYS = 400;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 type Shop = { id: number; timezone: string | null; currency: string };
@@ -38,8 +39,15 @@ export class PayrollService {
   // ---- datas: o período é em dias no fuso da unidade ----
 
   private range(shop: Shop, from: string, to: string) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    // Data que existe (2026-02-31 não vira 3 de março em silêncio) e período
+    // de no máximo ~13 meses (um intervalo de décadas varria todas as vendas)
+    const valid = (d: string) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+    if (!valid(from) || !valid(to) || from > to) {
       throw new BadRequestException('Período inválido');
+    }
+    if (Date.parse(to) - Date.parse(from) > MAX_PERIOD_DAYS * 86_400_000) {
+      throw new BadRequestException(`O período pode ter no máximo ${MAX_PERIOD_DAYS} dias`);
     }
     const tz = safeTimeZone(shop.timezone);
     return {
