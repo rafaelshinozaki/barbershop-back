@@ -58,7 +58,7 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     service.createPublicAppointment({
       barbershopId: shopId,
       barberId,
-      serviceId,
+      serviceIds: [serviceId],
       startAt: at(hhmm),
       customerName: 'Cliente Link',
       customerPhone: phone,
@@ -199,7 +199,7 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
       encodeURIComponent(token),
     );
     // O horário antigo voltou pra lista
-    const slots = await service.getPublicAvailableSlots(shopId, barberId, serviceId, DAY);
+    const slots = await service.getPublicAvailableSlots(shopId, barberId, [serviceId], DAY);
     expect(slots).toContain(at('12:00'));
     expect(slots).not.toContain(at('15:00'));
   });

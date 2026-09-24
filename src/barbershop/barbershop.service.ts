@@ -21,6 +21,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType } from './staff-roles';
 import {
+  addDaysStr,
   dayOfWeekOf,
   monthRangeUtc,
   nextDateStr,
@@ -92,6 +93,8 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
   owner: 5,
 };
 /** Recepção não atende: não aparece pra agendar nem recebe agendamento */
+/** Até quantos dias à frente o "próximo horário disponível" procura */
+const NEXT_AVAILABLE_DAYS = 60;
 const BOOKABLE_STAFF = {
   OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
 } satisfies Prisma.BarberWhereInput;
@@ -2604,27 +2607,76 @@ export class BarbershopService {
     return h * 60 + m;
   }
 
+  /**
+   * Serviços escolhidos na página pública (um ou vários, em sequência no
+   * mesmo horário, como corte + barba): os da unidade, ativos, na ordem
+   * pedida, e a duração somada.
+   */
+  private async publicServices(barbershopId: number, serviceIds: number[]) {
+    const ids = [...new Set(serviceIds)].filter((id) => Number.isInteger(id));
+    if (ids.length === 0) throw new BadRequestException('Escolha pelo menos um serviço');
+    if (ids.length > 5) throw new BadRequestException('No máximo 5 serviços por agendamento');
+    const found = await this.prisma.barbershopService.findMany({
+      where: { id: { in: ids }, barbershopId, isActive: true },
+    });
+    if (found.length !== ids.length) throw new NotFoundException('Serviço não encontrado');
+    const services = ids.map((id) => found.find((s) => s.id === id)!);
+    return {
+      services,
+      durationMinutes: services.reduce((sum, s) => sum + s.durationMinutes, 0),
+    };
+  }
+
+  /** Profissionais que a página pública oferece (ativos, no período, que atendem). */
+  private publicBarbers(barbershopId: number) {
+    return this.prisma.barber.findMany({
+      where: { barbershopId, isActive: true, ...BOOKABLE_STAFF },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  /**
+   * "Qualquer profissional": quem tem menos horários marcados no dia vem
+   * primeiro — distribui os clientes da página pública pela equipe.
+   */
+  private async publicCandidatesByLoad(barbershopId: number, startAtInput: string) {
+    const barbers = await this.publicBarbers(barbershopId);
+    const day = new Date(startAtInput);
+    if (isNaN(day.getTime())) throw new BadRequestException('Horário inválido');
+    const counts = await this.prisma.appointment.groupBy({
+      by: ['barberId'],
+      where: {
+        barbershopId,
+        barberId: { in: barbers.map((b) => b.id) },
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        startAt: {
+          gte: new Date(day.getTime() - 12 * 3_600_000),
+          lte: new Date(day.getTime() + 12 * 3_600_000),
+        },
+      },
+      _count: { _all: true },
+    });
+    const load = new Map(counts.map((c) => [c.barberId, c._count._all]));
+    return [...barbers].sort(
+      (a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0) || a.id - b.id,
+    );
+  }
+
+  /**
+   * Horários livres na página pública. Sem profissional ("qualquer
+   * profissional", como no Booksy): todos os horários em que pelo menos um
+   * está livre.
+   */
   async getPublicAvailableSlots(
     barbershopId: number,
-    barberId: number,
-    serviceId: number,
+    barberId: number | null,
+    serviceIds: number[],
     dateStr: string,
   ) {
-    const [barber, service] = await Promise.all([
-      this.prisma.barber.findFirst({
-        where: { id: barberId, barbershopId, isActive: true, ...BOOKABLE_STAFF },
-      }),
-      this.prisma.barbershopService.findFirst({
-        where: { id: serviceId, barbershopId, isActive: true },
-      }),
-    ]);
-    if (!barber) throw new NotFoundException('Profissional não encontrado');
-    if (!service) throw new NotFoundException('Serviço não encontrado');
-
+    const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || isNaN(Date.parse(`${dateStr}T00:00:00Z`))) {
       throw new BadRequestException('Data inválida');
     }
-
     // Tudo no fuso da unidade, não do servidor (ver common/timezone.util.ts)
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
@@ -2632,12 +2684,90 @@ export class BarbershopService {
     });
     const timeZone = safeTimeZone(shop?.timezone);
 
-    const dayOfWeek = dayOfWeekOf(dateStr);
-    const window = await this.getWorkingWindow(barbershopId, barberId, dayOfWeek);
-    if (!window) return [];
-    const barberIds = await this.samePersonBarberIds(barberId, barber.userId);
+    if (barberId != null) {
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: barberId, barbershopId, isActive: true, ...BOOKABLE_STAFF },
+      });
+      if (!barber) throw new NotFoundException('Profissional não encontrado');
+      return this.slotsForBarber(barbershopId, barber, durationMinutes, dateStr, timeZone);
+    }
+    const all = await Promise.all(
+      (
+        await this.publicBarbers(barbershopId)
+      ).map((b) => this.slotsForBarber(barbershopId, b, durationMinutes, dateStr, timeZone)),
+    );
+    return [...new Set(all.flat())].sort();
+  }
 
-    const duration = service.durationMinutes;
+  /**
+   * Próximo horário livre (a partir de hoje ou de `fromDate`, até 60 dias):
+   * do profissional escolhido ou, sem profissional, o mais cedo entre todos.
+   * O cliente não precisa sair testando dia por dia.
+   */
+  async getPublicNextAvailableSlot(
+    barbershopId: number,
+    barberId: number | null,
+    serviceIds: number[],
+    fromDate?: string | null,
+  ): Promise<{ date: string; startAt: string } | null> {
+    const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    if (!shop) throw new NotFoundException('Unidade não encontrada');
+    const timeZone = safeTimeZone(shop.timezone);
+    let barbers: Awaited<ReturnType<BarbershopService['publicBarbers']>>;
+    if (barberId != null) {
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: barberId, barbershopId, isActive: true, ...BOOKABLE_STAFF },
+      });
+      if (!barber) throw new NotFoundException('Profissional não encontrado');
+      barbers = [barber];
+    } else {
+      barbers = await this.publicBarbers(barbershopId);
+    }
+    if (barbers.length === 0) return null;
+
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    const valid =
+      !!fromDate &&
+      /^\d{4}-\d{2}-\d{2}$/.test(fromDate) &&
+      !isNaN(Date.parse(`${fromDate}T00:00:00Z`));
+    // Data no passado vira hoje; muito longe não varre o ano inteiro
+    const start =
+      valid && fromDate > today && fromDate <= addDaysStr(today, 365) ? fromDate : today;
+    for (let i = 0; i < NEXT_AVAILABLE_DAYS; i++) {
+      const date = addDaysStr(start, i);
+      const perBarber = await Promise.all(
+        barbers.map((b) => this.slotsForBarber(barbershopId, b, durationMinutes, date, timeZone)),
+      );
+      const earliest = perBarber
+        .map((slots) => slots[0])
+        .filter(Boolean)
+        .sort()[0];
+      if (earliest) return { date, startAt: earliest };
+    }
+    return null;
+  }
+
+  private async slotsForBarber(
+    barbershopId: number,
+    barber: {
+      id: number;
+      userId: number | null;
+      accessStartsAt: Date | null;
+      accessEndsAt: Date | null;
+    },
+    duration: number,
+    dateStr: string,
+    timeZone: string,
+  ) {
+    const dayOfWeek = dayOfWeekOf(dateStr);
+    const window = await this.getWorkingWindow(barbershopId, barber.id, dayOfWeek);
+    if (!window) return [];
+    const barberIds = await this.samePersonBarberIds(barber.id, barber.userId);
+
     const dayStart = zonedTimeToUtc(dateStr, 0, timeZone);
     const dayEnd = zonedTimeToUtc(nextDateStr(dateStr), 0, timeZone);
 
@@ -2738,8 +2868,10 @@ export class BarbershopService {
 
   async createPublicAppointment(input: {
     barbershopId: number;
-    barberId: number;
-    serviceId: number;
+    /** Sem profissional: "qualquer profissional" — o sistema escolhe um livre */
+    barberId?: number | null;
+    /** Um serviço ou vários, em sequência no mesmo horário */
+    serviceIds: number[];
     startAt: string;
     customerName: string;
     customerPhone: string;
@@ -2753,31 +2885,51 @@ export class BarbershopService {
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
 
-    const [barber, service] = await Promise.all([
-      this.prisma.barber.findFirst({
+    const { services, durationMinutes } = await this.publicServices(
+      input.barbershopId,
+      input.serviceIds,
+    );
+    const auto = input.barberId == null;
+    let candidates: Array<{ id: number }>;
+    if (!auto) {
+      const barber = await this.prisma.barber.findFirst({
         where: {
-          id: input.barberId,
+          id: input.barberId!,
           barbershopId: input.barbershopId,
           isActive: true,
           ...BOOKABLE_STAFF,
         },
-      }),
-      this.prisma.barbershopService.findFirst({
-        where: { id: input.serviceId, barbershopId: input.barbershopId, isActive: true },
-      }),
-    ]);
-    if (!barber) throw new NotFoundException('Profissional não encontrado');
-    if (!service) throw new NotFoundException('Serviço não encontrado');
+      });
+      if (!barber) throw new NotFoundException('Profissional não encontrado');
+      candidates = [barber];
+    } else {
+      candidates = await this.publicCandidatesByLoad(input.barbershopId, input.startAt);
+    }
 
-    const { startAt, endAt } = await this.ensurePublicSlot(
-      barbershop,
-      input.barberId,
-      service.durationMinutes,
-      input.startAt,
-    );
-    // Checagem rápida antes de criar o cliente (a definitiva é dentro da
-    // transação, sob a trava da agenda do barbeiro)
-    await this.ensureBarberAvailable(input.barbershopId, input.barberId, startAt, endAt);
+    // Quem pode atender nesse horário (expediente, intervalo, período do
+    // vínculo e agenda livre). Checagem rápida antes de criar o cliente — a
+    // definitiva é dentro da transação, sob a trava da agenda
+    let startAt!: Date;
+    let endAt!: Date;
+    const free: number[] = [];
+    let lastError: unknown = null;
+    for (const c of candidates) {
+      try {
+        const slot = await this.ensurePublicSlot(barbershop, c.id, durationMinutes, input.startAt);
+        await this.ensureBarberAvailable(input.barbershopId, c.id, slot.startAt, slot.endAt);
+        startAt = slot.startAt;
+        endAt = slot.endAt;
+        free.push(c.id);
+        if (!auto) break;
+      } catch (err) {
+        // Profissional escolhido: o motivo vai pro cliente; no automático, tenta o próximo
+        if (!auto || !(err instanceof BadRequestException)) throw err;
+        lastError = err;
+      }
+    }
+    if (free.length === 0) {
+      throw lastError ?? new BadRequestException('Esse horário não está mais disponível');
+    }
 
     const networkId = barbershop.networkId;
     let customer = await this.prisma.customer.findFirst({
@@ -2817,37 +2969,59 @@ export class BarbershopService {
     // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      await this.lockSchedule(tx, input.barberId);
-      await this.ensureBarberAvailable(
-        input.barbershopId,
-        input.barberId,
-        startAt,
-        endAt,
-        undefined,
-        tx,
-      );
-      const appointment = await tx.appointment.create({
-        data: {
-          barbershopId: input.barbershopId,
-          customerId: customer!.id,
-          barberId: input.barberId,
+    const deposits = services.filter((sv) => sv.depositAmount != null);
+    const depositAmount = deposits.length
+      ? deposits.reduce((sum, sv) => sum.add(sv.depositAmount!), new Decimal(0))
+      : null;
+    const book = (barberId: number) =>
+      this.prisma.$transaction(async (tx) => {
+        await this.lockSchedule(tx, barberId);
+        await this.ensureBarberAvailable(
+          input.barbershopId,
+          barberId,
           startAt,
           endAt,
-          status: 'CONFIRMED',
-          source: 'ONLINE',
-          notes: input.notes,
-          depositAmount: service.depositAmount,
-        },
+          undefined,
+          tx,
+        );
+        const appointment = await tx.appointment.create({
+          data: {
+            barbershopId: input.barbershopId,
+            customerId: customer!.id,
+            barberId,
+            startAt,
+            endAt,
+            status: 'CONFIRMED',
+            source: 'ONLINE',
+            notes: input.notes,
+            depositAmount,
+          },
+        });
+        await tx.appointmentService.createMany({
+          data: services.map((sv) => ({
+            appointmentId: appointment.id,
+            serviceId: sv.id,
+            unitPrice: sv.price,
+          })),
+        });
+        return tx.appointment.findUnique({
+          where: { id: appointment.id },
+          include: { barbershop: true, barber: true, services: { include: { service: true } } },
+        });
       });
-      await tx.appointmentService.create({
-        data: { appointmentId: appointment.id, serviceId: service.id, unitPrice: service.price },
-      });
-      return tx.appointment.findUnique({
-        where: { id: appointment.id },
-        include: { barbershop: true, barber: true, services: { include: { service: true } } },
-      });
-    });
+    // No automático, se outra pessoa pegou o horário do escolhido nesse meio
+    // tempo, vai pro próximo livre
+    let created: Awaited<ReturnType<typeof book>> | null = null;
+    for (const barberId of free) {
+      try {
+        created = await book(barberId);
+        break;
+      } catch (err) {
+        if (!auto || !(err instanceof BadRequestException) || barberId === free[free.length - 1]) {
+          throw err;
+        }
+      }
+    }
 
     // Confirmação por e-mail com o link pra cancelar/remarcar (best-effort:
     // o horário já está marcado, e-mail fora do ar não desfaz nada)
@@ -2991,7 +3165,8 @@ export class BarbershopService {
     const { appt, windowHours, changeDeadline, canChange } = await this.loadManagedAppointment(
       token,
     );
-    const service = appt.services[0]?.service;
+    // Vários serviços no mesmo horário: nomes juntos, preço somado
+    const services = appt.services.filter((s) => s.service);
     const shop = appt.barbershop;
     return {
       id: appt.id,
@@ -3010,9 +3185,10 @@ export class BarbershopService {
       timezone: shop.timezone,
       barberId: appt.barberId,
       barberName: appt.barber.name,
-      serviceId: service?.id ?? null,
-      serviceName: service?.name ?? '',
-      price: service ? Number(appt.services[0].unitPrice) : 0,
+      serviceId: services[0]?.service?.id ?? null,
+      serviceIds: services.map((s) => s.service!.id),
+      serviceName: services.map((s) => s.service!.name).join(' + '),
+      price: services.reduce((sum, s) => sum + Number(s.unitPrice) * (s.quantity ?? 1), 0),
       currency: shop.currency,
     };
   }

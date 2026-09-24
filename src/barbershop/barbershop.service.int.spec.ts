@@ -313,7 +313,7 @@ describe('BarbershopService (integração com o banco)', () => {
       await service.createPublicAppointment({
         barbershopId: A.shopId,
         barberId: A.barberId,
-        serviceId: A.serviceId,
+        serviceIds: [A.serviceId],
         startAt: at(day, '16:30').toISOString(),
         customerName: 'Logado',
         customerPhone: phone,
@@ -326,7 +326,7 @@ describe('BarbershopService (integração com o banco)', () => {
       await service.createPublicAppointment({
         barbershopId: A.shopId,
         barberId: A.barberId,
-        serviceId: A.serviceId,
+        serviceIds: [A.serviceId],
         startAt: at(day, '17:00').toISOString(),
         customerName: 'Logado',
         customerPhone: `11${RUN}78`,
@@ -342,7 +342,7 @@ describe('BarbershopService (integração com o banco)', () => {
         service.createPublicAppointment({
           barbershopId: A.shopId,
           barberId: A.barberId,
-          serviceId: A.serviceId,
+          serviceIds: [A.serviceId],
           startAt,
           customerName: `Cliente ${n}`,
           customerPhone: `11${RUN}${n}`,
@@ -360,14 +360,19 @@ describe('BarbershopService (integração com o banco)', () => {
 
   describe('horários livres', () => {
     it('grade de 15 em 15 min no expediente, sem o horário ocupado', async () => {
-      const before = await service.getPublicAvailableSlots(A.shopId, A.barberId, A.serviceId, day);
+      const before = await service.getPublicAvailableSlots(
+        A.shopId,
+        A.barberId,
+        [A.serviceId],
+        day,
+      );
       expect(before.length).toBeGreaterThan(0);
       // de 15 em 15 minutos
       const gap = new Date(before[1]).getTime() - new Date(before[0]).getTime();
       expect(gap).toBe(15 * 60000);
 
       await book(at(day, '10:00'));
-      const after = await service.getPublicAvailableSlots(A.shopId, A.barberId, A.serviceId, day);
+      const after = await service.getPublicAvailableSlots(A.shopId, A.barberId, [A.serviceId], day);
       // 30 min de serviço: 9:45 e 10:15 também batem no agendamento das 10:00
       for (const t of ['09:45', '10:00', '10:15']) {
         expect(after).not.toContain(at(day, t).toISOString());
@@ -387,12 +392,158 @@ describe('BarbershopService (integração com o banco)', () => {
           breakEnd: '13:00',
         },
       });
-      const slots = await service.getPublicAvailableSlots(A.shopId, A.barberId, A.serviceId, day);
+      const slots = await service.getPublicAvailableSlots(A.shopId, A.barberId, [A.serviceId], day);
       expect(slots).toContain(at(day, '11:30').toISOString());
       expect(slots).not.toContain(at(day, '11:45').toISOString()); // 11:45–12:15 invade o intervalo
       expect(slots).not.toContain(at(day, '12:30').toISOString());
       expect(slots).toContain(at(day, '13:00').toISOString());
       expect(slots[0]).toBe(at(day, '09:00').toISOString());
+    });
+  });
+
+  // ============ Qualquer profissional + vários serviços ============
+
+  describe('página pública: qualquer profissional e vários serviços', () => {
+    let barbaId: number;
+    let n = 0;
+    const publicBook = (startAt: Date, barberId: number | null, serviceIds = [A.serviceId]) =>
+      service.createPublicAppointment({
+        barbershopId: A.shopId,
+        barberId,
+        serviceIds,
+        startAt: startAt.toISOString(),
+        customerName: 'Cliente Online',
+        customerPhone: `12${RUN}${++n}`,
+      });
+
+    beforeAll(async () => {
+      barbaId = (
+        await prisma.barbershopService.create({
+          data: {
+            barbershopId: A.shopId,
+            name: 'Barba',
+            durationMinutes: 20,
+            price: new Decimal(30),
+            depositAmount: new Decimal(10),
+          },
+        })
+      ).id;
+    });
+
+    it('vários serviços: duração somada nos horários e no agendamento, preço de cada um', async () => {
+      await book(at(day, '10:00'));
+      const one = await service.getPublicAvailableSlots(A.shopId, A.barberId, [A.serviceId], day);
+      const both = await service.getPublicAvailableSlots(
+        A.shopId,
+        A.barberId,
+        [A.serviceId, barbaId],
+        day,
+      );
+      // 09:30 + 30 min cabe antes das 10:00; + 50 min não
+      expect(one).toContain(at(day, '09:30').toISOString());
+      expect(both).not.toContain(at(day, '09:30').toISOString());
+      expect(both).toContain(at(day, '09:00').toISOString());
+
+      const appt = await publicBook(at(day, '14:00'), A.barberId, [A.serviceId, barbaId]);
+      expect(appt!.endAt.toISOString()).toBe(at(day, '14:50').toISOString());
+      expect(appt!.services.map((s) => [s.serviceId, Number(s.unitPrice)])).toEqual([
+        [A.serviceId, 50],
+        [barbaId, 30],
+      ]);
+      expect(Number(appt!.depositAmount)).toBe(10);
+    });
+
+    it('serviço repetido conta uma vez; nenhum, de outra unidade ou inexistente é recusado', async () => {
+      const slots = await service.getPublicAvailableSlots(
+        A.shopId,
+        A.barberId,
+        [A.serviceId, A.serviceId],
+        day,
+      );
+      expect(slots).toEqual(
+        await service.getPublicAvailableSlots(A.shopId, A.barberId, [A.serviceId], day),
+      );
+      await expect(publicBook(at(day, '14:00'), A.barberId, [])).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      const other = await prisma.barbershopService.create({
+        data: { barbershopId: B.shopId, name: 'De fora', durationMinutes: 30, price: 10 },
+      });
+      await expect(
+        publicBook(at(day, '14:00'), A.barberId, [A.serviceId, other.id]),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('qualquer profissional: horário vale se alguém está livre; o sistema escolhe quem', async () => {
+      await book(at(day, '10:00')); // Barbeiro A ocupado às 10:00
+      const slots = await service.getPublicAvailableSlots(A.shopId, null, [A.serviceId], day);
+      expect(slots).toContain(at(day, '10:00').toISOString()); // o A2 está livre
+
+      const first = await publicBook(at(day, '10:00'), null);
+      expect(first!.barberId).toBe(A.otherBarberId);
+
+      // Agora os dois estão ocupados às 10:00
+      const after = await service.getPublicAvailableSlots(A.shopId, null, [A.serviceId], day);
+      expect(after).not.toContain(at(day, '10:00').toISOString());
+      await expect(publicBook(at(day, '10:00'), null)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('qualquer profissional: vai pra quem tem menos horários no dia', async () => {
+      await book(at(day, '09:00'));
+      await book(at(day, '09:30'));
+      const a = await publicBook(at(day, '15:00'), null);
+      expect(a!.barberId).toBe(A.otherBarberId);
+      const b = await publicBook(at(day, '16:00'), null);
+      expect(b!.barberId).toBe(A.otherBarberId); // 2 x 1 ainda
+      const c = await publicBook(at(day, '17:00'), null);
+      expect(c!.barberId).toBe(A.barberId); // empate: o primeiro
+    });
+
+    it('próximo horário disponível: do profissional escolhido ou o mais cedo entre todos', async () => {
+      const nextDay = new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      // Barbeiro A não atende segunda: o dele é na terça; qualquer um, na segunda (o A2)
+      await prisma.barberSchedule.create({
+        data: {
+          barberId: A.barberId,
+          dayOfWeek: 1,
+          startTime: '09:00',
+          endTime: '18:00',
+          isActive: false,
+        },
+      });
+      const mine = await service.getPublicNextAvailableSlot(
+        A.shopId,
+        A.barberId,
+        [A.serviceId],
+        day,
+      );
+      const tuesday = await service.getPublicAvailableSlots(
+        A.shopId,
+        A.barberId,
+        [A.serviceId],
+        nextDay,
+      );
+      expect(mine).toEqual({ date: nextDay, startAt: tuesday[0] });
+
+      const anyone = await service.getPublicNextAvailableSlot(A.shopId, null, [A.serviceId], day);
+      const monday = await service.getPublicAvailableSlots(A.shopId, null, [A.serviceId], day);
+      expect(anyone).toEqual({ date: day, startAt: monday[0] });
+
+      // O primeiro horário do A2 ocupado: o próximo passa a ser o seguinte
+      await book(new Date(monday[0]), { barberId: A.otherBarberId });
+      const after = await service.getPublicNextAvailableSlot(A.shopId, null, [A.serviceId], day);
+      expect(after!.startAt > monday[0]).toBe(true);
+
+      // Data no passado conta a partir de hoje (nunca devolve horário que já passou)
+      const past = await service.getPublicNextAvailableSlot(
+        A.shopId,
+        null,
+        [A.serviceId],
+        '2020-01-01',
+      );
+      expect(new Date(past!.startAt).getTime()).toBeGreaterThan(Date.now());
     });
   });
 

@@ -394,6 +394,16 @@ export class MyReviewType {
   comment?: string;
 }
 
+/** Próximo horário livre na página pública */
+@ObjectType()
+export class PublicNextSlotType {
+  @Field({ description: 'Dia (YYYY-MM-DD, no fuso da unidade)' })
+  date: string;
+
+  @Field()
+  startAt: string;
+}
+
 @ObjectType()
 export class PublicAppointmentType {
   @Field(() => Int)
@@ -483,6 +493,11 @@ export class ManagedAppointmentType {
 
   @Field(() => Int, { nullable: true })
   serviceId?: number | null;
+
+  @Field(() => [Int], {
+    description: 'Todos os serviços do horário (remarcar usa a duração somada)',
+  })
+  serviceIds: number[];
 
   @Field()
   serviceName: string;

@@ -859,14 +859,15 @@ input CreateProductCategoryInput {
 }
 
 input CreatePublicAppointmentInput {
-  barberId: Int!
+  barberId: Int
   barbershopId: Int!
   customerEmail: String
   customerName: String!
   customerPhone: String!
   notes: String
   referralCode: String
-  serviceId: Int!
+  serviceId: Int
+  serviceIds: [Int!]
   startAt: String!
 }
 
@@ -1210,6 +1211,9 @@ type ManagedAppointmentType {
   manageToken: String
   price: Float!
   serviceId: Int
+
+  """Todos os serviços do horário (remarcar usa a duração somada)"""
+  serviceIds: [Int!]!
   serviceName: String!
   startAt: String!
   status: String!
@@ -1899,6 +1903,12 @@ type PublicBarbershopType {
   timezone: String!
 }
 
+type PublicNextSlotType {
+  """Dia (YYYY-MM-DD, no fuso da unidade)"""
+  date: String!
+  startAt: String!
+}
+
 type PublicServiceType {
   category: TreatmentCategory!
   depositAmount: Float
@@ -2020,10 +2030,11 @@ type Query {
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
-  publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
+  publicAvailableSlots(barberId: Int, barbershopId: Int!, date: String!, serviceId: Int, serviceIds: [Int!]): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
   publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
   publicCities: [String!]!
+  publicNextAvailableSlot(barberId: Int, barbershopId: Int!, fromDate: String, serviceIds: [Int!]!): PublicNextSlotType
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
