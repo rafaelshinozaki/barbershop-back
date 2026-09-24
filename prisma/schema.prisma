@@ -502,6 +502,10 @@ model Barbershop {
   consentForms    ConsentForm[]
   commissionRules CommissionRule[]
   reviews         Review[]
+  // Espaço compartilhado (cadeira alugada, como o "Shared Location" do
+  // Booksy): profissionais independentes, cada um com o seu negócio
+  sharedLocationMembers SharedLocationMember[] @relation("SharedLocationHost")
+  sharedLocationHosts   SharedLocationMember[] @relation("SharedLocationMember")
   waitlistEntries WaitlistEntry[]
   marketingCampaigns MarketingCampaign[]
   noShowFees      NoShowFee[]
@@ -1376,4 +1380,24 @@ model CommissionRule {
 
   @@unique([barbershopId, barberId, itemType])
   @@index([barbershopId])
+}
+
+/// Profissional independente (com o próprio negócio: plano, clientes, agenda e
+/// recebimentos) que atende no espaço de outra barbearia — a "cadeira
+/// alugada". A página pública do espaço lista quem atende lá, e a de cada
+/// profissional mostra onde ele atende. Um não vê nada dos dados do outro.
+model SharedLocationMember {
+  id                 Int        @id @default(autoincrement())
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  hostBarbershopId   Int
+  memberBarbershopId Int
+  status             String     @default("PENDING") // PENDING | ACTIVE | DECLINED | REMOVED
+  invitedByUserId    Int?
+  respondedAt        DateTime?
+  host               Barbershop @relation("SharedLocationHost", fields: [hostBarbershopId], references: [id], onDelete: Cascade)
+  member             Barbershop @relation("SharedLocationMember", fields: [memberBarbershopId], references: [id], onDelete: Cascade)
+
+  @@unique([hostBarbershopId, memberBarbershopId])
+  @@index([memberBarbershopId])
 }

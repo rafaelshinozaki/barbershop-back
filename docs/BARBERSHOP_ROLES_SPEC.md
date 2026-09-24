@@ -131,3 +131,28 @@ diferentes. É **uma conta** com **um vínculo por unidade** (`Barber`, único p
 
 No seed de demonstração, Bianca é gerente da Green e da Green Centro, e Minion é
 freelancer aos sábados na Barbearia Vintage (vínculo temporário).
+
+## 8. Espaço compartilhado (cadeira alugada)
+
+Como o "Shared Location" do Booksy: o profissional independente tem o
+**próprio negócio** (conta de dono, plano, clientes, agenda, página e
+recebimentos) e atende no espaço de outra barbearia. É diferente de entrar na
+equipe (seção 7): aqui ninguém vê os dados do outro. O que eles compartilham é a
+vitrine e o endereço.
+
+- **Convite:** o espaço convida pelo link da página pública do profissional
+  (`…/u/<slug>`), na aba "Espaço compartilhado" (gerente ou dono).
+- **Resposta:** o profissional aceita ou recusa na mesma aba, do lado dele.
+- **Página pública:** a do espaço lista "Profissionais independentes neste
+  espaço", com link pra página de cada um (cada um tem a própria agenda). A do
+  profissional mostra "Atende em …".
+- **Encerrar:** qualquer um dos lados encerra; dá pra convidar de novo depois.
+- **Regras:**
+  - uma unidade da mesma rede não pode ser convidada (aí é equipe, seção 7);
+  - pendente não aparece na página pública;
+  - cada evento avisa o dono e os gerentes do outro lado.
+- **Modelo:** `SharedLocationMember` (`hostBarbershopId`, `memberBarbershopId`,
+  `status` PENDING | ACTIVE | DECLINED | REMOVED).
+
+No seed de demonstração, o Studio Navalha (Tiago) atende no espaço da Green, e
+a Barbearia Vintage tem um convite pendente.

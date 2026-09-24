@@ -1,5 +1,6 @@
 import { MarketingUnsubscribeController } from './marketing-unsubscribe.controller';
 import { AccountDeletionService } from './account-deletion.service';
+import { SharedLocationService } from './shared-location.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
@@ -36,11 +37,17 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BarbershopService,
     AccountDeletionService,
     EmployeeInviteService,
+    SharedLocationService,
     AppointmentReminderService,
     AppointmentReminderScheduler,
     AppointmentReminderProcessor,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController],
-  exports: [BarbershopService, EmployeeInviteService, AccountDeletionService],
+  exports: [
+    BarbershopService,
+    EmployeeInviteService,
+    AccountDeletionService,
+    SharedLocationService,
+  ],
 })
 export class BarbershopModule {}

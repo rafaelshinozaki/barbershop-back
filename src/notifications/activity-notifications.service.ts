@@ -306,6 +306,84 @@ export class ActivityNotificationsService {
     });
   }
 
+  /**
+   * Espaço compartilhado (cadeira alugada): convite, resposta e saída. O aviso
+   * vai pro dono e gerentes da unidade `toBarbershopId`.
+   */
+  sharedLocationEvent(
+    toBarbershopId: number,
+    event: 'invited' | 'accepted' | 'declined' | 'left',
+    otherShopName: string,
+    actorUserId: number,
+    key: string,
+  ) {
+    return this.run('sharedLocationEvent', async () => {
+      const texts = {
+        invited: {
+          pt: [
+            'Convite de espaço compartilhado',
+            `${otherShopName} convidou você para atender no espaço deles como profissional independente.`,
+          ],
+          en: [
+            'Shared location invite',
+            `${otherShopName} invited you to work at their space as an independent professional.`,
+          ],
+          es: [
+            'Invitación a espacio compartido',
+            `${otherShopName} te invitó a atender en su espacio como profesional independiente.`,
+          ],
+        },
+        accepted: {
+          pt: [
+            'Novo profissional no espaço',
+            `${otherShopName} aceitou e agora aparece na sua página como profissional independente.`,
+          ],
+          en: [
+            'New professional at your space',
+            `${otherShopName} accepted and now shows on your page as an independent professional.`,
+          ],
+          es: [
+            'Nuevo profesional en el espacio',
+            `${otherShopName} aceptó y ahora aparece en tu página como profesional independiente.`,
+          ],
+        },
+        declined: {
+          pt: ['Convite recusado', `${otherShopName} recusou o convite para o seu espaço.`],
+          en: ['Invite declined', `${otherShopName} declined the invite to your space.`],
+          es: ['Invitación rechazada', `${otherShopName} rechazó la invitación a tu espacio.`],
+        },
+        left: {
+          pt: [
+            'Espaço compartilhado encerrado',
+            `O vínculo de espaço compartilhado com ${otherShopName} foi encerrado.`,
+          ],
+          en: [
+            'Shared location ended',
+            `The shared location link with ${otherShopName} was ended.`,
+          ],
+          es: [
+            'Espacio compartido terminado',
+            `El vínculo de espacio compartido con ${otherShopName} terminó.`,
+          ],
+        },
+      }[event];
+      await this.deliver(toBarbershopId, 'team', {
+        actorUserId,
+        path: 'shared-location',
+        type:
+          event === 'declined' || event === 'left'
+            ? NotificationType.WARNING
+            : NotificationType.INFO,
+        key,
+        build: () => ({
+          pt: { title: texts.pt[0], message: texts.pt[1] },
+          en: { title: texts.en[0], message: texts.en[1] },
+          es: { title: texts.es[0], message: texts.es[1] },
+        }),
+      });
+    });
+  }
+
   /** Cliente avaliou a unidade (nova ou atualizada). */
   reviewPosted(
     barbershopId: number,

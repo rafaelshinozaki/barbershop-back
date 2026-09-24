@@ -1870,6 +1870,44 @@ async function ensureMultiUnitStaff(prisma: PrismaClient) {
   }
 }
 
+/**
+ * Espaço compartilhado (cadeira alugada): o Studio Navalha (Tiago, negócio
+ * independente) atende no espaço da Green Barbershop, e a Barbearia Vintage
+ * tem um convite pendente.
+ */
+async function ensureSharedLocation(prisma: PrismaClient) {
+  const [green, navalha, vintage] = await Promise.all(
+    ['green-barbershop', 'studio-navalha', 'barbearia-vintage'].map((slug) =>
+      prisma.barbershop.findUnique({ where: { slug } }),
+    ),
+  );
+  if (!green) return;
+  const links = [
+    { member: navalha, status: 'ACTIVE' },
+    { member: vintage, status: 'PENDING' },
+  ];
+  for (const l of links) {
+    if (!l.member) continue;
+    const key = {
+      hostBarbershopId_memberBarbershopId: {
+        hostBarbershopId: green.id,
+        memberBarbershopId: l.member.id,
+      },
+    };
+    if (await prisma.sharedLocationMember.findUnique({ where: key })) continue;
+    console.log(`Shared location: ${l.member.name} at ${green.name} (${l.status})...`);
+    await prisma.sharedLocationMember.create({
+      data: {
+        hostBarbershopId: green.id,
+        memberBarbershopId: l.member.id,
+        status: l.status,
+        invitedByUserId: green.ownerUserId,
+        respondedAt: l.status === 'ACTIVE' ? atBrt(-20, 10) : null,
+      },
+    });
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -1906,5 +1944,6 @@ export async function seedDemoData(prisma: PrismaClient) {
   if (green.ownerUserId) await ensureSecondUnit(prisma, green.networkId, green.ownerUserId);
   await ensureOtherShops(prisma, clientAccounts);
   await ensureMultiUnitStaff(prisma);
+  await ensureSharedLocation(prisma);
   await seedNotifications(prisma, green.id);
 }
