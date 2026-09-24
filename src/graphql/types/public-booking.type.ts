@@ -64,6 +64,56 @@ export class PublicSubscriptionPlanType {
   serviceName: string;
 }
 
+/** Outra barbearia no espaço compartilhado (só o que é público) */
+@ObjectType()
+export class SharedLocationShopType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field()
+  slug: string;
+
+  @Field()
+  address: string;
+
+  @Field()
+  city: string;
+
+  @Field()
+  state: string;
+}
+
+@ObjectType()
+export class SharedLocationLinkType {
+  @Field(() => Int)
+  id: number;
+
+  /** PENDING | ACTIVE */
+  @Field()
+  status: string;
+
+  @Field()
+  createdAt: Date;
+
+  /** A barbearia do outro lado */
+  @Field(() => SharedLocationShopType)
+  shop: SharedLocationShopType;
+}
+
+@ObjectType()
+export class SharedLocationOverviewType {
+  /** Profissionais independentes que atendem no espaço desta unidade */
+  @Field(() => [SharedLocationLinkType])
+  asHost: SharedLocationLinkType[];
+
+  /** Espaços onde esta unidade atende como profissional independente */
+  @Field(() => [SharedLocationLinkType])
+  asMember: SharedLocationLinkType[];
+}
+
 @ObjectType()
 export class PublicBarbershopType {
   @Field(() => Int)
@@ -134,6 +184,14 @@ export class PublicBarbershopType {
 
   @Field()
   isFeatured: boolean;
+
+  /** Espaço compartilhado: profissionais independentes que atendem aqui */
+  @Field(() => [SharedLocationShopType], { defaultValue: [] })
+  sharedLocationMembers: SharedLocationShopType[];
+
+  /** Espaços onde este profissional independente atende */
+  @Field(() => [SharedLocationShopType], { defaultValue: [] })
+  sharedLocationHosts: SharedLocationShopType[];
 }
 
 @ObjectType()

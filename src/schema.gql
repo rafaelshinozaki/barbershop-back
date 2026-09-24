@@ -1175,6 +1175,7 @@ type Mutation {
   deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   disconnectSocialAccount(barbershopId: Int!): Boolean!
+  endSharedLocation(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
   getBarbershopPhotoUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
@@ -1182,6 +1183,7 @@ type Mutation {
   getPhotoUploadUrl(contentType: String): PresignedUploadType!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, productId: Int!): PresignedUploadType!
   getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
+  inviteToSharedLocation(barbershopId: Int!, memberPageLink: String!): SharedLocationLinkType!
   login(input: LoginInput!): User!
   logout: Boolean!
   logoutOtherSessions: Boolean!
@@ -1207,6 +1209,7 @@ type Mutation {
   requestTwoFactorCode: Boolean!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
+  respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
@@ -1642,6 +1645,8 @@ type PublicBarbershopType {
   postalCode: String!
   reviewCount: Int!
   services: [PublicServiceType!]!
+  sharedLocationHosts: [SharedLocationShopType!]!
+  sharedLocationMembers: [SharedLocationShopType!]!
   slug: String!
   state: String!
   subscriptionPlans: [PublicSubscriptionPlanType!]!
@@ -1772,6 +1777,7 @@ type Query {
   searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
+  sharedLocation(barbershopId: Int!): SharedLocationOverviewType!
   socialConnection(barbershopId: Int!): SocialConnectionType
   socialPosts(barbershopId: Int!): [SocialPostType!]!
   statusDistribution: StatusDistribution!
@@ -1926,6 +1932,27 @@ input SetCommissionRuleInput {
 type SetupIntent {
   client_secret: String!
   id: String!
+}
+
+type SharedLocationLinkType {
+  createdAt: DateTime!
+  id: Int!
+  shop: SharedLocationShopType!
+  status: String!
+}
+
+type SharedLocationOverviewType {
+  asHost: [SharedLocationLinkType!]!
+  asMember: [SharedLocationLinkType!]!
+}
+
+type SharedLocationShopType {
+  address: String!
+  city: String!
+  id: Int!
+  name: String!
+  slug: String!
+  state: String!
 }
 
 input SignConsentFormInput {

@@ -7,6 +7,7 @@ import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import { BarbershopService } from '@/barbershop/barbershop.service';
+import { SharedLocationService } from '@/barbershop/shared-location.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
@@ -48,11 +49,16 @@ export class PublicBookingResolver {
     private readonly realtime: RealtimeService,
     private readonly activity: ActivityNotificationsService,
     private readonly prisma: PrismaService,
+    private readonly sharedLocation: SharedLocationService,
   ) {}
 
   @Query(() => PublicBarbershopType)
   async publicBarbershop(@Args('slug') slug: string) {
-    return this.barbershopService.getPublicBarbershopByslug(slug);
+    return this.withSharedLocation(await this.barbershopService.getPublicBarbershopByslug(slug));
+  }
+
+  private async withSharedLocation<T extends { id: number }>(shop: T) {
+    return { ...shop, ...(await this.sharedLocation.publicLinks(shop.id)) };
   }
 
   // Mesma página pública, resolvida pelo subdomínio próprio da unidade em
@@ -60,7 +66,9 @@ export class PublicBookingResolver {
   // subdominio.<domínio da plataforma>.
   @Query(() => PublicBarbershopType)
   async publicBarbershopBySubdomain(@Args('subdomain') subdomain: string) {
-    return this.barbershopService.getPublicBarbershopBySubdomain(subdomain);
+    return this.withSharedLocation(
+      await this.barbershopService.getPublicBarbershopBySubdomain(subdomain),
+    );
   }
 
   @Query(() => [TreatmentCategory])

@@ -13,6 +13,7 @@ import { BarbershopPhotoResolver } from './resolvers/barbershop-photo.resolver';
 import { NetworkResolver } from './resolvers/network.resolver';
 import { ClientAuthResolver } from './resolvers/client-auth.resolver';
 import { PublicBookingResolver } from './resolvers/public-booking.resolver';
+import { SharedLocationResolver } from './resolvers/shared-location.resolver';
 import { SocialResolver } from './resolvers/social.resolver';
 import { RealtimeResolver } from './resolvers/realtime.resolver';
 import { AuthModule } from '../auth/auth.module';
@@ -58,6 +59,7 @@ import { SocialModule } from '../social/social.module';
     NetworkResolver,
     ClientAuthResolver,
     PublicBookingResolver,
+    SharedLocationResolver,
     SocialResolver,
     AccountDeletionResolver,
   ],
