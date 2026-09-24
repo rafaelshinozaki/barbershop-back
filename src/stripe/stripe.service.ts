@@ -103,7 +103,13 @@ export class StripeService {
     return await this.stripe.prices.create(params);
   }
 
-  async createSubscription(customerId: string, priceId: string, metadata?: Record<string, string>) {
+  async createSubscription(
+    customerId: string,
+    priceId: string,
+    metadata?: Record<string, string>,
+    // Mesma chave = o Stripe devolve a mesma assinatura em vez de criar outra
+    idempotencyKey?: string,
+  ) {
     const params: Stripe.SubscriptionCreateParams = {
       customer: customerId,
       items: [{ price: priceId }],
@@ -116,7 +122,10 @@ export class StripeService {
       params.metadata = metadata;
     }
 
-    return await this.stripe.subscriptions.create(params);
+    return await this.stripe.subscriptions.create(
+      params,
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
   }
 
   async getSubscription(subscriptionId: string) {

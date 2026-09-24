@@ -482,6 +482,111 @@ describe('BarbershopService (integração com o banco)', () => {
     });
   });
 
+  // ============ Assinatura e pacotes do cliente: cliques simultâneos ============
+
+  describe('assinatura e pacotes do cliente', () => {
+    it('dois cliques em "assinar" criam UMA assinatura no Stripe', async () => {
+      const created: string[] = [];
+      const stripe = {
+        attachPaymentMethod: async () => undefined,
+        setDefaultPaymentMethod: async () => undefined,
+        createSubscription: async (_c: string, _p: string, _m: unknown, key: string) => {
+          // Simula a latência do Stripe (é aí que os cliques se cruzavam)
+          await new Promise((r) => setTimeout(r, 50));
+          created.push(key);
+          return {
+            id: `sub_dup_${RUN}_${created.length}`,
+            status: 'active',
+            current_period_start: 1,
+            current_period_end: 2,
+            latest_invoice: null,
+          };
+        },
+      };
+      const svc = new BarbershopService(
+        prisma,
+        {} as never,
+        {} as never,
+        { isConfigured: () => false } as never,
+        stripe as never,
+        {} as never,
+        { notify: () => undefined } as never,
+      );
+      const client = await prisma.clientAccount.create({
+        data: { email: `dup-${RUN}@test.local`, name: 'Cliente', stripeCustomerId: 'cus_dup' },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Mensal',
+          price: new Decimal(80),
+          stripePriceId: 'price_dup',
+        },
+      });
+      const results = await Promise.allSettled(
+        [1, 2, 3].map(() => svc.subscribeToPlan(client.id, A.shopId, plan.id, 'pm_x')),
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(created).toEqual([`client-sub:${client.id}:${plan.id}:1`]);
+      expect(await prisma.clientSubscription.count({ where: { clientAccountId: client.id } })).toBe(
+        1,
+      );
+
+      // Sessões: limite 2, cinco débitos ao mesmo tempo → só 2 passam
+      await prisma.clientSubscriptionPlan.update({
+        where: { id: plan.id },
+        data: { sessionsPerCycle: 2 },
+      });
+      const sub = await prisma.clientSubscription.findFirstOrThrow({
+        where: { clientAccountId: client.id },
+      });
+      const redeems = await Promise.allSettled(
+        [1, 2, 3, 4, 5].map(() =>
+          service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id),
+        ),
+      );
+      expect(redeems.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+      expect(
+        (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } }))
+          .usedThisCycle,
+      ).toBe(2);
+
+      await prisma.clientSubscription.deleteMany({ where: { clientAccountId: client.id } });
+      await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+      await prisma.clientAccount.delete({ where: { id: client.id } });
+    });
+
+    it('pacote de 3 sessões: cinco débitos simultâneos usam 3 e o pacote fecha', async () => {
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote 3',
+          totalSessions: 3,
+          price: new Decimal(120),
+        },
+      });
+      const pkg = await prisma.clientPackage.create({
+        data: {
+          barbershopId: A.shopId,
+          customerId: A.customerId,
+          servicePackageId: offer.id,
+          totalSessions: 3,
+        },
+      });
+      const debits = await Promise.allSettled(
+        [1, 2, 3, 4, 5].map(() => service.debitClientPackageSession(A.ownerId, A.shopId, pkg.id)),
+      );
+      expect(debits.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+      const after = await prisma.clientPackage.findUniqueOrThrow({ where: { id: pkg.id } });
+      expect(after).toMatchObject({ usedSessions: 3, status: 'COMPLETED' });
+
+      await prisma.clientPackage.delete({ where: { id: pkg.id } });
+      await prisma.servicePackage.delete({ where: { id: offer.id } });
+    });
+  });
+
   // ============ Cargos: dono / gerente / barbeiro ============
 
   describe('cargos na unidade', () => {
