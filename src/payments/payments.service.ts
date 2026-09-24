@@ -21,6 +21,37 @@ const MIN_STRIPE_CHARGE = 0.5;
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
+/**
+ * "Pagamento vencido" = plano ativo cobrado por nós que passou do vencimento.
+ * Antes contava todo pagamento antigo com data passada (depois da primeira
+ * renovação, o pagamento anterior aparecia como vencido pra sempre).
+ */
+export const OVERDUE_SUBSCRIPTION_FILTER = () => ({
+  status: PLANO_STATUS.ACTIVE,
+  stripeSubscriptionId: null,
+  currentPeriodEnd: { lte: new Date() },
+});
+
+/** Fica só o pagamento mais recente de cada assinatura. */
+export function latestPerSubscription<T extends { subscriptionId: number; nextPaymentDate: Date }>(
+  payments: T[],
+): T[] {
+  const latest = new Map<number, T>();
+  for (const p of payments) {
+    const cur = latest.get(p.subscriptionId);
+    if (!cur || p.nextPaymentDate > cur.nextPaymentDate) latest.set(p.subscriptionId, p);
+  }
+  return [...latest.values()];
+}
+
+/** Dias depois do vencimento em que o plano segue ativo tentando cobrar. */
+export const RENEWAL_GRACE_DAYS = 7;
+
+/** Próximo vencimento (mesma regra da contratação: 30 dias ou 1 ano). */
+function addCycle(from: Date, billingCycle: string) {
+  return billingCycle === 'YEARLY' ? addYears(from, 1) : addDays(from, 30);
+}
+
 function couponFromMetadata(metadata?: Record<string, string>): CheckoutCoupon | undefined {
   const couponId = Number(metadata?.couponId);
   if (!couponId) return undefined;
@@ -397,24 +428,12 @@ export class PaymentsService {
       data: { planId: newPlanId },
     });
 
-    // Se há diferença de preço, criar um pagamento pendente para o próximo vencimento
-    if (priceDiff !== 0) {
-      await this.prisma.payment.create({
-        data: {
-          subscriptionId: subscription.id,
-          amount: new Prisma.Decimal(Math.abs(priceDiff)),
-          nextPaymentDate: nextPaymentDate,
-          paymentDate: nextPaymentDate, // Será cobrado no próximo vencimento
-          paymentMethod: 'stripe',
-          transactionId: null, // Será preenchido quando o pagamento for processado
-          status: priceDiff > 0 ? PAGAMENTO_STATUS.PENDING : PAGAMENTO_STATUS.COMPLETED, // Se downgrade, marca como pago
-        },
-      });
-
-      this.logger.log(
-        `Plan change for user ${userId}: ${subscription.plan.name} -> ${newPlan.name}. Price difference: ${priceDiff}. Will be charged on ${nextPaymentDate}`,
-      );
-    }
+    // O preço novo vale a partir do próximo vencimento (a renovação cobra o
+    // plano atual). Antes a diferença virava um pagamento "pendente" que o
+    // job cobrava todo dia — a pendência nunca era baixada.
+    this.logger.log(
+      `Plan change for user ${userId}: ${subscription.plan.name} -> ${newPlan.name} (price diff ${priceDiff}, from next renewal)`,
+    );
 
     return { subscription: updated, paymentIntent: undefined };
   }
@@ -690,10 +709,14 @@ export class PaymentsService {
     }
 
     const amountInCents = Math.floor(finalAmount * 100 + 0.5);
+    // setup_future_usage: o cartão fica salvo no cliente pra renovação
+    // automática no vencimento (antes nada renovava: pagava uma vez e o
+    // plano ficava ativo pra sempre)
     const paymentIntent = await this.stripeService.createPaymentIntent(
       amountInCents,
       'brl',
       customer.id,
+      { setupFutureUsage: 'off_session' },
     );
 
     await this.stripeService.updatePaymentIntent(paymentIntent.id, {
@@ -754,6 +777,9 @@ export class PaymentsService {
             planId,
             paymentIntent.id,
             couponFromMetadata(paymentIntent.metadata),
+            typeof paymentIntent.payment_method === 'string'
+              ? paymentIntent.payment_method
+              : paymentIntent.payment_method?.id,
           );
         }
       }
@@ -797,257 +823,337 @@ export class PaymentsService {
     planId: number,
     paymentIntentId: string | null,
     coupon?: CheckoutCoupon,
+    paymentMethodId?: string,
   ) {
     this.logger.log(`Creating subscription after payment - User: ${userId}, Plan: ${planId}`);
 
-    // Confirmar o mesmo pagamento duas vezes (duplo clique, nova tentativa)
-    // não cria outra assinatura nem gasta o cupom de novo
-    if (paymentIntentId) {
-      const existing = await this.prisma.payment.findFirst({
-        where: { transactionId: paymentIntentId },
-        include: { subscription: true },
-      });
-      if (existing?.subscription) return { success: true, subscription: existing.subscription };
-    }
-
-    const plan = await this.prisma.plan.findFirst({
-      where: { id: planId },
-    });
-
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
-    }
-
+    const plan = await this.prisma.plan.findFirst({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    if (!user) throw new NotFoundException('User not found');
 
-    // Verificar se já existe uma assinatura ativa
-    const lastActiveSub = await this.prisma.subscription.findFirst({
-      where: { userId, AND: { status: PLANO_STATUS.ACTIVE } },
-    });
+    const now = new Date();
+    const periodEnd = addCycle(now, plan.billingCycle);
+    const price = Number(plan.price);
 
-    if (lastActiveSub) {
-      // Cancelar assinatura anterior
-      const startDay = format(lastActiveSub.startSubDate, 'd');
-      await this.prisma.subscription.update({
-        where: { id: lastActiveSub.id },
+    // A tela e o webhook do Stripe confirmam o mesmo pagamento, às vezes ao
+    // mesmo tempo: a trava por pagamento garante uma assinatura só
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (paymentIntentId) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
+          'checkout:' + paymentIntentId
+        }))`;
+        const existing = await tx.payment.findFirst({
+          where: { transactionId: paymentIntentId },
+          include: { subscription: true },
+        });
+        if (existing?.subscription) return { subscription: existing.subscription, created: false };
+      }
+
+      // A assinatura anterior (ex.: o Free) é encerrada
+      await tx.subscription.updateMany({
+        where: { userId, status: PLANO_STATUS.ACTIVE },
+        data: { status: PLANO_STATUS.INACTIVE, cancelationDate: now },
+      });
+
+      const subscription = await tx.subscription.create({
         data: {
-          status: PLANO_STATUS.INACTIVE,
-          cancelationDate: addDays(
-            new Date(new Date().getFullYear(), new Date().getMonth(), +startDay + 1),
-            +30,
-          ),
+          userId,
+          planId,
+          startSubDate: now,
+          status: PLANO_STATUS.ACTIVE,
+          stripeCustomerId: user.stripeCustomerId,
+          currentPeriodEnd: periodEnd,
         },
       });
+
+      await tx.payment.create({
+        data: {
+          subscriptionId: subscription.id,
+          amount: new Prisma.Decimal(coupon ? roundMoney(price - coupon.discountAmount) : price),
+          nextPaymentDate: periodEnd,
+          paymentDate: now,
+          paymentMethod: paymentIntentId ? 'stripe' : 'coupon',
+          transactionId: paymentIntentId,
+          status: PAGAMENTO_STATUS.COMPLETED,
+          ...(coupon && {
+            appliedCouponId: coupon.couponId,
+            originalAmount: new Prisma.Decimal(coupon.originalAmount),
+            discountAmount: new Prisma.Decimal(coupon.discountAmount),
+          }),
+        },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { membership: MEMBERSHIP_STATUS.PAID },
+      });
+      return { subscription, created: true };
+    });
+
+    if (result.created) {
+      if (coupon) await this.couponsService.registerUse(coupon.couponId, userId);
+      // O cartão usado vira o padrão: é ele que a renovação cobra
+      if (paymentMethodId && user.stripeCustomerId) {
+        await this.stripeService
+          .setDefaultPaymentMethod(user.stripeCustomerId, paymentMethodId)
+          .catch((e) => this.logger.warn(`Cartão padrão não definido (user ${userId}): ${e}`));
+      }
     }
-
-    // Criar nova assinatura
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        userId,
-        planId,
-        startSubDate: new Date(),
-        status: PLANO_STATUS.ACTIVE,
-        stripeCustomerId: user.stripeCustomerId,
-      } as any,
-    });
-
-    // Criar registro de pagamento (com o valor efetivamente pago)
-    const price = Number(plan.price);
-    await this.prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount: new Prisma.Decimal(coupon ? roundMoney(price - coupon.discountAmount) : price),
-        nextPaymentDate:
-          plan.billingCycle === 'YEARLY' ? addYears(new Date(), 1) : addDays(new Date(), 30),
-        paymentDate: new Date(),
-        paymentMethod: paymentIntentId ? 'stripe' : 'coupon',
-        transactionId: paymentIntentId,
-        status: PAGAMENTO_STATUS.COMPLETED,
-        ...(coupon && {
-          appliedCouponId: coupon.couponId,
-          originalAmount: new Prisma.Decimal(coupon.originalAmount),
-          discountAmount: new Prisma.Decimal(coupon.discountAmount),
-        }),
-      },
-    });
-
-    if (coupon) await this.couponsService.registerUse(coupon.couponId, userId);
-
-    return { success: true, subscription };
+    return { success: true, subscription: result.subscription };
   }
 
   /**
-   * Processa cobranças automáticas para pagamentos vencidos
-   * Este método é chamado por um cron job
+   * Job diário: renova os planos vencidos cobrando o cartão salvo.
+   *
+   * Seguro contra cobrança em dobro — mesmo com o botão "processar" do
+   * backoffice rodando junto com o agendamento:
+   * - antes de cobrar, a renovação cria o pagamento PENDENTE com
+   *   renewalKey única (assinatura:vencimento:tentativa); quem não
+   *   conseguir criar, não cobra
+   * - a cobrança no Stripe usa essa mesma chave como idempotencyKey
+   * - pagamento pendente de uma execução que caiu no meio é conferido no
+   *   Stripe antes de qualquer nova tentativa
+   * Cartão recusado: uma tentativa por dia, aviso por e-mail na primeira, e
+   * o plano cai depois de RENEWAL_GRACE_DAYS do vencimento.
    */
   async processRecurringPayments() {
-    this.logger.log('Iniciando processamento de cobranças pendentes...');
+    const due = await this.prisma.subscription.findMany({
+      where: {
+        status: PLANO_STATUS.ACTIVE,
+        stripeSubscriptionId: null,
+        currentPeriodEnd: { lte: new Date() },
+      },
+      select: { id: true },
+    });
+    this.logger.log(`Renovação: ${due.length} plano(s) vencido(s)`);
+    let renewed = 0;
+    for (const { id } of due) {
+      try {
+        if ((await this.renewSubscription(id)) === 'renewed') renewed++;
+      } catch (error) {
+        this.logger.error(`Renovação da assinatura ${id} falhou: ${error}`);
+      }
+    }
+    return { processed: due.length, renewed };
+  }
 
+  /** Renova uma assinatura se estiver vencida (nada acontece se não estiver). */
+  async renewSubscription(
+    subscriptionId: number,
+  ): Promise<'renewed' | 'not_due' | 'in_progress' | 'failed' | 'expired'> {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: true, user: true },
+    });
+    const now = new Date();
+    if (
+      !sub ||
+      sub.status !== PLANO_STATUS.ACTIVE ||
+      sub.stripeSubscriptionId ||
+      !sub.currentPeriodEnd ||
+      sub.currentPeriodEnd > now
+    ) {
+      return 'not_due';
+    }
+    const periodEnd = sub.currentPeriodEnd;
+    const keyPrefix = `${sub.id}:${periodEnd.toISOString()}:`;
+
+    // Plano gratuito: só avança o período
+    const price = Number(sub.plan.price);
+    if (price <= 0) {
+      await this.prisma.subscription.updateMany({
+        where: { id: sub.id, currentPeriodEnd: periodEnd },
+        data: { currentPeriodEnd: addCycle(periodEnd, sub.plan.billingCycle) },
+      });
+      return 'renewed';
+    }
+
+    // Execução anterior que caiu com a cobrança em andamento: confere no Stripe
+    const pending = await this.prisma.payment.findFirst({
+      where: { renewalKey: { startsWith: keyPrefix }, status: PAGAMENTO_STATUS.PENDING },
+    });
+    if (pending) {
+      const outcome = await this.reconcileRenewalPayment(pending.id);
+      if (outcome !== 'failed') return outcome;
+    }
+
+    // Uma tentativa por dia
+    if (sub.renewalFailedAt) {
+      const lastAttempt = await this.prisma.payment.findFirst({
+        where: { renewalKey: { startsWith: keyPrefix } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (lastAttempt && now.getTime() - lastAttempt.createdAt.getTime() < 20 * 3600_000) {
+        return 'failed';
+      }
+    }
+
+    // Tolerância esgotada: o plano cai (sem nova cobrança)
+    if (now.getTime() - periodEnd.getTime() > RENEWAL_GRACE_DAYS * 86400_000) {
+      await this.expireSubscription(sub.id, sub.userId);
+      return 'expired';
+    }
+
+    const attempt =
+      (await this.prisma.payment.count({ where: { renewalKey: { startsWith: keyPrefix } } })) + 1;
+    const renewalKey = `${keyPrefix}${attempt}`;
+    const nextPeriodEnd = addCycle(periodEnd, sub.plan.billingCycle);
+
+    // A trava: só quem cria este pagamento cobra
+    let claim;
     try {
-      // Only process PENDING payments (e.g. plan-change diffs).
-      // COMPLETED payments with Stripe subscriptions are billed automatically
-      // by Stripe and handled via webhooks (invoice.payment_succeeded/failed).
-      const pendingPayments = await this.prisma.payment.findMany({
-        where: {
-          nextPaymentDate: {
-            lte: new Date(),
-          },
+      claim = await this.prisma.payment.create({
+        data: {
+          subscriptionId: sub.id,
+          amount: new Prisma.Decimal(price),
+          paymentDate: now,
+          nextPaymentDate: nextPeriodEnd,
+          paymentMethod: 'stripe',
           status: PAGAMENTO_STATUS.PENDING,
-        },
-        include: {
-          subscription: {
-            include: {
-              user: true,
-              plan: true,
-            },
-          },
+          renewalKey,
         },
       });
-
-      this.logger.log(`Encontrados ${pendingPayments.length} pagamentos pendentes para processar`);
-
-      for (const payment of pendingPayments) {
-        try {
-          await this.processRecurringPayment(payment);
-        } catch (error) {
-          this.logger.error(
-            `Erro ao processar cobrança pendente para pagamento ${payment.id}:`,
-            error,
-          );
-        }
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        return 'in_progress';
       }
-
-      this.logger.log('Processamento de cobranças pendentes concluído');
-    } catch (error) {
-      this.logger.error('Erro durante o processamento de cobranças recorrentes:', error);
+      throw e;
     }
+
+    const paymentMethodId = sub.user.stripeCustomerId
+      ? await this.stripeService.getDefaultPaymentMethodId(sub.user.stripeCustomerId)
+      : null;
+    if (!sub.user.stripeCustomerId || !paymentMethodId) {
+      await this.markRenewalFailed(claim.id, 'Nenhum cartão salvo pra renovar o plano');
+      return 'failed';
+    }
+
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await this.stripeService.chargeOffSession({
+        amount: Math.round(price * 100),
+        currency: 'brl',
+        customerId: sub.user.stripeCustomerId,
+        paymentMethodId,
+        metadata: { renewalKey, subscriptionId: String(sub.id), userId: String(sub.userId) },
+        idempotencyKey: `renewal:${renewalKey}`,
+      });
+    } catch (error: any) {
+      // Cartão recusado: o Stripe devolve o PaymentIntent no erro
+      const pi = error?.raw?.payment_intent ?? error?.payment_intent;
+      if (pi?.id) {
+        await this.prisma.payment.update({
+          where: { id: claim.id },
+          data: { transactionId: pi.id },
+        });
+      }
+      if (error?.type === 'StripeCardError' || pi) {
+        await this.markRenewalFailed(claim.id, error?.message ?? 'Cartão recusado');
+        return 'failed';
+      }
+      // Erro de rede/Stripe fora: o pagamento fica PENDENTE e a próxima
+      // execução confere no Stripe (mesma idempotencyKey) antes de tentar de novo
+      throw error;
+    }
+
+    await this.prisma.payment.update({
+      where: { id: claim.id },
+      data: { transactionId: paymentIntent.id },
+    });
+    if (paymentIntent.status === 'succeeded') {
+      await this.finalizeRenewalPayment(claim.id);
+      return 'renewed';
+    }
+    // requires_action (3DS) ou processing: fica pendente; o webhook ou a
+    // próxima execução resolve
+    return 'in_progress';
+  }
+
+  /** Confere no Stripe um pagamento de renovação pendente e fecha o resultado. */
+  private async reconcileRenewalPayment(
+    paymentId: number,
+  ): Promise<'renewed' | 'in_progress' | 'failed'> {
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment || payment.status !== PAGAMENTO_STATUS.PENDING) return 'failed';
+    let transactionId = payment.transactionId;
+    if (!transactionId) {
+      // A execução caiu no meio da chamada ao Stripe: não dá pra saber se a
+      // cobrança foi criada. Espera 1 h (a busca do Stripe tem atraso) e
+      // procura pela renewalKey — só dá como falha se ela não existir lá.
+      // Nunca tenta de novo às cegas: seria cobrar duas vezes.
+      if (Date.now() - payment.createdAt.getTime() < 3600_000) return 'in_progress';
+      const found = await this.stripeService.findPaymentIntentByRenewalKey(payment.renewalKey!);
+      if (!found) {
+        await this.markRenewalFailed(payment.id, 'Cobrança interrompida');
+        return 'failed';
+      }
+      transactionId = found.id;
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { transactionId } });
+    }
+    const pi = await this.stripeService.retrievePaymentIntent(transactionId);
+    if (pi.status === 'succeeded') {
+      await this.finalizeRenewalPayment(payment.id);
+      return 'renewed';
+    }
+    if (pi.status === 'processing' || pi.status === 'requires_action') return 'in_progress';
+    await this.markRenewalFailed(payment.id, `Cobrança não concluída (${pi.status})`);
+    return 'failed';
   }
 
   /**
-   * Processa uma cobrança recorrente específica
+   * Renovação paga: baixa o pagamento e empurra o vencimento. Idempotente
+   * (webhook e job podem chegar juntos): só quem baixa o pendente avança.
    */
-  private async processRecurringPayment(payment: any) {
-    const { subscription } = payment;
-    const { user, plan } = subscription;
+  async finalizeRenewalPayment(paymentId: number) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { subscription: { include: { plan: true, user: true } } },
+    });
+    if (!payment?.renewalKey) return;
+    const done = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.payment.updateMany({
+        where: { id: paymentId, status: PAGAMENTO_STATUS.PENDING },
+        data: { status: PAGAMENTO_STATUS.COMPLETED, paymentDate: new Date() },
+      });
+      if (count === 0) return false;
+      await tx.subscription.update({
+        where: { id: payment.subscriptionId },
+        data: {
+          currentPeriodEnd: payment.nextPaymentDate,
+          renewalFailedAt: null,
+          status: PLANO_STATUS.ACTIVE,
+        },
+      });
+      await tx.user.update({
+        where: { id: payment.subscription.userId },
+        data: { membership: MEMBERSHIP_STATUS.PAID },
+      });
+      return true;
+    });
+    if (!done) return;
 
+    const { user, plan } = payment.subscription;
     this.logger.log(
-      `Processando cobrança recorrente para usuário ${user.id} (${user.email}) - Plano: ${plan.name}`,
+      `Plano renovado: assinatura ${
+        payment.subscriptionId
+      } até ${payment.nextPaymentDate.toISOString()}`,
     );
-
-    // Verificar se o usuário tem um customer ID do Stripe
-    if (!user.stripeCustomerId) {
-      this.logger.warn(`Usuário ${user.id} não possui stripeCustomerId`);
-      await this.handlePaymentFailure(
-        payment,
-        'Usuário não possui método de pagamento configurado',
-      );
-      return;
-    }
-
-    // Verificar se a assinatura ainda está ativa
-    if (subscription.status !== PLANO_STATUS.ACTIVE) {
-      this.logger.warn(
-        `Assinatura ${subscription.id} não está ativa (status: ${subscription.status})`,
-      );
-      return;
-    }
-
-    try {
-      // Determinar o valor a ser cobrado
-      let amountToCharge = Number(plan.price);
-
-      // Se for um pagamento pendente (mudança de plano), usar o valor do pagamento
-      if (payment.status === PAGAMENTO_STATUS.PENDING) {
-        amountToCharge = Number(payment.amount);
-        this.logger.log(`Processando pagamento pendente de mudança de plano: R$ ${amountToCharge}`);
-      }
-
-      // Tentar cobrar automaticamente via Stripe
-      const paymentIntent = await this.stripeService.createPaymentIntent(
-        Math.round(amountToCharge * 100), // Converter para centavos
-        'brl',
-        user.stripeCustomerId,
-      );
-
-      // Confirmar o pagamento automaticamente
-      const confirmedPayment = await this.stripeService.confirmPaymentIntent(paymentIntent.id);
-
-      if (confirmedPayment.status === 'succeeded') {
-        await this.handleSuccessfulRecurringPayment(payment, confirmedPayment, amountToCharge);
-      } else {
-        await this.handlePaymentFailure(
-          payment,
-          `Pagamento falhou com status: ${confirmedPayment.status}`,
-        );
-      }
-    } catch (error) {
-      this.logger.error(`Erro ao processar cobrança para usuário ${user.id}:`, error);
-      await this.handlePaymentFailure(payment, error.message);
-    }
-  }
-
-  /**
-   * Processa um pagamento recorrente bem-sucedido
-   */
-  private async handleSuccessfulRecurringPayment(
-    payment: any,
-    stripePayment: any,
-    amountCharged?: number,
-  ) {
-    const { subscription } = payment;
-    const { user, plan } = subscription;
-
-    // Calcular próxima data de pagamento
-    const nextPaymentDate =
-      plan.billingCycle === 'YEARLY' ? addYears(new Date(), 1) : addDays(new Date(), 30);
-
-    // Usar o valor cobrado ou o valor do plano
-    const paymentAmount = amountCharged || Number(plan.price);
-
-    // Criar novo registro de pagamento
-    const newPayment = await this.prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount: new Prisma.Decimal(paymentAmount),
-        paymentDate: new Date(),
-        nextPaymentDate,
-        paymentMethod: 'stripe',
-        transactionId: stripePayment.id,
-        status: PAGAMENTO_STATUS.COMPLETED,
-      },
-    });
-
-    // Atualizar status do usuário
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        membership: MEMBERSHIP_STATUS.PAID,
-        isActive: true,
-      },
-    });
-
-    // Enviar email de confirmação
-    const context = {
-      FullName: user.fullName,
-      AppName: 'Barbershop',
-      InvoiceID: stripePayment.id,
-      // Formatados no template ({{money}}/{{date}}) no idioma do usuário
-      Amount: paymentAmount,
-      Currency: 'BRL',
-      PaymentDate: new Date(),
-      DueDate: new Date(nextPaymentDate),
-      SupportEmail: 'suporte@barbershop.com.br',
-      Year: new Date().getFullYear(),
-    };
-
-    try {
-      await this.emailService.sendTemplateEmail(
+    await this.emailService
+      .sendTemplateEmail(
         user.id,
         'recurring_payment_success',
-        context,
+        {
+          FullName: user.fullName,
+          AppName: 'Barbershop',
+          InvoiceID: payment.transactionId,
+          Amount: Number(payment.amount),
+          Currency: 'BRL',
+          PaymentDate: new Date(),
+          DueDate: payment.nextPaymentDate,
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
         {
           pt: `Pagamento recorrente processado - ${plan.name}`,
           en: `Recurring payment processed - ${plan.name}`,
@@ -1055,82 +1161,97 @@ export class PaymentsService {
         },
         'recurring_payment',
         user.email,
-      );
-    } catch (error) {
-      this.logger.error(`Falha ao enviar email de confirmação para ${user.email}`, error);
-    }
-
-    this.logger.log(
-      `Pagamento recorrente processado com sucesso para usuário ${user.id} - Pagamento ID: ${newPayment.id}`,
-    );
+      )
+      .catch((e) => this.logger.error(`E-mail de renovação não enviado (user ${user.id}): ${e}`));
   }
 
   /**
-   * Processa falha em pagamento recorrente
+   * Renovação recusada. O plano continua ativo durante a tolerância; a
+   * pessoa é avisada na primeira falha do período (não todo dia).
    */
-  private async handlePaymentFailure(payment: any, reason: string) {
-    const { subscription } = payment;
-    const { user, plan } = subscription;
-
-    // Atualizar status do usuário para pagamento em atraso
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        membership: MEMBERSHIP_STATUS.PAST_DUE,
-        isActive: false,
-      },
+  private async markRenewalFailed(paymentId: number, reason: string) {
+    const payment = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { status: PAGAMENTO_STATUS.FAILED },
+      include: { subscription: { include: { plan: true, user: true } } },
     });
-
-    // Atualizar status da assinatura
+    const sub = payment.subscription;
+    const firstFailure = !sub.renewalFailedAt;
     await this.prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        status: PLANO_STATUS.INACTIVE,
-      },
+      where: { id: sub.id },
+      data: { renewalFailedAt: sub.renewalFailedAt ?? new Date() },
     });
-
-    // Enviar email de notificação de falha
-    const context = {
-      FullName: user.fullName,
-      AppName: 'Barbershop',
-      PlanName: plan.name,
-      Amount: Number(plan.price),
-      Currency: 'BRL',
-      Reason: reason,
-      SupportEmail: 'suporte@barbershop.com.br',
-      Year: new Date().getFullYear(),
-    };
-
-    try {
-      await this.emailService.sendTemplateEmail(
-        user.id,
+    await this.prisma.user.update({
+      where: { id: sub.userId },
+      data: { membership: MEMBERSHIP_STATUS.PAST_DUE },
+    });
+    this.logger.warn(`Renovação recusada (assinatura ${sub.id}): ${reason}`);
+    if (!firstFailure) return;
+    await this.emailService
+      .sendTemplateEmail(
+        sub.user.id,
         'recurring_payment_failed',
-        context,
         {
-          pt: `Falha no pagamento recorrente - ${plan.name}`,
-          en: `Recurring payment failed - ${plan.name}`,
-          es: `Falló el pago recurrente - ${plan.name}`,
+          FullName: sub.user.fullName,
+          AppName: 'Barbershop',
+          PlanName: sub.plan.name,
+          Amount: Number(payment.amount),
+          Currency: 'BRL',
+          Reason: reason,
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
+        {
+          pt: `Falha no pagamento recorrente - ${sub.plan.name}`,
+          en: `Recurring payment failed - ${sub.plan.name}`,
+          es: `Falló el pago recurrente - ${sub.plan.name}`,
         },
         'payment_failed',
-        user.email,
-      );
-    } catch (error) {
-      this.logger.error(`Falha ao enviar email de notificação para ${user.email}`, error);
-    }
+        sub.user.email,
+      )
+      .catch((e) => this.logger.error(`E-mail de falha não enviado (user ${sub.userId}): ${e}`));
+  }
 
-    this.logger.warn(`Falha no pagamento recorrente para usuário ${user.id} - Motivo: ${reason}`);
+  /** Tolerância esgotada sem pagamento: o plano cai pro gratuito. */
+  private async expireSubscription(subscriptionId: number, userId: number) {
+    await this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: { status: PLANO_STATUS.INACTIVE, cancelationDate: new Date() },
+    });
+    // Volta pro gratuito, como no cadastro (sem assinatura nenhuma a conta
+    // ficaria sem plano)
+    const freePlan = await this.prisma.plan.findFirst({
+      where: { price: 0 },
+      orderBy: { id: 'asc' },
+    });
+    if (freePlan) {
+      await this.prisma.subscription.create({
+        data: {
+          userId,
+          planId: freePlan.id,
+          startSubDate: new Date(),
+          status: PLANO_STATUS.ACTIVE,
+        },
+      });
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { membership: MEMBERSHIP_STATUS.FREE },
+    });
+    this.logger.warn(`Plano vencido sem pagamento: assinatura ${subscriptionId} encerrada`);
   }
 
   /**
    * Busca pagamentos vencidos para relatórios
    */
   async getOverduePayments() {
-    return this.prisma.payment.findMany({
+    const payments = await this.prisma.payment.findMany({
       where: {
         nextPaymentDate: {
           lte: new Date(),
         },
         status: PAGAMENTO_STATUS.COMPLETED,
+        subscription: OVERDUE_SUBSCRIPTION_FILTER(),
       },
       include: {
         subscription: {
@@ -1158,30 +1279,27 @@ export class PaymentsService {
         nextPaymentDate: 'asc',
       },
     });
+    return latestPerSubscription(payments);
   }
 
   /**
    * Força o processamento de um pagamento recorrente específico
    */
   async forceRecurringPayment(paymentId: number) {
-    const payment = await this.prisma.payment.findUnique({
-      where: { id: paymentId },
-      include: {
-        subscription: {
-          include: {
-            user: true,
-            plan: true,
-          },
-        },
-      },
-    });
-
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
     if (!payment) {
       throw new NotFoundException('Pagamento não encontrado');
     }
-
-    await this.processRecurringPayment(payment);
-    return { success: true, message: 'Pagamento recorrente processado' };
+    // Antes cobrava o preço do plano de novo, mesmo de um pagamento já pago.
+    // Agora só renova se a assinatura estiver vencida.
+    const outcome = await this.renewSubscription(payment.subscriptionId);
+    return {
+      success: outcome === 'renewed',
+      message:
+        outcome === 'not_due'
+          ? 'O plano não está vencido: nada foi cobrado'
+          : `Renovação: ${outcome}`,
+    };
   }
 
   // Métodos para cupons de desconto

@@ -14,7 +14,14 @@ export class StripeService {
     });
   }
 
-  async createPaymentIntent(amount: number, currency: string, customerId?: string) {
+  async createPaymentIntent(
+    amount: number,
+    currency: string,
+    customerId?: string,
+    // 'off_session': guarda o cartão no cliente pra cobrar a renovação
+    // sem o cliente presente
+    options: { setupFutureUsage?: 'off_session' } = {},
+  ) {
     this.logger.log(
       `Creating PaymentIntent - Amount: ${amount}, Currency: ${currency}, CustomerId: ${customerId}`,
     );
@@ -27,6 +34,9 @@ export class StripeService {
 
     if (customerId) {
       params.customer = customerId;
+    }
+    if (options.setupFutureUsage) {
+      params.setup_future_usage = options.setupFutureUsage;
     }
 
     this.logger.log(`PaymentIntent params:`, JSON.stringify(params, null, 2));
@@ -119,6 +129,55 @@ export class StripeService {
 
   async cancelSubscription(subscriptionId: string) {
     return await this.stripe.subscriptions.cancel(subscriptionId);
+  }
+
+  /**
+   * Cobra o cartão salvo sem o cliente presente (renovação do plano). A
+   * idempotencyKey faz o Stripe devolver a MESMA cobrança se a chamada for
+   * repetida (queda de rede, duas execuções) em vez de cobrar de novo.
+   */
+  async chargeOffSession(params: {
+    amount: number;
+    currency: string;
+    customerId: string;
+    paymentMethodId: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+  }) {
+    return await this.stripe.paymentIntents.create(
+      {
+        amount: params.amount,
+        currency: params.currency,
+        customer: params.customerId,
+        payment_method: params.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        metadata: params.metadata,
+      },
+      { idempotencyKey: params.idempotencyKey },
+    );
+  }
+
+  /**
+   * Cobrança de renovação já criada no Stripe com essa chave (a busca do
+   * Stripe tem alguns segundos de atraso — só usar em pendências antigas).
+   */
+  async findPaymentIntentByRenewalKey(renewalKey: string): Promise<Stripe.PaymentIntent | null> {
+    const result = await this.stripe.paymentIntents.search({
+      query: `metadata['renewalKey']:'${renewalKey.replace(/'/g, "\\'")}'`,
+      limit: 1,
+    });
+    return result.data[0] ?? null;
+  }
+
+  /** Cartão padrão do cliente (ou o primeiro salvo); null se não tiver. */
+  async getDefaultPaymentMethodId(customerId: string): Promise<string | null> {
+    const retrieved = await this.stripe.customers.retrieve(customerId);
+    if (retrieved.deleted) return null;
+    const def = (retrieved as Stripe.Customer).invoice_settings?.default_payment_method;
+    if (def) return typeof def === 'string' ? def : def.id;
+    const cards = await this.stripe.paymentMethods.list({ customer: customerId, type: 'card' });
+    return cards.data[0]?.id ?? null;
   }
 
   /** Apaga o cliente no Stripe (e os cartões salvos dele) — exclusão de conta. */

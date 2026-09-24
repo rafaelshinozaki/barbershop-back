@@ -1,3 +1,7 @@
+import {
+  latestPerSubscription,
+  OVERDUE_SUBSCRIPTION_FILTER,
+} from '../../payments/payments.service';
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { DEFAULT_TIMEZONE, monthRangeUtc, toZonedParts } from '../../common/timezone.util';
 import { UseGuards } from '@nestjs/common';
@@ -261,39 +265,42 @@ export class BackofficeResolver {
     this.logger.log('Fetching all recurring payments stats for admin');
 
     try {
-      const overduePayments = await this.prisma.payment.findMany({
-        where: {
-          nextPaymentDate: {
-            lte: new Date(),
+      const overduePayments = latestPerSubscription(
+        await this.prisma.payment.findMany({
+          where: {
+            nextPaymentDate: {
+              lte: new Date(),
+            },
+            status: PAGAMENTO_STATUS.COMPLETED,
+            subscription: OVERDUE_SUBSCRIPTION_FILTER(),
           },
-          status: PAGAMENTO_STATUS.COMPLETED,
-        },
-        include: {
-          subscription: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  email: true,
-                  fullName: true,
-                  membership: true,
+          include: {
+            subscription: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    membership: true,
+                  },
                 },
-              },
-              plan: {
-                select: {
-                  id: true,
-                  name: true,
-                  price: true,
-                  billingCycle: true,
+                plan: {
+                  select: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    billingCycle: true,
+                  },
                 },
               },
             },
           },
-        },
-        orderBy: {
-          nextPaymentDate: 'asc',
-        },
-      });
+          orderBy: {
+            nextPaymentDate: 'asc',
+          },
+        }),
+      );
 
       const upcomingPayments = await this.prisma.payment.findMany({
         where: {

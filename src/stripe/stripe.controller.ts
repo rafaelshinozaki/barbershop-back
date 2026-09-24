@@ -1,4 +1,14 @@
-import { Controller, Post, Headers, Req, HttpCode, Logger, Get, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Headers,
+  Req,
+  HttpCode,
+  Logger,
+  Get,
+  Param,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +19,7 @@ import { MEMBERSHIP_STATUS, PLANO_STATUS, PAGAMENTO_STATUS } from '@/common';
 import { Role } from '@/auth/interfaces/roles';
 import { StripeService } from './stripe.service';
 import { Request } from 'express';
+import { PaymentsService } from '../payments/payments.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -20,6 +31,7 @@ export class StripeController {
     private prisma: PrismaService,
     private emailService: EmailService,
     private stripeService: StripeService,
+    private paymentsService: PaymentsService,
   ) {}
 
   @Post('webhook')
@@ -72,7 +84,11 @@ export class StripeController {
           this.logger.log(`Unhandled event type: ${event.type}`);
       }
     } catch (error) {
+      // Erro ao processar: responde erro pro Stripe reenviar o evento (antes
+      // respondia "ok" e o evento se perdia — ex.: pagamento confirmado que
+      // não ativava a assinatura). Os handlers são seguros pra repetição.
       this.logger.error(`Error processing webhook event ${event.type}:`, error);
+      throw new InternalServerErrorException('Webhook processing failed');
     }
 
     return { received: true };
@@ -113,18 +129,29 @@ export class StripeController {
       },
     });
 
-    // Criar registro de pagamento
-    const payment = await this.prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount: new Prisma.Decimal(invoice.amount_paid / 100),
-        paymentDate: new Date(invoice.created * 1000),
-        nextPaymentDate: new Date((invoice.next_payment_attempt || invoice.created) * 1000),
-        paymentMethod: 'stripe',
-        transactionId: invoice.payment_intent as string,
-        status: PAGAMENTO_STATUS.COMPLETED,
-      },
+    // Registro do pagamento — uma vez só por fatura: o Stripe pode entregar
+    // o mesmo evento mais de uma vez (antes duplicava pagamento e e-mail)
+    const transactionId = (invoice.payment_intent as string) || invoice.id;
+    const payment = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'invoice:' + transactionId}))`;
+      const existing = await tx.payment.findFirst({ where: { transactionId } });
+      if (existing) return null;
+      return tx.payment.create({
+        data: {
+          subscriptionId: subscription.id,
+          amount: new Prisma.Decimal(invoice.amount_paid / 100),
+          paymentDate: new Date(invoice.created * 1000),
+          nextPaymentDate: new Date((invoice.next_payment_attempt || invoice.created) * 1000),
+          paymentMethod: 'stripe',
+          transactionId,
+          status: PAGAMENTO_STATUS.COMPLETED,
+        },
+      });
     });
+    if (!payment) {
+      this.logger.log(`Invoice ${invoice.id} already recorded — duplicate event ignored`);
+      return;
+    }
 
     // Enviar email de confirmação
     const context = {
@@ -174,9 +201,10 @@ export class StripeController {
     // Atualizar status do usuário para pagamento em atraso
     await this.prisma.user.update({
       where: { id: subscription.userId },
+      // Sem isActive: false — isso bloqueava o login e a pessoa não
+      // conseguia nem entrar pra trocar o cartão
       data: {
         membership: MEMBERSHIP_STATUS.PAST_DUE,
-        isActive: false,
       },
     });
 
@@ -212,27 +240,38 @@ export class StripeController {
     }
 
     const stripeSubscription = await this.stripeService.getSubscription(stripeSubscriptionId);
-    await this.prisma.clientSubscription.update({
-      where: { id: subscription.id },
-      data: {
-        status: 'ACTIVE',
-        usedThisCycle: 0,
-        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-      },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
+        'client-invoice:' + invoice.id
+      }))`;
+      const already = await tx.clientSubscriptionPayment.findUnique({
+        where: { stripeInvoiceId: invoice.id },
+      });
+      // Evento repetido da mesma fatura: não zera de novo as sessões usadas
+      // no ciclo (antes cada reenvio zerava o contador — sessões de graça)
+      if (already?.status === 'SUCCEEDED') return;
 
-    await this.prisma.clientSubscriptionPayment.upsert({
-      where: { stripeInvoiceId: invoice.id },
-      create: {
-        subscriptionId: subscription.id,
-        stripeInvoiceId: invoice.id,
-        amount: new Prisma.Decimal(invoice.amount_paid / 100),
-        status: 'SUCCEEDED',
-        periodStart: new Date(stripeSubscription.current_period_start * 1000),
-        periodEnd: new Date(stripeSubscription.current_period_end * 1000),
-      },
-      update: { status: 'SUCCEEDED' },
+      await tx.clientSubscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: 'ACTIVE',
+          usedThisCycle: 0,
+          currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        },
+      });
+      await tx.clientSubscriptionPayment.upsert({
+        where: { stripeInvoiceId: invoice.id },
+        create: {
+          subscriptionId: subscription.id,
+          stripeInvoiceId: invoice.id,
+          amount: new Prisma.Decimal(invoice.amount_paid / 100),
+          status: 'SUCCEEDED',
+          periodStart: new Date(stripeSubscription.current_period_start * 1000),
+          periodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        },
+        update: { status: 'SUCCEEDED' },
+      });
     });
   }
 
@@ -340,8 +379,22 @@ export class StripeController {
     this.logger.log(`Subscription deleted for user ${dbSubscription.userId}`);
   }
 
+  // Antes só registrava no log: quem pagava e fechava a aba antes da tela
+  // confirmar ficava cobrado e sem plano. Agora o webhook conclui também
+  // (os dois caminhos são idempotentes).
   private async handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     this.logger.log(`Payment intent succeeded: ${paymentIntent.id}`);
+    const meta = paymentIntent.metadata ?? {};
+    if (meta.renewalKey) {
+      const payment = await this.prisma.payment.findUnique({
+        where: { renewalKey: meta.renewalKey },
+      });
+      if (payment) await this.paymentsService.finalizeRenewalPayment(payment.id);
+      return;
+    }
+    if (meta.userId && meta.planId) {
+      await this.paymentsService.confirmPaymentIntent(paymentIntent.id);
+    }
   }
 
   private async handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {

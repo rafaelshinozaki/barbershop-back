@@ -160,6 +160,11 @@ model Subscription {
   status               String
   stripeCustomerId     String?
   stripeSubscriptionId String?
+  // Pago até quando (plano cobrado por nós, sem assinatura no Stripe): no
+  // vencimento a renovação cobra o cartão salvo e empurra esta data
+  currentPeriodEnd     DateTime?
+  // Primeira falha da renovação do período atual (tolerância antes de rebaixar)
+  renewalFailedAt      DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   payments             Payment[]
@@ -183,6 +188,9 @@ model Payment {
   appliedCouponId Int?
   originalAmount  Decimal?
   discountAmount  Decimal?
+  // Renovação: "<assinatura>:<fim do período>:<tentativa>". Único — é a
+  // trava que impede duas execuções de cobrar a mesma renovação
+  renewalKey      String?      @unique
   appliedCoupon   Coupon?      @relation("AppliedCoupons", fields: [appliedCouponId], references: [id])
   subscription    Subscription @relation(fields: [subscriptionId], references: [id])
 }

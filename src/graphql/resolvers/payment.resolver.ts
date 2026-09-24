@@ -1,3 +1,7 @@
+import {
+  latestPerSubscription,
+  OVERDUE_SUBSCRIPTION_FILTER,
+} from '../../payments/payments.service';
 import { Resolver, Query, Mutation, Context, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import {
@@ -486,24 +490,24 @@ export class PaymentResolver {
     this.logger.log(`Fetching recurring payments stats for user ${userId}`);
 
     try {
-      const overduePayments = await this.prisma.payment.findMany({
-        where: {
-          subscription: {
-            userId: userId,
+      const overduePayments = latestPerSubscription(
+        await this.prisma.payment.findMany({
+          where: {
+            subscription: { userId: userId, ...OVERDUE_SUBSCRIPTION_FILTER() },
+            nextPaymentDate: {
+              lte: new Date(),
+            },
+            status: PAGAMENTO_STATUS.COMPLETED,
           },
-          nextPaymentDate: {
-            lte: new Date(),
-          },
-          status: PAGAMENTO_STATUS.COMPLETED,
-        },
-        include: {
-          subscription: {
-            include: {
-              plan: true,
+          include: {
+            subscription: {
+              include: {
+                plan: true,
+              },
             },
           },
-        },
-      });
+        }),
+      );
 
       const upcomingPayments = await this.prisma.payment.findMany({
         where: {
