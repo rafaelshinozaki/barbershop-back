@@ -59,3 +59,18 @@ export class ClientResetPasswordInput {
   @IsString()
   password: string;
 }
+
+@InputType()
+export class ClientDeleteAccountInput {
+  /** Senha atual (conta com senha) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  /** E-mail da conta digitado (conta só de login social) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  email?: string;
+}

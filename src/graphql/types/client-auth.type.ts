@@ -20,6 +20,10 @@ export class ClientAccountType {
   /** Sem e-mail confirmado o histórico das barbearias não aparece */
   @Field()
   emailVerified: boolean;
+
+  /** false = conta só de login social (confirma a exclusão digitando o e-mail) */
+  @Field()
+  hasPassword: boolean;
 }
 
 @ObjectType()

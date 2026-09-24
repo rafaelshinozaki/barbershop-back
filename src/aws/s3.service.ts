@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { SmartLogger } from '../common/logger.util';
@@ -87,6 +87,11 @@ export class S3Service {
       fields: Object.entries(fields).map(([name, value]) => ({ name, value })),
       key,
     };
+  }
+
+  /** Apaga o arquivo (ex.: foto de perfil na exclusão de conta). */
+  async deleteObject(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
   async getDownloadUrl(key: string): Promise<string> {

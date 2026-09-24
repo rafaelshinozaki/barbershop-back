@@ -12,6 +12,7 @@ import * as bcrypt from 'bcryptjs';
 import { Response } from 'express';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
+import { StripeService } from '@/stripe/stripe.service';
 import { normalizeLang } from '@/email/language';
 import { ClientAccountDTO } from './dto/client-account.dto';
 
@@ -60,6 +61,7 @@ function toDTO(account: {
   phone: string | null;
   avatarUrl: string | null;
   emailVerifiedAt: Date | null;
+  password: string | null;
 }): ClientAccountDTO {
   return {
     id: account.id,
@@ -68,6 +70,7 @@ function toDTO(account: {
     phone: account.phone,
     avatarUrl: account.avatarUrl,
     emailVerified: !!account.emailVerifiedAt,
+    hasPassword: !!account.password,
   };
 }
 
@@ -80,6 +83,7 @@ export class ClientAuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
+    private readonly stripeService: StripeService,
   ) {}
 
   // Liga as fichas (Customer) órfãs de qualquer negócio da plataforma com
@@ -414,6 +418,80 @@ export class ClientAuthService {
     return { ok: true };
   }
 
+  /**
+   * Exclusão da conta pelo próprio cliente (LGPD). Confirma com a senha (ou,
+   * em conta só de login social, digitando o e-mail). Cancela as assinaturas
+   * de serviço no Stripe na hora e apaga o cliente lá (cartões salvos);
+   * apaga avaliações, favoritos e logins sociais e desliga as fichas das
+   * barbearias. A linha da conta fica, anônima, só pra não levar junto os
+   * pagamentos que as barbearias receberam (registro fiscal delas).
+   */
+  async deleteAccount(clientAccountId: number, confirm: { password?: string; email?: string }) {
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+      include: { subscriptions: { where: { status: { not: 'CANCELED' } } } },
+    });
+    if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
+
+    if (account.password) {
+      const ok = !!confirm.password && (await bcrypt.compare(confirm.password, account.password));
+      // 400, não 401: o front trata 401 como sessão vencida e desloga
+      if (!ok) throw new BadRequestException('Senha incorreta.');
+    } else if ((confirm.email ?? '').trim().toLowerCase() !== account.email) {
+      throw new BadRequestException('Digite o e-mail da conta pra confirmar.');
+    }
+
+    // Stripe primeiro: se falhar, nada foi apagado e dá pra tentar de novo
+    // (cobrança continuando depois da exclusão seria o pior cenário)
+    for (const sub of account.subscriptions) {
+      try {
+        await this.stripeService.cancelSubscription(sub.stripeSubscriptionId);
+      } catch (error: any) {
+        // Já cancelada/inexistente no Stripe não impede a exclusão
+        if (error?.code !== 'resource_missing') throw error;
+      }
+    }
+    if (account.stripeCustomerId) {
+      await this.stripeService.deleteCustomer(account.stripeCustomerId).catch((error: any) => {
+        if (error?.code !== 'resource_missing') throw error;
+      });
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.clientSubscription.updateMany({
+        where: { clientAccountId, status: { not: 'CANCELED' } },
+        data: { status: 'CANCELED', canceledAt: now, cancelAtPeriodEnd: false },
+      }),
+      this.prisma.review.deleteMany({ where: { clientAccountId } }),
+      this.prisma.clientFavorite.deleteMany({ where: { clientAccountId } }),
+      this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
+      this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),
+      this.prisma.customer.updateMany({
+        where: { clientAccountId },
+        data: { clientAccountId: null },
+      }),
+      this.prisma.clientAccount.update({
+        where: { id: clientAccountId },
+        data: {
+          // E-mail liberado (dá pra criar conta nova com ele) e nada que
+          // identifique a pessoa
+          email: `excluida-${clientAccountId}@conta-excluida.invalid`,
+          name: 'Conta excluída',
+          phone: null,
+          avatarUrl: null,
+          password: null,
+          stripeCustomerId: null,
+          language: null,
+          emailVerifiedAt: null,
+          deletedAt: now,
+          sessionVersion: { increment: 1 },
+        },
+      }),
+    ]);
+    this.logger.log(`Conta de cliente ${clientAccountId} excluída pelo titular`);
+  }
+
   issueCookie(account: { id: number; email: string; sessionVersion: number }, res: Response) {
     const token = this.jwtService.sign({
       clientAccountId: account.id,
@@ -442,7 +520,7 @@ export class ClientAuthService {
 
   async getById(clientAccountId: number) {
     const account = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
-    if (!account) throw new UnauthorizedException('Conta não encontrada.');
+    if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
     return toDTO(account);
   }
 

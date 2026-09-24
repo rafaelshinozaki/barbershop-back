@@ -121,6 +121,11 @@ export class StripeService {
     return await this.stripe.subscriptions.cancel(subscriptionId);
   }
 
+  /** Apaga o cliente no Stripe (e os cartões salvos dele) — exclusão de conta. */
+  async deleteCustomer(customerId: string) {
+    return await this.stripe.customers.del(customerId);
+  }
+
   async listInvoices(customerId: string, params: Stripe.InvoiceListParams = {}) {
     return await this.stripe.invoices.list({ customer: customerId, ...params });
   }

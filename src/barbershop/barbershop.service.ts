@@ -632,7 +632,35 @@ export class BarbershopService {
 
   async deleteBarbershop(userId: number, id: number) {
     await this.ensureBarbershopAccess(userId, id);
+    // Antes as assinaturas dos clientes sumiam do banco junto com a unidade
+    // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
+    await this.cancelClientSubscriptionsOfBarbershops([id]);
     await this.prisma.barbershop.delete({ where: { id } });
+  }
+
+  /**
+   * Cancela na hora, no Stripe, as assinaturas de serviço dos clientes das
+   * unidades (antes de apagar a unidade ou a conta do dono). Assinatura que
+   * o Stripe já não conhece não impede nada; outro erro interrompe, pra não
+   * apagar a unidade deixando a cobrança rodando.
+   */
+  async cancelClientSubscriptionsOfBarbershops(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return;
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: { barbershopId: { in: barbershopIds }, status: { not: 'CANCELED' } },
+      select: { id: true, stripeSubscriptionId: true },
+    });
+    for (const sub of subs) {
+      try {
+        await this.stripeService.cancelSubscription(sub.stripeSubscriptionId);
+      } catch (error: any) {
+        if (error?.code !== 'resource_missing') throw error;
+      }
+      await this.prisma.clientSubscription.update({
+        where: { id: sub.id },
+        data: { status: 'CANCELED', canceledAt: new Date(), cancelAtPeriodEnd: false },
+      });
+    }
   }
 
   // ============ CUSTOMER ============

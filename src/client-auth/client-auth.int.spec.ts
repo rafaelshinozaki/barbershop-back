@@ -6,6 +6,7 @@
  * quando e quanto ela gastou. Agora só o e-mail confirmado pelo link liga.
  */
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientAuthService } from './client-auth.service';
@@ -36,7 +37,21 @@ describe('Conta do cliente final (integração com o banco)', () => {
       sent.push({ template, to, context, lang });
     },
   };
-  const service = new ClientAuthService(prisma, jwt, config as never, email as never);
+  const stripeCalls: string[] = [];
+  const stripe = {
+    cancelSubscription: async (id: string) => void stripeCalls.push(`cancel:${id}`),
+    deleteCustomer: async (id: string) => void stripeCalls.push(`delete:${id}`),
+  };
+  const service = new ClientAuthService(
+    prisma,
+    jwt,
+    config as never,
+    email as never,
+    stripe as never,
+  );
+  // Contas excluídas mudam de e-mail (não batem mais com RUN na limpeza)
+  const deletedIds: number[] = [];
+  let shopId: number;
   const guard = new GraphQLClientJwtAuthGuard(jwt, config as never, prisma);
 
   let ownerId: number;
@@ -110,6 +125,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
         ownerUserId: ownerId,
       },
     });
+    shopId = shop.id;
     // Ficha da vítima na barbearia, com uma venda paga
     victimCustomerId = (
       await prisma.customer.create({
@@ -134,7 +150,9 @@ describe('Conta do cliente final (integração com o banco)', () => {
       where: { email: { contains: RUN } },
       select: { id: true },
     });
-    const ids = accounts.map((a) => a.id);
+    const ids = [...accounts.map((a) => a.id), ...deletedIds];
+    await prisma.review.deleteMany({ where: { clientAccountId: { in: ids } } });
+    await prisma.clientSubscription.deleteMany({ where: { clientAccountId: { in: ids } } });
     await prisma.customer.updateMany({
       where: { clientAccountId: { in: ids } },
       data: { clientAccountId: null },
@@ -143,6 +161,12 @@ describe('Conta do cliente final (integração com o banco)', () => {
     await prisma.clientAccount.deleteMany({ where: { id: { in: ids } } });
     const shops = await prisma.barbershop.findMany({ where: { networkId }, select: { id: true } });
     await prisma.sale.deleteMany({ where: { barbershopId: { in: shops.map((s) => s.id) } } });
+    await prisma.clientSubscriptionPlan.deleteMany({
+      where: { barbershopId: { in: shops.map((s) => s.id) } },
+    });
+    await prisma.barbershopService.deleteMany({
+      where: { barbershopId: { in: shops.map((s) => s.id) } },
+    });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.barbershop.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });
@@ -261,5 +285,105 @@ describe('Conta do cliente final (integração com o banco)', () => {
       UnauthorizedException,
     );
     expect(await guardAccepts(squatted)).toBe(false);
+  });
+
+  describe('exclusão da conta (LGPD)', () => {
+    it('senha errada não apaga; certa cancela cobranças, apaga dados pessoais e libera o e-mail', async () => {
+      const mail = `apagar-${RUN}@test.local`;
+      const account = await service.signup(mail, PASSWORD, 'Quem sai', '+5511900000000');
+      deletedIds.push(account.id);
+      await prisma.clientAccount.update({
+        where: { id: account.id },
+        data: { emailVerifiedAt: new Date(), stripeCustomerId: `cus_cli_${RUN}` },
+      });
+      // Ficha na barbearia ligada, favorito, avaliação e assinatura de serviço
+      const customer = await prisma.customer.create({
+        data: { networkId, name: 'Quem sai', email: mail, clientAccountId: account.id, phone: '1' },
+      });
+      await prisma.clientFavorite.create({ data: { clientAccountId: account.id, networkId } });
+      await prisma.review.create({
+        data: { barbershopId: shopId, clientAccountId: account.id, rating: 5, comment: 'Ótimo' },
+      });
+      const svc = await prisma.barbershopService.create({
+        data: { barbershopId: shopId, name: 'Corte', durationMinutes: 30, price: 50 },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: shopId,
+          serviceId: svc.id,
+          name: 'Mensal',
+          price: new Prisma.Decimal(80),
+        },
+      });
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: shopId,
+          clientAccountId: account.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_cli_${RUN}`,
+          status: 'ACTIVE',
+        },
+      });
+      await prisma.clientSubscriptionPayment.create({
+        data: {
+          subscriptionId: sub.id,
+          stripeInvoiceId: `in_${RUN}`,
+          amount: 80,
+          status: 'SUCCEEDED',
+        },
+      });
+      const fresh = await prisma.clientAccount.findUniqueOrThrow({ where: { id: account.id } });
+      expect(await guardAccepts(fresh)).toBe(true);
+
+      await expect(
+        service.deleteAccount(account.id, { password: 'errada' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(stripeCalls).toEqual([]);
+
+      await service.deleteAccount(account.id, { password: PASSWORD });
+      expect(stripeCalls).toEqual([`cancel:sub_cli_${RUN}`, `delete:cus_cli_${RUN}`]);
+
+      const after = await prisma.clientAccount.findUniqueOrThrow({ where: { id: account.id } });
+      expect(after).toMatchObject({
+        email: `excluida-${account.id}@conta-excluida.invalid`,
+        name: 'Conta excluída',
+        phone: null,
+        password: null,
+        stripeCustomerId: null,
+      });
+      expect(after.deletedAt).toBeTruthy();
+      expect(await guardAccepts(fresh)).toBe(false);
+      expect(await prisma.review.count({ where: { clientAccountId: account.id } })).toBe(0);
+      expect(await prisma.clientFavorite.count({ where: { clientAccountId: account.id } })).toBe(0);
+      // A ficha continua na barbearia (é registro dela), só desligada
+      expect(
+        (await prisma.customer.findUnique({ where: { id: customer.id } }))!.clientAccountId,
+      ).toBeNull();
+      // Assinatura cancelada; o pagamento que a barbearia recebeu fica
+      expect((await prisma.clientSubscription.findUnique({ where: { id: sub.id } }))!.status).toBe(
+        'CANCELED',
+      );
+      expect(
+        await prisma.clientSubscriptionPayment.count({ where: { subscriptionId: sub.id } }),
+      ).toBe(1);
+      // E-mail liberado pra uma conta nova
+      const again = await service.signup(mail, PASSWORD, 'Voltou');
+      expect(again.id).not.toBe(account.id);
+    });
+
+    it('conta só de login social confirma digitando o e-mail', async () => {
+      const mail = `social-apagar-${RUN}@test.local`;
+      const account = await service.findOrCreateSocialAccount(mail, 'Social', 'google');
+      deletedIds.push(account.id);
+      expect((await service.getById(account.id)).hasPassword).toBe(false);
+      await expect(
+        service.deleteAccount(account.id, { email: 'outro@x.com' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await service.deleteAccount(account.id, { email: mail.toUpperCase() });
+      await expect(service.getById(account.id)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(
+        await prisma.clientLinkedSocialAccount.count({ where: { clientAccountId: account.id } }),
+      ).toBe(0);
+    });
   });
 });
