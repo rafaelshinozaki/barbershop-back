@@ -1,18 +1,28 @@
-import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, Float } from '@nestjs/graphql';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { SharedLocationService } from '../../barbershop/shared-location.service';
-import { SharedLocationLinkType, SharedLocationOverviewType } from '../types/public-booking.type';
+import { ChairRentService } from '../../barbershop/chair-rent.service';
+import {
+  AuthorizeChairRentResultType,
+  ChairRentPaymentType,
+  ChairRentType,
+  SharedLocationLinkType,
+  SharedLocationOverviewType,
+} from '../types/public-booking.type';
 
 /** Espaço compartilhado (cadeira alugada), do lado do espaço e do profissional */
 @Resolver()
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
 export class SharedLocationResolver {
-  constructor(private readonly sharedLocationService: SharedLocationService) {}
+  constructor(
+    private readonly sharedLocationService: SharedLocationService,
+    private readonly chairRent: ChairRentService,
+  ) {}
 
   @Query(() => SharedLocationOverviewType)
   async sharedLocation(
@@ -49,5 +59,39 @@ export class SharedLocationResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.sharedLocationService.end(user.id, id, barbershopId);
+  }
+
+  // ---- Aluguel da cadeira ----
+
+  /** O espaço define ou muda o aluguel mensal; sem valor (ou 0) encerra a cobrança */
+  @Mutation(() => ChairRentType)
+  async setChairRent(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('amount', { type: () => Float, nullable: true }) amount: number | null,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.setRent(user.id, id, barbershopId, amount ?? null);
+  }
+
+  /** O profissional autoriza a cobrança mensal com um cartão salvo (ou troca o cartão recusado) */
+  @Mutation(() => AuthorizeChairRentResultType)
+  async authorizeChairRent(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('paymentMethodId') paymentMethodId: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.authorize(user.id, id, barbershopId, paymentMethodId);
+  }
+
+  /** Recibos do aluguel, pros dois lados */
+  @Query(() => [ChairRentPaymentType])
+  async chairRentPayments(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.payments(user.id, id, barbershopId);
   }
 }

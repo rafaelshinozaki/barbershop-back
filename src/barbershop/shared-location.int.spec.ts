@@ -6,6 +6,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { SharedLocationService } from './shared-location.service';
+import { ChairRentService } from './chair-rent.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -22,9 +23,15 @@ describe('Espaço compartilhado (integração)', () => {
     { notify: () => undefined } as never,
   );
   const events: string[] = [];
-  const service = new SharedLocationService(prisma, barbershops, {
+  const activity = {
     sharedLocationEvent: async (to: number, event: string) => void events.push(`${to}:${event}`),
-  } as never);
+  } as never;
+  const service = new SharedLocationService(
+    prisma,
+    barbershops,
+    activity,
+    new ChairRentService(prisma, stub, barbershops, activity, stub),
+  );
 
   let roleId: number;
   const shops: Record<

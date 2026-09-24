@@ -109,6 +109,7 @@ export class StripeService {
     metadata?: Record<string, string>,
     // Mesma chave = o Stripe devolve a mesma assinatura em vez de criar outra
     idempotencyKey?: string,
+    extra?: Partial<Stripe.SubscriptionCreateParams>,
   ) {
     const params: Stripe.SubscriptionCreateParams = {
       customer: customerId,
@@ -116,6 +117,7 @@ export class StripeService {
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],
+      ...extra,
     };
 
     if (metadata) {
@@ -138,6 +140,18 @@ export class StripeService {
 
   async cancelSubscription(subscriptionId: string) {
     return await this.stripe.subscriptions.cancel(subscriptionId);
+  }
+
+  async retrievePaymentMethod(paymentMethodId: string) {
+    return await this.stripe.paymentMethods.retrieve(paymentMethodId);
+  }
+
+  /** Tenta de novo, na hora, a fatura em aberto (ex.: depois de trocar o cartão). */
+  async payInvoice(invoiceId: string, paymentMethodId?: string) {
+    return await this.stripe.invoices.pay(
+      invoiceId,
+      paymentMethodId ? { payment_method: paymentMethodId } : {},
+    );
   }
 
   /**

@@ -1395,9 +1395,41 @@ model SharedLocationMember {
   status             String     @default("PENDING") // PENDING | ACTIVE | DECLINED | REMOVED
   invitedByUserId    Int?
   respondedAt        DateTime?
+  // Aluguel da cadeira: o espaço define o valor mensal e o profissional
+  // autoriza o cartão; o Stripe cobra todo mês (conta da plataforma, como a
+  // assinatura do cliente — o repasse ao espaço é reconciliação manual).
+  // rentStatus: NONE (sem aluguel), AWAITING_PAYMENT (valor definido,
+  // aguardando o profissional autorizar o cartão), INCOMPLETE (primeira
+  // cobrança pendente), ACTIVE, PAST_DUE (cobrança recusada)
+  rentAmount               Decimal?
+  rentCurrency             String?
+  rentStatus               String     @default("NONE")
+  rentStripePriceId        String?
+  rentStripeSubscriptionId String?    @unique
+  rentPayerUserId          Int?
+  rentPaidUntil            DateTime?
   host               Barbershop @relation("SharedLocationHost", fields: [hostBarbershopId], references: [id], onDelete: Cascade)
   member             Barbershop @relation("SharedLocationMember", fields: [memberBarbershopId], references: [id], onDelete: Cascade)
+  rentPayments       ChairRentPayment[]
 
   @@unique([hostBarbershopId, memberBarbershopId])
   @@index([memberBarbershopId])
+}
+
+// Cada cobrança mensal do aluguel da cadeira (a fatura do Stripe é o recibo)
+model ChairRentPayment {
+  id                     Int       @id @default(autoincrement())
+  createdAt              DateTime  @default(now())
+  sharedLocationMemberId Int
+  stripeInvoiceId        String    @unique
+  amount                 Decimal
+  currency               String
+  status                 String // SUCCEEDED, FAILED
+  periodStart            DateTime?
+  periodEnd              DateTime?
+  receiptUrl             String?
+  receiptPdfUrl          String?
+  link                   SharedLocationMember @relation(fields: [sharedLocationMemberId], references: [id], onDelete: Cascade)
+
+  @@index([sharedLocationMemberId])
 }

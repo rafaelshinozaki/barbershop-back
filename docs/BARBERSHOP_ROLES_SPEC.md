@@ -154,5 +154,29 @@ vitrine e o endereço.
 - **Modelo:** `SharedLocationMember` (`hostBarbershopId`, `memberBarbershopId`,
   `status` PENDING | ACTIVE | DECLINED | REMOVED).
 
+### Aluguel da cadeira
+
+- **Valor:** o espaço (gerente ou dono) define o aluguel mensal de cada
+  profissional ativo, na moeda da unidade. Mudar o valor com a cobrança já
+  rodando vale a partir da próxima fatura, sem proporcional. Valor vazio ou 0
+  encerra a cobrança. Definir o valor não passa pelo Stripe; o preço lá é
+  criado quando o profissional autoriza.
+- **Autorização:** o dono do negócio do profissional escolhe um cartão salvo da
+  conta dele. O cartão vale só pra esse aluguel (não troca o cartão do plano).
+  Cartão que pede 3D Secure é confirmado na tela.
+- **Cobrança:** o Stripe cobra todo mês, na conta da plataforma (como a
+  assinatura do cliente, sem Stripe Connect). Cada fatura paga vira um recibo,
+  com link e PDF do Stripe, e o recibo vai por e-mail pro profissional.
+- **Recusa:** os dois lados são avisados. Autorizar outro cartão tenta a fatura
+  em aberto na hora. Se o Stripe desistir, o aluguel volta a aguardar
+  autorização, com o mesmo valor.
+- **Repasse:** o espaço vê o total recebido, a taxa da plataforma
+  (`PLATFORM_SUBSCRIPTION_FEE_PERCENT`) e o valor a repassar. O repasse é
+  manual, como o das assinaturas.
+- **Fim:** encerrar o vínculo, apagar uma das unidades ou excluir a conta do
+  dono cancela a cobrança no Stripe. Os recibos ficam.
+- **Modelo:** campos `rent*` em `SharedLocationMember` (`rentStatus` NONE |
+  AWAITING_PAYMENT | INCOMPLETE | ACTIVE | PAST_DUE) e `ChairRentPayment`.
+
 No seed de demonstração, o Studio Navalha (Tiago) atende no espaço da Green, e
 a Barbearia Vintage tem um convite pendente.
