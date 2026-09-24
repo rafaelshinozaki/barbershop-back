@@ -14,6 +14,7 @@ import {
   ClientLoginInput,
   ClientForgotPasswordInput,
   ClientResetPasswordInput,
+  ClientDeleteAccountInput,
 } from '../dto/client-auth.dto';
 import {
   ThrottleAuth,
@@ -29,6 +30,7 @@ function toClientAccountType(account: {
   phone: string | null;
   avatarUrl: string | null;
   emailVerifiedAt: Date | null;
+  password: string | null;
 }): ClientAccountType {
   return {
     id: account.id,
@@ -37,6 +39,7 @@ function toClientAccountType(account: {
     phone: account.phone ?? undefined,
     avatarUrl: account.avatarUrl ?? undefined,
     emailVerified: !!account.emailVerifiedAt,
+    hasPassword: !!account.password,
   };
 }
 
@@ -87,6 +90,20 @@ export class ClientAuthResolver {
   @Mutation(() => Boolean)
   async clientResendVerificationEmail(@CurrentClient() client: CurrentClientUser) {
     await this.clientAuthService.resendVerificationEmail(client.id);
+    return true;
+  }
+
+  /** Exclusão da conta pelo titular (LGPD); encerra a sessão. */
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @ThrottleAuth()
+  @Mutation(() => Boolean)
+  async clientDeleteAccount(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('input') input: ClientDeleteAccountInput,
+    @Context() context: any,
+  ) {
+    await this.clientAuthService.deleteAccount(client.id, input);
+    this.clientAuthService.clearCookie(context.res);
     return true;
   }
 

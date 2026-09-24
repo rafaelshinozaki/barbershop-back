@@ -1,3 +1,4 @@
+import { AccountDeletionService } from './account-deletion.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
@@ -32,12 +33,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
   ],
   providers: [
     BarbershopService,
+    AccountDeletionService,
     EmployeeInviteService,
     AppointmentReminderService,
     AppointmentReminderScheduler,
     AppointmentReminderProcessor,
   ],
   controllers: [EmployeeInviteController],
-  exports: [BarbershopService, EmployeeInviteService],
+  exports: [BarbershopService, EmployeeInviteService, AccountDeletionService],
 })
 export class BarbershopModule {}

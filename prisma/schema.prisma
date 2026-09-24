@@ -641,6 +641,9 @@ model ClientAccount {
   emailVerifiedAt      DateTime?
   language             String?                     // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
   sessionVersion       Int                         @default(0) // sobe ao trocar a senha: derruba as sessões antigas
+  // Conta excluída pelo próprio cliente (LGPD): dados pessoais apagados, a
+  // linha fica só pra não levar junto os pagamentos que a barbearia recebeu
+  deletedAt            DateTime?
   tokens               ClientAccountToken[]
   customers            Customer[]
   favorites            ClientFavorite[]

@@ -1,3 +1,4 @@
+import { AccountDeletionResolver } from './resolvers/account-deletion.resolver';
 import { Module } from '@nestjs/common';
 import { AuthResolver } from './resolvers/auth.resolver';
 import { UserResolver } from './resolvers/user.resolver';
@@ -58,6 +59,7 @@ import { SocialModule } from '../social/social.module';
     ClientAuthResolver,
     PublicBookingResolver,
     SocialResolver,
+    AccountDeletionResolver,
   ],
   exports: [
     AuthResolver,

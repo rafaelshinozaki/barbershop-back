@@ -2,6 +2,13 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AccountDeletionPreviewType {
+  activeClientSubscriptions: Int!
+  barbershops: [String!]!
+  blocked: Boolean!
+  requiresPassword: Boolean!
+}
+
 type ActiveSession {
   browser: String!
   createdAt: String!
@@ -343,9 +350,15 @@ type ClientAccountType {
   avatarUrl: String
   email: String!
   emailVerified: Boolean!
+  hasPassword: Boolean!
   id: Int!
   name: String!
   phone: String
+}
+
+input ClientDeleteAccountInput {
+  email: String
+  password: String
 }
 
 input ClientForgotPasswordInput {
@@ -860,6 +873,11 @@ type DeleteCouponResponse {
   success: Boolean!
 }
 
+input DeleteMyAccountInput {
+  email: String
+  password: String
+}
+
 type DeletePaymentMethodResponse {
   message: String!
   success: Boolean!
@@ -1089,6 +1107,7 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  clientDeleteAccount(input: ClientDeleteAccountInput!): Boolean!
   clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
   clientLogin(input: ClientLoginInput!): ClientAccountType!
   clientLogout: Boolean!
@@ -1142,6 +1161,7 @@ type Mutation {
   deleteCoupon(id: Int!): DeleteCouponResponse!
   deleteCustomer(barbershopId: Int!, id: Int!): Boolean!
   deleteExpense(barbershopId: Int!, id: Int!): Boolean!
+  deleteMyAccount(input: DeleteMyAccountInput!): Boolean!
   deleteNotification(id: Int!): CommonResponse!
   deletePaymentMethod(paymentMethodId: String!): DeletePaymentMethodResponse!
   deleteProductCategory(barbershopId: Int!, id: Int!): Boolean!
@@ -1654,6 +1674,7 @@ input PurchaseClientPackageInput {
 }
 
 type Query {
+  accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   adminBarbershops(query: String): [Barbershop!]!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
