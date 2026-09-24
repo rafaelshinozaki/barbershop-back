@@ -27,6 +27,8 @@ export interface CustomerEmailJob {
   lang?: string;
   /** Quando é de uma campanha, o worker atualiza os contadores dela */
   campaignId?: number;
+  /** Cabeçalhos extras (ex.: List-Unsubscribe da campanha) */
+  headers?: Record<string, string>;
 }
 
 export type EmailJob = UserEmailJob | CustomerEmailJob;

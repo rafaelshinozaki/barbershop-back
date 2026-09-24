@@ -1221,6 +1221,7 @@ type Mutation {
   terminateSession(sessionId: String!): Boolean!
   unlinkClientSocialAccount(provider: String!): Boolean!
   unlinkSocialAccount(provider: String!): Boolean!
+  unsubscribeFromMarketing(token: String!): String!
   updateAppointment(barbershopId: Int!, id: Int!, input: UpdateAppointmentInput!): Appointment!
   updateBarber(barbershopId: Int!, id: Int!, input: UpdateBarberInput!): Barber!
   updateBarberSchedule(id: Int!, input: UpdateBarberScheduleInput!): BarberScheduleType!

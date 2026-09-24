@@ -59,6 +59,7 @@ export class EmailService {
     meta: string,
     to: string,
     lang = 'pt',
+    headers?: Record<string, string>,
   ) {
     return this.renderAndSend(
       loggedAgainstUserId,
@@ -68,6 +69,7 @@ export class EmailService {
       meta,
       to,
       normalizeLang(lang),
+      headers,
     );
   }
 
@@ -124,6 +126,7 @@ export class EmailService {
     meta: string,
     to: string,
     lang: Lang,
+    headers?: Record<string, string>,
   ) {
     this.logger.log(`Enviando email (${template}, ${lang}) para [${to}]`);
 
@@ -137,6 +140,7 @@ export class EmailService {
         to,
         subject,
         html,
+        headers,
       });
 
       await this.prisma.emailLogger.create({

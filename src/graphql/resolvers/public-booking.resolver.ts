@@ -28,7 +28,7 @@ import {
   CreateReviewInput,
   SubscribeToPlanInput,
 } from '../dto/public-booking.dto';
-import { ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
+import { ThrottleAuth, ThrottlePublicBooking } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
 
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
@@ -109,6 +109,16 @@ export class PublicBookingResolver {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Descadastro pelo link do e-mail de marketing (página /unsubscribe do
+   * front). Devolve o nome da rede pra tela confirmar de onde saiu.
+   */
+  @ThrottleAuth()
+  @Mutation(() => String)
+  async unsubscribeFromMarketing(@Args('token') token: string): Promise<string> {
+    return this.barbershopService.unsubscribeFromMarketing(token);
   }
 
   @ThrottlePublicBooking()
