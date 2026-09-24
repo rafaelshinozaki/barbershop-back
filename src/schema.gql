@@ -21,6 +21,15 @@ type ActiveSession {
   userId: Int!
 }
 
+input AddBarberPayEntryInput {
+  amount: Float!
+  barberId: Int!
+  date: String
+  method: String
+  notes: String
+  type: String!
+}
+
 type Address {
   city: String!
   complement1: String
@@ -185,6 +194,60 @@ type Barber {
   staffType: String
   updatedAt: String!
   userId: Int
+}
+
+type BarberPayConfigType {
+  barberId: Int!
+  fixedAmount: Float
+  payPeriod: String!
+  payType: String!
+}
+
+type BarberPayEntryType {
+  amount: Float!
+  barberId: Int!
+  createdAt: DateTime!
+  date: DateTime!
+  id: Int!
+  method: String
+  notes: String
+  payoutId: Int
+  type: String!
+}
+
+type BarberPayStatementType {
+  barberId: Int!
+  barberName: String!
+  config: BarberPayConfigType!
+  currency: String!
+  current: PayrollPreviewType
+  openEntries: [BarberPayEntryType!]!
+  payouts: [BarberPayoutType!]!
+  receivedByMonth: [MonthTotalType!]!
+}
+
+type BarberPayoutType {
+  advances: Float!
+  barberId: Int!
+  barberName: String!
+  baseAmount: Float!
+  bonuses: Float!
+  commission: Float!
+  currency: String!
+  deductions: Float!
+  fixedAmount: Float!
+  id: Int!
+  method: String!
+  notes: String
+  paidAt: DateTime!
+  payType: String!
+  periodEnd: DateTime!
+  periodStart: DateTime!
+  productSales: Float!
+  salesCount: Int!
+  serviceSales: Float!
+  tips: Float!
+  total: Float!
 }
 
 type BarberScheduleType {
@@ -1180,6 +1243,11 @@ enum MembershipStatus {
   PREMIUM
 }
 
+type MonthTotalType {
+  month: String!
+  total: Float!
+}
+
 type MonthlyRevenueItem {
   month: String!
   monthIndex: Int!
@@ -1188,6 +1256,7 @@ type MonthlyRevenueItem {
 }
 
 type Mutation {
+  addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
   addClientFavorite(networkId: Float!): [Network!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
@@ -1246,6 +1315,7 @@ type Mutation {
   debitClientPackageSession(barbershopId: Int!, id: Int!): ClientPackageType!
   deleteAppointment(barbershopId: Int!, id: Int!): Boolean!
   deleteBarber(barbershopId: Int!, id: Int!): Boolean!
+  deleteBarberPayEntry(barbershopId: Int!, id: Int!): Boolean!
   deleteBarberSchedule(id: Int!): Boolean!
   deleteBarberTimeOff(id: Int!): Boolean!
   deleteBarbershop(id: Int!): Boolean!
@@ -1283,6 +1353,7 @@ type Mutation {
   markNoShowFeeCollected(barbershopId: Int!, id: Int!): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
+  payBarber(barbershopId: Int!, input: PayBarberInput!): BarberPayoutType!
   processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
@@ -1307,6 +1378,7 @@ type Mutation {
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
+  setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
@@ -1319,6 +1391,7 @@ type Mutation {
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
+  undoBarberPayout(barbershopId: Int!, id: Int!): Boolean!
   undoChairRentPayment(barbershopId: Int!, paymentId: Int!): ChairRentPaymentType!
   unlinkClientSocialAccount(provider: String!): Boolean!
   unlinkSocialAccount(provider: String!): Boolean!
@@ -1590,6 +1663,14 @@ type PaginatedLoginHistory {
   totalPages: Int!
 }
 
+input PayBarberInput {
+  barberId: Int!
+  from: String!
+  method: String!
+  notes: String
+  to: String!
+}
+
 type Payment {
   amount: Float!
   createdAt: String!
@@ -1617,6 +1698,57 @@ type PaymentMethod {
   card: Card
   id: String!
   type: String!
+}
+
+type PayrollOverviewType {
+  currency: String!
+  periodEnd: DateTime!
+  periodStart: DateTime!
+  rows: [PayrollRowType!]!
+  staffCostPercent: Float
+  totalCommission: Float!
+  totalPaid: Float!
+  totalRevenue: Float!
+  totalTips: Float!
+}
+
+type PayrollPreviewType {
+  advances: Float!
+  alreadyPaid: String
+  barberId: Int!
+  barberName: String!
+  baseAmount: Float!
+  bonuses: Float!
+  commission: Float!
+  currency: String!
+  deductions: Float!
+  entries: [BarberPayEntryType!]!
+  fixedAmount: Float!
+  payType: String!
+  periodEnd: DateTime!
+  periodStart: DateTime!
+  productSales: Float!
+  salesCount: Int!
+  serviceSales: Float!
+  tips: Float!
+  total: Float!
+}
+
+type PayrollRowType {
+  advancesPaid: Float!
+  barberId: Int!
+  barberName: String!
+  bonuses: Float!
+  commission: Float!
+  deductions: Float!
+  fixedAmount: Float
+  isActive: Boolean!
+  paid: Float!
+  payType: String!
+  payoutsCount: Int!
+  sales: Float!
+  salesCount: Int!
+  tips: Float!
 }
 
 type Plan {
@@ -1795,6 +1927,8 @@ type Query {
   appointment(barbershopId: Int!, id: Int!): Appointment
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
+  barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
+  barberPayStatement(barberId: Int, barbershopId: Int!): BarberPayStatementType!
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
   barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
   barbershop(id: Int!): Barbershop
@@ -1866,6 +2000,7 @@ type Query {
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
   overduePayments: [Payment!]!
+  payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
   publicAvailableSlots(barberId: Int!, barbershopId: Int!, date: String!, serviceId: Int!): [String!]!
@@ -2023,6 +2158,13 @@ type ServicePackageType {
   serviceName: String
   totalSessions: Int!
   updatedAt: String!
+}
+
+input SetBarberPayConfigInput {
+  barberId: Int!
+  fixedAmount: Float
+  payPeriod: String
+  payType: String!
 }
 
 input SetCommissionRuleInput {

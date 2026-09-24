@@ -192,3 +192,40 @@ vitrine e o endereço.
 
 No seed de demonstração, o Studio Navalha (Tiago) atende no espaço da Green, e
 a Barbearia Vintage tem um convite pendente.
+
+## 9. Pagamento da equipe
+
+Tudo o que a unidade paga a cada profissional fica registrado, pra dono e
+gerente verem quanto cada um recebe (e quanto a equipe custa sobre o
+faturamento), e pro profissional ver o próprio extrato. O dinheiro sai por
+fora (PIX, dinheiro, transferência): o sistema registra, calcula e lança a
+despesa.
+
+- **Forma de pagamento** (por profissional, dono ou gerente define):
+  - só comissão (padrão; as regras de comissão continuam as mesmas);
+  - só fixo;
+  - fixo + comissão;
+  - o maior entre o fixo e a comissão.
+  O fixo vale por período (mensal, quinzenal ou semanal).
+- **Lançamentos avulsos:**
+  - gorjeta a receber (entra somando);
+  - vale/adiantamento: já foi pago, então vira despesa "Salário" na hora e,
+    em dinheiro, sai do caixa aberto; no fechamento é descontado;
+  - bônus (soma) e desconto (consumo, quebra, falta...).
+  Lançamento errado se apaga enquanto não entrou num pagamento.
+- **Pagamento do período:** a prévia mostra vendas, comissão, fixo, base,
+  gorjetas, bônus, descontos, vales e o total. Pagar registra a forma de
+  pagamento, guarda a foto do cálculo, fecha os lançamentos e lança a despesa
+  "Salário" (em dinheiro, saindo do caixa aberto). O mesmo período (ou um que
+  se sobreponha) não se paga duas vezes, nem com dois cliques. Vale maior que
+  o devido: paga 0 e a diferença vira vale do próximo período. Pagamento
+  errado se desfaz (menos com o caixa do dinheiro já fechado).
+- **Quem vê:**
+  - dono e gerente: tudo, de todos, e a visão do período (por profissional:
+    vendas geradas, comissão, gorjetas, bônus, descontos, vales e o que foi
+    pago; no total: faturamento, pago à equipe e % do faturamento);
+  - o profissional (qualquer cargo com perfil na unidade): só o próprio
+    extrato — forma de pagamento, o que tem a receber desde o último
+    pagamento, lançamentos em aberto, pagamentos e recebido por mês.
+- **Modelo:** `BarberPayConfig`, `BarberPayEntry` (TIP | ADVANCE | BONUS |
+  DEDUCTION), `BarberPayout`.

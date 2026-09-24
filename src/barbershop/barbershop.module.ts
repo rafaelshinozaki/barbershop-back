@@ -2,6 +2,7 @@ import { MarketingUnsubscribeController } from './marketing-unsubscribe.controll
 import { AccountDeletionService } from './account-deletion.service';
 import { SharedLocationService } from './shared-location.service';
 import { ChairRentService, ChairRentScheduler, ChairRentProcessor } from './chair-rent.service';
+import { PayrollService } from './payroll.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
@@ -41,6 +42,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     EmployeeInviteService,
     SharedLocationService,
     ChairRentService,
+    PayrollService,
     ChairRentScheduler,
     ChairRentProcessor,
     AppointmentReminderService,
@@ -54,6 +56,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AccountDeletionService,
     SharedLocationService,
     ChairRentService,
+    PayrollService,
   ],
 })
 export class BarbershopModule {}
