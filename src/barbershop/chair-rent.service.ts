@@ -1,4 +1,14 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { CHAIR_RENT_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 import { Decimal } from '@prisma/client/runtime/library';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,12 +20,36 @@ import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
 
 const MIN_RENT = 1;
 const MAX_RENT = 100_000;
+const DAY_MS = 86_400_000;
+
+export type RentBillingMode = 'CARD' | 'MANUAL';
+/** Como o espaço recebeu o aluguel pago direto a ele */
+export const MANUAL_RENT_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
+export type ManualRentMethod = (typeof MANUAL_RENT_METHODS)[number];
+
+/** Mesmo dia do mês seguinte (dia 29–31 vira 28, pra todo mês ter vencimento). */
+function addMonth(date: Date, dueDay: number): Date {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1, 12));
+  d.setUTCDate(dueDay);
+  return d;
+}
+
+/** Vencimento ao meio-dia UTC do dia (mesmo dia em qualquer fuso das Américas). */
+function dueDateOf(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12));
+}
 
 /**
  * Aluguel da cadeira no espaço compartilhado. O espaço (host) define o valor
- * mensal; o profissional independente (dono do negócio convidado) autoriza
- * um cartão salvo da conta dele e o Stripe cobra todo mês — cada fatura paga
- * é o recibo (link e PDF do Stripe).
+ * mensal e como recebe:
+ * - CARD: o profissional independente (dono do negócio convidado) autoriza
+ *   um cartão salvo da conta dele e o Stripe cobra todo mês — cada fatura
+ *   paga é o recibo (link e PDF do Stripe);
+ * - MANUAL: pago direto ao espaço (PIX, dinheiro, transferência...). O
+ *   sistema gera a mensalidade todo mês, o espaço registra o pagamento com o
+ *   método, sai recibo, e o que foi em dinheiro entra no caixa aberto.
+ * Nos dois, cada pagamento vira despesa "Aluguel" no negócio do profissional
+ * — cada lado vê quanto recebe/paga.
  *
  * Como a assinatura do cliente final, a cobrança roda na conta da própria
  * plataforma (sem Stripe Connect): nenhum dos dois precisa abrir conta no
@@ -71,7 +105,13 @@ export class ChairRentService {
    * O espaço define (ou muda) o aluguel mensal; null/0 encerra a cobrança.
    * Com a cobrança já rodando, o valor novo vale a partir da próxima fatura.
    */
-  async setRent(userId: number, linkId: number, hostBarbershopId: number, amount: number | null) {
+  async setRent(
+    userId: number,
+    linkId: number,
+    hostBarbershopId: number,
+    amount: number | null,
+    mode?: RentBillingMode | null,
+  ) {
     await this.barbershopService.ensureAccess(userId, hostBarbershopId, 'manager');
     const link = await this.loadLink(linkId);
     if (!link || link.hostBarbershopId !== hostBarbershopId) {
@@ -83,9 +123,16 @@ export class ChairRentService {
 
     if (!amount) {
       await this.barbershopService.cancelChairRentsOfBarbershops([], link.id);
+      // Mensalidades manuais já vencidas continuam em aberto (é dívida); só
+      // param de ser geradas
       await this.prisma.sharedLocationMember.update({
         where: { id: link.id },
-        data: { rentAmount: null, rentStripePriceId: null, rentStatus: 'NONE' },
+        data: {
+          rentAmount: null,
+          rentStripePriceId: null,
+          rentStatus: 'NONE',
+          rentStartedAt: null,
+        },
       });
       if (link.rentStatus !== 'NONE') {
         void this.activity.chairRentEvent(
@@ -105,8 +152,51 @@ export class ChairRentService {
     }
     const cents = Math.round(amount * 100);
     const currency = link.host.currency;
-    if (link.rentAmount && Math.round(Number(link.rentAmount) * 100) === cents) {
+    const newMode: RentBillingMode = mode ?? (link.rentBillingMode as RentBillingMode);
+    if (newMode !== 'CARD' && newMode !== 'MANUAL') {
+      throw new BadRequestException('Forma de cobrança inválida');
+    }
+    const sameAmount = link.rentAmount && Math.round(Number(link.rentAmount) * 100) === cents;
+    if (sameAmount && newMode === link.rentBillingMode && link.rentStatus !== 'NONE') {
       return this.view(link.id, hostBarbershopId);
+    }
+
+    if (newMode === 'MANUAL') {
+      // Pago direto ao espaço: cartão (se havia) deixa de ser cobrado
+      await this.barbershopService.cancelChairRentsOfBarbershops([], link.id);
+      const wasManual = link.rentBillingMode === 'MANUAL' && link.rentStartedAt;
+      await this.prisma.sharedLocationMember.update({
+        where: { id: link.id },
+        data: {
+          rentAmount: new Decimal(cents / 100),
+          rentCurrency: currency,
+          rentBillingMode: 'MANUAL',
+          rentStripePriceId: null,
+          rentStatus: 'ACTIVE',
+          // Primeira mensalidade vence hoje; as próximas, no mesmo dia do mês
+          rentStartedAt: wasManual ? link.rentStartedAt : dueDateOf(new Date()),
+        },
+      });
+      await this.ensureDues(link.id);
+      void this.activity.chairRentEvent(
+        link.memberBarbershopId,
+        wasManual ? 'changed' : 'manualSet',
+        link.host.name,
+        this.money(cents / 100, currency),
+        userId,
+        `rent:${link.id}:manual:${cents}:${Date.now()}`,
+      );
+      return this.view(link.id, hostBarbershopId);
+    }
+    if (link.rentBillingMode === 'MANUAL') {
+      // Voltou pro cartão: o profissional autoriza; mensalidades manuais em
+      // aberto continuam a receber
+      await this.prisma.sharedLocationMember.update({
+        where: { id: link.id },
+        data: { rentBillingMode: 'CARD', rentStartedAt: null, rentStatus: 'NONE' },
+      });
+      link.rentBillingMode = 'CARD';
+      link.rentStatus = 'NONE';
     }
 
     let event: 'set' | 'changed' = 'set';
@@ -178,6 +268,11 @@ export class ChairRentService {
           throw new NotFoundException('Vínculo não encontrado');
         }
         if (link.status !== 'ACTIVE') throw new BadRequestException('Esse vínculo não está ativo');
+        if (link.rentBillingMode === 'MANUAL') {
+          throw new BadRequestException(
+            'Este aluguel é pago direto ao espaço (PIX, dinheiro ou transferência)',
+          );
+        }
 
         if (link.rentStripeSubscriptionId && link.rentStatus === 'PAST_DUE') {
           await this.stripe.updateSubscription(link.rentStripeSubscriptionId, {
@@ -265,7 +360,277 @@ export class ChairRentService {
     };
   }
 
-  /** Recibos (faturas do Stripe) do aluguel, pros dois lados. */
+  /**
+   * Gera as mensalidades manuais que já venceram (uma por mês, desde
+   * rentStartedAt). Idempotente: o índice único (vínculo, vencimento) não
+   * deixa duplicar, nem com duas chamadas juntas. Devolve quantas criou.
+   */
+  async ensureDues(linkId: number): Promise<number> {
+    const link = await this.prisma.sharedLocationMember.findUnique({ where: { id: linkId } });
+    if (
+      !link ||
+      link.status !== 'ACTIVE' ||
+      link.rentBillingMode !== 'MANUAL' ||
+      !link.rentAmount ||
+      !link.rentStartedAt
+    ) {
+      return 0;
+    }
+    const dueDay = Math.min(link.rentStartedAt.getUTCDate(), 28);
+    const dates: Date[] = [];
+    let d = link.rentStartedAt;
+    const now = Date.now();
+    for (let i = 0; i < 240 && d.getTime() <= now; i++) {
+      dates.push(d);
+      d = addMonth(d, dueDay);
+    }
+    if (dates.length === 0) return 0;
+    const existing = await this.prisma.chairRentPayment.findMany({
+      where: { sharedLocationMemberId: link.id, dueDate: { in: dates } },
+      select: { dueDate: true },
+    });
+    const have = new Set(existing.map((e) => e.dueDate!.getTime()));
+    const missing = dates.filter((x) => !have.has(x.getTime()));
+    if (missing.length === 0) return 0;
+    const created = await this.prisma.chairRentPayment.createMany({
+      data: missing.map((dueDate) => ({
+        sharedLocationMemberId: link.id,
+        amount: link.rentAmount!,
+        currency: link.rentCurrency ?? 'BRL',
+        status: 'DUE',
+        method: 'OTHER',
+        dueDate,
+        periodStart: dueDate,
+        periodEnd: addMonth(dueDate, dueDay),
+      })),
+      skipDuplicates: true,
+    });
+    if (created.count > 0) {
+      const latest = missing[missing.length - 1];
+      const host = await this.prisma.barbershop.findUnique({
+        where: { id: link.hostBarbershopId },
+        select: { name: true },
+      });
+      void this.activity.chairRentEvent(
+        link.memberBarbershopId,
+        'due',
+        host?.name ?? '',
+        this.money(link.rentAmount, link.rentCurrency ?? 'BRL'),
+        null,
+        `rent-due:${link.id}:${latest.getTime()}`,
+      );
+    }
+    return created.count;
+  }
+
+  private async loadPayment(paymentId: number) {
+    return this.prisma.chairRentPayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        link: {
+          include: {
+            host: { select: { id: true, name: true } },
+            member: { select: { id: true, name: true, ownerUserId: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * O espaço registra o aluguel que recebeu direto (PIX, dinheiro,
+   * transferência...). Dinheiro entra no caixa aberto do espaço; no negócio
+   * do profissional vira despesa "Aluguel". Sai recibo pros dois.
+   */
+  async recordPayment(
+    userId: number,
+    paymentId: number,
+    hostBarbershopId: number,
+    method: string,
+    notes?: string | null,
+  ) {
+    await this.barbershopService.ensureAccess(userId, hostBarbershopId, 'manager');
+    if (!(MANUAL_RENT_METHODS as readonly string[]).includes(method)) {
+      throw new BadRequestException('Forma de pagamento inválida');
+    }
+    const payment = await this.loadPayment(paymentId);
+    if (!payment || payment.link.hostBarbershopId !== hostBarbershopId) {
+      throw new NotFoundException('Mensalidade não encontrada');
+    }
+    if (payment.status !== 'DUE') throw new BadRequestException('Essa mensalidade já foi paga');
+
+    const cashSession =
+      method === 'CASH'
+        ? await this.prisma.cashSession.findFirst({
+            where: { barbershopId: hostBarbershopId, status: 'OPEN' },
+            select: { id: true },
+          })
+        : null;
+    const paidAt = new Date();
+    // Condicional no status: dois cliques não registram (nem lançam despesa) duas vezes
+    const updated = await this.prisma.chairRentPayment.updateMany({
+      where: { id: payment.id, status: 'DUE' },
+      data: {
+        status: 'SUCCEEDED',
+        method,
+        paidAt,
+        notes: notes?.trim() || null,
+        recordedByUserId: userId,
+        cashSessionId: cashSession?.id ?? null,
+      },
+    });
+    if (updated.count === 0) throw new BadRequestException('Essa mensalidade já foi paga');
+
+    const expenseId = await this.createMemberExpense(
+      payment.link,
+      Number(payment.amount),
+      method,
+      paidAt,
+    );
+    if (expenseId) {
+      await this.prisma.chairRentPayment.update({
+        where: { id: payment.id },
+        data: { memberExpenseId: expenseId },
+      });
+    }
+    void this.activity.chairRentEvent(
+      payment.link.memberBarbershopId,
+      'received',
+      payment.link.host.name,
+      this.money(payment.amount, payment.currency),
+      userId,
+      `rent-paid:${payment.id}:${paidAt.getTime()}`,
+    );
+    await this.sendManualReceipt(payment.id).catch((err) =>
+      this.logger.error(`Recibo do aluguel #${payment.id} não saiu`, err),
+    );
+    return this.paymentView(payment.id);
+  }
+
+  /** Registro errado: a mensalidade volta a ficar em aberto (e sai do caixa e da despesa). */
+  async undoPayment(userId: number, paymentId: number, hostBarbershopId: number) {
+    await this.barbershopService.ensureAccess(userId, hostBarbershopId, 'manager');
+    const payment = await this.loadPayment(paymentId);
+    if (!payment || payment.link.hostBarbershopId !== hostBarbershopId) {
+      throw new NotFoundException('Mensalidade não encontrada');
+    }
+    if (payment.status !== 'SUCCEEDED' || payment.method === 'CARD' || !payment.dueDate) {
+      throw new BadRequestException('Só dá pra desfazer pagamento registrado à mão');
+    }
+    if (payment.cashSessionId) {
+      const session = await this.prisma.cashSession.findUnique({
+        where: { id: payment.cashSessionId },
+        select: { status: true },
+      });
+      if (session?.status === 'CLOSED') {
+        throw new BadRequestException(
+          'O caixa em que esse dinheiro entrou já foi fechado. Lance a correção no caixa.',
+        );
+      }
+    }
+    await this.prisma.$transaction(async (tx) => {
+      if (payment.memberExpenseId) {
+        await tx.expense.deleteMany({ where: { id: payment.memberExpenseId } });
+      }
+      await tx.chairRentPayment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'DUE',
+          method: 'OTHER',
+          paidAt: null,
+          notes: null,
+          recordedByUserId: null,
+          cashSessionId: null,
+          memberExpenseId: null,
+        },
+      });
+    });
+    return this.paymentView(payment.id);
+  }
+
+  /** Aluguel pago vira despesa "Aluguel" no negócio do profissional. */
+  private async createMemberExpense(
+    link: {
+      memberBarbershopId: number;
+      host: { name: string };
+      member: { ownerUserId: number | null };
+      rentPayerUserId?: number | null;
+    },
+    amount: number,
+    method: string,
+    paidAt: Date,
+  ) {
+    const createdBy = link.member.ownerUserId ?? link.rentPayerUserId;
+    if (!createdBy) return null;
+    const expense = await this.prisma.expense.create({
+      data: {
+        barbershopId: link.memberBarbershopId,
+        category: 'RENT',
+        description: `Aluguel da cadeira — ${link.host.name}`,
+        amount: new Decimal(amount),
+        paymentMethod: method,
+        expenseDate: paidAt,
+        createdByUserId: createdBy,
+      },
+      select: { id: true },
+    });
+    return expense.id;
+  }
+
+  private receiptNumber(id: number) {
+    return `ALG-${String(id).padStart(6, '0')}`;
+  }
+
+  private async paymentView(paymentId: number) {
+    const r = await this.prisma.chairRentPayment.findUniqueOrThrow({ where: { id: paymentId } });
+    const recordedBy = r.recordedByUserId
+      ? await this.prisma.user.findUnique({
+          where: { id: r.recordedByUserId },
+          select: { fullName: true },
+        })
+      : null;
+    return this.toPaymentView(r, recordedBy?.fullName ?? null);
+  }
+
+  private toPaymentView(
+    r: {
+      id: number;
+      createdAt: Date;
+      amount: Decimal;
+      currency: string;
+      status: string;
+      method: string;
+      dueDate: Date | null;
+      paidAt: Date | null;
+      notes: string | null;
+      periodStart: Date | null;
+      periodEnd: Date | null;
+      receiptUrl: string | null;
+      receiptPdfUrl: string | null;
+    },
+    recordedByName: string | null,
+  ) {
+    return {
+      id: r.id,
+      createdAt: r.createdAt,
+      amount: Number(r.amount),
+      currency: r.currency,
+      status: r.status,
+      method: r.method,
+      dueDate: r.dueDate,
+      paidAt: r.paidAt,
+      overdue: r.status === 'DUE' && !!r.dueDate && r.dueDate.getTime() + DAY_MS < Date.now(),
+      notes: r.notes,
+      recordedByName,
+      receiptNumber: r.status === 'SUCCEEDED' ? this.receiptNumber(r.id) : null,
+      periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
+      receiptUrl: r.receiptUrl,
+      receiptPdfUrl: r.receiptPdfUrl,
+    };
+  }
+
+  /** Mensalidades e recibos do aluguel, pros dois lados. */
   async payments(userId: number, linkId: number, barbershopId: number) {
     const link = await this.loadLink(linkId);
     if (
@@ -275,47 +640,156 @@ export class ChairRentService {
       throw new NotFoundException('Vínculo não encontrado');
     }
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    await this.ensureDues(linkId);
     const rows = await this.prisma.chairRentPayment.findMany({
       where: { sharedLocationMemberId: linkId },
-      orderBy: { createdAt: 'desc' },
+      // Em aberto primeiro, depois do mais recente pro mais antigo
+      orderBy: [{ status: 'asc' }, { dueDate: 'desc' }, { createdAt: 'desc' }],
       take: 60,
     });
-    return rows.map((r) => ({
-      id: r.id,
-      createdAt: r.createdAt,
-      amount: Number(r.amount),
-      currency: r.currency,
-      status: r.status,
-      periodStart: r.periodStart,
-      periodEnd: r.periodEnd,
-      receiptUrl: r.receiptUrl,
-      receiptPdfUrl: r.receiptPdfUrl,
-    }));
+    const userIds = [...new Set(rows.map((r) => r.recordedByUserId).filter(Boolean))] as number[];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+    const names = new Map(users.map((u) => [u.id, u.fullName]));
+    return rows.map((r) =>
+      this.toPaymentView(r, r.recordedByUserId ? names.get(r.recordedByUserId) ?? null : null),
+    );
+  }
+
+  /** Recibo de um pagamento (pra imprimir/mandar), pros dois lados. */
+  async receipt(userId: number, paymentId: number, barbershopId: number) {
+    const payment = await this.loadPayment(paymentId);
+    if (
+      !payment ||
+      (payment.link.hostBarbershopId !== barbershopId &&
+        payment.link.memberBarbershopId !== barbershopId)
+    ) {
+      throw new NotFoundException('Recibo não encontrado');
+    }
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    if (payment.status !== 'SUCCEEDED')
+      throw new BadRequestException('Essa mensalidade não foi paga');
+    const [host, member] = await Promise.all(
+      [payment.link.hostBarbershopId, payment.link.memberBarbershopId].map((id) =>
+        this.prisma.barbershop.findUniqueOrThrow({
+          where: { id },
+          select: { name: true, address: true, city: true, state: true, email: true, phone: true },
+        }),
+      ),
+    );
+    return {
+      ...(await this.paymentView(payment.id)),
+      hostName: host.name,
+      hostAddress: `${host.address}, ${host.city} - ${host.state}`,
+      memberName: member.name,
+      memberAddress: `${member.address}, ${member.city} - ${member.state}`,
+    };
   }
 
   /** Aluguel do vínculo como a unidade vê (inclui o resumo do repasse pro espaço). */
   async view(linkId: number, viewerBarbershopId: number) {
+    await this.ensureDues(linkId);
     const link = await this.prisma.sharedLocationMember.findUniqueOrThrow({
       where: { id: linkId },
     });
-    const received = await this.prisma.chairRentPayment.aggregate({
-      where: { sharedLocationMemberId: linkId, status: 'SUCCEEDED' },
-      _sum: { amount: true },
-    });
-    const total = Number(received._sum.amount ?? 0);
-    const fee = Math.round(total * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    const [byMethod, open] = await Promise.all([
+      this.prisma.chairRentPayment.groupBy({
+        by: ['method'],
+        where: { sharedLocationMemberId: linkId, status: 'SUCCEEDED' },
+        _sum: { amount: true },
+      }),
+      this.prisma.chairRentPayment.findMany({
+        where: { sharedLocationMemberId: linkId, status: 'DUE' },
+        select: { amount: true, dueDate: true },
+        orderBy: { dueDate: 'asc' },
+      }),
+    ]);
+    const total = byMethod.reduce((sum, m) => sum + Number(m._sum.amount ?? 0), 0);
+    // Taxa da plataforma só no que passou pelo Stripe; o manual já é do espaço
+    const card = Number(byMethod.find((m) => m.method === 'CARD')?._sum.amount ?? 0);
+    const fee = Math.round(card * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    const openAmount = open.reduce((sum, d) => sum + Number(d.amount), 0);
+    const overdue = open.some((d) => d.dueDate && d.dueDate.getTime() + DAY_MS < Date.now());
+    const manual = link.rentBillingMode === 'MANUAL';
+    let nextDueDate: Date | null = null;
+    if (manual && link.rentStartedAt && link.rentAmount) {
+      const dueDay = Math.min(link.rentStartedAt.getUTCDate(), 28);
+      let d = link.rentStartedAt;
+      for (let i = 0; i < 240 && d.getTime() <= Date.now(); i++) d = addMonth(d, dueDay);
+      nextDueDate = d;
+    }
+    let status = link.rentStatus;
+    if (manual && link.rentStatus !== 'NONE') {
+      status = overdue ? 'PAST_DUE' : openAmount > 0 ? 'DUE' : 'ACTIVE';
+    } else if (link.rentStatus === 'NONE' && openAmount > 0) {
+      // Parou de cobrar, mas ficou mensalidade em aberto
+      status = overdue ? 'PAST_DUE' : 'DUE';
+    }
+    const isHost = link.hostBarbershopId === viewerBarbershopId;
     return {
       linkId: link.id,
-      isHost: link.hostBarbershopId === viewerBarbershopId,
-      status: link.rentStatus,
+      isHost,
+      status,
+      billingMode: link.rentBillingMode,
       amount: link.rentAmount != null ? Number(link.rentAmount) : null,
       currency: link.rentCurrency,
       paidUntil: link.rentPaidUntil,
+      nextDueDate,
+      openAmount,
       totalReceived: total,
       platformFeePercent: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
-      // Só quem é o espaço vê o repasse; o profissional vê o que pagou
-      payoutDue: link.hostBarbershopId === viewerBarbershopId ? total - fee : null,
+      // Só quem é o espaço vê o repasse (do que entrou pelo cartão)
+      payoutDue: isHost ? card - fee : null,
     };
+  }
+
+  /**
+   * Rotina diária: gera as mensalidades manuais do dia e avisa uma vez os
+   * dois lados de cada mensalidade que passou do vencimento.
+   */
+  async processManualDues() {
+    const links = await this.prisma.sharedLocationMember.findMany({
+      where: { status: 'ACTIVE', rentBillingMode: 'MANUAL', rentAmount: { not: null } },
+      select: { id: true },
+    });
+    for (const l of links) await this.ensureDues(l.id);
+    const overdue = await this.prisma.chairRentPayment.findMany({
+      where: {
+        status: 'DUE',
+        overdueNotifiedAt: null,
+        dueDate: { lt: new Date(Date.now() - DAY_MS) },
+      },
+      include: {
+        link: { include: { host: { select: { name: true } }, member: { select: { name: true } } } },
+      },
+      take: 500,
+    });
+    for (const p of overdue) {
+      const claimed = await this.prisma.chairRentPayment.updateMany({
+        where: { id: p.id, overdueNotifiedAt: null },
+        data: { overdueNotifiedAt: new Date() },
+      });
+      if (claimed.count === 0) continue;
+      const amountText = this.money(p.amount, p.currency);
+      for (const [shopId, other] of [
+        [p.link.memberBarbershopId, p.link.host.name],
+        [p.link.hostBarbershopId, p.link.member.name],
+      ] as const) {
+        void this.activity.chairRentEvent(
+          shopId,
+          'overdue',
+          other,
+          amountText,
+          null,
+          `rent-overdue:${p.id}:${shopId}`,
+        );
+      }
+    }
+    return overdue.length;
   }
 
   // ---- Webhook do Stripe ----
@@ -357,6 +831,8 @@ export class ChairRentService {
           stripeInvoiceId: invoice.id,
           amount: new Decimal(amount),
           currency,
+          method: 'CARD',
+          paidAt: paid ? new Date() : null,
           status: paid ? 'SUCCEEDED' : 'FAILED',
           periodStart,
           periodEnd,
@@ -365,6 +841,7 @@ export class ChairRentService {
         },
         update: {
           status: paid ? 'SUCCEEDED' : 'FAILED',
+          paidAt: paid ? new Date() : null,
           amount: new Decimal(amount),
           receiptUrl: invoice.hosted_invoice_url ?? null,
           receiptPdfUrl: invoice.invoice_pdf ?? null,
@@ -382,6 +859,25 @@ export class ChairRentService {
 
     const amountText = this.money(amount, currency);
     if (paid) {
+      const member = await this.prisma.barbershop.findUnique({
+        where: { id: link.memberBarbershopId },
+        select: { ownerUserId: true },
+      });
+      const expenseId = await this.createMemberExpense(
+        { ...link, member: { ownerUserId: member?.ownerUserId ?? null } },
+        amount,
+        'CARD',
+        new Date(),
+      ).catch((err) => {
+        this.logger.error(`Despesa do aluguel (fatura ${invoice.id}) não lançada`, err);
+        return null;
+      });
+      if (expenseId) {
+        await this.prisma.chairRentPayment.update({
+          where: { stripeInvoiceId: invoice.id },
+          data: { memberExpenseId: expenseId },
+        });
+      }
       void this.activity.chairRentEvent(
         link.hostBarbershopId,
         'paid',
@@ -440,6 +936,46 @@ export class ChairRentService {
     return true;
   }
 
+  /** Recibo do pagamento manual por e-mail pro dono do negócio do profissional. */
+  private async sendManualReceipt(paymentId: number) {
+    const payment = await this.loadPayment(paymentId);
+    const ownerId = payment?.link.member.ownerUserId;
+    if (!payment || !ownerId) return;
+    const user = await this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { id: true, email: true, fullName: true },
+    });
+    if (!user) return;
+    const number = this.receiptNumber(payment.id);
+    const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+    await this.notificationQueue.email(
+      {
+        kind: 'user',
+        userId: user.id,
+        template: 'invoice_email',
+        context: {
+          FullName: user.fullName,
+          AppName: 'Barbershop',
+          InvoiceID: number,
+          Amount: Number(payment.amount),
+          Currency: payment.currency,
+          DueDate: payment.dueDate ?? payment.paidAt ?? new Date(),
+          InvoiceURL: `${front}/rent-receipt/${payment.id}?b=${payment.link.memberBarbershopId}`,
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
+        subject: {
+          pt: `Recibo do aluguel da cadeira — ${number}`,
+          en: `Chair rent receipt — ${number}`,
+          es: `Recibo del alquiler de la silla — ${number}`,
+        },
+        meta: 'chair-rent-receipt',
+        to: user.email,
+      },
+      `chair-rent-receipt-${payment.id}-${payment.paidAt?.getTime() ?? 0}`,
+    );
+  }
+
   private async sendReceipt(
     payerUserId: number | null,
     invoice: Stripe.Invoice,
@@ -478,5 +1014,28 @@ export class ChairRentService {
       },
       `chair-rent-receipt-${invoice.id}`,
     );
+  }
+}
+
+/** Mensalidades manuais do aluguel: uma execução por hora, uma só no cluster. */
+@Injectable()
+export class ChairRentScheduler implements OnModuleInit {
+  constructor(@InjectQueue(CHAIR_RENT_QUEUE) private readonly queue: Queue) {}
+
+  onModuleInit() {
+    registerSchedulers(this.queue, [
+      { id: 'process-manual-dues', repeat: { every: 60 * 60 * 1000 } },
+    ]);
+  }
+}
+
+@Processor(CHAIR_RENT_QUEUE)
+export class ChairRentProcessor extends WorkerHost {
+  constructor(private readonly chairRent: ChairRentService) {
+    super();
+  }
+
+  async process() {
+    return this.chairRent.processManualDues();
   }
 }

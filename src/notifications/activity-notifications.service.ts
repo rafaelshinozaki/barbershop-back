@@ -424,7 +424,17 @@ export class ActivityNotificationsService {
   /** Aluguel da cadeira (espaço compartilhado): cobrança definida, paga, recusada ou encerrada. */
   chairRentEvent(
     toBarbershopId: number,
-    event: 'set' | 'changed' | 'started' | 'paid' | 'failed' | 'stopped',
+    event:
+      | 'set'
+      | 'manualSet'
+      | 'changed'
+      | 'started'
+      | 'paid'
+      | 'received'
+      | 'due'
+      | 'overdue'
+      | 'failed'
+      | 'stopped',
     otherShopName: string,
     amountText: string,
     actorUserId: number | null,
@@ -444,6 +454,47 @@ export class ActivityNotificationsService {
           es: [
             'Alquiler de la silla',
             `${otherShopName} definió el alquiler mensual de ${amountText}. Autoriza tu tarjeta para empezar.`,
+          ],
+        },
+        manualSet: {
+          pt: [
+            'Aluguel da cadeira',
+            `${otherShopName} definiu o aluguel mensal de ${amountText}, pago direto ao espaço (PIX, dinheiro ou transferência).`,
+          ],
+          en: [
+            'Chair rent',
+            `${otherShopName} set a monthly rent of ${amountText}, paid directly to the space (PIX, cash or transfer).`,
+          ],
+          es: [
+            'Alquiler de la silla',
+            `${otherShopName} definió el alquiler mensual de ${amountText}, pagado directo al espacio (PIX, efectivo o transferencia).`,
+          ],
+        },
+        due: {
+          pt: ['Aluguel do mês', `O aluguel de ${amountText} em ${otherShopName} venceu hoje.`],
+          en: ['Monthly rent', `The ${amountText} rent at ${otherShopName} is due today.`],
+          es: ['Alquiler del mes', `El alquiler de ${amountText} en ${otherShopName} vence hoy.`],
+        },
+        overdue: {
+          pt: ['Aluguel atrasado', `O aluguel de ${amountText} (${otherShopName}) está atrasado.`],
+          en: ['Rent overdue', `The ${amountText} rent (${otherShopName}) is overdue.`],
+          es: [
+            'Alquiler atrasado',
+            `El alquiler de ${amountText} (${otherShopName}) está atrasado.`,
+          ],
+        },
+        received: {
+          pt: [
+            'Pagamento do aluguel registrado',
+            `${otherShopName} registrou o recebimento do aluguel: ${amountText}. O recibo está no espaço compartilhado.`,
+          ],
+          en: [
+            'Rent payment recorded',
+            `${otherShopName} recorded your rent payment: ${amountText}. The receipt is in Shared location.`,
+          ],
+          es: [
+            'Pago del alquiler registrado',
+            `${otherShopName} registró el pago del alquiler: ${amountText}. El recibo está en Espacio compartido.`,
           ],
         },
         changed: {
@@ -509,9 +560,9 @@ export class ActivityNotificationsService {
         actorUserId,
         path: 'shared-location',
         type:
-          event === 'failed'
+          event === 'failed' || event === 'overdue'
             ? NotificationType.WARNING
-            : event === 'paid'
+            : event === 'paid' || event === 'received'
             ? NotificationType.SUCCESS
             : NotificationType.INFO,
         key,

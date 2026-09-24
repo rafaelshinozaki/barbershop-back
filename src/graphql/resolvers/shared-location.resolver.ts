@@ -5,10 +5,11 @@ import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { SharedLocationService } from '../../barbershop/shared-location.service';
-import { ChairRentService } from '../../barbershop/chair-rent.service';
+import { ChairRentService, RentBillingMode } from '../../barbershop/chair-rent.service';
 import {
   AuthorizeChairRentResultType,
   ChairRentPaymentType,
+  ChairRentReceiptType,
   ChairRentType,
   SharedLocationLinkType,
   SharedLocationOverviewType,
@@ -70,8 +71,47 @@ export class SharedLocationResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('amount', { type: () => Float, nullable: true }) amount: number | null,
     @CurrentUser() user: UserDTO,
+    /** CARD (cartão pelo Stripe) ou MANUAL (PIX, dinheiro, transferência direto ao espaço) */
+    @Args('mode', { nullable: true }) mode?: string,
   ) {
-    return this.chairRent.setRent(user.id, id, barbershopId, amount ?? null);
+    return this.chairRent.setRent(
+      user.id,
+      id,
+      barbershopId,
+      amount ?? null,
+      (mode as RentBillingMode) ?? null,
+    );
+  }
+
+  /** O espaço registra o aluguel recebido direto (CASH, PIX, TRANSFER, OTHER) */
+  @Mutation(() => ChairRentPaymentType)
+  async recordChairRentPayment(
+    @Args('paymentId', { type: () => Int }) paymentId: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('method') method: string,
+    @CurrentUser() user: UserDTO,
+    @Args('notes', { nullable: true }) notes?: string,
+  ) {
+    return this.chairRent.recordPayment(user.id, paymentId, barbershopId, method, notes);
+  }
+
+  /** Desfaz um pagamento registrado à mão por engano */
+  @Mutation(() => ChairRentPaymentType)
+  async undoChairRentPayment(
+    @Args('paymentId', { type: () => Int }) paymentId: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.undoPayment(user.id, paymentId, barbershopId);
+  }
+
+  @Query(() => ChairRentReceiptType)
+  async chairRentReceipt(
+    @Args('paymentId', { type: () => Int }) paymentId: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.receipt(user.id, paymentId, barbershopId);
   }
 
   /** O profissional autoriza a cobrança mensal com um cartão salvo (ou troca o cartão recusado) */

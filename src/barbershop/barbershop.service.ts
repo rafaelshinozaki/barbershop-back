@@ -4421,7 +4421,7 @@ export class BarbershopService {
     if (!session) {
       throw new NotFoundException('Nenhum caixa aberto para esta barbearia');
     }
-    const [cashSales, cashExpenses] = await Promise.all([
+    const [cashSales, cashExpenses, cashRent] = await Promise.all([
       this.prisma.sale.aggregate({
         where: {
           cashSessionId: session.id,
@@ -4434,9 +4434,14 @@ export class BarbershopService {
         where: { cashSessionId: session.id, paymentMethod: 'CASH' },
         _sum: { amount: true },
       }),
+      // Aluguel da cadeira recebido em dinheiro também está na gaveta
+      this.prisma.chairRentPayment.aggregate({
+        where: { cashSessionId: session.id, method: 'CASH', status: 'SUCCEEDED' },
+        _sum: { amount: true },
+      }),
     ]);
     const openingBalance = Number(session.openingBalance);
-    const cashIn = Number(cashSales._sum.total ?? 0);
+    const cashIn = Number(cashSales._sum.total ?? 0) + Number(cashRent._sum.amount ?? 0);
     const cashOut = Number(cashExpenses._sum.amount ?? 0);
     const expectedBalance = openingBalance + cashIn - cashOut;
     const difference = data.countedBalance - expectedBalance;
@@ -4550,6 +4555,18 @@ export class BarbershopService {
 
     const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    // Aluguel da cadeira que o espaço recebeu direto (PIX, dinheiro...). O
+    // que entra pelo cartão fica na plataforma até o repasse
+    const rent = await this.prisma.chairRentPayment.aggregate({
+      where: {
+        link: { hostBarbershopId: barbershopId },
+        status: 'SUCCEEDED',
+        method: { not: 'CARD' },
+        paidAt: { gte: from, lte: to },
+      },
+      _sum: { amount: true },
+    });
+    const chairRentIncome = Number(rent._sum.amount ?? 0);
 
     const byMethod = new Map<string, number>();
     sales.forEach((s) => {
@@ -4574,7 +4591,8 @@ export class BarbershopService {
     return {
       totalRevenue,
       totalExpenses,
-      netProfit: totalRevenue - totalExpenses,
+      chairRentIncome,
+      netProfit: totalRevenue + chairRentIncome - totalExpenses,
       revenueByPaymentMethod: Array.from(byMethod.entries()).map(([category, total]) => ({
         category,
         total,

@@ -161,7 +161,16 @@ vitrine e o endereço.
   rodando vale a partir da próxima fatura, sem proporcional. Valor vazio ou 0
   encerra a cobrança. Definir o valor não passa pelo Stripe; o preço lá é
   criado quando o profissional autoriza.
-- **Autorização:** o dono do negócio do profissional escolhe um cartão salvo da
+- **Forma de cobrança** (o espaço escolhe por profissional):
+  - **Cartão automático:** cobrado pelo Stripe todo mês (abaixo);
+  - **Direto ao espaço** (PIX, dinheiro, transferência, outro): o sistema gera a
+    mensalidade todo mês no mesmo dia (29–31 viram 28) e o espaço registra o
+    pagamento com o método. Dinheiro entra no caixa aberto do espaço (conta na
+    conferência do fechamento). Sai recibo (número `ALG-000123`), com e-mail
+    pro profissional. Registro errado dá pra desfazer, menos quando o caixa em
+    que o dinheiro entrou já foi fechado. Mensalidade atrasada avisa os dois
+    lados uma vez. Não passa pelo Stripe e não tem taxa da plataforma.
+- **Autorização (cartão):** o dono do negócio do profissional escolhe um cartão salvo da
   conta dele. O cartão vale só pra esse aluguel (não troca o cartão do plano).
   Cartão que pede 3D Secure é confirmado na tela.
 - **Cobrança:** o Stripe cobra todo mês, na conta da plataforma (como a
@@ -170,7 +179,10 @@ vitrine e o endereço.
 - **Recusa:** os dois lados são avisados. Autorizar outro cartão tenta a fatura
   em aberto na hora. Se o Stripe desistir, o aluguel volta a aguardar
   autorização, com o mesmo valor.
-- **Repasse:** o espaço vê o total recebido, a taxa da plataforma
+- **Os dois lados veem:** cada pagamento, pelo cartão ou direto, vira despesa
+  "Aluguel" no negócio do profissional; no espaço, o aluguel recebido direto
+  entra no resumo financeiro (`chairRentIncome`).
+- **Repasse (só cartão):** o espaço vê o total recebido, a taxa da plataforma
   (`PLATFORM_SUBSCRIPTION_FEE_PERCENT`) e o valor a repassar. O repasse é
   manual, como o das assinaturas.
 - **Fim:** encerrar o vínculo, apagar uma das unidades ou excluir a conta do

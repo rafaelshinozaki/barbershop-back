@@ -1408,6 +1408,13 @@ model SharedLocationMember {
   rentStripeSubscriptionId String?    @unique
   rentPayerUserId          Int?
   rentPaidUntil            DateTime?
+  // CARD: cartão autorizado pelo profissional, cobrado pelo Stripe todo mês.
+  // MANUAL: pago direto ao espaço (PIX, dinheiro, transferência...) — o
+  // sistema gera a mensalidade todo mês a partir de rentStartedAt e o espaço
+  // registra o pagamento. Em MANUAL, rentStatus fica ACTIVE e a situação
+  // (a pagar, atrasado) vem das mensalidades em aberto.
+  rentBillingMode          String     @default("CARD")
+  rentStartedAt            DateTime?
   host               Barbershop @relation("SharedLocationHost", fields: [hostBarbershopId], references: [id], onDelete: Cascade)
   member             Barbershop @relation("SharedLocationMember", fields: [memberBarbershopId], references: [id], onDelete: Cascade)
   rentPayments       ChairRentPayment[]
@@ -1421,15 +1428,26 @@ model ChairRentPayment {
   id                     Int       @id @default(autoincrement())
   createdAt              DateTime  @default(now())
   sharedLocationMemberId Int
-  stripeInvoiceId        String    @unique
+  stripeInvoiceId        String?   @unique // só cartão
   amount                 Decimal
   currency               String
-  status                 String // SUCCEEDED, FAILED
+  status                 String // DUE (mensalidade manual em aberto), SUCCEEDED, FAILED
+  method                 String    @default("CARD") // CARD, CASH, PIX, TRANSFER, OTHER
+  dueDate                DateTime? // mensalidade manual: vencimento
+  paidAt                 DateTime?
+  notes                  String?
+  recordedByUserId       Int?      // quem registrou o pagamento manual
+  cashSessionId          Int?      // dinheiro que entrou no caixa aberto do espaço
+  memberExpenseId        Int?      // despesa "Aluguel" lançada no negócio do profissional
+  overdueNotifiedAt      DateTime?
   periodStart            DateTime?
   periodEnd              DateTime?
   receiptUrl             String?
   receiptPdfUrl          String?
   link                   SharedLocationMember @relation(fields: [sharedLocationMemberId], references: [id], onDelete: Cascade)
 
+  @@unique([sharedLocationMemberId, dueDate])
   @@index([sharedLocationMemberId])
+  @@index([cashSessionId])
+  @@index([status, dueDate])
 }

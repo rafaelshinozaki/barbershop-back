@@ -1033,6 +1033,10 @@ export class FinancialSummaryType {
   @Field(() => Float)
   totalExpenses: number;
 
+  /** Aluguel da cadeira recebido direto pelo espaço (PIX, dinheiro, transferência) */
+  @Field(() => Float)
+  chairRentIncome: number;
+
   @Field(() => Float)
   netProfit: number;
 
