@@ -104,3 +104,30 @@ Contas do seed (senha `pwned`, só fora de produção), todas na Green Barbersho
 | Recepção | julia.recepcao@barbershop.com |
 | Barbeiro | minion.cayo@barbershop.com |
 | Barbeiro básico | pedro.basico@barbershop.com |
+
+## 7. Profissional em várias unidades e vínculo temporário
+
+Profissional autônomo pode trabalhar em mais de uma barbearia, até de donos
+diferentes. É **uma conta** com **um vínculo por unidade** (`Barber`, único por
+`barbershopId + userId`), e cada vínculo tem o seu cargo.
+
+- **Convite pra quem já tem conta:** o convite sai normalmente. No link, a pessoa
+  entra com a conta dela e aceita (`POST /employee-invites/accept/:token/existing`),
+  sem criar outra conta. Só a conta com o e-mail do convite aceita.
+- **Agenda é uma só:** o mesmo horário não é vendido em duas unidades. Isso vale
+  pra equipe, pra página pública e pra duas reservas ao mesmo tempo (a trava é por
+  pessoa). A outra unidade vê só "ocupado em outra unidade", sem nada do
+  atendimento de lá.
+- **Cada unidade vê só o que é dela:** clientes, vendas e agenda continuam
+  separados.
+- **Dono com várias unidades** entra na equipe de cada uma. A agenda dele também
+  é uma só.
+- **Vínculo temporário (freelancer):** `accessStartsAt` e `accessEndsAt` no
+  vínculo. Fora do período a pessoa não entra na unidade, não aparece na página
+  pública, não recebe agendamento e não ocupa vaga do plano. Na tela da equipe
+  aparece "Até dd/mm", "Começa em dd/mm" ou "Vínculo encerrado".
+- **E-mail do convite é best-effort:** se o provedor falhar, o convite continua
+  valendo e a tela mostra o link pra mandar por outro canal.
+
+No seed de demonstração, Bianca é gerente da Green e da Green Centro, e Minion é
+freelancer aos sábados na Barbearia Vintage (vínculo temporário).

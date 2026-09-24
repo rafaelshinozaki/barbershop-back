@@ -164,6 +164,8 @@ type BackofficeStats {
 }
 
 type Barber {
+  accessEndsAt: DateTime
+  accessStartsAt: DateTime
   avatarUrl: String
   barbershopId: Int!
   createdAt: String!
@@ -2083,6 +2085,8 @@ input UpdateAppointmentInput {
 }
 
 input UpdateBarberInput {
+  accessEndsAt: String
+  accessStartsAt: String
   avatarUrl: String
   email: String
   hireDate: String

@@ -304,6 +304,13 @@ export class Barber {
   @Field({ nullable: true })
   staffType?: string;
 
+  /** Vínculo temporário (freelancer): fora do período não entra nem atende */
+  @Field(() => Date, { nullable: true })
+  accessStartsAt?: Date | null;
+
+  @Field(() => Date, { nullable: true })
+  accessEndsAt?: Date | null;
+
   @Field()
   createdAt: string;
 

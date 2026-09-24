@@ -21,6 +21,13 @@ export class EmployeeInviteController {
     return this.employeeInviteService.validateInvite(inviteToken);
   }
 
+  /** Aceita com a conta já existente (logado): entra em mais uma unidade */
+  @Post('accept/:inviteToken/existing')
+  @UseGuards(JwtAuthGuard)
+  async acceptInviteAsUser(@Request() req: any, @Param('inviteToken') inviteToken: string) {
+    return this.employeeInviteService.acceptInviteAsUser(inviteToken, req.user.id);
+  }
+
   @Post('accept/:inviteToken')
   async acceptInvite(
     @Param('inviteToken') inviteToken: string,

@@ -47,7 +47,7 @@ model User {
   verificationCodes   VerificationCode[]
   passwordResetTokens PasswordResetToken[]
   barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
-  barberProfile      Barber?
+  barberProfiles     Barber[]
   networksOwned      Network[]     @relation("NetworkOwner")
   sentEmployeeInvites    EmployeeInvite[] @relation("EmployeeInviteInviter")
   acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
@@ -710,8 +710,10 @@ model Barber {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   barbershopId   Int
-  userId         Int?      @unique
-  staffType      String?          @default("barber") // barber | manager
+  // Um vínculo por unidade: a mesma pessoa pode estar na equipe de várias
+  // unidades (até de donos diferentes), com um cargo em cada
+  userId         Int?
+  staffType      String?          @default("barber") // basic | barber | reception | manager
   name           String
   phone          String
   email          String?
@@ -720,6 +722,10 @@ model Barber {
   specialties    TreatmentCategory[] @default([])
   isActive       Boolean          @default(true)
   hireDate       DateTime?
+  // Vínculo temporário (freelancer): fora do período não entra na unidade
+  // nem aparece pra agendar. Null = sem limite
+  accessStartsAt DateTime?
+  accessEndsAt   DateTime?
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   user           User?            @relation(fields: [userId], references: [id])
   employeeInvites EmployeeInvite[]
@@ -732,6 +738,7 @@ model Barber {
   commissionRules CommissionRule[]
   waitlistEntries WaitlistEntry[]
 
+  @@unique([barbershopId, userId])
   @@index([barbershopId])
   @@index([userId])
   @@index([barbershopId, isActive])
