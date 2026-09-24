@@ -16,6 +16,7 @@ import { PublicBookingResolver } from './resolvers/public-booking.resolver';
 import { SharedLocationResolver } from './resolvers/shared-location.resolver';
 import { PayrollResolver } from './resolvers/payroll.resolver';
 import { CalendarResolver } from './resolvers/calendar.resolver';
+import { ReviewRequestResolver } from './resolvers/review-request.resolver';
 import { SocialResolver } from './resolvers/social.resolver';
 import { RealtimeResolver } from './resolvers/realtime.resolver';
 import { AuthModule } from '../auth/auth.module';
@@ -64,6 +65,7 @@ import { SocialModule } from '../social/social.module';
     SharedLocationResolver,
     PayrollResolver,
     CalendarResolver,
+    ReviewRequestResolver,
     SocialResolver,
     AccountDeletionResolver,
   ],

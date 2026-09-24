@@ -1,4 +1,5 @@
 // src/app.module.ts
+import { SeoModule } from './seo/seo.module';
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { PlanModule } from './plan/plan.module';
@@ -211,6 +212,7 @@ import { isAllowedOrigin } from './common/cors-origins';
     NotificationsModule,
     BackofficeModule,
     BarbershopModule,
+    SeoModule,
     GraphQLAppModule,
   ],
   providers: [

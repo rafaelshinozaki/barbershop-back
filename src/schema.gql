@@ -1407,6 +1407,7 @@ type Mutation {
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
+  submitReviewByLink(comment: String, rating: Int!, token: String!): Boolean!
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
@@ -1950,6 +1951,7 @@ type Query {
   allOverduePayments(filters: OverduePaymentsFilters): [OverduePaymentDetail!]!
   allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
   appointment(barbershopId: Int!, id: Int!): Appointment
+  appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
@@ -2038,6 +2040,7 @@ type Query {
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   resources(barbershopId: Int!): [ResourceType!]!
+  reviewRequest(token: String!): ReviewRequestType!
   roleDistribution: RoleDistribution!
   searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
@@ -2080,6 +2083,22 @@ type ResourceType {
   name: String!
   type: String!
   updatedAt: String!
+}
+
+type ReviewRequestType {
+  barberName: String!
+  barbershopName: String!
+  barbershopSlug: String!
+  comment: String
+
+  """Primeiro nome do cliente"""
+  customerName: String!
+
+  """Nota que o cliente já deu (editar)"""
+  rating: Int
+  serviceNames: String!
+  startAt: String!
+  timezone: String
 }
 
 type ReviewType {

@@ -486,6 +486,8 @@ export class ClientAuthService {
         data: { status: 'CANCELED', canceledAt: now, cancelAtPeriodEnd: false },
       }),
       this.prisma.review.deleteMany({ where: { clientAccountId } }),
+      // As que deixou pelo link do e-mail (ligadas às fichas da conta)
+      this.prisma.review.deleteMany({ where: { customer: { clientAccountId } } }),
       this.prisma.clientFavorite.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),

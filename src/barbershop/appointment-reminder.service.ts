@@ -9,6 +9,8 @@ import { normalizePhoneToE164 } from '../common/phone.util';
 import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import { appointmentManageUrl } from './appointment-link';
+import { ReviewRequestService } from './review-request.service';
+import type { Job } from 'bullmq';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
 // (a cada 5 min), sem carregar milhares de linhas de uma vez
@@ -155,17 +157,23 @@ export class AppointmentReminderScheduler implements OnModuleInit {
   onModuleInit() {
     registerSchedulers(this.queue, [
       { id: 'enqueue-due-reminders', repeat: { every: 5 * 60 * 1000 } },
+      // "Como foi?" depois do atendimento (ver ReviewRequestService)
+      { id: 'enqueue-review-requests', repeat: { every: 15 * 60 * 1000 } },
     ]);
   }
 }
 
 @Processor(APPOINTMENT_REMINDERS_QUEUE)
 export class AppointmentReminderProcessor extends WorkerHost {
-  constructor(private readonly reminders: AppointmentReminderService) {
+  constructor(
+    private readonly reminders: AppointmentReminderService,
+    private readonly reviewRequests: ReviewRequestService,
+  ) {
     super();
   }
 
-  async process() {
+  async process(job: Job) {
+    if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
     return this.reminders.enqueueDueReminders();
   }
 }

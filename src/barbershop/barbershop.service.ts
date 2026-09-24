@@ -3530,7 +3530,10 @@ export class BarbershopService {
   async getBarbershopReviews(barbershopId: number) {
     const reviews = await this.prisma.review.findMany({
       where: { barbershopId },
-      include: { clientAccount: { select: { name: true } } },
+      include: {
+        clientAccount: { select: { name: true } },
+        customer: { select: { name: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -3539,7 +3542,8 @@ export class BarbershopService {
       rating: r.rating,
       comment: r.comment,
       createdAt: r.createdAt.toISOString(),
-      reviewerName: this.privacyName(r.clientAccount.name),
+      // Logado: nome da conta; pelo link do e-mail: nome da ficha
+      reviewerName: this.privacyName(r.clientAccount?.name ?? r.customer?.name ?? 'Cliente'),
     }));
   }
 

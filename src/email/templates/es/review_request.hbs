@@ -1,0 +1,48 @@
+{{!-- src/email/templates/es/review_request.hbs --}}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>¿Qué tal fue? — {{BarbershopName}}</title>
+  <style>
+    body, p, h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
+    .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .header { background-color: #000; color: #ffffff; padding: 20px; text-align: center; }
+    .header h1 { font-size: 22px; font-weight: normal; }
+    .content { padding: 30px 20px; }
+    .content h2 { font-size: 20px; margin-bottom: 20px; color: #000; }
+    .content p { font-size: 16px; margin-bottom: 16px; }
+    .stars { text-align: center; margin: 8px 0 24px; }
+    .stars a { display: inline-block; font-size: 36px; color: #f5a623 !important; text-decoration: none; padding: 0 4px; }
+    .button { display: inline-block; background-color: #000; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; }
+    .footer { background-color: #f4f4f4; color: #777777; text-align: center; padding: 20px; font-size: 14px; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; border-radius: 0; }
+      .content { padding: 20px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>{{BarbershopName}}</h1>
+    </div>
+    <div class="content">
+      <h2>¡Hola, {{CustomerName}}!</h2>
+      <p>Gracias por visitar <strong>{{BarbershopName}}</strong> el {{AppointmentDate}} ({{ServiceNames}} con {{BarberName}}). ¿Qué tal fue?</p>
+      <p style="text-align:center">Toca una estrella para dar tu nota:</p>
+      <div class="stars">
+        {{#each Stars}}<a href="{{this.URL}}" title="{{this.N}}">&#9733;</a>{{/each}}
+      </div>
+      <p style="text-align:center"><a class="button" href="{{ReviewURL}}">Dejar mi reseña</a></p>
+      <p style="font-size:14px;color:#666">Toma menos de un minuto y ayuda a otras personas a elegir — y al equipo a mejorar.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; {{Year}} {{BarbershopName}}.</p>
+      <p style="font-size: 12px; margin-top: 10px;">¿No quieres recibir más estos mensajes? <a href="{{UnsubscribeURL}}" style="color: #777777;">Darte de baja</a></p>
+    </div>
+  </div>
+</body>
+</html>

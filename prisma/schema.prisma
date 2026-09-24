@@ -567,6 +567,7 @@ model Customer {
   referralsMade    CustomerReferral[] @relation("ReferralsMade")
   referralReceived CustomerReferral?  @relation("ReferralReceived")
   noShowFees       NoShowFee[]
+  reviews          Review[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -675,17 +676,24 @@ model ClientAccount {
 // BarbershopService.ensureVerifiedCustomer) — evita avaliação de quem
 // nunca foi cliente de verdade.
 model Review {
-  id              Int           @id @default(autoincrement())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id              Int            @id @default(autoincrement())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   barbershopId    Int
-  clientAccountId Int
+  // Quem avaliou: a conta de cliente (avaliou logado) e/ou a ficha do
+  // cliente (avaliou pelo link do e-mail pós-atendimento, sem conta)
+  clientAccountId Int?
+  customerId      Int?
   rating          Int // 1 a 5
   comment         String?
-  barbershop      Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  barbershop      Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  // Ficha apagada pela unidade: a avaliação continua (sem o nome) — a
+  // unidade não some com avaliação ruim apagando o cliente
+  customer        Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@unique([barbershopId, clientAccountId])
+  @@unique([barbershopId, customerId])
   @@index([barbershopId])
 }
 
@@ -895,6 +903,7 @@ model Appointment {
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
   reminderSentAt DateTime?
+  reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
   depositAmount  Decimal? // sinal — cobrança em pessoa, isto só registra valor combinado e se já foi pago
   depositPaid    Boolean   @default(false)
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -913,6 +922,7 @@ model Appointment {
   @@index([barbershopId, resourceId, startAt])
   @@index([status])
   @@index([status, reminderSentAt, startAt])
+  @@index([status, reviewRequestSentAt, endAt])
 }
 
 model AppointmentService {
