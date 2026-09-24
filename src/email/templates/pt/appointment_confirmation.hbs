@@ -1,10 +1,10 @@
-{{!-- src/email/templates/es/appointment_reminder.hbs --}}
+{{!-- src/email/templates/pt/appointment_confirmation.hbs --}}
 <!DOCTYPE html>
-<html lang="es">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Recordatorio de cita — {{BarbershopName}}</title>
+  <title>Horário confirmado — {{BarbershopName}}</title>
   <style>
     body, p, h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
@@ -31,17 +31,18 @@
       <h1>{{BarbershopName}}</h1>
     </div>
     <div class="content">
-      <h2>¡Hola, {{CustomerName}}!</h2>
-      <p>Te recordamos tu próxima cita:</p>
+      <h2>Olá, {{CustomerName}}!</h2>
+      <p>Seu horário está confirmado:</p>
       <div class="details">
-        <p><strong>Servicio:</strong> {{ServiceNames}}</p>
-        <p><strong>Fecha:</strong> {{AppointmentDate}}</p>
-        <p><strong>Hora:</strong> {{AppointmentTime}}</p>
-        <p><strong>Ubicación:</strong> {{BarbershopAddress}}</p>
+        <p><strong>Serviço:</strong> {{ServiceNames}}</p>
+        <p><strong>Profissional:</strong> {{BarberName}}</p>
+        <p><strong>Data:</strong> {{AppointmentDate}}</p>
+        <p><strong>Horário:</strong> {{AppointmentTime}}</p>
+        <p><strong>Local:</strong> {{BarbershopAddress}}</p>
       </div>
-      <p>¿Necesitas reprogramar o cancelar? Hazlo con el enlace de abajo hasta {{CancellationWindowHours}} h antes de tu cita (después, llámanos al {{BarbershopPhone}}).</p>
-      <p style="text-align:center"><a class="button" href="{{ManageURL}}">Gestionar cita</a></p>
-      <p>¡Nos vemos pronto!</p>
+      <p>Precisa remarcar ou cancelar? Faça pelo link abaixo até {{CancellationWindowHours}}h antes do horário. Depois disso, ligue para {{BarbershopPhone}}.</p>
+      <p style="text-align:center"><a class="button" href="{{ManageURL}}">Gerenciar agendamento</a></p>
+      <p>Até lá!</p>
     </div>
     <div class="footer">
       <p>&copy; {{Year}} {{BarbershopName}}.</p>

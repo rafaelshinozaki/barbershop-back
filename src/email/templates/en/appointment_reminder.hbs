@@ -17,6 +17,7 @@
     .details { background-color: #f4f4f4; border-radius: 6px; padding: 16px 20px; margin: 20px 0; }
     .details p { margin-bottom: 8px; font-size: 15px; }
     .details strong { color: #000; }
+    .button { display: inline-block; background-color: #000; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; }
     .footer { background-color: #f4f4f4; color: #777777; text-align: center; padding: 20px; font-size: 14px; }
     @media only screen and (max-width: 600px) {
       .container { width: 100% !important; border-radius: 0; }
@@ -38,7 +39,8 @@
         <p><strong>Time:</strong> {{AppointmentTime}}</p>
         <p><strong>Location:</strong> {{BarbershopAddress}}</p>
       </div>
-      <p>Need to reschedule or cancel? Call us at {{BarbershopPhone}}.</p>
+      <p>Need to reschedule or cancel? Use the link below up to {{CancellationWindowHours}}h before your appointment (after that, call us at {{BarbershopPhone}}).</p>
+      <p style="text-align:center"><a class="button" href="{{ManageURL}}">Manage appointment</a></p>
       <p>See you soon!</p>
     </div>
     <div class="footer">

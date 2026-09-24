@@ -1050,6 +1050,33 @@ input LoginInput {
   password: String!
 }
 
+type ManagedAppointmentType {
+  barberId: Int!
+  barberName: String!
+  barbershopAddress: String!
+  barbershopId: Int!
+  barbershopName: String!
+  barbershopPhone: String
+  barbershopSlug: String!
+
+  """Ainda dá pra cancelar/remarcar pelo link"""
+  canChange: Boolean!
+  cancellationWindowHours: Int!
+
+  """Até quando dá pra mudar pelo link (política de cancelamento)"""
+  changeDeadline: String!
+  currency: String!
+  customerName: String!
+  endAt: String!
+  id: Int!
+  price: Float!
+  serviceId: Int
+  serviceName: String!
+  startAt: String!
+  status: String!
+  timezone: String
+}
+
 type MarketingCampaignType {
   barbershopId: Int!
   createdAt: String!
@@ -1102,6 +1129,7 @@ type Mutation {
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   bulkUserAction(input: BulkUserAction!): Boolean!
+  cancelManagedAppointment(token: String!): ManagedAppointmentType!
   cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
   cancelWaitlistEntry(barbershopId: Int!, id: Int!): Boolean!
@@ -1207,6 +1235,7 @@ type Mutation {
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
   requestTwoFactorCode: Boolean!
+  rescheduleManagedAppointment(startAt: String!, token: String!): ManagedAppointmentType!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
@@ -1592,6 +1621,9 @@ type PublicAppointmentType {
   depositAmount: Float
   endAt: String!
   id: Int!
+
+  """Token do link "gerenciar agendamento" (o mesmo do e-mail)"""
+  manageToken: String!
   price: Float!
   serviceName: String!
   startAt: String!
@@ -1746,6 +1778,7 @@ type Query {
   linkedSocialAccounts: [LinkedSocialAccountType!]!
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   lookupGiftCard(barbershopId: Int!, code: String!): GiftCardType!
+  managedAppointment(token: String!): ManagedAppointmentType!
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   me: User!
   myBarbershops: [Barbershop!]!
