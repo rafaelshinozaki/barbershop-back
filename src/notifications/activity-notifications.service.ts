@@ -578,16 +578,20 @@ export class ActivityNotificationsService {
   /** Cliente avaliou a unidade (nova ou atualizada). */
   reviewPosted(
     barbershopId: number,
-    clientAccountId: number,
+    clientAccountId: number | null,
     rating: number,
     comment?: string | null,
+    /** Avaliou pelo link do e-mail (sem conta): nome da ficha */
+    reviewerName?: string,
   ) {
     return this.run('reviewPosted', async () => {
-      const client = await this.prisma.clientAccount.findUnique({
-        where: { id: clientAccountId },
-        select: { name: true },
-      });
-      const name = client?.name?.trim() || '—';
+      const client = clientAccountId
+        ? await this.prisma.clientAccount.findUnique({
+            where: { id: clientAccountId },
+            select: { name: true },
+          })
+        : null;
+      const name = client?.name?.trim() || reviewerName?.trim() || '—';
       const text = comment?.trim();
       const quote = text ? ` “${text.length > 140 ? `${text.slice(0, 140)}…` : text}”` : '';
       await this.deliver(barbershopId, 'reviews', {
@@ -599,7 +603,7 @@ export class ActivityNotificationsService {
             : rating <= 2
             ? NotificationType.WARNING
             : NotificationType.INFO,
-        key: `review:${barbershopId}:${clientAccountId}:${Date.now()}`,
+        key: `review:${barbershopId}:${clientAccountId ?? reviewerName}:${Date.now()}`,
         build: (_f, shop) => ({
           pt: {
             title: `Nova avaliação: ${rating}★`,

@@ -3,6 +3,7 @@ import { AccountDeletionService } from './account-deletion.service';
 import { SharedLocationService } from './shared-location.service';
 import { ChairRentService, ChairRentScheduler, ChairRentProcessor } from './chair-rent.service';
 import { PayrollService } from './payroll.service';
+import { ReviewRequestService } from './review-request.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { Module } from '@nestjs/common';
@@ -51,10 +52,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AppointmentReminderService,
     AppointmentReminderScheduler,
     AppointmentReminderProcessor,
+    ReviewRequestService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
+    ReviewRequestService,
     EmployeeInviteService,
     AccountDeletionService,
     SharedLocationService,

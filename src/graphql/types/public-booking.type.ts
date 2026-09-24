@@ -394,6 +394,37 @@ export class MyReviewType {
   comment?: string;
 }
 
+/** Página "como foi?" do link do e-mail pós-atendimento */
+@ObjectType()
+export class ReviewRequestType {
+  @Field()
+  barbershopName: string;
+
+  @Field()
+  barbershopSlug: string;
+
+  @Field({ description: 'Primeiro nome do cliente' })
+  customerName: string;
+
+  @Field()
+  barberName: string;
+
+  @Field()
+  serviceNames: string;
+
+  @Field()
+  startAt: string;
+
+  @Field({ nullable: true })
+  timezone?: string;
+
+  @Field(() => Int, { nullable: true, description: 'Nota que o cliente já deu (editar)' })
+  rating?: number | null;
+
+  @Field({ nullable: true })
+  comment?: string | null;
+}
+
 /** Próximo horário livre na página pública */
 @ObjectType()
 export class PublicNextSlotType {

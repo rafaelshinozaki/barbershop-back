@@ -8,6 +8,7 @@ import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 import { SharedLocationService } from '@/barbershop/shared-location.service';
+import { ReviewRequestService } from '@/barbershop/review-request.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
@@ -15,6 +16,7 @@ import {
   PublicBarbershopType,
   PublicAppointmentType,
   PublicNextSlotType,
+  ReviewRequestType,
   ManagedAppointmentType,
   PublicBarbershopSearchResultType,
   ReviewType,
@@ -57,6 +59,7 @@ export class PublicBookingResolver {
     private readonly activity: ActivityNotificationsService,
     private readonly prisma: PrismaService,
     private readonly sharedLocation: SharedLocationService,
+    private readonly reviewRequests: ReviewRequestService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -279,6 +282,23 @@ export class PublicBookingResolver {
       input.comment,
     );
     void this.activity.reviewPosted(input.barbershopId, client.id, input.rating, input.comment);
+    return true;
+  }
+
+  /** Link "como foi?" do e-mail pós-atendimento: avaliar sem login */
+  @Query(() => ReviewRequestType)
+  async reviewRequest(@Args('token') token: string) {
+    return this.reviewRequests.getReviewRequest(token);
+  }
+
+  @Mutation(() => Boolean)
+  @ThrottleSlotSearch()
+  async submitReviewByLink(
+    @Args('token') token: string,
+    @Args('rating', { type: () => Int }) rating: number,
+    @Args('comment', { nullable: true }) comment?: string,
+  ) {
+    await this.reviewRequests.submitReview(token, rating, comment);
     return true;
   }
 

@@ -251,3 +251,21 @@ Sem login no Google nem chave de API:
   Só o hash do token fica no banco; gerar de novo invalida o link anterior; o
   acesso é conferido a cada leitura (quem sai da equipe para de ver na hora).
   `GET /calendar/feed/<token>.ics`. Modelo: `CalendarFeed`.
+
+## 11. Pedido de avaliação depois do atendimento
+
+- **E-mail "como foi?":** sai de 2 a 72 horas depois do fim de um atendimento
+  **concluído**, uma vez por atendimento, com as 5 estrelas (tocar numa já abre
+  a página com a nota marcada) e o link de descadastro. Não recebe quem não
+  tem e-mail, se descadastrou dos e-mails, já avaliou a unidade (pela ficha ou
+  pela conta) ou recebeu outro pedido da mesma unidade nos últimos 60 dias.
+  Rotina a cada 15 minutos (fila `appointment-reminders`).
+- **Avaliar sem conta:** `/review?t=<link>` — nota e comentário, sem login. Uma
+  avaliação por cliente e unidade (mandar de novo atualiza); cliente com conta
+  que já avaliou logado atualiza essa mesma. O link de avaliar é assinado com
+  propósito próprio (não serve pra cancelar/remarcar, e vice-versa).
+- **Equipe — pedir avaliação:** recepção, gerente e dono copiam o link de um
+  atendimento concluído ou mandam pelo WhatsApp (pra quem não tem e-mail).
+- **A unidade não apaga avaliação:** apagar a ficha do cliente mantém a
+  avaliação (sem o nome). Excluir a conta de cliente (LGPD) apaga as
+  avaliações dela, inclusive as feitas pelo link.

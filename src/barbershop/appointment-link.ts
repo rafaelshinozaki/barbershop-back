@@ -13,28 +13,51 @@ function secret() {
   return value;
 }
 
-function sign(appointmentId: number) {
+// Cada link tem o seu propósito na assinatura: o de avaliar não serve pra
+// cancelar/remarcar, e vice-versa
+type Purpose = 'appointment-manage' | 'appointment-review';
+
+function sign(appointmentId: number, purpose: Purpose) {
   return createHmac('sha256', secret())
-    .update(`appointment-manage:${appointmentId}`)
+    .update(`${purpose}:${appointmentId}`)
     .digest('base64url')
     .slice(0, 32);
 }
 
-export function createAppointmentToken(appointmentId: number): string {
-  return `${appointmentId}.${sign(appointmentId)}`;
-}
-
-/** Id do agendamento se o token for válido; null se não. */
-export function verifyAppointmentToken(token: string | undefined | null): number | null {
+function verify(token: string | undefined | null, purpose: Purpose): number | null {
   const match = /^(\d+)\.([A-Za-z0-9_-]{32})$/.exec((token ?? '').trim());
   if (!match) return null;
   const appointmentId = Number(match[1]);
   if (!Number.isSafeInteger(appointmentId)) return null;
-  const expected = Buffer.from(sign(appointmentId));
+  const expected = Buffer.from(sign(appointmentId, purpose));
   const given = Buffer.from(match[2]);
   return expected.length === given.length && timingSafeEqual(expected, given)
     ? appointmentId
     : null;
+}
+
+export function createAppointmentToken(appointmentId: number): string {
+  return `${appointmentId}.${sign(appointmentId, 'appointment-manage')}`;
+}
+
+/** Id do agendamento se o token for válido; null se não. */
+export function verifyAppointmentToken(token: string | undefined | null): number | null {
+  return verify(token, 'appointment-manage');
+}
+
+/** Link "como foi?" do e-mail pós-atendimento: avaliar sem login. */
+export function createReviewToken(appointmentId: number): string {
+  return `${appointmentId}.${sign(appointmentId, 'appointment-review')}`;
+}
+
+export function verifyReviewToken(token: string | undefined | null): number | null {
+  return verify(token, 'appointment-review');
+}
+
+export function appointmentReviewUrl(appointmentId: number, rating?: number): string {
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const t = encodeURIComponent(createReviewToken(appointmentId));
+  return `${front}/review?t=${t}${rating ? `&r=${rating}` : ''}`;
 }
 
 /** Página do front onde o cliente vê, cancela ou remarca o horário. */
