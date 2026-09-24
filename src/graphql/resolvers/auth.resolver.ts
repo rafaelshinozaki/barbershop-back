@@ -353,6 +353,7 @@ export class AuthResolver {
       input.currentPassword,
       input.newPassword,
       input.code,
+      user.sessionToken,
     );
     return true;
   }
