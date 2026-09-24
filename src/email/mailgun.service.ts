@@ -30,9 +30,18 @@ export class MailgunService {
     subject: string;
     text?: string;
     html?: string;
+    headers?: Record<string, string>;
   }) {
     try {
-      const data = await this.client.messages.create(this.domain, options);
+      const { headers, ...message } = options;
+      // Cabeçalhos customizados no Mailgun vão como "h:<Nome>"
+      const extra = Object.fromEntries(
+        Object.entries(headers ?? {}).map(([k, v]) => [`h:${k}`, v]),
+      );
+      const data = await this.client.messages.create(this.domain, {
+        ...message,
+        ...extra,
+      } as never);
       // Só o id/status — o corpo do e-mail tem links de redefinição de senha e códigos
       this.logger.log(`Mailgun: ${data.status ?? ''} ${data.id ?? ''}`.trim());
       return data;

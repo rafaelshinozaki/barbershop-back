@@ -1,3 +1,4 @@
+import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import {
   Injectable,
   Logger,
@@ -2086,23 +2087,30 @@ export class BarbershopService {
     });
 
     await this.notificationQueue.emailBulk(
-      emailRecipients.map((customer) => ({
-        kind: 'customer' as const,
-        loggedAgainstUserId: barbershop.ownerUserId ?? 0,
-        template: 'marketing_blast',
-        context: {
-          BarbershopName: barbershop.name,
-          Subject: data.subject ?? barbershop.name,
-          Message: data.message,
-          Year: new Date().getFullYear(),
-        },
-        subject: data.subject ?? barbershop.name,
-        // Texto da campanha é do dono; o rodapé do template sai na língua do país da unidade
-        lang: langForCountry(barbershop.country),
-        meta: 'marketing-blast',
-        to: customer.email,
-        campaignId: campaign.id,
-      })),
+      emailRecipients.map((customer) => {
+        // Cada e-mail leva o link de descadastro do próprio cliente (LGPD) e
+        // os cabeçalhos de descadastro com um clique (Gmail/Yahoo exigem)
+        const unsubscribe = unsubscribeLinks(customer.id);
+        return {
+          kind: 'customer' as const,
+          loggedAgainstUserId: barbershop.ownerUserId ?? 0,
+          template: 'marketing_blast',
+          context: {
+            BarbershopName: barbershop.name,
+            Subject: data.subject ?? barbershop.name,
+            Message: data.message,
+            Year: new Date().getFullYear(),
+            UnsubscribeURL: unsubscribe.page,
+          },
+          headers: unsubscribe.headers,
+          subject: data.subject ?? barbershop.name,
+          // Texto da campanha é do dono; o rodapé do template sai na língua do país da unidade
+          lang: langForCountry(barbershop.country),
+          meta: 'marketing-blast',
+          to: customer.email,
+          campaignId: campaign.id,
+        };
+      }),
     );
     await this.notificationQueue.whatsappBulk(
       whatsappPhones.map((phone) => ({
@@ -2114,6 +2122,27 @@ export class BarbershopService {
     );
 
     return campaign;
+  }
+
+  /**
+   * Descadastro pelo link do e-mail de marketing (sem login). Marca a ficha
+   * como fora das campanhas; devolve o nome da rede/unidade pra tela.
+   */
+  async unsubscribeFromMarketing(token: string): Promise<string> {
+    const customerId = verifyUnsubscribeToken(token);
+    if (!customerId) throw new BadRequestException('Link de descadastro inválido');
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      include: { network: { include: { barbershops: { take: 1, orderBy: { id: 'asc' } } } } },
+    });
+    if (!customer) throw new BadRequestException('Link de descadastro inválido');
+    if (!customer.marketingOptOut) {
+      await this.prisma.customer.update({
+        where: { id: customerId },
+        data: { marketingOptOut: true },
+      });
+    }
+    return customer.network?.name || customer.network?.barbershops[0]?.name || 'Barbershop';
   }
 
   // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============
