@@ -170,7 +170,7 @@ describe('Cobrança dos planos (integração com o banco)', () => {
     expect(charges).toHaveLength(0);
   });
 
-  it('troca de plano não cria pendência; a renovação cobra o plano novo UMA vez, mesmo com duas execuções juntas', async () => {
+  it('troca de plano não cria pendência; a renovação cobra o plano novo UMA vez, mesmo com várias execuções juntas', async () => {
     await prisma.plan.update({ where: { id: premiumId }, data: { stripePriceId: 'price_x' } });
     await payments.changePlan(userId, premiumId);
     const sub = await activeSub();
@@ -180,8 +180,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
     ).toBe(0);
 
     const before = await expireBy(0.01);
-    // Agendamento + botão "processar" do backoffice ao mesmo tempo
-    await Promise.all([payments.processRecurringPayments(), payments.processRecurringPayments()]);
+    // Agendamento + botão "processar" do backoffice (várias vezes) ao mesmo tempo
+    await Promise.all(Array.from({ length: 5 }, () => payments.processRecurringPayments()));
     expect(charges).toEqual([expect.objectContaining({ amount: 20000 })]);
 
     const after = await activeSub();

@@ -995,8 +995,12 @@ export class PaymentsService {
       return 'expired';
     }
 
+    // Só as tentativas que falharam contam: duas execuções juntas chegam no
+    // mesmo número, e a trava (renewalKey única) deixa só uma cobrar
     const attempt =
-      (await this.prisma.payment.count({ where: { renewalKey: { startsWith: keyPrefix } } })) + 1;
+      (await this.prisma.payment.count({
+        where: { renewalKey: { startsWith: keyPrefix }, status: PAGAMENTO_STATUS.FAILED },
+      })) + 1;
     const renewalKey = `${keyPrefix}${attempt}`;
     const nextPeriodEnd = addCycle(periodEnd, sub.plan.billingCycle);
 
