@@ -27,6 +27,8 @@ const VERIFY_EMAIL_TTL_HOURS = 24;
 const RESET_PASSWORD_TTL_HOURS = 2;
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+// Hash de uma senha qualquer, pro login levar o mesmo tempo com e sem conta
+const DUMMY_PASSWORD_HASH = '$2a$10$PeSKuJ0PbHqOusQLVmt5vum0Bz05aiX1hAxEcm16nhEuTTbliDMhu';
 
 export type ClientHistoryEntry = {
   id: string;
@@ -211,11 +213,27 @@ export class ClientAuthService {
       this.logger.warn('Redefinição de senha de cliente pedida pra e-mail sem conta');
       return;
     }
+    // O link é criado aqui (na ordem dos pedidos: o novo invalida o anterior);
+    // só o envio fica em segundo plano — esperar o provedor de e-mail quando a
+    // conta existe deixava a resposta mais lenta (dava pra descobrir quem tem
+    // conta pelo tempo)
     const token = await this.createToken(
       account.id,
       CLIENT_TOKEN_PURPOSE.RESET_PASSWORD,
       RESET_PASSWORD_TTL_HOURS,
     );
+    void this.sendPasswordResetEmail(account, token);
+  }
+
+  private async sendPasswordResetEmail(
+    account: {
+      id: number;
+      name: string;
+      email: string;
+      language: string | null;
+    },
+    token: string,
+  ) {
     try {
       await this.emailService.sendCustomerEmail(
         null,
@@ -296,6 +314,9 @@ export class ClientAuthService {
       where: { email: normalizedEmail },
     });
     if (!account) {
+      // Mesmo custo de uma senha errada: a resposta rápida denunciaria que o
+      // e-mail não tem conta
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       throw new UnauthorizedException('Email ou senha inválidos.');
     }
     if (!account.password) {

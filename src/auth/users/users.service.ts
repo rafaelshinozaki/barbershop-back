@@ -33,7 +33,15 @@ import {
   LOGIN_BLOCK_MINUTES,
   LOGIN_CODE_MAX_ATTEMPTS,
 } from '@/common';
-import { randomInt, randomUUID } from 'crypto';
+import { createHash, randomInt, randomUUID } from 'crypto';
+
+// Link de redefinição: no banco fica só o hash (quem lê o banco não consegue
+// usar o link), como já é no fluxo do cliente final
+const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
+// Hash de uma senha qualquer: o login compara com ele quando o e-mail não
+// existe, pra resposta levar o mesmo tempo (não dá pra descobrir quem tem
+// conta pelo tempo)
+const DUMMY_PASSWORD_HASH = '$2a$10$PeSKuJ0PbHqOusQLVmt5vum0Bz05aiX1hAxEcm16nhEuTTbliDMhu';
 
 @Injectable()
 export class UserService {
@@ -982,8 +990,9 @@ export class UserService {
   async forgotPass(forgotPass: any) {
     this.logger.log('Password reset requested');
 
+    const email = String(forgotPass.email ?? '').trim();
     const user = await this.prisma.user.findFirst({
-      where: { email: forgotPass.email, provider: 'local' },
+      where: { email: { equals: email, mode: 'insensitive' }, provider: 'local' },
     });
 
     // Deliberately do not reveal whether the email exists or whether sending
@@ -995,16 +1004,27 @@ export class UserService {
       return true;
     }
 
+    // O link é criado aqui; o e-mail sai em segundo plano: esperar o envio só
+    // quando a conta existe deixava a resposta mais lenta nesse caso — dava
+    // pra descobrir quem tem conta pelo tempo de resposta
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 horas de expiração
+    await this.prisma.passwordResetToken.create({
+      data: { token: hashResetToken(token), userId: user.id, expiresAt },
+    });
+    void this.sendPasswordResetEmail(user, token);
+    return true;
+  }
+
+  private async sendPasswordResetEmail(
+    user: { id: number; email: string; fullName: string },
+    token: string,
+  ) {
     try {
-      const token = randomUUID();
-      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 horas de expiração
-
-      await this.prisma.passwordResetToken.create({
-        data: { token, userId: user.id, expiresAt },
-      });
-
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-      const resetURL = `${frontendUrl}/forgot-password/${token}?email=${forgotPass.email}`;
+      const resetURL = `${frontendUrl}/forgot-password/${token}?email=${encodeURIComponent(
+        user.email,
+      )}`;
 
       const context = {
         FullName: user.fullName,
@@ -1021,22 +1041,43 @@ export class UserService {
         context,
         { pt: 'Redefinição de senha', en: 'Password reset', es: 'Restablecimiento de contraseña' },
         'password-reset',
-        forgotPass.email,
+        user.email,
       );
     } catch (error) {
       this.logger.error(`Failed to send password reset email: ${error}`);
     }
+  }
 
-    return true;
+  /** Link do e-mail → registro (aceita links antigos, gravados antes do hash) */
+  private findResetToken(token: string) {
+    return this.prisma.passwordResetToken.findFirst({
+      where: { token: { in: [hashResetToken(token), token] } },
+      include: { user: true },
+    });
+  }
+
+  /**
+   * Derruba as sessões abertas da conta (menos a atual, se informada). Trocar
+   * ou redefinir a senha não derrubava ninguém: quem tinha roubado a conta
+   * continuava logado depois que o dono trocava a senha.
+   */
+  private async revokeSessions(userId: number, keepSessionToken?: string) {
+    await this.prisma.activeSession.deleteMany({
+      where: {
+        userId,
+        ...(keepSessionToken ? { sessionToken: { not: keepSessionToken } } : {}),
+      },
+    });
   }
 
   async forgotPassCheck(data: { token: string; email: string }) {
-    const record = await this.prisma.passwordResetToken.findUnique({
-      where: { token: data.token },
-      include: { user: true },
-    });
+    const record = await this.findResetToken(data.token);
 
-    if (!record || record.used || record.user.email !== data.email) {
+    if (
+      !record ||
+      record.used ||
+      record.user.email.toLowerCase() !== data.email?.trim().toLowerCase()
+    ) {
       return false;
     }
 
@@ -1054,12 +1095,9 @@ export class UserService {
   async resetPasswordByToken(email: string, token: string, newPassword: string) {
     this.logger.log('Password reset by token requested');
 
-    const record = await this.prisma.passwordResetToken.findUnique({
-      where: { token },
-      include: { user: true },
-    });
+    const record = await this.findResetToken(token);
 
-    if (!record || record.used || record.user.email !== email) {
+    if (!record || record.used || record.user.email.toLowerCase() !== email.trim().toLowerCase()) {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
@@ -1098,6 +1136,7 @@ export class UserService {
       where: { userId: user.id, used: false },
       data: { used: true },
     });
+    await this.revokeSessions(user.id);
 
     // Enviar email de confirmação - a senha já foi trocada com sucesso acima,
     // então uma falha aqui (ex: Mailgun) não deve fazer a mutation inteira
@@ -1156,6 +1195,7 @@ export class UserService {
       where: { userId: user.id, used: false },
       data: { used: true },
     });
+    await this.revokeSessions(user.id);
 
     const context = {
       FullName: user.fullName,
@@ -1271,12 +1311,16 @@ export class UserService {
     const invalidCredentials = () => new UnauthorizedException('Invalid credentials');
 
     if (!user) {
+      // Mesmo custo de uma senha errada (senão a resposta rápida denuncia que o
+      // e-mail não tem conta)
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       await this.recordFailedLogin(email);
       throw invalidCredentials();
     }
 
     // Verificar se o usuário está ativo
     if (!user.isActive) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       await this.recordFailedLogin(email);
       throw invalidCredentials();
     }
@@ -1579,6 +1623,7 @@ export class UserService {
     oldPassword: string,
     newPassword: string,
     code: string,
+    currentSessionToken?: string,
   ) {
     const valid = await this.verifyChangePasswordCode(userId, code, true);
 
@@ -1609,6 +1654,8 @@ export class UserService {
       where: { id: userId },
       data: { password: hashedPassword },
     });
+    // As outras sessões caem; quem trocou a senha continua logado
+    await this.revokeSessions(userId, currentSessionToken);
 
     this.logger.log(`Password changed for user ${userId}`);
 

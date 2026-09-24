@@ -255,6 +255,7 @@ export class UserResolver {
       input.oldPassword,
       input.newPassword,
       input.code,
+      user.sessionToken,
     );
   }
 
