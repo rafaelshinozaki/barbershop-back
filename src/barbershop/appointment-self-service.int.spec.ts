@@ -10,6 +10,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { createAppointmentToken } from './appointment-link';
 
+// O link é assinado com o segredo do servidor; o job de testes do CI não tem .env
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
+
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
 // Uma semana pra frente: longe da janela de 24h da política
