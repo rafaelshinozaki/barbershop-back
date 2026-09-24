@@ -44,7 +44,7 @@ export class SocialService {
   // ============ OAUTH ============
 
   async getConnectUrl(userId: number, barbershopId: number): Promise<string> {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     if (!this.isConfigured()) {
       throw new BadRequestException('Integração com Meta não configurada nesta instância.');
     }
@@ -177,7 +177,7 @@ export class SocialService {
   }
 
   async getConnection(userId: number, barbershopId: number) {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const connection = await this.prisma.socialConnection.findUnique({ where: { barbershopId } });
     if (!connection) return null;
     return {
@@ -188,7 +188,7 @@ export class SocialService {
   }
 
   async disconnect(userId: number, barbershopId: number) {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     await this.prisma.socialConnection.deleteMany({ where: { barbershopId } });
     return true;
   }
@@ -200,7 +200,7 @@ export class SocialService {
     barbershopId: number,
     contentType?: string,
   ): Promise<PresignedUpload> {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     return this.s3Service.createImageUpload(
       `social-posts/${barbershopId}/${Date.now()}-${randomUUID().slice(0, 8)}`,
       contentType,
@@ -218,7 +218,7 @@ export class SocialService {
       postToInstagram: boolean;
     },
   ) {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     if (!data.postToFacebook && !data.postToInstagram) {
       throw new BadRequestException('Escolha pelo menos uma rede social.');
     }
@@ -247,7 +247,7 @@ export class SocialService {
   }
 
   async getPosts(userId: number, barbershopId: number) {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const posts = await this.prisma.socialPost.findMany({
       where: { barbershopId },
       orderBy: { scheduledFor: 'desc' },
@@ -264,7 +264,7 @@ export class SocialService {
   }
 
   async deletePost(userId: number, barbershopId: number, id: number) {
-    await this.barbershopService.getBarbershop(userId, barbershopId);
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const post = await this.prisma.socialPost.findFirst({ where: { id, barbershopId } });
     if (!post) throw new NotFoundException('Post não encontrado');
     if (post.status !== 'SCHEDULED') {

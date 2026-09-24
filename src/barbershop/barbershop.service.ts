@@ -65,6 +65,9 @@ const NETWORK_ACCENT_COLORS = [
 ] as const;
 const NETWORK_GRAY_COLORS = ['auto', 'gray', 'mauve', 'slate', 'sage', 'olive', 'sand'] as const;
 
+export type AccessLevel = 'barber' | 'manager' | 'owner';
+const ACCESS_RANK: Record<AccessLevel, number> = { barber: 1, manager: 2, owner: 3 };
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -174,7 +177,19 @@ export class BarbershopService {
     }
   }
 
-  private async ensureBarbershopAccess(userId: number, barbershopId: number) {
+  /**
+   * Acesso do usuário à unidade, com o nível mínimo que a operação exige:
+   * - 'barber'  → qualquer pessoa da equipe (atender: agenda, venda, cliente)
+   * - 'manager' → gerente ou dono (operar a unidade: preços, equipe, caixa…)
+   * - 'owner'   → só o dono (financeiro, apagar unidade, regras de comissão)
+   * Antes qualquer barbeiro tinha o poder do dono — inclusive quem já tinha
+   * sido desligado (isActive=false) continuava entrando.
+   */
+  private async ensureBarbershopAccess(
+    userId: number,
+    barbershopId: number,
+    min: AccessLevel = 'barber',
+  ) {
     const barbershop = await this.prisma.barbershop.findFirst({
       where: { id: barbershopId },
       include: { network: true },
@@ -182,20 +197,70 @@ export class BarbershopService {
     if (!barbershop) {
       throw new ForbiddenException('Barbearia não encontrada');
     }
-    const ownsViaBarbershop = barbershop.ownerUserId === userId;
-    const ownsViaNetwork = barbershop.network?.ownerUserId === userId;
-    const isBarberInShop = await this.prisma.barber.findFirst({
-      where: { barbershopId, userId },
-    });
-    if (!ownsViaBarbershop && !ownsViaNetwork && !isBarberInShop) {
+    const level = await this.accessLevelOf(userId, barbershop);
+    if (!level) {
       throw new ForbiddenException('Você não tem acesso a esta barbearia');
+    }
+    if (ACCESS_RANK[level] < ACCESS_RANK[min]) {
+      throw new ForbiddenException('Seu cargo nesta unidade não permite essa ação.');
+    }
+    return Object.assign(barbershop, { accessLevel: level });
+  }
+
+  /** Cargo do usuário na unidade (null = sem acesso). */
+  private async accessLevelOf(
+    userId: number,
+    barbershop: {
+      id: number;
+      ownerUserId: number | null;
+      network?: { ownerUserId: number } | null;
+    },
+  ): Promise<AccessLevel | null> {
+    if (barbershop.ownerUserId === userId || barbershop.network?.ownerUserId === userId) {
+      return 'owner';
+    }
+    const staff = await this.prisma.barber.findFirst({
+      where: { barbershopId: barbershop.id, userId, isActive: true },
+      select: { staffType: true },
+    });
+    if (!staff) return null;
+    return staff.staffType === 'manager' ? 'manager' : 'barber';
+  }
+
+  /** Mesmo controle, pra quem está fora deste service (fotos, redes sociais…). */
+  async ensureAccess(userId: number, barbershopId: number, min: AccessLevel = 'barber') {
+    return this.ensureBarbershopAccess(userId, barbershopId, min);
+  }
+
+  /** Cargo do usuário na unidade — o front usa pra mostrar só o que ele pode. */
+  async getMyAccessLevel(userId: number, barbershopId: number): Promise<AccessLevel | null> {
+    const barbershop = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId },
+      include: { network: true },
+    });
+    return barbershop ? this.accessLevelOf(userId, barbershop) : null;
+  }
+
+  /**
+   * Agenda/folga de um barbeiro: gerente e dono mexem em qualquer um; o
+   * barbeiro, só na própria.
+   */
+  private async ensureCanManageBarber(userId: number, barbershopId: number, barberId: number) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    if (barbershop.accessLevel !== 'barber') return barbershop;
+    const own = await this.prisma.barber.findFirst({
+      where: { id: barberId, barbershopId, userId, isActive: true },
+      select: { id: true },
+    });
+    if (!own) {
+      throw new ForbiddenException('Seu cargo só permite mexer na sua própria agenda.');
     }
     return barbershop;
   }
 
   /** Verifica acesso à barbearia (usado por EmployeeInviteService). */
   async verifyBarbershopAccess(userId: number, barbershopId: number) {
-    return this.ensureBarbershopAccess(userId, barbershopId);
+    return this.ensureBarbershopAccess(userId, barbershopId, 'manager');
   }
 
   /** Encontra ou cria a rede do usuário (uma rede por dono). */
@@ -306,7 +371,17 @@ export class BarbershopService {
 
   /** Dashboard stats agregados para dono da franquia */
   async getNetworkDashboardStats(userId: number) {
-    const barbershops = await this.getMyBarbershops(userId);
+    // Faturamento da rede: só as unidades onde a pessoa é dona ou gerente
+    // (antes o barbeiro via o faturamento de todas onde trabalha)
+    const barbershops = await this.prisma.barbershop.findMany({
+      where: {
+        OR: [
+          { ownerUserId: userId },
+          { network: { ownerUserId: userId } },
+          { barbers: { some: { userId, isActive: true, staffType: 'manager' } } },
+        ],
+      },
+    });
     const barbershopIds = barbershops.map((b) => b.id);
     if (barbershopIds.length === 0) {
       return {
@@ -554,7 +629,7 @@ export class BarbershopService {
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
-          { barbers: { some: { userId } } },
+          { barbers: { some: { userId, isActive: true } } },
         ],
       },
       orderBy: { name: 'asc' },
@@ -591,7 +666,7 @@ export class BarbershopService {
       subdomain: string;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, id);
+    await this.ensureBarbershopAccess(userId, id, 'manager');
     const { subdomain, ...rest } = data;
     const updateData: typeof rest & { subdomain?: string | null } = { ...rest };
     if (subdomain !== undefined) {
@@ -631,7 +706,7 @@ export class BarbershopService {
   }
 
   async deleteBarbershop(userId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, id);
+    await this.ensureBarbershopAccess(userId, id, 'owner');
     // Antes as assinaturas dos clientes sumiam do banco junto com a unidade
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
@@ -740,7 +815,7 @@ export class BarbershopService {
       marketingOptOut: boolean;
     }>,
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
@@ -752,7 +827,7 @@ export class BarbershopService {
   }
 
   async deleteCustomer(userId: number, barbershopId: number, customerId: number) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
@@ -775,7 +850,7 @@ export class BarbershopService {
       hireDate?: Date;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureBarberLimitNotExceeded(barbershopId);
 
     const phone = data.phone.trim();
@@ -826,7 +901,7 @@ export class BarbershopService {
       isActive: boolean;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
@@ -835,7 +910,7 @@ export class BarbershopService {
   }
 
   async deleteBarber(userId: number, barbershopId: number, barberId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
@@ -847,7 +922,7 @@ export class BarbershopService {
   }
 
   async reactivateBarber(userId: number, barbershopId: number, barberId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
@@ -859,7 +934,7 @@ export class BarbershopService {
   }
 
   async requestBarberPasswordReset(userId: number, barbershopId: number, barberId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
       include: { user: true },
@@ -893,7 +968,7 @@ export class BarbershopService {
       displayOrder?: number;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const { depositAmount, ...rest } = data;
     return this.prisma.barbershopService.create({
       data: {
@@ -931,7 +1006,7 @@ export class BarbershopService {
       displayOrder: number;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
     const depositAmount =
       data.depositAmount !== undefined
@@ -946,7 +1021,7 @@ export class BarbershopService {
   }
 
   async deleteService(userId: number, barbershopId: number, serviceId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.prisma.barbershopService.delete({ where: { id: serviceId } });
   }
 
@@ -965,7 +1040,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { name: string; icon?: string; color?: string; displayOrder?: number },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.productCategory.create({
       data: {
         barbershopId,
@@ -983,7 +1058,7 @@ export class BarbershopService {
     categoryId: number,
     data: Partial<{ name: string; icon?: string; color?: string; displayOrder?: number }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.productCategory.update({
       where: { id: categoryId },
       data: {
@@ -996,7 +1071,7 @@ export class BarbershopService {
   }
 
   async deleteProductCategory(userId: number, barbershopId: number, categoryId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.prisma.productCategory.delete({ where: { id: categoryId } });
   }
 
@@ -1016,7 +1091,7 @@ export class BarbershopService {
       icon?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.barbershopProduct.create({
       data: {
         barbershopId,
@@ -1056,7 +1131,7 @@ export class BarbershopService {
       icon: string;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const salePrice = data.salePrice !== undefined ? new Decimal(data.salePrice) : undefined;
     const costPrice = data.costPrice !== undefined ? new Decimal(data.costPrice) : undefined;
     const updateData: any = { ...data, salePrice, costPrice };
@@ -1068,7 +1143,7 @@ export class BarbershopService {
   }
 
   async deleteProduct(userId: number, barbershopId: number, productId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.prisma.barbershopProduct.delete({ where: { id: productId } });
   }
 
@@ -1095,7 +1170,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { productId: number; quantityChange: number; movementType?: string; notes?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: data.productId, barbershopId },
@@ -1149,7 +1224,7 @@ export class BarbershopService {
     productId: number,
     data: { minQuantity?: number; location?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: productId, barbershopId },
@@ -1176,7 +1251,7 @@ export class BarbershopService {
   }
 
   async getInventoryMovements(userId: number, barbershopId: number, productId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
     const item = await this.prisma.inventoryItem.findUnique({
       where: { barbershopId_productId: { barbershopId, productId } },
@@ -1218,7 +1293,7 @@ export class BarbershopService {
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
-    await this.ensureBarbershopAccess(userId, barber.barbershopId);
+    await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
     return this.prisma.barberSchedule.create({
       data: {
         barberId: input.barberId,
@@ -1247,7 +1322,7 @@ export class BarbershopService {
       include: { barber: true },
     });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
-    await this.ensureBarbershopAccess(userId, schedule.barber.barbershopId);
+    await this.ensureCanManageBarber(userId, schedule.barber.barbershopId, schedule.barberId);
     return this.prisma.barberSchedule.update({ where: { id }, data });
   }
 
@@ -1257,7 +1332,7 @@ export class BarbershopService {
       include: { barber: true },
     });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
-    await this.ensureBarbershopAccess(userId, schedule.barber.barbershopId);
+    await this.ensureCanManageBarber(userId, schedule.barber.barbershopId, schedule.barberId);
     await this.prisma.barberSchedule.delete({ where: { id } });
   }
 
@@ -1269,7 +1344,7 @@ export class BarbershopService {
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
-    await this.ensureBarbershopAccess(userId, barber.barbershopId);
+    await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
     return this.prisma.barberTimeOff.create({
       data: {
         barberId: input.barberId,
@@ -1286,7 +1361,7 @@ export class BarbershopService {
       include: { barber: true },
     });
     if (!timeOff) throw new NotFoundException('Afastamento não encontrado');
-    await this.ensureBarbershopAccess(userId, timeOff.barber.barbershopId);
+    await this.ensureCanManageBarber(userId, timeOff.barber.barbershopId, timeOff.barberId);
     await this.prisma.barberTimeOff.delete({ where: { id: timeOffId } });
     return true;
   }
@@ -1718,7 +1793,7 @@ export class BarbershopService {
   }
 
   async deleteAppointment(userId: number, barbershopId: number, appointmentId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
     });
@@ -1941,7 +2016,7 @@ export class BarbershopService {
     segment: string,
     inactiveDays?: number,
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const customers = await this.resolveMarketingSegment(
       barbershop.networkId,
       barbershopId,
@@ -1952,7 +2027,7 @@ export class BarbershopService {
   }
 
   async getMarketingCampaigns(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.marketingCampaign.findMany({
       where: { barbershopId },
       orderBy: { createdAt: 'desc' },
@@ -1972,7 +2047,7 @@ export class BarbershopService {
       sendWhatsapp: boolean;
     },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const customers = await this.resolveMarketingSegment(
       barbershop.networkId,
       barbershopId,
@@ -2842,7 +2917,7 @@ export class BarbershopService {
   }
 
   async waiveNoShowFee(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
     if (!fee) throw new NotFoundException('Taxa não encontrada');
     await this.prisma.noShowFee.update({
@@ -2853,7 +2928,7 @@ export class BarbershopService {
   }
 
   async getBarbershopReferrals(userId: number, barbershopId: number) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const referrals = await this.prisma.customerReferral.findMany({
       where: { networkId: barbershop.networkId },
       include: { referrer: true, referred: true },
@@ -2896,7 +2971,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { serviceId: number; name: string; price: number; sessionsPerCycle?: number },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
@@ -2935,7 +3010,7 @@ export class BarbershopService {
     id: number,
     data: Partial<{ name: string; price: number; sessionsPerCycle: number; isActive: boolean }>,
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id, barbershopId },
     });
@@ -2970,7 +3045,7 @@ export class BarbershopService {
   }
 
   async deleteSubscriptionPlan(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id, barbershopId },
     });
@@ -2980,7 +3055,7 @@ export class BarbershopService {
   }
 
   async getBarbershopSubscribers(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const subs = await this.prisma.clientSubscription.findMany({
       where: { barbershopId },
       include: { clientAccount: true, plan: { include: { service: true } } },
@@ -2996,7 +3071,7 @@ export class BarbershopService {
     startDate?: string,
     endDate?: string,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'owner');
     const payments = await this.prisma.clientSubscriptionPayment.findMany({
       where: {
         status: 'SUCCEEDED',
@@ -3529,10 +3604,19 @@ export class BarbershopService {
       offset?: number;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     const where: any = { barbershopId };
     if (filters?.customerId) where.customerId = filters.customerId;
     if (filters?.barberId) where.barberId = filters.barberId;
+    // Barbeiro vê só as próprias vendas (o faturamento da unidade é do dono
+    // e do gerente)
+    if (shop.accessLevel === 'barber') {
+      const me = await this.prisma.barber.findFirst({
+        where: { barbershopId, userId, isActive: true },
+        select: { id: true },
+      });
+      where.barberId = me?.id ?? -1;
+    }
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
     if (filters?.from || filters?.to) {
       where.createdAt = {};
@@ -3588,7 +3672,7 @@ export class BarbershopService {
       paymentMethod?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.sale.findFirst({
         where: { id: saleId, barbershopId },
@@ -3639,7 +3723,7 @@ export class BarbershopService {
   }
 
   async deleteSale(userId: number, barbershopId: number, saleId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const existing = await this.prisma.sale.findFirst({
       where: { id: saleId, barbershopId },
     });
@@ -3660,7 +3744,7 @@ export class BarbershopService {
   }
 
   async getCashSessions(userId: number, barbershopId: number, limit = 30) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const sessions = await this.prisma.cashSession.findMany({
       where: { barbershopId },
       include: { openedBy: true, closedBy: true },
@@ -3671,7 +3755,7 @@ export class BarbershopService {
   }
 
   async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const existing = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -3699,7 +3783,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { countedBalance: number; notes?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const session = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -3762,7 +3846,7 @@ export class BarbershopService {
       expenseDate?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const openSession = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -3787,7 +3871,7 @@ export class BarbershopService {
     barbershopId: number,
     filters?: { from?: Date; to?: Date; category?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const where: any = { barbershopId };
     if (filters?.category) where.category = filters.category;
     if (filters?.from || filters?.to) {
@@ -3804,7 +3888,7 @@ export class BarbershopService {
   }
 
   async deleteExpense(userId: number, barbershopId: number, expenseId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const existing = await this.prisma.expense.findFirst({
       where: { id: expenseId, barbershopId },
     });
@@ -3816,7 +3900,7 @@ export class BarbershopService {
   // ============ FINANCIAL DASHBOARD ============
 
   async getFinancialSummary(userId: number, barbershopId: number, from: Date, to: Date) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const timeZone = safeTimeZone(barbershop.timezone);
     const [sales, expenses] = await Promise.all([
       this.prisma.sale.findMany({
@@ -3890,7 +3974,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { name: string; type?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.resource.create({
       data: { barbershopId, name: data.name, type: data.type ?? 'ROOM' },
     });
@@ -3902,7 +3986,7 @@ export class BarbershopService {
     resourceId: number,
     data: Partial<{ name: string; type: string; isActive: boolean }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const resource = await this.prisma.resource.findFirst({
       where: { id: resourceId, barbershopId },
     });
@@ -3911,7 +3995,7 @@ export class BarbershopService {
   }
 
   async deleteResource(userId: number, barbershopId: number, resourceId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const resource = await this.prisma.resource.findFirst({
       where: { id: resourceId, barbershopId },
     });
@@ -3937,7 +4021,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { serviceId: number; name: string; totalSessions: number; price: number },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'packages');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
@@ -3962,7 +4046,7 @@ export class BarbershopService {
     id: number,
     data: Partial<{ name: string; totalSessions: number; price: number; isActive: boolean }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
     const { price, ...rest } = data;
@@ -3975,7 +4059,7 @@ export class BarbershopService {
   }
 
   async deleteServicePackage(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
     await this.prisma.servicePackage.update({ where: { id }, data: { isActive: false } });
@@ -4098,7 +4182,7 @@ export class BarbershopService {
   }
 
   async deleteConsentForm(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
     if (!form) throw new NotFoundException('Ficha não encontrada');
     await this.prisma.consentForm.delete({ where: { id } });
@@ -4108,7 +4192,7 @@ export class BarbershopService {
   // ============ COMISSÃO ============
 
   async getCommissionRules(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const rules = await this.prisma.commissionRule.findMany({
       where: { barbershopId },
       include: { barber: true },
@@ -4122,7 +4206,7 @@ export class BarbershopService {
     barbershopId: number,
     data: { barberId?: number; itemType?: string; percentage: number },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'owner');
     const itemType = data.itemType ?? 'ALL';
     if (data.barberId) {
       const barber = await this.prisma.barber.findFirst({
@@ -4154,7 +4238,7 @@ export class BarbershopService {
   }
 
   async deleteCommissionRule(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'owner');
     const rule = await this.prisma.commissionRule.findFirst({ where: { id, barbershopId } });
     if (!rule) throw new NotFoundException('Regra de comissão não encontrada');
     await this.prisma.commissionRule.delete({ where: { id } });
@@ -4162,7 +4246,7 @@ export class BarbershopService {
   }
 
   async getCommissionReport(userId: number, barbershopId: number, from: Date, to: Date) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const [rules, sales, barbers] = await Promise.all([
       this.prisma.commissionRule.findMany({ where: { barbershopId } }),
       this.prisma.sale.findMany({
@@ -4244,7 +4328,7 @@ export class BarbershopService {
   // ============ RELATÓRIOS AVANÇADOS (plano Premium) ============
 
   async getAdvancedReports(userId: number, barbershopId: number, from: Date, to: Date) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'owner');
     await this.ensureModuleAccess(barbershopId, 'reports');
 
     const [appointments, saleItems, customersInPeriod] = await Promise.all([

@@ -1,9 +1,11 @@
 # NotificationsResolver Documentation
 
 ## Overview
+
 O `NotificationsResolver` gerencia o sistema completo de notificações, incluindo consulta de notificações pessoais, gerenciamento de status de leitura, criação de notificações administrativas, notificações em lote e estatísticas de notificações.
 
 ## Localização
+
 - **Arquivo**: `/back/src/graphql/resolvers/notifications.resolver.ts`
 - **Módulo**: GraphQLAppModule
 - **Guards**: GraphQLJwtAuthGuard, GraphQLRolesGuard (para operações admin)
@@ -13,7 +15,9 @@ O `NotificationsResolver` gerencia o sistema completo de notificações, incluin
 ### Queries
 
 #### 1. `myNotifications`
+
 **Descrição**: Lista notificações do usuário autenticado com paginação
+
 ```graphql
 query MyNotifications($limit: Int) {
   myNotifications(limit: $limit) {
@@ -32,11 +36,13 @@ query MyNotifications($limit: Int) {
 **Autenticação**: Requer `@UseGuards(GraphQLJwtAuthGuard)`
 
 **Parâmetros**:
+
 - `limit: Int` (padrão: 10) - Número máximo de notificações
 
 **Retorno**: `[UserNotification]` - Lista de notificações do usuário
 
 **Fluxo de Negócio**:
+
 1. Busca notificações via `NotificationsService.getUserNotifications()`
 2. Aplica paginação com limite especificado
 3. Ordena por data de criação decrescente
@@ -46,7 +52,9 @@ query MyNotifications($limit: Int) {
 ---
 
 #### 2. `myUnreadNotifications`
+
 **Descrição**: Lista apenas notificações não lidas do usuário
+
 ```graphql
 query MyUnreadNotifications {
   myUnreadNotifications {
@@ -72,7 +80,9 @@ query MyUnreadNotifications {
 ---
 
 #### 3. `myNewNotifications`
+
 **Descrição**: Lista notificações recentes/novas do usuário
+
 ```graphql
 query MyNewNotifications {
   myNewNotifications {
@@ -98,7 +108,9 @@ query MyNewNotifications {
 ---
 
 #### 4. `myNotificationsCount`
+
 **Descrição**: Retorna contadores de notificações do usuário
+
 ```graphql
 query MyNotificationsCount {
   myNotificationsCount {
@@ -118,6 +130,7 @@ query MyNotificationsCount {
 **Retorno**: `NotificationCount` - Estatísticas de notificações
 
 **Campos Retornados**:
+
 - `total`: Total de notificações
 - `unread`: Notificações não lidas
 - `new`: Notificações recentes
@@ -130,7 +143,9 @@ query MyNotificationsCount {
 ---
 
 #### 5. `allNotificationsWithUser` (Admin)
+
 **Descrição**: Lista todas as notificações do sistema com informações do usuário
+
 ```graphql
 query AllNotificationsWithUser($limit: Int) {
   allNotificationsWithUser(limit: $limit) {
@@ -154,6 +169,7 @@ query AllNotificationsWithUser($limit: Int) {
 **Roles**: `@Roles(Role.ADMIN)`
 
 **Parâmetros**:
+
 - `limit: Int` (padrão: 100) - Limite de resultados
 
 **Retorno**: `[NotificationWithUser]` - Notificações com dados do usuário
@@ -169,7 +185,9 @@ query AllNotificationsWithUser($limit: Int) {
 ### Mutations
 
 #### 1. `markNotificationAsRead`
+
 **Descrição**: Marca notificação específica como lida
+
 ```graphql
 mutation MarkNotificationAsRead($id: Int!) {
   markNotificationAsRead(id: $id) {
@@ -182,11 +200,13 @@ mutation MarkNotificationAsRead($id: Int!) {
 **Autenticação**: Requer `@UseGuards(GraphQLJwtAuthGuard)`
 
 **Parâmetros**:
+
 - `id: Int!` - ID da notificação
 
 **Retorno**: `CommonResponse` - Status da operação
 
 **Validações**:
+
 - Notificação deve existir
 - Usuário deve ser o proprietário da notificação
 
@@ -195,7 +215,9 @@ mutation MarkNotificationAsRead($id: Int!) {
 ---
 
 #### 2. `markAllNotificationsAsRead`
+
 **Descrição**: Marca todas as notificações do usuário como lidas
+
 ```graphql
 mutation MarkAllNotificationsAsRead {
   markAllNotificationsAsRead {
@@ -211,6 +233,7 @@ mutation MarkAllNotificationsAsRead {
 **Retorno**: `CommonResponse` - Status e quantidade processada
 
 **Fluxo de Negócio**:
+
 1. Busca todas as notificações não lidas do usuário
 2. Atualiza campo `read` para `true` em lote
 3. Retorna quantidade de notificações marcadas
@@ -222,7 +245,9 @@ mutation MarkAllNotificationsAsRead {
 ---
 
 #### 3. `deleteNotification`
+
 **Descrição**: Remove notificação específica
+
 ```graphql
 mutation DeleteNotification($id: Int!) {
   deleteNotification(id: $id) {
@@ -235,11 +260,13 @@ mutation DeleteNotification($id: Int!) {
 **Autenticação**: Requer `@UseGuards(GraphQLJwtAuthGuard)`
 
 **Parâmetros**:
+
 - `id: Int!` - ID da notificação
 
 **Retorno**: `CommonResponse` - Status da operação
 
 **Validações**:
+
 - Notificação deve existir
 - Usuário deve ser o proprietário
 - Operação permanente (não soft delete)
@@ -249,20 +276,12 @@ mutation DeleteNotification($id: Int!) {
 ---
 
 #### 4. `createNotification` (Admin)
+
 **Descrição**: Cria notificação para usuário específico
+
 ```graphql
-mutation CreateNotification(
-  $title: String!
-  $message: String!
-  $type: String
-  $userId: Int
-) {
-  createNotification(
-    title: $title
-    message: $message
-    type: $type
-    userId: $userId
-  ) {
+mutation CreateNotification($title: String!, $message: String!, $type: String, $userId: Int) {
+  createNotification(title: $title, message: $message, type: $type, userId: $userId) {
     id
     title
     message
@@ -278,12 +297,14 @@ mutation CreateNotification(
 **Roles**: `@Roles(Role.ADMIN, Role.SYSTEM_ADMIN, Role.MANAGER)`
 
 **Parâmetros**:
+
 - `title: String!` - Título da notificação
 - `message: String!` - Conteúdo da mensagem
 - `type: String` (padrão: "info") - Tipo da notificação
 - `userId: Int` (opcional) - ID do destinatário, usa usuário atual se omitido
 
 **Tipos de Notificação**:
+
 - `info` - Informação geral
 - `warning` - Aviso
 - `error` - Erro
@@ -293,6 +314,7 @@ mutation CreateNotification(
 **Retorno**: `UserNotification` - Notificação criada
 
 **Fluxo de Negócio**:
+
 1. Valida permissões administrativas
 2. Cria DTO de notificação
 3. Chama serviço de criação
@@ -305,7 +327,9 @@ mutation CreateNotification(
 ---
 
 #### 5. `createBatchNotifications` (Admin)
+
 **Descrição**: Cria notificações em lote para múltiplos usuários
+
 ```graphql
 mutation CreateBatchNotifications(
   $title: String!
@@ -313,12 +337,7 @@ mutation CreateBatchNotifications(
   $type: String
   $userIds: [Int!]!
 ) {
-  createBatchNotifications(
-    title: $title
-    message: $message
-    type: $type
-    userIds: $userIds
-  ) {
+  createBatchNotifications(title: $title, message: $message, type: $type, userIds: $userIds) {
     success
     message
     count
@@ -330,6 +349,7 @@ mutation CreateBatchNotifications(
 **Roles**: `@Roles(Role.ADMIN, Role.SYSTEM_ADMIN, Role.MANAGER)`
 
 **Parâmetros**:
+
 - `title: String!` - Título da notificação
 - `message: String!` - Conteúdo da mensagem
 - `type: String` (padrão: "info") - Tipo da notificação
@@ -338,6 +358,7 @@ mutation CreateBatchNotifications(
 **Retorno**: `CommonResponse` - Status e quantidade processada
 
 **Fluxo de Negócio**:
+
 1. Valida lista de usuários
 2. Cria DTO base da notificação
 3. Chama serviço de criação em lote
@@ -346,6 +367,7 @@ mutation CreateBatchNotifications(
 **Performance**: Criação otimizada em batch
 
 **Casos de Uso**:
+
 - Comunicados gerais
 - Manutenção programada
 - Atualizações de sistema
@@ -360,11 +382,13 @@ mutation CreateBatchNotifications(
 ## Integração com Serviços
 
 ### Serviços Utilizados
+
 - **NotificationsService**: Toda lógica de negócio de notificações
 - **SmartLogger**: Sistema de logging estruturado
 - **CurrentUser decorator**: Injeção automática do usuário
 
 ### Padrões de Implementação
+
 - **Service delegation**: Resolver delega para NotificationsService
 - **Structured logging**: Uso do SmartLogger com contexto
 - **DTO mapping**: Transformação de inputs GraphQL para DTOs de serviço
@@ -374,20 +398,22 @@ mutation CreateBatchNotifications(
 ## Sistema de Tipos de Notificação
 
 ### Tipos Padrão
+
 ```typescript
 enum NotificationType {
-  INFO = 'info',           // Informações gerais
-  WARNING = 'warning',     // Avisos importantes
-  ERROR = 'error',         // Erros e problemas
-  SUCCESS = 'success',     // Confirmações e sucessos
-  SYSTEM = 'system',       // Notificações de sistema
-  PAYMENT = 'payment',     // Relacionadas a pagamento
-  ANALYSIS = 'analysis',   // Relacionadas a análises
-  SHARE = 'share'          // Compartilhamentos
+  INFO = 'info', // Informações gerais
+  WARNING = 'warning', // Avisos importantes
+  ERROR = 'error', // Erros e problemas
+  SUCCESS = 'success', // Confirmações e sucessos
+  SYSTEM = 'system', // Notificações de sistema
+  PAYMENT = 'payment', // Relacionadas a pagamento
+  ANALYSIS = 'analysis', // Relacionadas a análises
+  SHARE = 'share', // Compartilhamentos
 }
 ```
 
 ### Hierarquia de Importância
+
 1. **ERROR**: Problemas críticos, alta prioridade
 2. **WARNING**: Avisos importantes, média prioridade
 3. **SYSTEM**: Comunicados de sistema, média prioridade
@@ -399,6 +425,7 @@ enum NotificationType {
 ## Controle de Acesso
 
 ### Operações de Usuário
+
 - `myNotifications` - Próprias notificações
 - `myUnreadNotifications` - Próprias não lidas
 - `myNewNotifications` - Próprias recentes
@@ -408,11 +435,13 @@ enum NotificationType {
 - `deleteNotification` - Deletar próprias notificações
 
 ### Operações Administrativas
+
 - `allNotificationsWithUser` - Ver todas (auditoria)
 - `createNotification` - Criar para usuário específico
 - `createBatchNotifications` - Criar em lote
 
 ### Validações de Segurança
+
 - Isolamento por userId em operações pessoais
 - Verificação de propriedade antes de operações
 - Roles guards para operações administrativas
@@ -422,6 +451,7 @@ enum NotificationType {
 ## Fluxos de Negócio Principais
 
 ### Notificação Individual
+
 ```mermaid
 graph TD
     A[createNotification] --> B[Validar permissões admin]
@@ -432,6 +462,7 @@ graph TD
 ```
 
 ### Notificações em Lote
+
 ```mermaid
 graph TD
     A[createBatchNotifications] --> B[Validar permissões]
@@ -443,12 +474,13 @@ graph TD
 ```
 
 ### Gerenciamento Pessoal
+
 ```mermaid
 graph TD
     A[myNotifications] --> B[Filtrar por userId]
     B --> C[Aplicar paginação]
     C --> D[Retornar lista]
-    
+
     E[markAsRead] --> F[Validar propriedade]
     F --> G[Atualizar status]
     G --> H[Retornar sucesso]
@@ -459,6 +491,7 @@ graph TD
 ## Logging e Auditoria
 
 ### Logs Estruturados
+
 ```typescript
 // Exemplo de logging implementado
 this.logger.log(`myNotifications called for user ${user.id}, limit: ${limit}`);
@@ -466,12 +499,14 @@ this.logger.log(`createBatchNotifications called by user ${user.id} for ${userId
 ```
 
 ### Informações Registradas
+
 - **Usuário**: ID e contexto da operação
 - **Parâmetros**: Filtros e limites aplicados
 - **Resultados**: Quantidade de notificações retornadas/processadas
 - **Operações admin**: Registra criador e destinatários
 
 ### Auditoria Recomendada
+
 - Volume de notificações por tipo
 - Taxa de leitura por usuário
 - Operações administrativas
@@ -482,6 +517,7 @@ this.logger.log(`createBatchNotifications called by user ${user.id} for ${userId
 ## Casos de Uso Comuns
 
 ### Interface de Usuário
+
 ```typescript
 // Badge de notificações
 const count = await myNotificationsCount();
@@ -495,35 +531,37 @@ await markNotificationAsRead({ id: notificationId });
 ```
 
 ### Dashboard Administrativo
+
 ```typescript
 // Ver todas as notificações para auditoria
 const allNotifications = await allNotificationsWithUser({ limit: 100 });
 
 // Criar comunicado geral
 await createBatchNotifications({
-  title: "Manutenção Programada",
-  message: "Sistema ficará offline das 02h às 04h",
-  type: "system",
-  userIds: allActiveUserIds
+  title: 'Manutenção Programada',
+  message: 'Sistema ficará offline das 02h às 04h',
+  type: 'system',
+  userIds: allActiveUserIds,
 });
 ```
 
 ### Integração com Outras Funcionalidades
+
 ```typescript
 // Notificar sobre nova análise compartilhada
 await createNotification({
-  title: "Nova análise compartilhada",
+  title: 'Nova análise compartilhada',
   message: `${userName} compartilhou uma análise com você`,
-  type: "share",
-  userId: targetUserId
+  type: 'share',
+  userId: targetUserId,
 });
 
 // Notificar sobre problema de pagamento
 await createNotification({
-  title: "Problema com pagamento",
-  message: "Seu cartão foi recusado. Atualize seus dados de pagamento.",
-  type: "payment",
-  userId: userId
+  title: 'Problema com pagamento',
+  message: 'Seu cartão foi recusado. Atualize seus dados de pagamento.',
+  type: 'payment',
+  userId: userId,
 });
 ```
 
@@ -532,14 +570,16 @@ await createNotification({
 ## Tratamento de Erros
 
 ### Erros Comuns
-| Cenário | Erro | Tratamento |
-|---------|------|------------|
+
+| Cenário                    | Erro                     | Tratamento                    |
+| -------------------------- | ------------------------ | ----------------------------- |
 | Notificação não encontrada | "Notification not found" | Validar ID antes de operações |
-| Acesso negado | "Access denied" | Verificar propriedade |
-| Usuário inválido | "User not found" | Validar userIds em batch |
-| Sem permissão admin | Forbidden | Guards bloqueiam acesso |
+| Acesso negado              | "Access denied"          | Verificar propriedade         |
+| Usuário inválido           | "User not found"         | Validar userIds em batch      |
+| Sem permissão admin        | Forbidden                | Guards bloqueiam acesso       |
 
 ### Validações de Input
+
 - Títulos e mensagens obrigatórios
 - Tipos de notificação válidos
 - Lista de usuários não vazia para batch
@@ -550,12 +590,14 @@ await createNotification({
 ## Performance
 
 ### Otimizações Implementadas
+
 - Queries paginadas por padrão
 - Operações em batch para múltiplas notificações
 - Índices no banco para queries por userId
 - Logging eficiente com contexto
 
 ### Recomendações
+
 - Cache para contadores de notificação
 - Cleanup automático de notificações antigas
 - Push notifications para alertas importantes
@@ -566,6 +608,7 @@ await createNotification({
 ## Problemas Conhecidos
 
 ### 🟡 Melhorias Sugeridas
+
 - Implementar notificações push em tempo real
 - Adicionar sistema de templates de notificação
 - Implementar agrupamento de notificações similares
@@ -573,6 +616,7 @@ await createNotification({
 - Implementar cleanup automático de notificações antigas
 
 ### 📊 Métricas Recomendadas
+
 - Taxa de leitura de notificações por tipo
 - Volume de notificações por usuário/dia
 - Performance de queries de notificação
@@ -584,11 +628,13 @@ await createNotification({
 ## Extensibilidade
 
 ### Novos Tipos de Notificação
+
 - Sistema flexível baseado em enum/string
 - Fácil adição de novos tipos
 - Comportamentos específicos por tipo
 
 ### Integrações Futuras
+
 - WebSockets para notificações em tempo real
 - Email notifications automáticas
 - Push notifications mobile

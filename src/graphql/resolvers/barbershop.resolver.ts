@@ -560,7 +560,7 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: productId, barbershopId },
     });
@@ -727,7 +727,7 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
     const upload = await this.s3Service.createImageUpload(
       `barbershops/${barbershopId}/photo`,
       contentType,
@@ -746,7 +746,7 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<boolean> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.getBarbershop(user.id, barbershopId);
+    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
       data: { photoKey: null },
