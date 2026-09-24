@@ -4901,6 +4901,16 @@ export class BarbershopService {
 
   async getCommissionReport(userId: number, barbershopId: number, from: Date, to: Date) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    return this.computeCommissions(barbershopId, from, to);
+  }
+
+  /**
+   * Comissão de cada profissional nas vendas pagas do período (regras da
+   * unidade: do profissional por tipo > do profissional "tudo" > da unidade
+   * por tipo > da unidade "tudo"). Sem checagem de acesso: quem chama checa.
+   * Usado no relatório de comissões e no pagamento da equipe.
+   */
+  async computeCommissions(barbershopId: number, from: Date, to: Date) {
     const [rules, sales, barbers] = await Promise.all([
       this.prisma.commissionRule.findMany({ where: { barbershopId } }),
       this.prisma.sale.findMany({
@@ -4931,6 +4941,7 @@ export class BarbershopService {
     const byBarber = new Map<
       number,
       {
+        salesCount: number;
         totalServiceSales: number;
         totalProductSales: number;
         serviceCommission: number;
@@ -4942,6 +4953,7 @@ export class BarbershopService {
       const barberId = sale.barberId as number;
       if (!byBarber.has(barberId)) {
         byBarber.set(barberId, {
+          salesCount: 0,
           totalServiceSales: 0,
           totalProductSales: 0,
           serviceCommission: 0,
@@ -4949,6 +4961,7 @@ export class BarbershopService {
         });
       }
       const acc = byBarber.get(barberId)!;
+      acc.salesCount++;
       for (const item of sale.items) {
         const total = Number(item.totalPrice);
         const pct = resolvePercentage(barberId, item.itemType);
@@ -4965,6 +4978,7 @@ export class BarbershopService {
     const rows = Array.from(byBarber.entries()).map(([barberId, acc]) => ({
       barberId,
       barberName: barberNameMap.get(barberId) ?? `#${barberId}`,
+      salesCount: acc.salesCount,
       totalServiceSales: acc.totalServiceSales,
       totalProductSales: acc.totalProductSales,
       serviceCommission: acc.serviceCommission,

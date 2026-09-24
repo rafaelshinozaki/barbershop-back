@@ -501,6 +501,9 @@ model Barbershop {
   clientPackages  ClientPackage[]
   consentForms    ConsentForm[]
   commissionRules CommissionRule[]
+  payConfigs      BarberPayConfig[]
+  payEntries      BarberPayEntry[]
+  payouts         BarberPayout[]
   reviews         Review[]
   // Espaço compartilhado (cadeira alugada, como o "Shared Location" do
   // Booksy): profissionais independentes, cada um com o seu negócio
@@ -740,6 +743,9 @@ model Barber {
   sales          Sale[]
   walkIns        WalkIn[]
   commissionRules CommissionRule[]
+  payConfigs      BarberPayConfig[]
+  payEntries      BarberPayEntry[]
+  payouts         BarberPayout[]
   waitlistEntries WaitlistEntry[]
 
   @@unique([barbershopId, userId])
@@ -1380,6 +1386,95 @@ model CommissionRule {
 
   @@unique([barbershopId, barberId, itemType])
   @@index([barbershopId])
+}
+
+// ============ PAGAMENTO DA EQUIPE ============
+//
+// Como cada profissional da unidade é pago e tudo o que foi pago a ele, pra
+// dono, gerente e o próprio profissional verem quanto sai/entra. O dinheiro
+// em si sai por fora (PIX, dinheiro, transferência); o sistema registra,
+// calcula e lança a despesa "Salário".
+
+// Forma de pagamento de um profissional nesta unidade.
+// payType: COMMISSION (só comissão), FIXED (só fixo), FIXED_PLUS_COMMISSION
+// (fixo + comissão), GREATER_OF (o maior entre o fixo e a comissão).
+// fixedAmount vale por período de pagamento (payPeriod).
+model BarberPayConfig {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  barberId     Int      @unique
+  barbershopId Int
+  payType      String   @default("COMMISSION")
+  fixedAmount  Decimal?
+  payPeriod    String   @default("MONTHLY") // MONTHLY, BIWEEKLY, WEEKLY
+  barber       Barber     @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
+}
+
+// Lançamento avulso: gorjeta que o profissional tem a receber (TIP), vale ou
+// adiantamento já pago (ADVANCE — vira despesa "Salário" na hora), bônus
+// (BONUS) e desconto (DEDUCTION: consumo, falta, quebra...). Entra no próximo
+// fechamento (payoutId preenchido quando fechado).
+model BarberPayEntry {
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
+  barbershopId    Int
+  barberId        Int
+  type            String // TIP, ADVANCE, BONUS, DEDUCTION
+  amount          Decimal
+  method          String? // ADVANCE: CASH, PIX, TRANSFER, OTHER
+  date            DateTime  @default(now())
+  notes           String?
+  payoutId        Int?
+  expenseId       Int?
+  cashSessionId   Int?
+  createdByUserId Int
+  barber          Barber       @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barbershop      Barbershop   @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  payout          BarberPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@index([barbershopId, barberId, date])
+  @@index([payoutId])
+}
+
+// Fechamento pago de um período: foto do cálculo no momento do pagamento
+// (vendas, comissão, fixo, gorjetas, bônus, descontos, vales) e o valor pago.
+model BarberPayout {
+  id                Int       @id @default(autoincrement())
+  createdAt         DateTime  @default(now())
+  barbershopId      Int
+  barberId          Int
+  periodStart       DateTime
+  periodEnd         DateTime
+  payType           String
+  serviceSales      Decimal
+  productSales      Decimal
+  salesCount        Int
+  commission        Decimal
+  fixedAmount       Decimal
+  baseAmount        Decimal // o que vale pela forma de pagamento (fixo, comissão, os dois ou o maior)
+  tips              Decimal
+  bonuses           Decimal
+  deductions        Decimal
+  advances          Decimal
+  total             Decimal // pago agora = base + gorjetas + bônus − descontos − vales
+  currency          String
+  method            String // CASH, PIX, TRANSFER, OTHER
+  paidAt            DateTime  @default(now())
+  notes             String?
+  expenseId         Int?
+  cashSessionId     Int?
+  carryOverEntryId  Int?      // vale maior que o devido: a diferença vira vale do próximo período
+  createdByUserId   Int
+  barber            Barber       @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barbershop        Barbershop   @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  entries           BarberPayEntry[]
+
+  @@index([barbershopId, paidAt])
+  @@index([barberId, periodStart])
 }
 
 /// Profissional independente (com o próprio negócio: plano, clientes, agenda e
