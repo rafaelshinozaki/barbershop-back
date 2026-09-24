@@ -336,19 +336,52 @@ type ChairRentPaymentType {
   amount: Float!
   createdAt: DateTime!
   currency: String!
+  dueDate: DateTime
   id: Int!
+  method: String!
+  notes: String
+  overdue: Boolean!
+  paidAt: DateTime
   periodEnd: DateTime
   periodStart: DateTime
+  receiptNumber: String
   receiptPdfUrl: String
   receiptUrl: String
+  recordedByName: String
+  status: String!
+}
+
+type ChairRentReceiptType {
+  amount: Float!
+  createdAt: DateTime!
+  currency: String!
+  dueDate: DateTime
+  hostAddress: String!
+  hostName: String!
+  id: Int!
+  memberAddress: String!
+  memberName: String!
+  method: String!
+  notes: String
+  overdue: Boolean!
+  paidAt: DateTime
+  periodEnd: DateTime
+  periodStart: DateTime
+  receiptNumber: String
+  receiptPdfUrl: String
+  receiptUrl: String
+  recordedByName: String
   status: String!
 }
 
 type ChairRentType {
   amount: Float
+  billingMode: String!
   currency: String
   isHost: Boolean!
   linkId: Int!
+  nextDueDate: DateTime
+  openAmount: Float!
   paidUntil: DateTime
   payoutDue: Float
   platformFeePercent: Float!
@@ -991,6 +1024,7 @@ type FinancialChartSeries {
 }
 
 type FinancialSummaryType {
+  chairRentIncome: Float!
   expensesByCategory: [FinancialCategoryTotal!]!
   netProfit: Float!
   revenueByDay: FinancialChartSeries!
@@ -1255,6 +1289,7 @@ type Mutation {
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
   purchaseClientPackage(barbershopId: Int!, input: PurchaseClientPackageInput!): ClientPackageType!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
+  recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
@@ -1273,7 +1308,7 @@ type Mutation {
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
-  setChairRent(amount: Float, barbershopId: Int!, id: Int!): ChairRentType!
+  setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
@@ -1284,6 +1319,7 @@ type Mutation {
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
+  undoChairRentPayment(barbershopId: Int!, paymentId: Int!): ChairRentPaymentType!
   unlinkClientSocialAccount(provider: String!): Boolean!
   unlinkSocialAccount(provider: String!): Boolean!
   unsubscribeFromMarketing(token: String!): String!
@@ -1777,6 +1813,7 @@ type Query {
   canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
+  chairRentReceipt(barbershopId: Int!, paymentId: Int!): ChairRentReceiptType!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!

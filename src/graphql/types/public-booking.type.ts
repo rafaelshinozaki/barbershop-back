@@ -96,9 +96,21 @@ export class ChairRentType {
   @Field()
   isHost: boolean;
 
-  /** NONE | AWAITING_PAYMENT | INCOMPLETE | ACTIVE | PAST_DUE */
+  /** NONE | AWAITING_PAYMENT | INCOMPLETE | ACTIVE | DUE (mensalidade manual em aberto) | PAST_DUE */
   @Field()
   status: string;
+
+  /** CARD (cartão, Stripe) | MANUAL (pago direto ao espaço) */
+  @Field()
+  billingMode: string;
+
+  /** Manual: próximo vencimento */
+  @Field({ nullable: true })
+  nextDueDate?: Date | null;
+
+  /** Mensalidades manuais em aberto (soma) */
+  @Field(() => Float)
+  openAmount: number;
 
   @Field(() => Float, { nullable: true })
   amount?: number | null;
@@ -116,7 +128,7 @@ export class ChairRentType {
   @Field(() => Float)
   platformFeePercent: number;
 
-  /** Só pro espaço: total recebido menos a taxa da plataforma */
+  /** Só pro espaço: o que entrou pelo cartão menos a taxa da plataforma (o manual já é do espaço) */
   @Field(() => Float, { nullable: true })
   payoutDue?: number | null;
 }
@@ -135,9 +147,33 @@ export class ChairRentPaymentType {
   @Field()
   currency: string;
 
-  /** SUCCEEDED | FAILED */
+  /** DUE (em aberto) | SUCCEEDED | FAILED */
   @Field()
   status: string;
+
+  /** CARD | CASH | PIX | TRANSFER | OTHER */
+  @Field()
+  method: string;
+
+  @Field({ nullable: true })
+  dueDate?: Date | null;
+
+  @Field({ nullable: true })
+  paidAt?: Date | null;
+
+  @Field()
+  overdue: boolean;
+
+  @Field({ nullable: true })
+  notes?: string | null;
+
+  /** Quem registrou o pagamento manual */
+  @Field({ nullable: true })
+  recordedByName?: string | null;
+
+  /** Número do recibo (pagos) */
+  @Field({ nullable: true })
+  receiptNumber?: string | null;
 
   @Field({ nullable: true })
   periodStart?: Date | null;
@@ -151,6 +187,21 @@ export class ChairRentPaymentType {
 
   @Field({ nullable: true })
   receiptPdfUrl?: string | null;
+}
+
+@ObjectType()
+export class ChairRentReceiptType extends ChairRentPaymentType {
+  @Field()
+  hostName: string;
+
+  @Field()
+  hostAddress: string;
+
+  @Field()
+  memberName: string;
+
+  @Field()
+  memberAddress: string;
 }
 
 @ObjectType()
