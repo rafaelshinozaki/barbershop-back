@@ -229,3 +229,25 @@ despesa.
     pagamento, lançamentos em aberto, pagamentos e recebido por mês.
 - **Modelo:** `BarberPayConfig`, `BarberPayEntry` (TIP | ADVANCE | BONUS |
   DEDUCTION), `BarberPayout`.
+
+## 10. Calendários (Google Agenda, Apple, Outlook)
+
+Sem login no Google nem chave de API:
+
+- **Cliente — "Adicionar à agenda":** na confirmação do agendamento, no
+  gerenciar e nos próximos horários da conta (front) e nos e-mails de
+  confirmação/remarcação: link do Google Agenda, do Outlook e o arquivo .ics
+  (Apple, celular e outros apps) em `GET /calendar/appointment.ics?t=<link de
+  gerenciar>`. Cancelado, o .ics sai como cancelamento (o app apaga o evento).
+  O .ics no e-mail precisa de `PUBLIC_API_URL`.
+- **Equipe — agenda assinável:** cada pessoa gera um link secreto de
+  calendário (iCal) pra assinar uma vez; os horários aparecem e se atualizam
+  sozinhos (o Google atualiza a cada poucas horas).
+  - "Minha agenda": os horários do próprio profissional, com o nome do
+    cliente e o serviço (sem telefone);
+  - "Agenda da unidade" (recepção, gerente e dono): todos os horários, com
+    profissional e telefone do cliente.
+  Janela: 30 dias pra trás e 180 pra frente; cancelados e faltas ficam fora.
+  Só o hash do token fica no banco; gerar de novo invalida o link anterior; o
+  acesso é conferido a cada leitura (quem sai da equipe para de ver na hora).
+  `GET /calendar/feed/<token>.ics`. Modelo: `CalendarFeed`.
