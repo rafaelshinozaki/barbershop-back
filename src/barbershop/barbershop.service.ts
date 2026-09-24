@@ -40,6 +40,7 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
 import { StripeService } from '../stripe/stripe.service';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { appointmentCalendarLinks } from '../calendar/calendar-links';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
 const NETWORK_ACCENT_COLORS = [
@@ -2926,6 +2927,8 @@ export class BarbershopService {
           }),
           CancellationWindowHours: shop.network.lateCancellationWindowHours,
           ManageURL: appointmentManageUrl(appt.id),
+          // "Adicionar à agenda" (Google, Outlook, .ics pro Apple e outros)
+          ...appointmentCalendarLinks(appt, createAppointmentToken(appt.id)),
           BookURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/u/${shop.slug}`,
           Year: new Date().getFullYear(),
         },

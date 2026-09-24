@@ -57,6 +57,7 @@ model User {
   linkedSocialAccounts   LinkedSocialAccount[]
 
   @@unique([email, provider])
+  calendarFeeds       CalendarFeed[]
 }
 
 // Métodos de login social adicionais conectados a uma conta (além do
@@ -521,6 +522,7 @@ model Barbershop {
   @@index([ownerUserId])
   @@index([isActive])
   @@index([slug])
+  calendarFeeds   CalendarFeed[]
 }
 
 model Resource {
@@ -1546,3 +1548,24 @@ model ChairRentPayment {
   @@index([cashSessionId])
   @@index([status, dueDate])
 }
+
+// Link secreto de agenda (iCal) pra assinar no Google Agenda, Apple ou
+// Outlook: os horários aparecem e se atualizam sozinhos. MINE = os horários
+// do próprio profissional; ALL = a agenda da unidade (recepção pra cima).
+// Só o hash do token fica no banco; o acesso é conferido a cada leitura
+// (quem sai da equipe para de ver na hora).
+model CalendarFeed {
+  id           Int        @id @default(autoincrement())
+  createdAt    DateTime   @default(now())
+  userId       Int
+  barbershopId Int
+  scope        String // MINE, ALL
+  tokenHash    String     @unique
+  lastAccessAt DateTime?
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, barbershopId, scope])
+  @@index([barbershopId])
+}
+

@@ -373,6 +373,12 @@ input BulkUserAction {
   userIds: [Int!]!
 }
 
+type CalendarFeedType {
+  createdAt: DateTime!
+  lastAccessAt: DateTime
+  scope: String!
+}
+
 type Card {
   brand: String!
   expMonth: Int!
@@ -967,6 +973,11 @@ input CreateWalkInInput {
   services: [WalkInServiceInput!]!
 }
 
+type CreatedCalendarFeedType {
+  path: String!
+  scope: String!
+}
+
 type CustomerLoyaltyType {
   enabled: Boolean!
   pointValue: Float!
@@ -1292,6 +1303,7 @@ type Mutation {
   createBarbershopProduct(barbershopId: Int!, input: CreateBarbershopProductInput!): BarbershopProductType!
   createBarbershopService(barbershopId: Int!, input: CreateBarbershopServiceInput!): BarbershopServiceType!
   createBatchNotifications(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userIds: [Int!]!): CommonResponse!
+  createCalendarFeed(barbershopId: Int!, scope: String!): CreatedCalendarFeedType!
   createClientSubscriptionSetupIntent: SubscriptionSetupIntentType!
   createConsentForm(barbershopId: Int!, input: CreateConsentFormInput!): ConsentFormType!
   createCoupon(data: CreateCouponInput!): Coupon!
@@ -1323,6 +1335,7 @@ type Mutation {
   deleteBarbershop(id: Int!): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
   deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
+  deleteCalendarFeed(barbershopId: Int!, scope: String!): Boolean!
   deleteCommissionRule(barbershopId: Int!, id: Int!): Boolean!
   deleteConsentForm(barbershopId: Int!, id: Int!): Boolean!
   deleteCoupon(id: Int!): DeleteCouponResponse!
@@ -1987,6 +2000,7 @@ type Query {
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   me: User!
   myBarbershops: [Barbershop!]!
+  myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myClientSubscriptions: [ClientSubscriptionType!]!
   myCoupons: [Coupon!]!
   myNetwork: Network
