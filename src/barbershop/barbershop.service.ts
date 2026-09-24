@@ -3158,38 +3158,61 @@ export class BarbershopService {
     });
     if (!plan?.stripePriceId) throw new NotFoundException('Plano não encontrado');
 
-    const existing = await this.prisma.clientSubscription.findFirst({
-      where: { clientAccountId, planId, status: { in: ['INCOMPLETE', 'ACTIVE', 'PAST_DUE'] } },
-    });
-    if (existing) throw new BadRequestException('Você já tem uma assinatura ativa neste plano');
+    // Dois cliques (ou duas abas) juntos passavam os dois pela checagem e
+    // criavam DUAS assinaturas no Stripe — cobrança em dobro todo mês. Agora
+    // a checagem, a criação no Stripe e o registro ficam sob uma trava por
+    // cliente+plano, e o Stripe recebe uma chave de idempotência (que muda a
+    // cada assinatura nova, pra poder assinar de novo depois de cancelar).
+    const { stripeSubscription, subscription } = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`client-sub:${clientAccountId}:${planId}`}))`;
+        const existing = await tx.clientSubscription.findFirst({
+          where: {
+            clientAccountId,
+            planId,
+            status: { in: ['INCOMPLETE', 'ACTIVE', 'PAST_DUE'] },
+          },
+        });
+        if (existing) {
+          throw new BadRequestException('Você já tem uma assinatura ativa neste plano');
+        }
+        const previous = await tx.clientSubscription.count({ where: { clientAccountId, planId } });
 
-    await this.stripeService.attachPaymentMethod(paymentMethodId, clientAccount.stripeCustomerId);
-    await this.stripeService.setDefaultPaymentMethod(
-      clientAccount.stripeCustomerId,
-      paymentMethodId,
-    );
+        await this.stripeService.attachPaymentMethod(
+          paymentMethodId,
+          clientAccount.stripeCustomerId!,
+        );
+        await this.stripeService.setDefaultPaymentMethod(
+          clientAccount.stripeCustomerId!,
+          paymentMethodId,
+        );
+        const stripeSubscription = await this.stripeService.createSubscription(
+          clientAccount.stripeCustomerId!,
+          plan.stripePriceId!,
+          {
+            clientAccountId: String(clientAccountId),
+            barbershopId: String(barbershopId),
+            planId: String(planId),
+          },
+          `client-sub:${clientAccountId}:${planId}:${previous + 1}`,
+        );
 
-    const stripeSubscription = await this.stripeService.createSubscription(
-      clientAccount.stripeCustomerId,
-      plan.stripePriceId,
-      {
-        clientAccountId: String(clientAccountId),
-        barbershopId: String(barbershopId),
-        planId: String(planId),
+        const subscription = await tx.clientSubscription.create({
+          data: {
+            barbershopId,
+            clientAccountId,
+            planId,
+            stripeSubscriptionId: stripeSubscription.id,
+            status: stripeSubscription.status === 'active' ? 'ACTIVE' : 'INCOMPLETE',
+            currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+            currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+          },
+        });
+        return { stripeSubscription, subscription };
       },
+      // A chamada ao Stripe fica dentro da trava
+      { timeout: 30_000, maxWait: 30_000 },
     );
-
-    const subscription = await this.prisma.clientSubscription.create({
-      data: {
-        barbershopId,
-        clientAccountId,
-        planId,
-        stripeSubscriptionId: stripeSubscription.id,
-        status: stripeSubscription.status === 'active' ? 'ACTIVE' : 'INCOMPLETE',
-        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-      },
-    });
 
     const latestInvoice = stripeSubscription.latest_invoice as any;
     const paymentIntent = latestInvoice?.payment_intent as any;
@@ -3243,12 +3266,21 @@ export class BarbershopService {
       throw new BadRequestException('Assinatura não está ativa');
     }
     const limit = subscription.plan.sessionsPerCycle;
-    if (limit != null && subscription.usedThisCycle >= limit) {
+    // Baixa condicional: dois cliques juntos (ou dois barbeiros) não passam
+    // do limite — antes os dois liam o mesmo saldo e gravavam +1 cada
+    const { count } = await this.prisma.clientSubscription.updateMany({
+      where: {
+        id: subscriptionId,
+        status: 'ACTIVE',
+        ...(limit != null ? { usedThisCycle: { lt: limit } } : {}),
+      },
+      data: { usedThisCycle: { increment: 1 } },
+    });
+    if (count === 0) {
       throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
     }
-    const updated = await this.prisma.clientSubscription.update({
+    const updated = await this.prisma.clientSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
-      data: { usedThisCycle: subscription.usedThisCycle + 1 },
       include: { clientAccount: true, plan: { include: { service: true } } },
     });
     return this.toClientSubscriptionResult(updated);
@@ -4118,14 +4150,19 @@ export class BarbershopService {
     if (clientPackage.status !== 'ACTIVE') {
       throw new BadRequestException('Pacote não está ativo');
     }
-    if (clientPackage.usedSessions >= clientPackage.totalSessions) {
+    // Baixa condicional no banco (mesma ideia dos pontos de fidelidade):
+    // débitos simultâneos não passam do total de sessões do pacote
+    const debited = await this.prisma.$executeRaw`
+      UPDATE "ClientPackage"
+      SET "usedSessions" = "usedSessions" + 1,
+          status = CASE WHEN "usedSessions" + 1 >= "totalSessions" THEN 'COMPLETED' ELSE 'ACTIVE' END,
+          "updatedAt" = NOW()
+      WHERE id = ${clientPackageId} AND status = 'ACTIVE' AND "usedSessions" < "totalSessions"`;
+    if (debited === 0) {
       throw new BadRequestException('Pacote não tem sessões restantes');
     }
-    const usedSessions = clientPackage.usedSessions + 1;
-    const status = usedSessions >= clientPackage.totalSessions ? 'COMPLETED' : 'ACTIVE';
-    const updated = await this.prisma.clientPackage.update({
+    const updated = await this.prisma.clientPackage.findUniqueOrThrow({
       where: { id: clientPackageId },
-      data: { usedSessions, status },
       include: { servicePackage: { include: { service: true } } },
     });
     return this.toClientPackageResult(updated);
