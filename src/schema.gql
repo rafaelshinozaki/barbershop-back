@@ -220,6 +220,7 @@ type Barbershop {
   id: Int!
   imageUrl: String
   isActive: Boolean!
+  myAccessLevel: String
   name: String!
   ownerUserId: Int
   phone: String!

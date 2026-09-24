@@ -481,4 +481,116 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(c?.loyaltyPoints).toBe(100);
     });
   });
+
+  // ============ Cargos: dono / gerente / barbeiro ============
+
+  describe('cargos na unidade', () => {
+    let managerUserId: number;
+    const denied = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(ForbiddenException);
+
+    beforeAll(async () => {
+      const role = await prisma.role.findFirstOrThrow({ where: { name: 'BarbershopOwner' } });
+      managerUserId = (await createUser('gerente', role.id)).id;
+      await prisma.barber.create({
+        data: {
+          barbershopId: A.shopId,
+          name: 'Gerente A',
+          phone: '11944444444',
+          userId: managerUserId,
+          staffType: 'manager',
+        },
+      });
+    });
+
+    it('barbeiro atende, mas não mexe em financeiro, preços, equipe nem apaga a unidade', async () => {
+      const barber = A.staffUserId;
+      await expect(service.getCustomers(barber, A.shopId)).resolves.toBeTruthy();
+      await expect(service.getServices(barber, A.shopId)).resolves.toBeTruthy();
+      expect(await service.getMyAccessLevel(barber, A.shopId)).toBe('barber');
+
+      await denied(service.getExpenses(barber, A.shopId));
+      await denied(service.getFinancialSummary(barber, A.shopId, new Date(0), new Date()));
+      await denied(service.updateService(barber, A.shopId, A.serviceId, { price: 1 }));
+      await denied(service.deleteCustomer(barber, A.shopId, A.customerId));
+      await denied(service.getCashSessions(barber, A.shopId));
+      await denied(service.deleteBarber(barber, A.shopId, A.otherBarberId));
+      await denied(service.deleteBarbershop(barber, A.shopId));
+      // Rede: o barbeiro não vê o faturamento das unidades
+      expect((await service.getNetworkDashboardStats(barber)).totalBarbershops).toBe(0);
+    });
+
+    it('barbeiro mexe só na própria folga', async () => {
+      const barber = A.staffUserId;
+      const own = await service.createBarberTimeOff(barber, {
+        barberId: A.barberId,
+        startAt: at(day, '08:00').toISOString(),
+        endAt: at(day, '08:30').toISOString(),
+      });
+      await service.deleteBarberTimeOff(barber, own.id);
+      await denied(
+        service.createBarberTimeOff(barber, {
+          barberId: A.otherBarberId,
+          startAt: at(day, '08:00').toISOString(),
+          endAt: at(day, '08:30').toISOString(),
+        }),
+      );
+    });
+
+    it('barbeiro vê só as próprias vendas; o dono vê todas', async () => {
+      const own = await service.createSale(A.staffUserId, A.shopId, {
+        barberId: A.barberId,
+        saleType: 'SERVICE',
+        items: [],
+        subtotal: 10,
+        total: 10,
+      });
+      const other = await service.createSale(A.ownerId, A.shopId, {
+        barberId: A.otherBarberId,
+        saleType: 'SERVICE',
+        items: [],
+        subtotal: 10,
+        total: 10,
+      });
+      const seenByBarber = (await service.getSales(A.staffUserId, A.shopId)) as { id: number }[];
+      const ids = (
+        Array.isArray(seenByBarber) ? seenByBarber : (seenByBarber as any).items ?? []
+      ).map((x: { id: number }) => x.id);
+      expect(ids).toContain(own.id);
+      expect(ids).not.toContain(other.id);
+      const seenByOwner = (await service.getSales(A.ownerId, A.shopId)) as any;
+      const ownerIds = (Array.isArray(seenByOwner) ? seenByOwner : seenByOwner.items ?? []).map(
+        (x: { id: number }) => x.id,
+      );
+      expect(ownerIds).toEqual(expect.arrayContaining([own.id, other.id]));
+    });
+
+    it('gerente opera a unidade (inclusive o caixa); relatórios avançados, comissões e apagar a unidade são só do dono', async () => {
+      expect(await service.getMyAccessLevel(managerUserId, A.shopId)).toBe('manager');
+      await expect(
+        service.updateService(managerUserId, A.shopId, A.serviceId, { price: 55 }),
+      ).resolves.toBeTruthy();
+      await expect(service.getCashSessions(managerUserId, A.shopId)).resolves.toBeTruthy();
+      await expect(service.getNetworkDashboardStats(managerUserId)).resolves.toMatchObject({
+        totalBarbershops: 1,
+      });
+      // Gerente toca o caixa: despesas e resumo da unidade
+      await expect(service.getExpenses(managerUserId, A.shopId)).resolves.toBeTruthy();
+      await denied(service.getAdvancedReports(managerUserId, A.shopId, new Date(0), new Date()));
+      await denied(service.setCommissionRule(managerUserId, A.shopId, { percentage: 10 }));
+      await denied(service.deleteBarbershop(managerUserId, A.shopId));
+
+      expect(await service.getMyAccessLevel(A.ownerId, A.shopId)).toBe('owner');
+      await expect(service.getExpenses(A.ownerId, A.shopId)).resolves.toBeTruthy();
+    });
+
+    it('funcionário desligado perde o acesso', async () => {
+      await prisma.barber.updateMany({
+        where: { userId: managerUserId },
+        data: { isActive: false },
+      });
+      await denied(service.getCustomers(managerUserId, A.shopId));
+      expect(await service.getMyAccessLevel(managerUserId, A.shopId)).toBeNull();
+      expect(await service.getUserBarbershops(managerUserId)).toEqual([]);
+    });
+  });
 });

@@ -60,7 +60,12 @@ export class EmployeeInviteService {
    * Cria convite de funcionário: Barber + EmployeeInvite + envio de email.
    */
   async createInvite(userId: number, input: CreateEmployeeInviteInput) {
-    await this.barbershopService.verifyBarbershopAccess(userId, input.barbershopId);
+    // Gerente convida barbeiros; convidar outro gerente é só com o dono
+    await this.barbershopService.ensureAccess(
+      userId,
+      input.barbershopId,
+      input.role === 'BarbershopManager' ? 'owner' : 'manager',
+    );
     await this.barbershopService.ensureBarberLimitNotExceeded(input.barbershopId);
 
     const email = input.email.toLowerCase().trim();
