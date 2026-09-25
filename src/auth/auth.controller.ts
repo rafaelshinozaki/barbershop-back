@@ -202,7 +202,8 @@ export class AuthController {
       user.displayName,
       provider,
     );
-    await this.authService.login(dbUser, req, res);
+    // Login social: sem caixa "Lembrar de mim"; fica lembrado
+    await this.authService.login(dbUser, req, res, true);
 
     // Verificar se o usuário precisa completar o cadastro
     // Se o usuário tem dados básicos preenchidos, vai para a página principal

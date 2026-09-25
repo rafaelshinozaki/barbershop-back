@@ -1,4 +1,5 @@
 // src\auth\auth.service.ts
+import { setAuthCookie } from './session-cookie';
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailService } from '@/email/email.service';
 import { Request, Response } from 'express';
@@ -35,11 +36,14 @@ export class AuthService {
     this.scheduleCacheCleanup();
   }
 
-  async login(user: UserDTO, req: Request, res: Response) {
+  /**
+   * Abre a sessão. rememberMe ("Lembrar de mim"): 30 dias e o cookie
+   * sobrevive a fechar o navegador; sem ele, 12 horas e cookie de sessão.
+   * (Antes o cookie durava 7 dias mas o token vencia em JWT_EXPIRATION —
+   * 1 hora no .env de exemplo — e a caixa do login não fazia nada.)
+   */
+  async login(user: UserDTO, req: Request, res: Response, rememberMe = false) {
     const sessionToken = randomUUID();
-    const token = this.jwtService.sign({ userId: user.id, email: user.email, sessionToken });
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 7);
 
     const forwarded = req.headers['x-forwarded-for'];
     const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
@@ -89,19 +93,12 @@ export class AuthService {
       }
     }
 
-    // Configuração melhorada do cookie
-    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-
-    // Para cross-domain cookies, não definir domain deixa o navegador usar o domínio do servidor
-    // Se frontend e backend estão em domínios diferentes, domain deve ser undefined
-    res.cookie('Authentication', token, {
-      httpOnly: true,
-      secure: isProduction, // true em produção (HTTPS), false em desenvolvimento
-      sameSite: isProduction ? 'none' : 'lax', // 'none' necessário para cross-origin em produção
-      // domain removido - deixar o navegador gerenciar para funcionar cross-domain
-      path: '/', // Definir path explicitamente
-      expires,
-    });
+    setAuthCookie(
+      this.jwtService,
+      res,
+      { userId: user.id, email: user.email, sessionToken, remember: rememberMe },
+      this.configService.get<string>('NODE_ENV') === 'production',
+    );
   }
 
   async logout(user: UserDTO, req: Request, res: Response) {

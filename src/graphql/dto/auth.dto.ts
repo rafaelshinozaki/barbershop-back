@@ -10,6 +10,12 @@ export class LoginInput {
   @Field()
   @IsString()
   password: string;
+
+  /** "Lembrar de mim": sessão de 30 dias (sem marcar: 12 horas) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }
 
 @InputType()
@@ -21,6 +27,12 @@ export class Verify2FAInput {
   @Field()
   @IsString()
   code: string;
+
+  /** Mesmo "Lembrar de mim" do primeiro passo do login */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }
 
 /** Dados da barbearia para signup como dono */
