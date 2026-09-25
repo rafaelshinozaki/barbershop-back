@@ -680,6 +680,18 @@ export class Appointment {
   seriesIndex?: number;
 }
 
+@ObjectType({ description: 'Agenda da franquia num período' })
+export class NetworkAgenda {
+  @Field(() => [Appointment])
+  appointments: Appointment[];
+
+  @Field({ description: 'Passou do limite e nem todos vieram' })
+  truncated: boolean;
+
+  @Field(() => Int)
+  limit: number;
+}
+
 @ObjectType()
 export class WalkIn {
   @Field(() => Int)
