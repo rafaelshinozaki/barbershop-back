@@ -479,6 +479,8 @@ model Barbershop {
   phone          String
   email          String
   photoKey       String?
+  // Foto de capa da página pública (larga); o photoKey é o logo
+  coverKey       String?
   timezone       String    @default("America/Sao_Paulo")
   currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
@@ -535,6 +537,7 @@ model Barbershop {
   @@index([slug])
   calendarFeeds   CalendarFeed[]
   closures        BarbershopClosure[]
+  photos          BarbershopPhoto[]
 }
 
 model Resource {
@@ -756,6 +759,8 @@ model Barber {
   phone          String
   email          String?
   avatarUrl      String?
+  // Foto enviada (S3); vale por cima do avatarUrl
+  avatarKey      String?
   specialization String?
   specialties    TreatmentCategory[] @default([])
   isActive       Boolean          @default(true)
@@ -1629,4 +1634,17 @@ model BarbershopClosure {
   barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@unique([barbershopId, date])
+}
+
+/// Galeria da página pública (trabalhos, ambiente), em ordem
+model BarbershopPhoto {
+  id           Int        @id @default(autoincrement())
+  createdAt    DateTime   @default(now())
+  barbershopId Int
+  key          String
+  caption      String?
+  position     Int        @default(0)
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, position])
 }

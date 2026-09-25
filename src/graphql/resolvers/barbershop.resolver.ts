@@ -1,3 +1,4 @@
+import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
@@ -103,9 +104,16 @@ export class BarbershopResolver {
     private readonly s3Service: S3Service,
     private readonly realtime: RealtimeService,
     private readonly activity: ActivityNotificationsService,
+    private readonly geocoding: GeocodingService,
   ) {}
 
   // ============ BARBERSHOP ============
+
+  /** Capa da página pública (link gerado na hora; o do S3 expira) */
+  @ResolveField(() => String, { nullable: true })
+  async coverUrl(@Parent() shop: { coverKey?: string | null }) {
+    return shop.coverKey ? this.s3Service.getDownloadUrl(shop.coverKey) : null;
+  }
 
   // Restrito a quem já é BarbershopOwner (ex.: abrir uma segunda unidade) — a
   // primeira barbearia de um novo dono é criada dentro da mutation
@@ -119,7 +127,10 @@ export class BarbershopResolver {
     @Args('input') input: CreateBarbershopInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.createBarbershop(user.id, input);
+    const shop = await this.barbershopService.createBarbershop(user.id, input);
+    // Coordenadas pelo endereço (busca "perto de mim" e mapa), em segundo plano
+    void this.geocoding.locate(shop.id);
+    return shop;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -141,7 +152,18 @@ export class BarbershopResolver {
     @Args('input') input: UpdateBarbershopInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.updateBarbershop(user.id, id, input);
+    const shop = await this.barbershopService.updateBarbershop(user.id, id, input);
+    // Mudou o endereço: localiza de novo
+    const addressKeys = [
+      'address',
+      'complement1',
+      'city',
+      'state',
+      'country',
+      'postalCode',
+    ] as const;
+    if (addressKeys.some((k) => input[k] !== undefined)) void this.geocoding.locate(id);
+    return shop;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

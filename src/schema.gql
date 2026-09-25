@@ -308,6 +308,7 @@ type Barbershop {
   businessHours: String
   city: String!
   country: String!
+  coverUrl: String
   createdAt: String!
   currency: String!
   description: String
@@ -345,6 +346,13 @@ type BarbershopCustomer {
   notes: String
   phone: String!
   updatedAt: String!
+}
+
+type BarbershopPhotoType {
+  caption: String
+  id: Int!
+  position: Int!
+  url: String!
 }
 
 type BarbershopProductType {
@@ -1392,10 +1400,14 @@ type MonthlyRevenueItem {
 
 type Mutation {
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
+  addBarbershopPhoto(barbershopId: Int!, caption: String, key: String!): BarbershopPhotoType!
   addClientFavorite(networkId: Float!): [Network!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
+  barberAvatarUpload(barberId: Int!, contentType: String): PresignedUploadType!
+  barbershopCoverUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
+  barbershopGalleryUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelAppointmentSeries(appointmentId: Int!, barbershopId: Int!): Int!
   cancelManagedAppointment(token: String!): ManagedAppointmentType!
@@ -1505,12 +1517,14 @@ type Mutation {
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
+  removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
+  reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
   replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
   reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
@@ -1523,9 +1537,11 @@ type Mutation {
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
+  setBarberAvatar(barberId: Int!, key: String): String
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
   setBarberWeeklySchedule(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [WeeklyScheduleDayType!]!
   setBarbershopClosure(barbershopId: Int!, input: ClosureInput!): SetClosureResultType!
+  setBarbershopCover(barbershopId: Int!, key: String): String
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
@@ -2015,6 +2031,7 @@ type PublicBarbershopType {
   complement1: String
   complement2: String
   country: String!
+  coverUrl: String
   currency: String!
   description: String
   email: String!
@@ -2120,6 +2137,7 @@ type Query {
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
+  barbershopPhotos(barbershopId: Int!): [BarbershopPhotoType!]!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
