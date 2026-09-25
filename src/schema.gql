@@ -312,6 +312,7 @@ type Barbershop {
   isActive: Boolean!
   myAccessLevel: String
   name: String!
+  onlineDeposit: Boolean
   ownerUserId: Int
   phone: String!
   postalCode: String!
@@ -1106,6 +1107,13 @@ type DemographicAnalysis {
   gender: ChartData!
 }
 
+type DepositPaymentType {
+  amount: Float!
+  clientSecret: String!
+  currency: String!
+  holdExpiresAt: DateTime!
+}
+
 type DetailedUser {
   age: Int
   ageRange: String!
@@ -1283,7 +1291,10 @@ type ManagedAppointmentType {
   changeDeadline: String!
   currency: String!
   customerName: String!
+  depositAmount: Float
+  depositPaid: Boolean!
   endAt: String!
+  holdExpiresAt: String
   id: Int!
   manageToken: String
   price: Float!
@@ -1395,6 +1406,7 @@ type Mutation {
   clientVerifyEmail(token: String!): Boolean!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
+  confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
   createAppointmentSeries(barbershopId: Int!, input: AppointmentSeriesInput!): CreatedSeriesType!
@@ -1508,9 +1520,11 @@ type Mutation {
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
+  setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
+  startDepositPayment(token: String!): DepositPaymentType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   submitReviewByLink(comment: String, rating: Int!, token: String!): Boolean!
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
@@ -1998,6 +2012,7 @@ type PublicBarbershopType {
   imageUrl: String
   isFeatured: Boolean!
   name: String!
+  onlineDeposit: Boolean!
   phone: String!
   postalCode: String!
   reviewCount: Int!
@@ -2101,6 +2116,7 @@ type Query {
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
   demographicAnalysis: DemographicAnalysis!
+  depositPayoutReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
   expenses(barbershopId: Int!, category: String, from: String, to: String): [ExpenseType!]!
   financialSummary(barbershopId: Int!, from: String!, to: String!): FinancialSummaryType!
@@ -2140,6 +2156,7 @@ type Query {
   myUpcomingAppointments: [ManagedAppointmentType!]!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
+  onlinePaymentsAvailable: Boolean!
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!

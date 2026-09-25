@@ -316,3 +316,19 @@ Sem login no Google nem chave de API:
 - O cliente recebe uma confirmação só, com todas as datas.
 - Cancelar: um horário só (como qualquer outro) ou "este e os próximos" da
   série — um aviso só ao cliente, com as datas canceladas.
+
+## 15. Sinal pago online (Stripe)
+
+- Gerente e dono ligam "cobrar o sinal online" na unidade (só com o Stripe
+  configurado no servidor). Desligado, nada muda: o sinal é marcado na mão.
+- Ligado, o agendamento pela página pública com sinal (soma dos serviços)
+  nasce **aguardando pagamento** e o horário fica reservado por 15 minutos.
+  O cliente paga com cartão na mesma tela; aprovado (pela tela ou pelo
+  webhook do Stripe — o que chegar primeiro), vira confirmado e sai o e-mail
+  de confirmação. Sem pagar a tempo, o horário é liberado (rotina a cada
+  minuto; se o pagamento foi aprovado no último minuto, confirma).
+- Pagou depois de o horário ter sido liberado: estorno automático. Cliente
+  cancelou pelo link dentro do prazo: o sinal volta pro cartão.
+- O dinheiro entra na conta da plataforma. A taxa da plataforma incide só
+  nesse valor (pagamento que passa pelo Stripe); o repasse devido à unidade
+  aparece em `depositPayoutReport` (sem os estornados).

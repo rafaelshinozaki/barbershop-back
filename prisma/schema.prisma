@@ -464,6 +464,9 @@ model Barbershop {
   // /u/:slug e não é mais editável depois de criado); precisa ser um label
   // de DNS válido (minúsculas, números, hífen — validado no service).
   subdomain      String?   @unique
+  // Sinal pago online (cartão, Stripe) ao agendar pela página pública: o
+  // horário fica reservado até pagar. Desligado, a equipe marca o sinal na mão
+  onlineDeposit  Boolean   @default(false)
   address        String
   complement1    String?
   complement2    String?
@@ -919,6 +922,10 @@ model Appointment {
   seriesIndex  Int?
   depositAmount  Decimal? // sinal — cobrança em pessoa, isto só registra valor combinado e se já foi pago
   depositPaid    Boolean   @default(false)
+  depositPaidAt  DateTime?
+  depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
+  // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
+  holdExpiresAt  DateTime?
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -937,6 +944,7 @@ model Appointment {
   @@index([status, reminderSentAt, startAt])
   @@index([status, reviewRequestSentAt, endAt])
   @@index([seriesId])
+  @@index([status, holdExpiresAt])
 }
 
 model AppointmentService {

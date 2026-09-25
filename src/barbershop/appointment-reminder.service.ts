@@ -10,6 +10,7 @@ import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import { appointmentManageUrl } from './appointment-link';
 import { ReviewRequestService } from './review-request.service';
+import { DepositPaymentService } from './deposit-payment.service';
 import type { Job } from 'bullmq';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
@@ -159,6 +160,8 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'enqueue-due-reminders', repeat: { every: 5 * 60 * 1000 } },
       // "Como foi?" depois do atendimento (ver ReviewRequestService)
       { id: 'enqueue-review-requests', repeat: { every: 15 * 60 * 1000 } },
+      // Libera horários reservados cujo sinal online não foi pago a tempo
+      { id: 'expire-deposit-holds', repeat: { every: 60 * 1000 } },
     ]);
   }
 }
@@ -168,12 +171,14 @@ export class AppointmentReminderProcessor extends WorkerHost {
   constructor(
     private readonly reminders: AppointmentReminderService,
     private readonly reviewRequests: ReviewRequestService,
+    private readonly deposits: DepositPaymentService,
   ) {
     super();
   }
 
   async process(job: Job) {
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
+    if (job.name === 'expire-deposit-holds') return this.deposits.expireHolds();
     return this.reminders.enqueueDueReminders();
   }
 }

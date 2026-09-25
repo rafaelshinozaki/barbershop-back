@@ -314,6 +314,10 @@ export class PublicBarbershopType {
   @Field()
   currency: string;
 
+  /** O sinal é pago online ao agendar (cartão) */
+  @Field({ defaultValue: false })
+  onlineDeposit: boolean;
+
   @Field(() => [PublicServiceType])
   services: PublicServiceType[];
 
@@ -419,6 +423,22 @@ export class MyReviewType {
 
   @Field({ nullable: true })
   comment?: string;
+}
+
+/** Pagamento do sinal online: o cartão é confirmado na tela com o client secret */
+@ObjectType()
+export class DepositPaymentType {
+  @Field()
+  clientSecret: string;
+
+  @Field(() => Float)
+  amount: number;
+
+  @Field()
+  currency: string;
+
+  @Field()
+  holdExpiresAt: Date;
 }
 
 /** Página "como foi?" do link do e-mail pós-atendimento */
@@ -565,6 +585,16 @@ export class ManagedAppointmentType {
 
   @Field()
   currency: string;
+
+  @Field(() => Float, { nullable: true })
+  depositAmount?: number | null;
+
+  @Field({ defaultValue: false })
+  depositPaid: boolean;
+
+  /** Aguardando o sinal online: até quando o horário fica reservado */
+  @Field({ nullable: true })
+  holdExpiresAt?: string | null;
 
   /** Link de gerenciar (só na lista de próximos horários do cliente logado) */
   @Field({ nullable: true })

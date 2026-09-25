@@ -96,6 +96,8 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
 /** Recepção não atende: não aparece pra agendar nem recebe agendamento */
 /** Até quantos dias à frente o "próximo horário disponível" procura */
 const NEXT_AVAILABLE_DAYS = 60;
+/** Quanto tempo o horário fica reservado esperando o sinal online */
+export const DEPOSIT_HOLD_MINUTES = 15;
 const BOOKABLE_STAFF = {
   OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
 } satisfies Prisma.BarberWhereInput;
@@ -3019,6 +3021,9 @@ export class BarbershopService {
     const depositAmount = deposits.length
       ? deposits.reduce((sum, sv) => sum.add(sv.depositAmount!), new Decimal(0))
       : null;
+    // Sinal online: o horário fica reservado (aguardando pagamento) por
+    // alguns minutos; sem pagar, é liberado (ver DepositPaymentService)
+    const payOnline = barbershop.onlineDeposit && depositAmount != null && depositAmount.gt(0);
     const book = (barberId: number) =>
       this.prisma.$transaction(async (tx) => {
         await this.lockSchedule(tx, barberId);
@@ -3037,7 +3042,8 @@ export class BarbershopService {
             barberId,
             startAt,
             endAt,
-            status: 'CONFIRMED',
+            status: payOnline ? 'PENDING_PAYMENT' : 'CONFIRMED',
+            holdExpiresAt: payOnline ? new Date(Date.now() + DEPOSIT_HOLD_MINUTES * 60_000) : null,
             source: 'ONLINE',
             notes: input.notes,
             depositAmount,
@@ -3071,8 +3077,9 @@ export class BarbershopService {
 
     // Confirmação por e-mail com o link pra cancelar/remarcar (best-effort:
     // o horário já está marcado, e-mail fora do ar não desfaz nada)
+    // Aguardando o sinal: a confirmação sai quando o pagamento for aprovado
     const confirmationEmail = input.customerEmail?.trim() || customer!.email;
-    if (created && confirmationEmail) {
+    if (created && confirmationEmail && created.status === 'CONFIRMED') {
       this.sendAppointmentEmail(created.id, 'appointment_confirmation', confirmationEmail).catch(
         (err) =>
           this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
@@ -3085,6 +3092,11 @@ export class BarbershopService {
    * Confirmação ou aviso de horário remarcado, com o link "gerenciar
    * agendamento" (cancelar/remarcar sem login). Vai pela fila de e-mail.
    */
+  /** Confirmação depois que o sinal online é pago */
+  notifyAppointmentConfirmed(appointmentId: number, to: string) {
+    return this.sendAppointmentEmail(appointmentId, 'appointment_confirmation', to);
+  }
+
   /** Cancelamento pela unidade (ex.: fechamento no dia), com o motivo no e-mail */
   notifyAppointmentCancelled(
     appointmentId: number,
@@ -3268,6 +3280,9 @@ export class BarbershopService {
       serviceName: services.map((s) => s.service!.name).join(' + '),
       price: services.reduce((sum, s) => sum + Number(s.unitPrice) * (s.quantity ?? 1), 0),
       currency: shop.currency,
+      depositAmount: appt.depositAmount != null ? Number(appt.depositAmount) : null,
+      depositPaid: appt.depositPaid,
+      holdExpiresAt: appt.holdExpiresAt?.toISOString() ?? null,
     };
   }
 

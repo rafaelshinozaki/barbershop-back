@@ -21,6 +21,7 @@ import { StripeService } from './stripe.service';
 import { Request } from 'express';
 import { PaymentsService } from '../payments/payments.service';
 import { ChairRentService } from '../barbershop/chair-rent.service';
+import { DepositPaymentService } from '../barbershop/deposit-payment.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -34,6 +35,7 @@ export class StripeController {
     private stripeService: StripeService,
     private paymentsService: PaymentsService,
     private chairRent: ChairRentService,
+    private deposits: DepositPaymentService,
   ) {}
 
   @Post('webhook')
@@ -397,6 +399,11 @@ export class StripeController {
   private async handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     this.logger.log(`Payment intent succeeded: ${paymentIntent.id}`);
     const meta = paymentIntent.metadata ?? {};
+    // Sinal de agendamento pago online (a tela também confirma; idempotente)
+    if (meta.kind === 'appointment_deposit') {
+      await this.deposits.finalize(paymentIntent);
+      return;
+    }
     if (meta.renewalKey) {
       const payment = await this.prisma.payment.findUnique({
         where: { renewalKey: meta.renewalKey },
