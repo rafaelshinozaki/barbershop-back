@@ -1290,6 +1290,7 @@ type LoginHistory {
 input LoginInput {
   email: String!
   password: String!
+  rememberMe: Boolean
 }
 
 type ManagedAppointmentType {
@@ -2967,6 +2968,7 @@ input UsersDetailedFilters {
 input Verify2FAInput {
   code: String!
   loginId: String!
+  rememberMe: Boolean
 }
 
 input VerifyChangePasswordCodeInput {

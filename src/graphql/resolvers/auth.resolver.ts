@@ -97,7 +97,7 @@ export class AuthResolver {
     }
 
     this.logger.log('2FA disabled, logging in directly');
-    await this.authService.login(dbUser, req, res);
+    await this.authService.login(dbUser, req, res, loginInput.rememberMe ?? false);
     return toGraphQLUser(dbUser) as any;
   }
 
@@ -109,7 +109,7 @@ export class AuthResolver {
   ): Promise<any> {
     const { req, res } = context;
     const dbUser = await this.userService.verifyLoginCode(verifyInput.loginId, verifyInput.code);
-    await this.authService.login(dbUser, req, res);
+    await this.authService.login(dbUser, req, res, verifyInput.rememberMe ?? false);
     return toGraphQLUser(dbUser) as any;
   }
 
@@ -419,7 +419,8 @@ export class AuthResolver {
       },
     };
     const dbUser = await this.userService.createUser(userData);
-    await this.authService.login(dbUser, req, res);
+    // Acabou de criar a conta: fica lembrado (como o login social)
+    await this.authService.login(dbUser, req, res, true);
     return toGraphQLUser(dbUser) as any;
   }
 }

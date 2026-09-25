@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { SmartLogger } from '@/common/logger.util';
+import { renewIfStale, type SessionPayload } from '@/auth/session-cookie';
 
 @Injectable()
 export class GraphQLJwtAuthGuard implements CanActivate {
@@ -17,7 +18,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext) {
     const gqlContext = GqlExecutionContext.create(context);
-    const { req } = gqlContext.getContext();
+    const { req, res } = gqlContext.getContext();
 
     // Try to get token from Authorization header first
     let token = req.headers?.authorization?.replace('Bearer ', '');
@@ -51,11 +52,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       // Decode the JWT
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as {
-        userId: number;
-        email: string;
-        sessionToken?: string;
-      };
+      }) as SessionPayload & { iat?: number };
 
       this.logger.log('JWT decoded successfully', {
         userId: decoded.userId,
@@ -86,6 +83,14 @@ export class GraphQLJwtAuthGuard implements CanActivate {
           throw new UnauthorizedException('Session has been terminated');
         }
       }
+
+      // Em uso: renova o prazo da sessão (quem usa todo dia não cai)
+      renewIfStale(
+        this.jwtService,
+        res,
+        decoded,
+        this.configService.get<string>('NODE_ENV') === 'production',
+      );
 
       // Attach user to request for use in resolvers
       req.user = { ...user, sessionToken: decoded.sessionToken };
