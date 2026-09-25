@@ -131,6 +131,8 @@ type Appointment {
   customerId: Int!
   depositAmount: Float
   depositPaid: Boolean!
+  depositPaidAt: DateTime
+  depositRefundedAt: DateTime
   endAt: String!
   id: Int!
   notes: String
@@ -1293,6 +1295,7 @@ type ManagedAppointmentType {
   customerName: String!
   depositAmount: Float
   depositPaid: Boolean!
+  depositRefunded: Boolean!
   endAt: String!
   holdExpiresAt: String
   id: Int!
@@ -1493,6 +1496,7 @@ type Mutation {
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
+  refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
   removeNetworkLogo: Boolean!
@@ -2545,6 +2549,7 @@ input UpdateAppointmentInput {
   customerId: Int
   endAt: String
   notes: String
+  refundDeposit: Boolean
   resourceId: Int
   startAt: String
   status: String

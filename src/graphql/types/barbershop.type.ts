@@ -621,6 +621,13 @@ export class Appointment {
   @Field()
   depositPaid: boolean;
 
+  /** Sinal pago online pelo Stripe (a equipe pode estornar) */
+  @Field({ nullable: true })
+  depositPaidAt?: Date;
+
+  @Field({ nullable: true })
+  depositRefundedAt?: Date;
+
   @Field(() => [AppointmentServiceType], { nullable: true })
   services?: AppointmentServiceType[];
 

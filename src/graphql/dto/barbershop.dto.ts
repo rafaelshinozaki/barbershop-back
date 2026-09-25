@@ -618,6 +618,10 @@ export class UpdateAppointmentInput {
 
   @Field({ nullable: true })
   status?: string;
+
+  /** Ao cancelar: estorna o sinal pago online (padrão: sim) */
+  @Field({ nullable: true })
+  refundDeposit?: boolean;
 }
 
 // ============ WalkIn ============

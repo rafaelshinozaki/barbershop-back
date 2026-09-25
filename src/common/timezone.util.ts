@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 // Conversão entre "hora de parede" no fuso de uma unidade e instantes UTC,
 // sem depender do fuso do processo Node. O servidor roda em UTC (imagem
 // node:alpine sem TZ), então qualquer new Date('2026-09-25T00:00:00') /
@@ -114,5 +116,30 @@ export function monthRangeUtc(year: number, month: number, timeZone: string) {
   return {
     start: zonedTimeToUtc(first(year, month), 0, timeZone),
     end: zonedTimeToUtc(first(year, month + 1), 0, timeZone),
+  };
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Filtro de período de relatório. "YYYY-MM-DD" é um dia do calendário da
+ * unidade (início às 00h de `from`, fim incluindo o dia `to` inteiro) —
+ * `new Date("2026-09-30")` era meia-noite UTC: cortava o último dia e
+ * deslocava as bordas em 3h no Brasil. Data com hora vale como instante.
+ */
+export function reportPeriod(timeZone: string, from?: string | null, to?: string | null) {
+  const parse = (v: string, end: boolean) => {
+    if (DATE_ONLY.test(v)) {
+      return end
+        ? new Date(zonedTimeToUtc(nextDateStr(v), 0, timeZone).getTime() - 1)
+        : zonedTimeToUtc(v, 0, timeZone);
+    }
+    const d = new Date(v);
+    if (isNaN(d.getTime())) throw new BadRequestException('Período inválido');
+    return d;
+  };
+  return {
+    gte: from ? parse(from, false) : undefined,
+    lte: to ? parse(to, true) : undefined,
   };
 }

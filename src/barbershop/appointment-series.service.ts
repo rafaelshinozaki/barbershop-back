@@ -245,7 +245,14 @@ export class AppointmentSeriesService {
         status: 'CONFIRMED',
         startAt: { gte: appt.startAt },
       },
-      select: { id: true, startAt: true },
+      select: {
+        id: true,
+        startAt: true,
+        barberId: true,
+        depositPaid: true,
+        depositPaidAt: true,
+        services: { select: { serviceId: true } },
+      },
       orderBy: { startAt: 'asc' },
     });
     if (targets.length === 0) return { cancelledCount: 0 };
@@ -253,6 +260,17 @@ export class AppointmentSeriesService {
       where: { id: { in: targets.map((t) => t.id) }, status: 'CONFIRMED' },
       data: { status: 'CANCELLED' },
     });
+    for (const t of targets) {
+      // Cada data liberada pode ser a vaga de alguém da lista de espera
+      this.barbershopService
+        .checkWaitlistOnCancellation(barbershopId, t)
+        .catch((err) => this.logger.error(`Erro ao verificar lista de espera #${t.id}:`, err));
+      if (t.depositPaid && t.depositPaidAt) {
+        await this.barbershopService
+          .refundOnlineDeposit(t.id)
+          .catch((err) => this.logger.error(`Erro ao estornar o sinal #${t.id}:`, err));
+      }
+    }
     const email = await this.customerEmail(appt.customerId);
     if (email && targets[0].startAt > new Date()) {
       const { timeZone, country } = await this.shop(barbershopId);

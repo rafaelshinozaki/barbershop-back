@@ -29,6 +29,7 @@ import {
   safeTimeZone,
   toZonedParts,
   zonedTimeToUtc,
+  reportPeriod,
 } from '../common/timezone.util';
 import {
   planIncludesModule,
@@ -1992,6 +1993,7 @@ export class BarbershopService {
       notes: string;
       status: string;
     }>,
+    opts: { refundDeposit?: boolean } = {},
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const appointment = await this.prisma.appointment.findFirst({
@@ -2038,6 +2040,8 @@ export class BarbershopService {
     // que combine (mesma data, mesmo barbeiro/serviço se especificado).
     // Não bloqueia a resposta da mutation nem falha ela: notificação é
     // best-effort (erro de WhatsApp/e-mail não deve impedir o cancelamento).
+    const moved =
+      data.startAt != null && new Date(data.startAt).getTime() !== appointment.startAt.getTime();
     if (data.status === 'CANCELLED' && appointment.status !== 'CANCELLED') {
       this.checkWaitlistOnCancellation(barbershopId, updated).catch((err) =>
         this.logger.error(
@@ -2045,6 +2049,39 @@ export class BarbershopService {
           err,
         ),
       );
+    }
+
+    // Remarcou pela agenda: o horário antigo ficou livre
+    if (moved && appointment.status === 'CONFIRMED' && data.status !== 'CANCELLED') {
+      this.checkWaitlistOnCancellation(barbershopId, {
+        ...updated,
+        startAt: appointment.startAt,
+        barberId: appointment.barberId,
+      }).catch((err) =>
+        this.logger.error(
+          `Erro ao verificar lista de espera do agendamento #${appointmentId}:`,
+          err,
+        ),
+      );
+    }
+
+    // A unidade cancelou: o sinal pago online volta pro cliente (a equipe
+    // pode optar por reter, ex.: cliente avisou em cima da hora). Falta
+    // (NO_SHOW) retém o sinal — é pra isso que ele existe.
+    if (
+      data.status === 'CANCELLED' &&
+      appointment.status !== 'CANCELLED' &&
+      opts.refundDeposit !== false &&
+      appointment.depositPaid &&
+      appointment.depositPaidAt
+    ) {
+      try {
+        if (await this.refundOnlineDeposit(appointmentId)) {
+          Object.assign(updated, { depositPaid: false, depositRefundedAt: new Date() });
+        }
+      } catch (err) {
+        this.logger.error(`Erro ao estornar o sinal do agendamento #${appointmentId}:`, err);
+      }
     }
 
     // Taxa de no-show/cancelamento tardio: cobrança 100% manual (mesma
@@ -2147,7 +2184,81 @@ export class BarbershopService {
       where: { id: appointmentId, barbershopId },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    if (appointment.depositPaid && appointment.depositPaidAt) {
+      throw new BadRequestException(
+        'Este horário tem sinal pago online. Cancele (o sinal é estornado) em vez de excluir.',
+      );
+    }
     await this.prisma.appointment.delete({ where: { id: appointmentId } });
+  }
+
+  /**
+   * Estorna o sinal pago online (Stripe). Marca antes de chamar o Stripe —
+   * dois cliques, ou cliente e unidade ao mesmo tempo, não estornam duas
+   * vezes — e desfaz a marca se o Stripe recusar. Sem sinal online pago
+   * (ou já estornado): false.
+   */
+  async refundOnlineDeposit(appointmentId: number) {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { depositPaymentIntentId: true, depositPaidAt: true },
+    });
+    const intentId = appt?.depositPaymentIntentId;
+    if (!intentId || !appt.depositPaidAt) return false;
+    const now = new Date();
+    const claimed = await this.prisma.appointment.updateMany({
+      where: {
+        id: appointmentId,
+        depositPaid: true,
+        depositRefundedAt: null,
+        depositPaymentIntentId: intentId,
+      },
+      data: { depositPaid: false, depositRefundedAt: now },
+    });
+    if (claimed.count === 0) return false;
+    try {
+      await this.stripeService.createRefund(
+        intentId,
+        undefined,
+        'requested_by_customer',
+        `deposit-refund-${intentId}`,
+      );
+    } catch (err) {
+      // Já estornado direto no painel do Stripe: vale como estornado
+      if ((err as { code?: string })?.code === 'charge_already_refunded') return true;
+      await this.prisma.appointment.updateMany({
+        where: { id: appointmentId, depositRefundedAt: now },
+        data: { depositPaid: true, depositRefundedAt: null },
+      });
+      throw err;
+    }
+    return true;
+  }
+
+  /** Estorno manual do sinal pago online (gerente e dono). */
+  async refundAppointmentDeposit(userId: number, barbershopId: number, appointmentId: number) {
+    const barbershop = await this.ensureAccess(userId, barbershopId, 'manager');
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, barbershopId },
+    });
+    if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    if (appointment.depositRefundedAt) throw new BadRequestException('O sinal já foi estornado');
+    if (!appointment.depositPaid || !appointment.depositPaidAt) {
+      throw new BadRequestException('Este horário não tem sinal pago online');
+    }
+    let refunded: boolean;
+    try {
+      refunded = await this.refundOnlineDeposit(appointmentId);
+    } catch (err) {
+      this.logger.error(`Erro ao estornar o sinal do agendamento #${appointmentId}:`, err);
+      throw new BadRequestException('Não foi possível estornar agora. Tente de novo.');
+    }
+    if (!refunded) throw new BadRequestException('O sinal já foi estornado');
+    const updated = await this.prisma.appointment.findUniqueOrThrow({
+      where: { id: appointmentId },
+      include: { services: { include: { service: true } }, customer: true, barber: true },
+    });
+    return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
   async setAppointmentDepositPaid(
@@ -2162,6 +2273,12 @@ export class BarbershopService {
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
     this.ensureOwnAppointment(await this.ownBarberIdIfBarber(userId, barbershop), appointment);
+    // Sinal online: só o Stripe muda (pago) ou o estorno (desfaz)
+    if (appointment.depositPaidAt || appointment.depositRefundedAt) {
+      throw new BadRequestException(
+        'Sinal pago online: use "Estornar sinal" pra devolver ao cliente.',
+      );
+    }
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { depositPaid },
@@ -2205,10 +2322,16 @@ export class BarbershopService {
     return this.prisma.waitlistEntry.update({ where: { id }, data: { status: 'CANCELLED' } });
   }
 
-  private async checkWaitlistOnCancellation(
+  /**
+   * Um horário ficou livre (cancelado, remarcado, reserva sem sinal que
+   * expirou): avisa o primeiro da lista de espera que combine. Horário que
+   * já passou não interessa a ninguém.
+   */
+  async checkWaitlistOnCancellation(
     barbershopId: number,
     appointment: { startAt: Date; barberId: number; services: { serviceId: number }[] },
   ) {
+    if (appointment.startAt <= new Date()) return;
     // WaitlistEntry.date é gravada como meia-noite UTC do dia escolhido
     // (new Date("YYYY-MM-DD")); o dia do agendamento tem de ser o do fuso da
     // unidade — em UTC, um horário depois das 21h em Brasília já caía no dia
@@ -3282,6 +3405,7 @@ export class BarbershopService {
       currency: shop.currency,
       depositAmount: appt.depositAmount != null ? Number(appt.depositAmount) : null,
       depositPaid: appt.depositPaid,
+      depositRefunded: appt.depositRefundedAt != null,
       holdExpiresAt: appt.holdExpiresAt?.toISOString() ?? null,
     };
   }
@@ -4017,15 +4141,12 @@ export class BarbershopService {
     startDate?: string,
     endDate?: string,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const payments = await this.prisma.clientSubscriptionPayment.findMany({
       where: {
         status: 'SUCCEEDED',
         subscription: { barbershopId },
-        createdAt: {
-          gte: startDate ? new Date(startDate) : undefined,
-          lte: endDate ? new Date(endDate) : undefined,
-        },
+        createdAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
       },
     });
     const grossAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);

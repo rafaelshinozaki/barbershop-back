@@ -592,6 +592,10 @@ export class ManagedAppointmentType {
   @Field({ defaultValue: false })
   depositPaid: boolean;
 
+  /** Sinal pago online e já estornado */
+  @Field({ defaultValue: false })
+  depositRefunded: boolean;
+
   /** Aguardando o sinal online: até quando o horário fica reservado */
   @Field({ nullable: true })
   holdExpiresAt?: string | null;

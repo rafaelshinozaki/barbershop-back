@@ -922,7 +922,8 @@ export class BarbershopResolver {
     @Args('input') input: UpdateAppointmentInput,
     @CurrentUser() user: UserDTO,
   ) {
-    const data: any = { ...input };
+    const { refundDeposit, ...rest } = input;
+    const data: any = { ...rest };
     if (input.startAt) data.startAt = new Date(input.startAt);
     if (input.endAt) data.endAt = new Date(input.endAt);
     // Status anterior pra avisar só na mudança (concluído/cancelado/falta)
@@ -932,7 +933,9 @@ export class BarbershopResolver {
           select: { status: true },
         })
       : null;
-    const result = await this.barbershopService.updateAppointment(user.id, barbershopId, id, data);
+    const result = await this.barbershopService.updateAppointment(user.id, barbershopId, id, data, {
+      refundDeposit: refundDeposit ?? true,
+    });
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     if (input.status && before && before.status !== input.status) {
       void this.activity.appointmentStatusChanged(id, input.status, user.id);
@@ -950,6 +953,19 @@ export class BarbershopResolver {
     await this.barbershopService.deleteAppointment(user.id, barbershopId, id);
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'DELETED');
     return true;
+  }
+
+  /** Estorna o sinal pago online (gerente e dono), sem cancelar o horário. */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Appointment)
+  async refundAppointmentDeposit(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const result = await this.barbershopService.refundAppointmentDeposit(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    return result;
   }
 
   // ============ WALK-INS ============

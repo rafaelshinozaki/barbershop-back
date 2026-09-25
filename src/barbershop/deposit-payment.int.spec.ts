@@ -49,15 +49,22 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     cancelPaymentIntent: async (id: string) => {
       intents.get(id)!.status = 'canceled';
     },
-    createRefund: async (id: string) => void refunds.push(id),
+    createRefund: async (id: string) => {
+      if (failNextRefund) {
+        failNextRefund = false;
+        throw new Error('Stripe fora do ar');
+      }
+      refunds.push(id);
+    },
   };
+  let failNextRefund = false;
   const stub = {} as never;
   const barbershops = new BarbershopService(
     prisma,
     stub,
     stub,
     { isConfigured: () => false } as never,
-    stub,
+    stripe as never,
     { email: async (job: any) => void emails.push(job), whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
@@ -157,6 +164,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
   afterAll(async () => {
     if (stripeKeyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
     else process.env.STRIPE_SECRET_KEY = stripeKeyBefore;
+    await prisma.waitlistEntry.deleteMany({ where: { barbershopId: shopId } });
     await prisma.appointmentService.deleteMany({
       where: { appointment: { barbershopId: shopId } },
     });
@@ -286,6 +294,111 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     });
     await expect(deposits.payoutReport(staffUserId, shopId)).rejects.toBeInstanceOf(
       ForbiddenException,
+    );
+  });
+  // Agendado pela página e com o sinal pago (confirmado)
+  const paidBooking = async (hhmm: string) => {
+    const appt = await book(hhmm);
+    const token = createAppointmentToken(appt!.id);
+    await deposits.start(token);
+    const piId = (await prisma.appointment.findUniqueOrThrow({ where: { id: appt!.id } }))
+      .depositPaymentIntentId!;
+    pay(piId);
+    expect(await deposits.confirm(token)).toBe('CONFIRMED');
+    return { id: appt!.id, piId };
+  };
+  const load = (id: number) => prisma.appointment.findUniqueOrThrow({ where: { id } });
+
+  it('a unidade cancela: estorna sozinho (ou retém, se escolher); falta retém', async () => {
+    const a = await paidBooking('16:00');
+    await barbershops.updateAppointment(ownerId, shopId, a.id, { status: 'CANCELLED' });
+    expect(refunds).toContain(a.piId);
+    expect(await load(a.id)).toMatchObject({ depositPaid: false });
+    expect((await load(a.id)).depositRefundedAt).toBeInstanceOf(Date);
+    await expect(barbershops.refundAppointmentDeposit(ownerId, shopId, a.id)).rejects.toThrow(
+      'O sinal já foi estornado',
+    );
+
+    const kept = await paidBooking('16:30');
+    await barbershops.updateAppointment(
+      ownerId,
+      shopId,
+      kept.id,
+      { status: 'CANCELLED' },
+      { refundDeposit: false },
+    );
+    expect(refunds).not.toContain(kept.piId);
+    expect(await load(kept.id)).toMatchObject({ depositPaid: true, depositRefundedAt: null });
+
+    const noShow = await paidBooking('17:00');
+    await barbershops.updateAppointment(ownerId, shopId, noShow.id, { status: 'NO_SHOW' });
+    expect(refunds).not.toContain(noShow.piId);
+  });
+
+  it('estorno manual: gerente/dono, uma vez só; falha do Stripe desfaz a marca', async () => {
+    const a = await paidBooking('17:30');
+    // Sinal online não se desmarca na mão nem some com o horário
+    await expect(
+      barbershops.setAppointmentDepositPaid(ownerId, shopId, a.id, false),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(barbershops.deleteAppointment(ownerId, shopId, a.id)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(
+      barbershops.refundAppointmentDeposit(staffUserId, shopId, a.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    failNextRefund = true;
+    await expect(barbershops.refundAppointmentDeposit(ownerId, shopId, a.id)).rejects.toThrow(
+      'Não foi possível estornar agora',
+    );
+    expect(await load(a.id)).toMatchObject({ depositPaid: true, depositRefundedAt: null });
+
+    const [r1, r2] = await Promise.allSettled([
+      barbershops.refundAppointmentDeposit(ownerId, shopId, a.id),
+      barbershops.refundAppointmentDeposit(ownerId, shopId, a.id),
+    ]);
+    expect([r1.status, r2.status].sort()).toEqual(['fulfilled', 'rejected']);
+    expect(refunds.filter((id) => id === a.piId)).toHaveLength(1);
+    const saved = await load(a.id);
+    expect(saved).toMatchObject({ status: 'CONFIRMED', depositPaid: false });
+  });
+
+  it('reserva sem sinal que expirou avisa a lista de espera; horário passado não', async () => {
+    const customerId = (
+      await prisma.customer.create({
+        data: {
+          networkId,
+          name: 'Na Espera',
+          phone: '11900000000',
+          email: `espera-${RUN}@test.local`,
+        },
+      })
+    ).id;
+    const entry = await prisma.waitlistEntry.create({
+      data: { barbershopId: shopId, customerId, date: new Date(`${monday}T00:00:00Z`) },
+    });
+    const held = await book('13:00');
+    await prisma.appointment.update({
+      where: { id: held!.id },
+      data: { holdExpiresAt: new Date(Date.now() - 1000) },
+    });
+    await deposits.expireHolds();
+    await settle();
+    expect((await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } })).status).toBe(
+      'NOTIFIED',
+    );
+    expect(emails.map((e) => e.template)).toContain('waitlist_slot_available');
+
+    // Horário que já passou não é vaga pra ninguém
+    await prisma.waitlistEntry.update({ where: { id: entry.id }, data: { status: 'WAITING' } });
+    await barbershops.checkWaitlistOnCancellation(shopId, {
+      startAt: new Date(Date.now() - 3600_000),
+      barberId,
+      services: [],
+    });
+    expect((await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } })).status).toBe(
+      'WAITING',
     );
   });
 });

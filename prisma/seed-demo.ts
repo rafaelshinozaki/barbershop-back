@@ -2155,6 +2155,204 @@ async function ensurePayroll(prisma: PrismaClient) {
   }
 }
 
+// Primeiro dia útil (seg-sex) a partir de `offset` dias, como "YYYY-MM-DD" de Brasília
+function weekdayFrom(offset: number, weekday?: number): { offset: number; date: string } {
+  for (let o = offset; ; o++) {
+    const dow = atBrt(o, 12).getUTCDay();
+    if (weekday != null ? dow === weekday : dow >= 1 && dow <= 5) {
+      return { offset: o, date: atBrt(o, 12).toISOString().slice(0, 10) };
+    }
+  }
+}
+
+// Novidades da agenda e das avaliações na Green: feriado e horário especial,
+// folga fixa na escala, cliente recorrente (a cada 2 semanas), respostas às
+// avaliações, uma denúncia pra moderação e sinal pago online (um estornado).
+// Datas longe das que os E2E usam (2-4 dias, 40-48 dias, segundas daqui a 9+ semanas).
+async function ensureNewFeatures(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green || !green.ownerUserId) return;
+  const ownerId = green.ownerUserId;
+  const shopId = green.id;
+
+  if (!(await prisma.barbershopClosure.count({ where: { barbershopId: shopId } }))) {
+    console.log('Closures: a holiday, special hours and a fixed day off...');
+    const closed = weekdayFrom(24);
+    const special = weekdayFrom(31);
+    await prisma.barbershopClosure.createMany({
+      data: [
+        {
+          barbershopId: shopId,
+          date: closed.date,
+          reason: 'Feriado municipal',
+          createdByUserId: ownerId,
+        },
+        {
+          barbershopId: shopId,
+          date: special.date,
+          openTime: '10:00',
+          closeTime: '14:00',
+          reason: 'Horário especial (evento no bairro)',
+          createdByUserId: ownerId,
+        },
+      ],
+    });
+    // Nada marcado nos dias que ficaram fechados
+    await prisma.appointment.updateMany({
+      where: {
+        barbershopId: shopId,
+        status: 'CONFIRMED',
+        startAt: { gte: atBrt(closed.offset, 0), lt: atBrt(closed.offset + 1, 0) },
+      },
+      data: { status: 'CANCELLED' },
+    });
+    // Camila folga aos sábados (escala semanal própria)
+    const camila = await prisma.barber.findFirst({
+      where: { barbershopId: shopId, name: 'Camila Rocha' },
+    });
+    if (camila) {
+      await prisma.barberSchedule.updateMany({
+        where: { barberId: camila.id, dayOfWeek: 6 },
+        data: { isActive: false },
+      });
+    }
+  }
+
+  if (
+    !(await prisma.appointment.count({ where: { barbershopId: shopId, seriesId: { not: null } } }))
+  ) {
+    const [barber, service, customer, closures] = await Promise.all([
+      prisma.barber.findFirst({ where: { barbershopId: shopId, name: 'Cayo Carlos' } }),
+      prisma.barbershopService.findFirst({
+        where: { barbershopId: shopId, isActive: true, name: 'Corte masculino' },
+      }),
+      prisma.customer.findFirst({
+        where: { networkId: green.networkId, email: { not: null } },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.barbershopClosure.findMany({ where: { barbershopId: shopId } }),
+    ]);
+    if (barber && service && customer) {
+      console.log('Appointment series: a regular every 2 weeks...');
+      const seriesId = `demo-series-${shopId}`;
+      const first = weekdayFrom(21, 4); // quinta-feira
+      for (let i = 0; i < 4; i++) {
+        const offset = first.offset + i * 14;
+        const startAt = atBrt(offset, 18);
+        const endAt = addMinutes(startAt, service.durationMinutes);
+        const date = atBrt(offset, 12).toISOString().slice(0, 10);
+        const busy = await prisma.appointment.count({
+          where: {
+            barberId: barber.id,
+            status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+        });
+        if (busy || closures.some((c) => c.date === date)) continue;
+        await prisma.appointment.create({
+          data: {
+            barbershopId: shopId,
+            customerId: customer.id,
+            barberId: barber.id,
+            startAt,
+            endAt,
+            status: 'CONFIRMED',
+            source: 'STAFF',
+            notes: 'Cliente fixo — a cada 2 semanas',
+            seriesId,
+            seriesIndex: i,
+            services: { create: [{ serviceId: service.id, unitPrice: service.price }] },
+          },
+        });
+      }
+    }
+  }
+
+  if (!(await prisma.review.count({ where: { barbershopId: shopId, reply: { not: null } } }))) {
+    console.log('Reviews: owner replies and one report for moderation...');
+    const recent = await prisma.review.findMany({
+      where: { barbershopId: shopId, hiddenAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 2,
+    });
+    const replies = [
+      'Valeu demais pela visita! Te esperamos de novo em breve.',
+      'Obrigado pelo retorno! Já passamos pra equipe.',
+    ];
+    for (const [i, r] of recent.entries()) {
+      await prisma.review.update({
+        where: { id: r.id },
+        data: {
+          reply: replies[i],
+          repliedAt: addMinutes(r.createdAt, 180),
+          repliedByUserId: ownerId,
+        },
+      });
+    }
+    const spammer = await prisma.customer.findFirst({
+      where: { networkId: green.networkId },
+      orderBy: { id: 'desc' },
+    });
+    if (spammer) {
+      await prisma.review.create({
+        data: {
+          barbershopId: shopId,
+          customerId: spammer.id,
+          rating: 1,
+          comment: 'Promoção imperdível! Corte grátis na barbearia do lado, é só chamar no zap.',
+          createdAt: atBrt(-1, 10),
+          reportedAt: atBrt(-1, 12),
+          reportReason: 'Propaganda de outra barbearia, a pessoa nunca foi atendida aqui.',
+        },
+      });
+    }
+  }
+
+  if (
+    !(await prisma.appointment.count({
+      where: { barbershopId: shopId, depositPaymentIntentId: { startsWith: 'pi_demo_' } },
+    }))
+  ) {
+    // Não liga o sinal online da unidade (sem Stripe de verdade o agendamento
+    // público ficaria aguardando pagamento); só o histórico e o repasse
+    const done = await prisma.appointment.findMany({
+      where: { barbershopId: shopId, status: 'COMPLETED', startAt: { gte: atBrt(-20, 0) } },
+      orderBy: { startAt: 'desc' },
+      take: 3,
+    });
+    const cancelled = await prisma.appointment.findFirst({
+      where: { barbershopId: shopId, status: 'CANCELLED', startAt: { gte: atBrt(-20, 0) } },
+    });
+    if (done.length) {
+      console.log('Online deposits: paid through Stripe and one refund...');
+      for (const [i, a] of done.entries()) {
+        await prisma.appointment.update({
+          where: { id: a.id },
+          data: {
+            depositAmount: 20,
+            depositPaid: true,
+            depositPaidAt: addMinutes(a.startAt, -2 * 24 * 60),
+            depositPaymentIntentId: `pi_demo_${shopId}_${i + 1}`,
+          },
+        });
+      }
+      if (cancelled) {
+        await prisma.appointment.update({
+          where: { id: cancelled.id },
+          data: {
+            depositAmount: 20,
+            depositPaid: false,
+            depositPaidAt: addMinutes(cancelled.startAt, -3 * 24 * 60),
+            depositRefundedAt: addMinutes(cancelled.startAt, -24 * 60),
+            depositPaymentIntentId: `pi_demo_${shopId}_refunded`,
+          },
+        });
+      }
+    }
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -2194,5 +2392,6 @@ export async function seedDemoData(prisma: PrismaClient) {
   await ensureSharedLocation(prisma);
   await ensureChairRent(prisma);
   await ensurePayroll(prisma);
+  await ensureNewFeatures(prisma);
   await seedNotifications(prisma, green.id);
 }
