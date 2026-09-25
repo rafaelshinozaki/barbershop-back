@@ -213,33 +213,71 @@ Cargo (o que a pessoa **pode fazer** na unidade) e atender (se ela **corta cabel
 - Se o plano mudar para preço por profissional (por vaga), esta é a unidade natural de cobrança: "R$ X por profissional que atende", com a equipe administrativa grátis.
 - **Transição:** unidades que hoje estão no limite por causa de recepção ou gerente sem agenda ganham vaga automaticamente. É uma mudança só a favor do cliente, sem ninguém passar a pagar mais.
 
+### 8. Carreira do profissional e atendimentos "por conta própria"
+Muitos profissionais trabalham numa barbearia e também atendem por fora: em casa, a domicílio, fim de semana, clientes antigos. Hoje o sistema só existe **dentro** de uma barbearia. A ideia é o profissional ter **o panorama da carreira inteira**, sem depender de estar preso a uma barbearia, e poder usar o sistema para a parte "dele" **sem pagar nada**, dentro de um limite.
+
+**Panorama de carreira (sempre grátis)**, na conta do profissional:
+- todas as barbearias onde atende ou já atendeu, com período, cargo e comissão;
+- total de atendimentos, serviços mais feitos, faturamento gerado e comissão/pagamentos recebidos (vêm do módulo de pagamento da equipe, que já existe);
+- nota média e evolução, clientes que voltam, horários mais cheios;
+- tudo junto: o que fez nas barbearias **e** por conta própria, num lugar só.
+- É o que prende o profissional à plataforma, qualquer que seja a barbearia onde ele esteja, e é o que alimenta a página pública (item 2).
+
+**Agenda "por conta própria" (modo solo)**
+- Uma agenda pessoal do profissional, **fora** de qualquer barbearia, para os clientes dele: local próprio, domicílio ou "combinar".
+- Tem agenda, clientes, lembretes, link de agendamento próprio e página pública, sem precisar criar uma "franquia" nem uma unidade.
+- Entra na **agenda única** (item 1): não dá para marcar um atendimento solo no horário em que ele está escalado na barbearia.
+
+**Cota grátis por número de atendimentos, não por faturamento**
+- Até **N atendimentos concluídos por conta própria por mês** (ex.: 30–40) é **grátis para sempre**.
+- Contar atendimentos é mais simples e mais difícil de burlar do que faturamento declarado: o preço pode ser registrado a menos, mas o atendimento está na agenda.
+- **Só contam os atendimentos solo.** O que ele faz dentro de uma barbearia que já paga plano nunca conta, porque já está coberto.
+- O painel mostra "você fez Y de N atendimentos por conta própria este mês", com aviso ao chegar perto do limite.
+- **Acima de N:** o profissional escolhe entre
+  - o plano **Pro** (preço fixo baixo, ex.: R$ 39–59/mês, sem limite de atendimentos solo, com destaque e domicílio com raio maior); ou
+  - continuar grátis e, naquele mês, não marcar mais atendimentos solo pelo sistema. Os que já estavam marcados continuam, só novos param.
+
+  Ninguém é cobrado sem escolher. O primeiro mês acima do limite é tolerado, e a cobrança só é oferecida a partir do segundo mês seguido.
+
+**Para não virar "barbearia disfarçada" (anti-abuso)**
+- O modo solo é de **uma pessoa só**: não dá para adicionar outros profissionais, recepção nem gerente. Com equipe, vira uma barbearia com plano.
+- Sem os recursos de negócio: caixa com vários operadores, estoque, relatórios de equipe, comissões, várias unidades, franquia e campanhas em massa ficam nos planos de barbearia.
+- Uma conta = uma pessoa. Limite de sessões simultâneas no modo solo e detecção de login compartilhado (vários aparelhos atendendo ao mesmo tempo).
+- A cota é por pessoa (CPF/identidade verificada para quem passar de um uso mínimo), não por conta: criar outra conta não zera o limite.
+- Se o padrão de uso parecer de estabelecimento (volume alto todo mês, vários atendimentos no mesmo horário), o sistema sugere o plano de barbearia em vez de bloquear sem aviso.
+
 ### Monetização (sem cobrar do cliente final)
-Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria**. Quem trabalha dentro de uma franquia já é coberto pelo plano da franquia.
+Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria** e em volume. Quem trabalha dentro de uma barbearia já é coberto pelo plano dela.
 
 | Quem | Paga? | Como |
 |---|---|---|
 | Cliente final | Nunca | — |
-| Profissional vinculado a uma franquia/barbearia com plano ativo | Não | Coberto pelo plano da unidade (que já é cobrado) |
-| Profissional independente, faturando até **X/mês** na plataforma | Não | Plano grátis, com página pública, agenda e até N clientes/mês |
-| Profissional independente acima de **X/mês** | Sim | Assinatura leve **ou** taxa pequena só sobre o excedente, o que for menor |
-| Gerente/recepção | Não | Sempre ligado a uma unidade pagante |
-| Barbearia/franquia | Sim | Planos atuais (Basic/Medium/Premium) |
+| Profissional dentro de barbearia/franquia com plano ativo | Não | Coberto pelo plano da unidade |
+| Profissional: panorama de carreira e página pública | Não | Sempre grátis |
+| Profissional solo até **N atendimentos/mês** por conta própria | Não | Grátis para sempre (item 8) |
+| Profissional solo acima de **N/mês** | Opcional | Plano **Pro**, fixo e baixo, **ou** para de marcar atendimentos solo novos naquele mês |
+| Dono/gerente/recepção | Não | Ligados a uma unidade pagante; se atendem, seguem o item 7 |
+| Barbearia/franquia | Sim | Planos atuais, com o limite passando a contar só quem atende (item 7) |
 
-Proposta para o profissional independente, a validar com números:
-- **Base do "faturamento":** atendimentos concluídos pela plataforma no mês (valor dos serviços registrados), não o faturamento total da pessoa. É o que o sistema consegue medir e é justo: só conta o que a plataforma ajudou a acontecer.
-- **Limite X:** algo como R$ 3–5 mil/mês em atendimentos pela plataforma. Abaixo disso é grátis para sempre, o que ajuda a atrair profissionais em início de carreira.
-- **Acima de X,** o menor entre:
-  - assinatura fixa "Pro" (ex.: R$ 39–59/mês), com destaque na busca, domicílio, relatórios e link próprio; e
-  - taxa de 2–3% só sobre o valor que passa de X.
-
-  O teto evita que o custo cresça sem limite para quem fatura muito.
-- **Onde cobra a taxa:** se o pagamento passa pelo Stripe (sinal, pagamento no app), a taxa pode ser retida na hora, como hoje. Se foi pago por fora, entra na fatura mensal da assinatura.
-- **Extras opcionais**, pagos por quem quer mais alcance, nunca obrigatórios:
-  - "Destaque" do profissional na busca, mesmo modelo do destaque da barbearia (item 7 do Marketplace completo);
+Proposta, a validar com números:
+- **Por que número de atendimentos e não faturamento:** é o que o sistema mede com certeza, e não depende do preço registrado. A ideia anterior de limitar por faturamento (R$ 3–5 mil/mês) fica como alternativa, caso a contagem se mostre injusta com quem cobra caro.
+- **Onde cobra:** a assinatura Pro pela mesma cobrança Stripe dos planos. Nos pagamentos que passam pelo Stripe (sinal online, pagamento no app), a taxa da plataforma continua como hoje.
+- **Extras opcionais**, pagos só por quem quer mais alcance:
+  - "Destaque" do profissional na busca, no mesmo modelo do destaque da barbearia;
   - raio maior para atender a domicílio;
-  - selo de verificado (checagem de documento e certificados).
-- **Receita do lado das barbearias:** a barbearia pode abrir vaga ("preciso de barbeiro sábado") e contratar freelancer pela plataforma. Cobra uma taxa pequena por vínculo temporário fechado ou inclui isso no Premium. É o lado "Airbnb" do aluguel de cadeira, que já existe.
-- **Transição suave:** avisar antes de cobrar (painel mostrando "você está em R$ Y de X este mês"), primeiro mês acima de X grátis e só cobrar a partir do segundo mês seguido.
+  - selo de verificado.
+- **Receita do lado das barbearias:** a barbearia abre vagas ("preciso de barbeiro sábado") e contrata freelancer pela plataforma, com taxa pequena por vínculo fechado ou incluso no Premium. É o lado "Airbnb" do aluguel de cadeira, que já existe.
+
+#### Como o Booksy cobra (referência, EUA, 2026)
+- **Assinatura:** US$ 29,99/mês para 1 usuário, **+ US$ 20/mês por membro adicional da equipe**. Tudo incluso, sem planos separados. Cobra por pessoa com agenda.
+- **Boost (cliente novo do marketplace):** sem mensalidade. Cobra **30% da primeira visita** de cada cliente novo que o marketplace traz, **mínimo de US$ 10 e máximo de US$ 100**. Os retornos desse cliente não pagam nada. **É a parte mais criticada**, e há concorrentes que se vendem como "sem 30% sobre cliente novo".
+- **Processamento de pagamento:** a partir de **2,49% + US$ 0,10** por transação. A proteção contra no-show (cobrar o cartão do cliente) usa esse processamento.
+- **Cliente final:** não paga nada.
+
+O que tiramos disso:
+1. Cobrar **por quem atende** faz sentido, e é o que o item 7 propõe.
+2. **Não copiar o Boost de 30%.** Se um dia cobrarmos por cliente novo vindo do marketplace, que seja uma taxa pequena com teto baixo, e anunciar isso como diferencial.
+3. O **profissional solo grátis até N atendimentos** é algo que o Booksy não tem (lá o solo paga os mesmos US$ 29,99), e é o que traz o profissional para a plataforma antes de ele ter barbearia.
 
 ### Riscos e pontos em aberto
 - **Identidade do profissional:** hoje cada unidade tem o próprio `Barber`. Unificar sem quebrar escala, comissão, repasse e histórico é a maior mudança de modelo de dados. Fazer com migração cuidadosa: criar `Professional` e ligar os `Barber` existentes pelo `userId`.
@@ -254,4 +292,4 @@ Proposta para o profissional independente, a validar com números:
 3. Página pública do profissional (sem domicílio) + avaliação do atendimento por profissional.
 4. Perfil/histórico do cliente e nota do cliente (depois da validação jurídica).
 5. Domicílio + busca por profissional.
-6. Monetização do independente (limite X, Pro, taxa sobre o excedente) + destaque e vagas para freelancer.
+6. Panorama de carreira (grátis) + modo solo com cota de N atendimentos/mês, plano Pro e regras anti-abuso + destaque e vagas para freelancer.
