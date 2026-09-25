@@ -136,7 +136,7 @@ Cada tipo de usuário tem um **perfil** dentro da plataforma, e **a própria pes
 | Profissional (barbeiro) | Serviços realizados, tipos, galeria, especialidades, locais, domicílio, nota e comentários, onde já trabalhou |
 | Gerente | Unidades que gerencia ou gerenciou, tempo de experiência, especialidades de gestão |
 | Recepção/atendente | Unidades onde atuou, idiomas, disponibilidade |
-| Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades e, se também atender (item 7), o perfil de profissional |
+| Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades e, se também atender (item 7), o perfil de profissional — o mesmo vale para gerente e recepção |
 
 **Controles no perfil**, numa página nova "Perfis e privacidade" nas configurações da conta, ao lado de "Segurança":
 - **Visibilidade do perfil:**
@@ -184,19 +184,34 @@ Muda o cadastro inteiro. Hoje existem o `User` (dono e equipe, com tipo "padrão
   - exclusão de conta;
   - todos os testes E2E de cadastro e login.
 
-### 7. Dono (e gerente) que também atende
-O dono da barbearia ou da franquia pode cortar cabelo também, **se quiser**. Hoje não há tipo de funcionário "dono": para aparecer na agenda, ele precisa se cadastrar como funcionário da própria unidade, como o seed faz com o "Cayo Carlos". Funciona, mas é gambiarra.
-- **Opção "Eu também atendo"** nas unidades do dono (e no cadastro "Tenho uma barbearia/franquia"). Ligar essa opção:
-  - cria (ou reaproveita) o perfil de profissional dele;
-  - vincula esse perfil à unidade como quem atende, com escala, folgas e serviços próprios;
-  - põe o dono na agenda, na página pública e no "qualquer profissional".
-- Ele continua sendo o dono, com todas as permissões. "Atender" é uma camada a mais, não troca o cargo. Vale para **cada unidade**: pode atender numa e só administrar outra.
-- Na agenda única (item 1), os horários em que ele atende entram na checagem de conflito entre unidades, como os de qualquer profissional.
-- **Perfil público:** os atendimentos dele contam para a página de profissional, e ele escolhe se mostra que é o dono.
-- **Comissão e pagamento:** dono que atende na própria unidade não gera comissão para si mesmo (a receita já é dele), mas aparece nos relatórios por profissional. Gerente que atende segue as regras normais de comissão.
-- **Plano:** o dono que atende **não conta** no limite de profissionais por unidade dos planos (`maxBarbersPerShop`), para não punir o pequeno dono que corta sozinho.
-- **Monetização:** dono que atende dentro da própria unidade pagante não paga nada a mais (está na linha "vinculado a uma franquia com plano ativo").
-- O mesmo vale para o gerente: hoje ele já pode ser agendado (só a recepção não atende). O que falta é o mesmo "Eu também atendo" deixar isso explícito e opcional.
+### 7. Quem administra também pode atender (dono, gerente e recepção)
+Cargo (o que a pessoa **pode fazer** na unidade) e atender (se ela **corta cabelo**) passam a ser coisas separadas. Qualquer um, seja dono, gerente ou recepção, pode ligar **"Eu também atendo"** e passar a aparecer como barbeiro, sem perder o cargo. É o modelo do Booksy, com funcionários "com agenda" e "sem agenda".
+
+**Como é hoje**
+- Dono não é tipo de funcionário: para atender, precisa se cadastrar como funcionário da própria unidade, como o seed faz com o "Cayo Carlos".
+- Gerente já pode ser agendado.
+- Recepção **nunca** atende (`BOOKABLE_STAFF` exclui).
+- O limite de profissionais do plano (`maxBarbersPerShop`: Basic 3, Medium 10, Premium ilimitado) conta **todo funcionário ativo**, inclusive recepção e gerente que não atendem. Isso pesa injustamente para quem tem equipe administrativa.
+
+**Proposta**
+- **"Eu também atendo" por unidade**, na ficha do funcionário (gerente e recepção) e nas unidades do dono, também oferecido no cadastro de dono. Ligar a opção:
+  - cria (ou reaproveita) o perfil de profissional;
+  - habilita escala, folgas e serviços próprios;
+  - põe a pessoa na agenda, na página pública e no "qualquer profissional".
+- O cargo continua o mesmo: a recepção que atende segue com as permissões de recepção (e ganha a própria agenda); o gerente e o dono, idem.
+- Vale **por unidade**: dá para atender numa e só administrar outra.
+- Os horários de atendimento entram na checagem de conflito entre unidades (item 1). A recepção que atende tem o horário de atendimento reservado e continua cuidando do balcão nos outros horários.
+- **Comissão:** gerente e recepção que atendem seguem as regras de comissão normais. O dono não gera comissão para si mesmo, porque a receita já é dele, mas aparece nos relatórios por profissional.
+- **Perfil público:** os atendimentos contam para a página de profissional, e a pessoa escolhe se mostra o cargo (ex.: "Dono", "Gerente").
+
+**Efeito no plano: cobrar por quem atende, não por quem administra**
+- O limite do plano passa a contar **vagas de quem atende**: barbeiros, mais gerentes e recepção com "Eu também atendo" ligado.
+- Gerente e recepção que **só administram não ocupam vaga**. Faz sentido, porque o valor do plano vem da agenda que gera receita.
+- O **dono** que atende também não ocupa vaga, para não punir o pequeno dono que corta sozinho.
+- Ligar "Eu também atendo" numa unidade que já está no limite pede upgrade, com a mesma mensagem de hoje.
+- Desligar a opção libera a vaga. Os atendimentos já marcados continuam, e só não dá para marcar novos com a pessoa.
+- Se o plano mudar para preço por profissional (por vaga), esta é a unidade natural de cobrança: "R$ X por profissional que atende", com a equipe administrativa grátis.
+- **Transição:** unidades que hoje estão no limite por causa de recepção ou gerente sem agenda ganham vaga automaticamente. É uma mudança só a favor do cliente, sem ninguém passar a pagar mais.
 
 ### Monetização (sem cobrar do cliente final)
 Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria**. Quem trabalha dentro de uma franquia já é coberto pelo plano da franquia.
