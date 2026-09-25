@@ -987,10 +987,13 @@ describe('BarbershopService (integração com o banco)', () => {
         }),
       );
       expect((await service.getNetworkDashboardStats(reception)).totalBarbershops).toBe(0);
-      // Na rede, vê a agenda da unidade inteira
-      expect((await service.getNetworkAppointments(reception)).map((a) => a.id)).toContain(
-        forOther.id,
-      );
+      // Na rede, vê a agenda da unidade inteira — com os nomes (sem telefone)
+      const network = await service.getNetworkAppointments(reception);
+      expect(network.map((a) => a.id)).toContain(forOther.id);
+      const seen = network.find((a) => a.id === forOther.id)!;
+      expect(seen.customerName).toEqual(expect.any(String));
+      expect(seen.barberName).toEqual(expect.any(String));
+      expect(seen.customer).not.toHaveProperty('phone');
 
       await prisma.appointmentService.deleteMany({ where: { appointmentId: forOther.id } });
       await prisma.appointment.delete({ where: { id: forOther.id } });

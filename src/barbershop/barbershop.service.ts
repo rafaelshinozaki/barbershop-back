@@ -2077,12 +2077,23 @@ export class BarbershopService {
       if (filters.startFrom) where.startAt.gte = filters.startFrom;
       if (filters.startTo) where.startAt.lte = filters.startTo;
     }
-    return this.prisma.appointment.findMany({
+    const rows = await this.prisma.appointment.findMany({
       where,
-      include: { services: { include: { service: true } }, customer: true, barber: true },
+      include: {
+        services: { include: { service: true } },
+        customer: { select: { name: true } },
+        barber: { select: { name: true } },
+      },
       orderBy: { startAt: 'asc' },
       take: 200,
     });
+    // Nomes pra agenda da franquia (antes todo evento aparecia como
+    // "Cliente — Profissional", porque o tipo não expunha os nomes)
+    return rows.map((a) => ({
+      ...a,
+      customerName: a.customer?.name ?? null,
+      barberName: a.barber?.name ?? null,
+    }));
   }
 
   async getAppointment(userId: number, barbershopId: number, appointmentId: number) {

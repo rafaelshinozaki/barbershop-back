@@ -614,6 +614,14 @@ export class Appointment {
   @Field(() => Int)
   barbershopId: number;
 
+  // Só na agenda da franquia (networkAppointments): o nome — sem telefone,
+  // que segue as regras de contato de cada cargo
+  @Field({ nullable: true })
+  customerName?: string | null;
+
+  @Field({ nullable: true })
+  barberName?: string | null;
+
   @Field(() => Int)
   customerId: number;
 

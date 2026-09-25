@@ -130,9 +130,11 @@ type ApplyCouponResult {
 
 type Appointment {
   barberId: Int!
+  barberName: String
   barbershopId: Int!
   createdAt: String!
   customerId: Int!
+  customerName: String
   depositAmount: Float
   depositPaid: Boolean!
   depositPaidAt: DateTime
