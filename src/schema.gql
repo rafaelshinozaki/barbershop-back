@@ -135,11 +135,31 @@ type Appointment {
   id: Int!
   notes: String
   resourceId: Int
+  seriesId: String
+  seriesIndex: Int
   services: [AppointmentServiceType!]
   source: String!
   startAt: String!
   status: String!
   updatedAt: String!
+}
+
+input AppointmentSeriesInput {
+  barberId: Int!
+  customerId: Int!
+  endAt: String!
+
+  """Repetir a cada N semanas (1 a 8)"""
+  intervalWeeks: Int!
+  notes: String
+
+  """Quantos horários (2 a 26)"""
+  occurrences: Int!
+  resourceId: Int
+  services: [AppointmentServiceInput!]!
+
+  """Primeiro horário"""
+  startAt: String!
 }
 
 input AppointmentServiceInput {
@@ -1030,6 +1050,12 @@ type CreatedCalendarFeedType {
   scope: String!
 }
 
+type CreatedSeriesType {
+  createdCount: Int!
+  seriesId: String!
+  skipped: [SeriesSlotType!]!
+}
+
 type CustomerLoyaltyType {
   enabled: Boolean!
   pointValue: Float!
@@ -1349,6 +1375,7 @@ type Mutation {
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
   bulkUserAction(input: BulkUserAction!): Boolean!
+  cancelAppointmentSeries(appointmentId: Int!, barbershopId: Int!): Int!
   cancelManagedAppointment(token: String!): ManagedAppointmentType!
   cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
@@ -1370,6 +1397,7 @@ type Mutation {
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
+  createAppointmentSeries(barbershopId: Int!, input: AppointmentSeriesInput!): CreatedSeriesType!
   createBarber(barbershopId: Int!, input: CreateBarberInput!): Barber!
   createBarberSchedule(input: CreateBarberScheduleInput!): BarberScheduleType!
   createBarberTimeOff(input: CreateBarberTimeOffInput!): BarberTimeOffType!
@@ -2030,6 +2058,7 @@ type Query {
   allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
   appointment(barbershopId: Int!, id: Int!): Appointment
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
+  appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
@@ -2263,6 +2292,15 @@ input SendMarketingBlastInput {
   sendEmail: Boolean!
   sendWhatsapp: Boolean!
   subject: String
+}
+
+type SeriesSlotType {
+  endAt: DateTime!
+  index: Int!
+  ok: Boolean!
+  reason: String
+  startAt: DateTime!
+  warning: String
 }
 
 type ServiceHistory {

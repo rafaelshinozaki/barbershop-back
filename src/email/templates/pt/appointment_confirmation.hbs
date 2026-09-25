@@ -39,6 +39,7 @@
         <p><strong>Data:</strong> {{AppointmentDate}}</p>
         <p><strong>Horário:</strong> {{AppointmentTime}}</p>
         <p><strong>Local:</strong> {{BarbershopAddress}}</p>
+        {{#if SeriesDates}}<p><strong>Todos os horários:</strong></p><ul>{{#each SeriesDates}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
       </div>
       <p>Precisa remarcar ou cancelar? Faça pelo link abaixo até {{CancellationWindowHours}}h antes do horário. Depois disso, ligue para {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{ManageURL}}">Gerenciar agendamento</a></p>

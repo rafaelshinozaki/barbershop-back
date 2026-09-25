@@ -303,3 +303,16 @@ Sem login no Google nem chave de API:
   pontuais continuam na agenda.
 - Resposta a avaliação (seção 11): a primeira resposta avisa o cliente por
   e-mail (editar não reenvia; quem se descadastrou não recebe).
+
+## 14. Agendamento recorrente
+
+- Cliente fixo "a cada 1 a 8 semanas", de 2 a 26 horários, no mesmo dia da
+  semana e hora local. Quem pode agendar pra aquele profissional pode criar
+  a série (barbeiro, só na própria agenda).
+- Antes de criar, a equipe vê cada data: livre, fora do expediente (avisa,
+  mas marca) ou impossível (já tem horário, folga, unidade fechada), com o
+  motivo. Ao criar, as impossíveis ficam de fora; cada horário passa pela
+  mesma checagem e trava do agendamento avulso.
+- O cliente recebe uma confirmação só, com todas as datas.
+- Cancelar: um horário só (como qualquer outro) ou "este e os próximos" da
+  série — um aviso só ao cliente, com as datas canceladas.

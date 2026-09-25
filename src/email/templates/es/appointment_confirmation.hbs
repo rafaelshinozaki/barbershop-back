@@ -39,6 +39,7 @@
         <p><strong>Fecha:</strong> {{AppointmentDate}}</p>
         <p><strong>Hora:</strong> {{AppointmentTime}}</p>
         <p><strong>Ubicación:</strong> {{BarbershopAddress}}</p>
+        {{#if SeriesDates}}<p><strong>Todas las citas:</strong></p><ul>{{#each SeriesDates}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
       </div>
       <p>¿Necesitas reprogramar o cancelar? Hazlo con el enlace de abajo hasta {{CancellationWindowHours}} h antes de tu cita. Después, llámanos al {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{ManageURL}}">Gestionar cita</a></p>

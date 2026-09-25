@@ -914,6 +914,9 @@ model Appointment {
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
   reminderSentAt DateTime?
   reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
+  // Agendamento recorrente (a cada N semanas): mesmo seriesId, ordem na série
+  seriesId     String?
+  seriesIndex  Int?
   depositAmount  Decimal? // sinal — cobrança em pessoa, isto só registra valor combinado e se já foi pago
   depositPaid    Boolean   @default(false)
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
@@ -933,6 +936,7 @@ model Appointment {
   @@index([status])
   @@index([status, reminderSentAt, startAt])
   @@index([status, reviewRequestSentAt, endAt])
+  @@index([seriesId])
 }
 
 model AppointmentService {
