@@ -215,6 +215,18 @@ export class Barbershop {
   @Field({ nullable: true })
   description?: string;
 
+  @Field({ nullable: true })
+  whatsapp?: string;
+
+  @Field({ nullable: true })
+  instagramUrl?: string;
+
+  @Field({ nullable: true })
+  facebookUrl?: string;
+
+  @Field({ nullable: true })
+  linkedinUrl?: string;
+
   @Field()
   isActive: boolean;
 

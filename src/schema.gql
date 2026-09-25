@@ -312,10 +312,13 @@ type Barbershop {
   currency: String!
   description: String
   email: String!
+  facebookUrl: String
   featuredUntil: String
   id: Int!
   imageUrl: String
+  instagramUrl: String
   isActive: Boolean!
+  linkedinUrl: String
   myAccessLevel: String
   name: String!
   onlineDeposit: Boolean
@@ -327,6 +330,7 @@ type Barbershop {
   subdomain: String
   timezone: String!
   updatedAt: String!
+  whatsapp: String
 }
 
 type BarbershopCustomer {
@@ -2014,14 +2018,17 @@ type PublicBarbershopType {
   currency: String!
   description: String
   email: String!
+  facebookUrl: String
 
   """Tom de cinza da franquia (Radix); null = padrão"""
   grayColor: String
   id: Int!
   imageUrl: String
+  instagramUrl: String
   instagramUsername: String
   isFeatured: Boolean!
   latitude: Float
+  linkedinUrl: String
   longitude: Float
   name: String!
   onlineDeposit: Boolean!
@@ -2037,6 +2044,7 @@ type PublicBarbershopType {
   state: String!
   subscriptionPlans: [PublicSubscriptionPlanType!]!
   timezone: String!
+  whatsapp: String
 }
 
 type PublicNextSlotType {
@@ -2611,13 +2619,17 @@ input UpdateBarbershopInput {
   currency: String
   description: String
   email: String
+  facebookUrl: String
+  instagramUrl: String
   isActive: Boolean
+  linkedinUrl: String
   name: String
   phone: String
   postalCode: String
   state: String
   subdomain: String
   timezone: String
+  whatsapp: String
 }
 
 input UpdateBarbershopProductInput {

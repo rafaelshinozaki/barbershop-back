@@ -1015,6 +1015,32 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(pub.openingHours).toHaveLength(7);
       expect(pub.openingHours[1]).toMatchObject({ dayOfWeek: 1, open: expect.any(String) });
       expect(pub.portfolio).toEqual([]);
+      // WhatsApp e redes: normaliza, e só aceita link da própria rede
+      await service.updateBarbershop(A.ownerId, A.shopId, {
+        whatsapp: '(12) 99757-2011',
+        instagramUrl: '@green.barber',
+        facebookUrl: 'facebook.com/greenbarber',
+        linkedinUrl: 'https://www.linkedin.com/company/green',
+      });
+      expect(await service.getPublicBarbershopByslug(shop.slug)).toMatchObject({
+        whatsapp: '+5512997572011',
+        instagramUrl: 'https://instagram.com/green.barber',
+        facebookUrl: 'https://facebook.com/greenbarber',
+        linkedinUrl: 'https://www.linkedin.com/company/green',
+      });
+      await expect(
+        service.updateBarbershop(A.ownerId, A.shopId, { facebookUrl: 'https://golpe.com/x' }),
+      ).rejects.toThrow('Use um link do Facebook');
+      await expect(
+        service.updateBarbershop(A.ownerId, A.shopId, { whatsapp: '123' }),
+      ).rejects.toThrow('WhatsApp inválido');
+      await service.updateBarbershop(A.ownerId, A.shopId, {
+        whatsapp: '',
+        instagramUrl: '',
+        facebookUrl: '',
+        linkedinUrl: '',
+      });
+      expect((await service.getPublicBarbershopByslug(shop.slug)).whatsapp).toBeNull();
       await service.updateBarbershop(A.ownerId, A.shopId, { description: '' });
       expect((await service.getPublicBarbershopByslug(shop.slug)).description).toBeNull();
     });

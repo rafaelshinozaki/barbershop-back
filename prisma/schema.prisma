@@ -484,6 +484,12 @@ model Barbershop {
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
   // "Sobre nós" da página pública (texto da unidade, até 1000 caracteres)
   description    String?
+  // Contatos e redes da página pública (opcionais): WhatsApp em E.164 e
+  // links completos (https://...) das redes
+  whatsapp       String?
+  instagramUrl   String?
+  facebookUrl    String?
+  linkedinUrl    String?
   isActive       Boolean   @default(true)
   featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
   networkId      Int

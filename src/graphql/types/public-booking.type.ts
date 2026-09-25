@@ -386,6 +386,20 @@ export class PublicBarbershopType {
   @Field({ nullable: true })
   instagramUsername?: string;
 
+  /** WhatsApp (E.164, ex.: +5512999999999) */
+  @Field({ nullable: true })
+  whatsapp?: string;
+
+  /** Links completos das redes (https://...) */
+  @Field({ nullable: true })
+  instagramUrl?: string;
+
+  @Field({ nullable: true })
+  facebookUrl?: string;
+
+  @Field({ nullable: true })
+  linkedinUrl?: string;
+
   /** Fotos de trabalhos (posts publicados pela unidade) */
   @Field(() => [PublicPortfolioPhotoType], { defaultValue: [] })
   portfolio: PublicPortfolioPhotoType[];
