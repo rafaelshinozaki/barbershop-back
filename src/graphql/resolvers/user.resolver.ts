@@ -317,7 +317,7 @@ export class UserResolver {
     @Args('page', { type: () => Int, defaultValue: 1 }) page: number,
     @Args('limit', { type: () => Int, defaultValue: 10 }) limit: number,
   ) {
-    return this.userService.getLoginHistory(user.id, page, limit);
+    return this.userService.getLoginHistory(user.id, page, limit, user.sessionToken);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

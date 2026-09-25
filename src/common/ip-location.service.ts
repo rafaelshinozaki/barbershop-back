@@ -12,12 +12,18 @@ export interface IpLocationData {
   timezone?: string;
 }
 
+export interface IpLookup {
+  location: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 @Injectable()
 export class IpLocationService {
   private readonly logger = new Logger(IpLocationService.name);
 
   // Cache para localização de IPs
-  private locationCache = new Map<string, { data: string; timestamp: number }>();
+  private locationCache = new Map<string, { data: IpLookup; timestamp: number }>();
 
   // Tempo de cache: 1 hora
   private readonly CACHE_DURATION = 60 * 60 * 1000;
@@ -34,6 +40,14 @@ export class IpLocationService {
    * Obtém a localização de um IP
    */
   async getLocation(ip: string): Promise<string> {
+    return (await this.lookup(ip)).location;
+  }
+
+  /**
+   * Localização do IP com as coordenadas aproximadas (pro mapa no detalhe do
+   * login/sessão); IP local ou não achado: só o texto, sem coordenadas
+   */
+  async lookup(ip: string): Promise<IpLookup> {
     // Verificar cache primeiro
     const cached = this.locationCache.get(ip);
     if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
@@ -42,31 +56,37 @@ export class IpLocationService {
 
     // IPs locais não precisam de lookup
     if (this.isLocalIp(ip)) {
-      const localLocation = 'Local Network';
-      this.locationCache.set(ip, { data: localLocation, timestamp: Date.now() });
-      return localLocation;
+      const local = { location: 'Local Network', latitude: null, longitude: null };
+      this.locationCache.set(ip, { data: local, timestamp: Date.now() });
+      return local;
     }
 
     // Em desenvolvimento, usar dados mock se configurado
     if (this.configService.get('NODE_ENV') === 'development') {
       const mockLocation = this.getMockLocation(ip);
       if (mockLocation) {
-        this.locationCache.set(ip, { data: mockLocation, timestamp: Date.now() });
-        return mockLocation;
+        const mock = { location: mockLocation, latitude: null, longitude: null };
+        this.locationCache.set(ip, { data: mock, timestamp: Date.now() });
+        return mock;
       }
     }
 
     try {
       const locationData = await this.fetchLocationData(ip);
-      const location = this.formatLocation(locationData);
+      const coord = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const found = {
+        location: this.formatLocation(locationData),
+        latitude: coord(locationData.latitude),
+        longitude: coord(locationData.longitude),
+      };
 
       // Cache da localização
-      this.locationCache.set(ip, { data: location, timestamp: Date.now() });
+      this.locationCache.set(ip, { data: found, timestamp: Date.now() });
 
-      return location;
+      return found;
     } catch (error) {
       this.logger.warn(`Failed to get location for IP ${ip}:`, error.message);
-      return 'Unknown';
+      return { location: 'Unknown', latitude: null, longitude: null };
     }
   }
 

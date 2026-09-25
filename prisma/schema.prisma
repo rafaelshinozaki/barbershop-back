@@ -280,6 +280,10 @@ model LoginHistory {
   os         String
   ip         String
   location   String
+  latitude   Float? // aproximada, pelo IP (sem ela o detalhe mostra o mapa pelo nome do local)
+  longitude  Float?
+  // Sessão aberta por esse login — o detalhe mostra se ainda está ativa e deixa encerrar
+  sessionToken String?
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id])
 }
@@ -293,6 +297,8 @@ model ActiveSession {
   os           String
   ip           String
   location     String
+  latitude     Float?
+  longitude    Float?
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
 }

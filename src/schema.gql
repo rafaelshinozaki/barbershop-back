@@ -16,7 +16,11 @@ type ActiveSession {
   id: Int!
   ip: String!
   isCurrent: Boolean!
+
+  """Aproximada, pelo IP"""
+  latitude: Float
   location: String!
+  longitude: Float
   os: String!
   userId: Int!
 }
@@ -1282,8 +1286,18 @@ type LoginHistory {
   deviceType: String!
   id: Int!
   ip: String!
+
+  """É o login da sessão em uso agora"""
+  isCurrent: Boolean!
+
+  """Aproximada, pelo IP"""
+  latitude: Float
   location: String!
+  longitude: Float
   os: String!
+
+  """Sessão aberta por esse login, se ainda estiver ativa"""
+  sessionId: Int
   userId: Int!
 }
 
