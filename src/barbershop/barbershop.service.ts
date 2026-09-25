@@ -325,6 +325,17 @@ export class BarbershopService {
    * Horário/folga de um barbeiro: gerente e dono mexem em qualquer um; o
    * barbeiro (e o básico), só no próprio. Recepção não mexe em horário.
    */
+  /** Agendar/cancelar pra um profissional: barbeiro só na própria agenda. */
+  async ensureCanBookForBarber(userId: number, barbershopId: number, barberId: number) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
+    if (ownBarberId !== null && barberId !== ownBarberId) {
+      throw new ForbiddenException('Seu cargo só permite agendar na sua própria agenda.');
+    }
+    await this.ensureBarberOfBarbershop(barbershopId, barberId);
+    return barbershop;
+  }
+
   /** Escala semanal: gerente e dono de qualquer um; o profissional, só a dele. */
   ensureCanManageBarberSchedule(userId: number, barbershopId: number, barberId: number) {
     return this.ensureCanManageBarber(userId, barbershopId, barberId);
@@ -1768,7 +1779,12 @@ export class BarbershopService {
       depositAmount?: number;
       depositPaid?: boolean;
       services: Array<{ serviceId: number; quantity?: number; unitPrice: number }>;
+      /** Agendamento recorrente (ver AppointmentSeriesService) */
+      seriesId?: string;
+      seriesIndex?: number;
     },
+    /** notify = false: a série manda um e-mail só, com todas as datas */
+    opts: { notify?: boolean } = {},
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
@@ -1838,7 +1854,12 @@ export class BarbershopService {
     });
     // Marcado pela equipe (telefone, balcão): o cliente também recebe a
     // confirmação com o link pra remarcar/cancelar, como no agendamento online
-    if (created && created.status === 'CONFIRMED' && created.customer.email) {
+    if (
+      opts.notify !== false &&
+      created &&
+      created.status === 'CONFIRMED' &&
+      created.customer.email
+    ) {
       this.sendAppointmentEmail(
         created.id,
         'appointment_confirmation',
@@ -3065,8 +3086,30 @@ export class BarbershopService {
    * agendamento" (cancelar/remarcar sem login). Vai pela fila de e-mail.
    */
   /** Cancelamento pela unidade (ex.: fechamento no dia), com o motivo no e-mail */
-  notifyAppointmentCancelled(appointmentId: number, to: string, reason?: string | null) {
-    return this.sendAppointmentEmail(appointmentId, 'appointment_cancelled', to, reason);
+  notifyAppointmentCancelled(
+    appointmentId: number,
+    to: string,
+    reason?: string | null,
+    seriesDates?: string[],
+  ) {
+    return this.sendAppointmentEmail(
+      appointmentId,
+      'appointment_cancelled',
+      to,
+      reason,
+      seriesDates,
+    );
+  }
+
+  /** Série recorrente: uma confirmação só, com todas as datas */
+  notifySeriesConfirmed(firstAppointmentId: number, to: string, seriesDates: string[]) {
+    return this.sendAppointmentEmail(
+      firstAppointmentId,
+      'appointment_confirmation',
+      to,
+      null,
+      seriesDates,
+    );
   }
 
   private async sendAppointmentEmail(
@@ -3074,6 +3117,8 @@ export class BarbershopService {
     template: 'appointment_confirmation' | 'appointment_rescheduled' | 'appointment_cancelled',
     to: string,
     reason?: string | null,
+    /** Datas da série recorrente (já formatadas), listadas no e-mail */
+    seriesDates?: string[],
   ) {
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
@@ -3136,6 +3181,7 @@ export class BarbershopService {
           ...appointmentCalendarLinks(appt, createAppointmentToken(appt.id)),
           BookURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/u/${shop.slug}`,
           Reason: reason || null,
+          SeriesDates: seriesDates?.length ? seriesDates : null,
           Year: new Date().getFullYear(),
         },
         subject: subjects[template],

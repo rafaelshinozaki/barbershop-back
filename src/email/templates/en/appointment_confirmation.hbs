@@ -39,6 +39,7 @@
         <p><strong>Date:</strong> {{AppointmentDate}}</p>
         <p><strong>Time:</strong> {{AppointmentTime}}</p>
         <p><strong>Location:</strong> {{BarbershopAddress}}</p>
+        {{#if SeriesDates}}<p><strong>All appointments:</strong></p><ul>{{#each SeriesDates}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
       </div>
       <p>Need to reschedule or cancel? Use the link below up to {{CancellationWindowHours}}h before your appointment. After that, call us at {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{ManageURL}}">Manage appointment</a></p>

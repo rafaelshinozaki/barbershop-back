@@ -625,6 +625,13 @@ export class Appointment {
 
   @Field()
   updatedAt: string;
+
+  /** Agendamento recorrente: horários da mesma série */
+  @Field({ nullable: true })
+  seriesId?: string;
+
+  @Field(() => Int, { nullable: true })
+  seriesIndex?: number;
 }
 
 @ObjectType()
