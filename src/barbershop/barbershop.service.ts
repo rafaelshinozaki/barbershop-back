@@ -2763,6 +2763,11 @@ export class BarbershopService {
         },
         network: { select: { accentColor: true, grayColor: true } },
         socialConnection: { select: { instagramUsername: true } },
+        photos: {
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          take: PORTFOLIO_PHOTOS,
+          select: { key: true, caption: true },
+        },
         socialPosts: {
           where: { status: 'PUBLISHED' },
           orderBy: { publishedAt: 'desc' },
@@ -2786,12 +2791,21 @@ export class BarbershopService {
       open: d?.start ?? null,
       close: d?.end ?? null,
     }));
+    // Galeria enviada pela unidade primeiro; completa com os posts publicados
     const portfolio = await Promise.all(
-      barbershop.socialPosts.map(async (p) => ({
-        url: await this.s3Service.getDownloadUrl(p.imageKey),
-        caption: p.caption,
-      })),
+      [
+        ...barbershop.photos.map((p) => ({ key: p.key, caption: p.caption })),
+        ...barbershop.socialPosts.map((p) => ({ key: p.imageKey, caption: p.caption })),
+      ]
+        .slice(0, PORTFOLIO_PHOTOS)
+        .map(async (p) => ({
+          url: await this.s3Service.getDownloadUrl(p.key),
+          caption: p.caption,
+        })),
     );
+    const coverUrl = barbershop.coverKey
+      ? await this.s3Service.getDownloadUrl(barbershop.coverKey)
+      : null;
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
     const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
     const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
@@ -2802,10 +2816,11 @@ export class BarbershopService {
           orderBy: { name: 'asc' },
         })
       : [];
-    const { socialConnection, socialPosts: _posts, ...shop } = barbershop;
+    const { socialConnection, socialPosts: _posts, photos: _photos, ...shop } = barbershop;
     return {
       ...shop,
       imageUrl,
+      coverUrl,
       openingHours,
       portfolio,
       instagramUsername: socialConnection?.instagramUsername ?? null,

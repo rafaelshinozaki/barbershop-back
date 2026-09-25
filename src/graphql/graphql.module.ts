@@ -21,6 +21,11 @@ import { ClosureResolver } from './resolvers/closure.resolver';
 import { ScheduleResolver } from './resolvers/schedule.resolver';
 import { AppointmentSeriesResolver } from './resolvers/appointment-series.resolver';
 import { DepositResolver } from './resolvers/deposit.resolver';
+import {
+  BarberAvatarResolver,
+  MediaResolver,
+  PublicBarberAvatarResolver,
+} from './resolvers/media.resolver';
 import { SocialResolver } from './resolvers/social.resolver';
 import { RealtimeResolver } from './resolvers/realtime.resolver';
 import { AuthModule } from '../auth/auth.module';
@@ -74,6 +79,9 @@ import { SocialModule } from '../social/social.module';
     ScheduleResolver,
     AppointmentSeriesResolver,
     DepositResolver,
+    MediaResolver,
+    BarberAvatarResolver,
+    PublicBarberAvatarResolver,
     SocialResolver,
     AccountDeletionResolver,
   ],

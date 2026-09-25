@@ -369,6 +369,10 @@ export class PublicBarbershopType {
   @Field(() => [ClosureType], { defaultValue: [] })
   closures: ClosureType[];
 
+  /** Foto de capa (larga) da página; sem ela, a página usa a foto/logo */
+  @Field({ nullable: true })
+  coverUrl?: string;
+
   /** "Sobre nós" */
   @Field({ nullable: true })
   description?: string;

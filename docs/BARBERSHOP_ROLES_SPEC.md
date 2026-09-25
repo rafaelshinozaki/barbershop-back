@@ -372,3 +372,19 @@ Sem login no Google nem chave de API:
   tempo); cobrar conclui o horário. Cancelado, falta ou aguardando sinal
   não se cobra.
 - A agenda traz o período inteiro (antes parava em 50 horários).
+
+## 19. Página pública: fotos, localização e SEO
+
+- Gerente e dono: foto de capa e galeria (até 30 fotos, com legenda e
+  ordem) na aba "Página pública". O navegador envia direto pro S3 e o back
+  só aceita chave da própria unidade. A galeria aparece antes dos posts
+  publicados nas redes.
+- Foto do profissional: gerente/dono de qualquer um, o profissional a dele
+  ("Minha escala"). Vale por cima do link antigo (avatarUrl).
+- Localização: latitude/longitude pelo endereço (OpenStreetMap Nominatim;
+  `GEOCODING_URL` troca, `GEOCODING_DISABLED=true` desliga) ao cadastrar ou
+  mudar o endereço, e de hora em hora pra quem ainda não tem.
+- SEO: `GET /seo/shops/:slug` (título, descrição, imagem e JSON-LD
+  HairSalon) e `GET /seo/shops/:slug/image` (redireciona pra capa/foto); o
+  front injeta no HTML de /u/:slug (prévia no WhatsApp/redes e Google).
+  Precisa de `PUBLIC_API_URL` pra imagem da prévia.

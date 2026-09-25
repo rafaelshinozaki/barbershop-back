@@ -11,6 +11,8 @@ import { AppointmentSeriesService } from './appointment-series.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
+import { BarbershopMediaService } from './media.service';
+import { GeocodingService } from './geocoding.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
@@ -63,10 +65,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ScheduleService,
     AppointmentSeriesService,
     DepositPaymentService,
+    BarbershopMediaService,
+    GeocodingService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
+    BarbershopMediaService,
+    GeocodingService,
     ReviewRequestService,
     ClosureService,
     ReviewManagementService,
