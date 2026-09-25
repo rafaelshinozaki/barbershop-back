@@ -88,7 +88,7 @@ Barbearia conecta a própria Página do Facebook (e a conta comercial do Instagr
 ### 6. Site/domínio próprio do negócio
 Mesma página pública de sempre (`/u/:slug`), agora também acessível por um subdomínio próprio da unidade (ex.: `barbeariavintage.<domínio da plataforma>`) — novo campo `Barbershop.subdomain`, opcional, editável, validado como label de DNS e único. Frontend detecta o host e roteia pra mesma página; CORS liberado dinamicamente pra qualquer subdomínio. **Falta a parte de infraestrutura**: domínio próprio registrado, DNS curinga (`*.dominio`) e SSL configurados (a Vercel precisa de plano pago pra domínio curinga) — isso é ação de conta/pagamento de quem administra a plataforma, não código; até lá, funciona em `*.localhost` pra desenvolvimento. Domínio customizado de verdade por barbearia (`barbeariavintage.com.br` própria) foi descartado por ser bem mais esforço (onboarding de DNS por tenant) sem ganho proporcional nesta fase.
 
-## Horizonte futuro: Marketplace de profissionais — 💡 Ideias (não iniciado)
+## Horizonte futuro: Marketplace de profissionais de beleza e bem-estar — 💡 Ideias (não iniciado)
 
 Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app deixar de ser só "a agenda da barbearia" e virar um marketplace de pessoas, como Uber ou Airbnb: profissionais com vida própria na plataforma, que trabalham para uma ou várias barbearias, e clientes com histórico.
 
@@ -120,9 +120,8 @@ Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app
   - ⚠️ **LGPD:** é dado pessoal com avaliação de conduta. Precisa de base legal clara e transparência (o cliente vê a própria nota e o que a compõe). Deve ser agregada (média, sem comentários livres sobre a pessoa) e vista só por profissionais que atendem ou vão atender o cliente. Nunca pública. Validar com jurídico antes.
 - Preferências (tipo de corte, observações, fotos de referência) que o cliente leva para qualquer profissional ou unidade, com consentimento.
 
-### 4. Domicílio e descoberta tipo Uber/Airbnb
-- Busca por profissional, não só por barbearia: especialidade, nota, preço, distância, "atende em casa", "disponível hoje".
-- Pedido a domicílio: o cliente informa o endereço, vê quem atende a região e o horário livre, e agenda. O sinal online (já existe) reduz calote.
+### 4. Descoberta tipo Uber/Airbnb
+- Busca por profissional, não só por estabelecimento: especialidade, nota, preço, distância, "atende em casa" (item 9), "disponível hoje".
 - Mais para frente: pagamento no app, com a taxa da plataforma sobre o que passa pelo Stripe, dentro da regra atual.
 
 ### 5. Perfis por tipo de usuário e controle de privacidade
@@ -133,7 +132,7 @@ Cada tipo de usuário tem um **perfil** dentro da plataforma, e **a própria pes
 | Perfil | O que mostra (se a pessoa escolher) |
 |---|---|
 | Cliente | Histórico de cortes e serviços, onde já foi, preferências e fotos de referência (tudo privado por padrão) |
-| Profissional (barbeiro) | Serviços realizados, tipos, galeria, especialidades, locais, domicílio, nota e comentários, onde já trabalhou |
+| Profissional (barbeiro, manicure, cabeleireira…) | Serviços realizados, tipos, galeria, especialidades, locais, domicílio, nota e comentários, onde já trabalhou |
 | Gerente | Unidades que gerencia ou gerenciou, tempo de experiência, especialidades de gestão |
 | Recepção/atendente | Unidades onde atuou, idiomas, disponibilidade |
 | Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades e, se também atender (item 7), o perfil de profissional — o mesmo vale para gerente e recepção |
@@ -246,6 +245,52 @@ Muitos profissionais trabalham numa barbearia e também atendem por fora: em cas
 - A cota é por pessoa (CPF/identidade verificada para quem passar de um uso mínimo), não por conta: criar outra conta não zera o limite.
 - Se o padrão de uso parecer de estabelecimento (volume alto todo mês, vários atendimentos no mesmo horário), o sistema sugere o plano de barbearia em vez de bloquear sem aviso.
 
+### 9. Atendimento a domicílio (estabelecimentos e profissionais)
+Barbearias, salões e profissionais liberais (barbeiro, manicure, maquiadora, massagista…) muitas vezes atendem na casa do cliente, no hotel, no escritório ou em eventos (noiva, formatura). Hoje o app só conhece atendimento **no endereço da unidade**.
+
+**Quem oferece**
+- **O estabelecimento:** a unidade liga "Atendemos a domicílio" e escolhe quais serviços valem fora (nem todo serviço dá para fazer em casa) e quais profissionais saem para atender.
+- **O profissional:** no perfil ou no modo solo (item 8), liga "Atendo a domicílio" com a própria área e as próprias regras. Isso vale mesmo que a barbearia onde ele trabalha não ofereça.
+
+**Configuração**
+- **Área atendida:** raio a partir de um ponto (a unidade ou a base do profissional), ou lista de bairros/cidades. Fora da área, o serviço nem aparece.
+- **Taxa de deslocamento:** fixa, por faixa de distância ou por km, com valor mínimo do pedido. Aparece separada no preço para o cliente.
+- **Tempo de deslocamento:** ida e volta bloqueiam a agenda antes e depois do atendimento. A agenda única (item 1) usa isso para não marcar dois atendimentos longe um do outro colados.
+- **Antecedência mínima** (ex.: domicílio só com 3h de antecedência) e horários próprios para domicílio.
+- **Serviços com preço ou duração diferentes em casa** (opcional).
+
+**Para o cliente**
+- No agendamento, escolhe **"No local"** ou **"No meu endereço"**. Se for no endereço, informa o endereço, com autocomplete e o CEP que já existe no cadastro, e complemento. O sistema confere se está na área e soma a taxa.
+- **Sinal online recomendado ou obrigatório** para domicílio: o profissional se desloca, e o no-show custa mais. Reaproveita o sinal online e a taxa de no-show que já existem.
+- Lembrete com "o profissional está a caminho" (opcional, mais para frente) e contato pelo próprio app.
+
+**Segurança e confiança**, porque é gente entrando na casa de gente:
+- selo de **profissional verificado** (documento; mais para frente, antecedentes) como requisito para aparecer na busca de domicílio;
+- histórico e nota do cliente (item 3, com as regras de LGPD) ajudam o profissional a decidir;
+- endereço do cliente visível só para quem vai atender, e só perto do horário;
+- botão de ajuda/ocorrência no atendimento.
+
+**Na agenda e nos relatórios**
+- O evento de domicílio fica com um ícone e o endereço, e o deslocamento aparece como bloco "em trânsito".
+- Relatórios separam receita no local × domicílio, com a taxa de deslocamento à parte.
+
+### 10. Além da barbearia: beleza e bem-estar
+O produto não deve ficar preso a "barbearia". Salões de beleza, esmalterias, estúdios de sobrancelha/cílios, clínicas de estética, maquiadoras, massagistas e depiladoras têm o mesmo fluxo: agenda, profissionais, serviços, clientes, caixa, comissão e página pública.
+
+**O que já existe e ajuda**
+- As **categorias de serviço** já cobrem mais que barbearia: cabelo, barba, combo, coloração, penteado, **unhas, pele, sobrancelha/cílios, massagem, maquiagem, bem-estar, depilação** e outros. A busca e o SEO por categoria × cidade já usam isso.
+- Agenda, cargos, comissão, pacotes, assinatura do cliente, fidelidade, avaliações e página pública não têm nada de específico de barbearia.
+
+**O que precisa mudar**
+- **Tipo de estabelecimento** no cadastro: barbearia, salão, esmalteria, estética, estúdio, espaço de massagem, profissional independente… Ele define o **catálogo inicial de serviços** (modelos prontos por tipo, ex.: "pé e mão", "design de sobrancelha"), os ícones e o texto da página pública.
+- **Linguagem neutra no app:** "barbearia" vira "estabelecimento/unidade", e "barbeiro" vira "profissional". Onde fizer sentido, o termo segue o tipo ("Barbearia X", "Salão Y"). Isso afeta telas, e-mails, textos de SEO e as traduções (pt/en/es).
+- **Especialidades por área:** manicure, cabeleireira, colorista, esteticista… no perfil do profissional (item 2), e **uma pessoa pode ter várias**.
+- **Serviços com particularidades:** tempo de pausa/secagem no meio do serviço (ex.: química, esmalte em gel), atendimento em dupla (duas profissionais no mesmo cliente), ficha técnica do cliente (fórmula da coloração, alergias). A ficha técnica é dado sensível e segue as regras de LGPD.
+- **Busca e marketplace por categoria**, não só por "barbearias perto de mim": "manicure a domicílio em Campinas", "design de sobrancelha hoje".
+- **Marca e domínio:** o nome "Barbershop" e o código cheio de `barbershop*` funcionam por dentro, mas o **produto** que o público vê precisa de um nome que sirva para beleza em geral. Renomear o código não é necessário: a mudança é no que aparece para o usuário.
+
+**Monetização:** o mesmo modelo para qualquer área. Planos por estabelecimento contando quem atende (item 7), profissional solo grátis até N atendimentos/mês (item 8) e cliente final sem pagar nada.
+
 ### Monetização (sem cobrar do cliente final)
 Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria** e em volume. Quem trabalha dentro de uma barbearia já é coberto pelo plano dela.
 
@@ -291,5 +336,6 @@ O que tiramos disso:
 2. Cadastro com escolha do tipo de usuário + perfis e a página "Perfis e privacidade" (visibilidade, "disponível para contratação", campo a campo) + cadastro aberto de profissional e vínculo por pedido/convite. A privacidade vem junto com o cadastro aberto, não depois.
 3. Página pública do profissional (sem domicílio) + avaliação do atendimento por profissional.
 4. Perfil/histórico do cliente e nota do cliente (depois da validação jurídica).
-5. Domicílio + busca por profissional.
+5. Atendimento a domicílio (estabelecimentos e profissionais: área, taxa, deslocamento na agenda, segurança) + busca por profissional e por categoria.
+5b. Tipo de estabelecimento, catálogos por área e linguagem neutra ("estabelecimento"/"profissional") para abrir para salões, manicures, estética etc. Pode andar em paralelo, porque é mais texto e cadastro do que modelo de dados.
 6. Panorama de carreira (grátis) + modo solo com cota de N atendimentos/mês, plano Pro e regras anti-abuso + destaque e vagas para freelancer.
