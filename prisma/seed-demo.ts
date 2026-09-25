@@ -2175,6 +2175,18 @@ async function ensureNewFeatures(prisma: PrismaClient) {
   const ownerId = green.ownerUserId;
   const shopId = green.id;
 
+  // WhatsApp e redes da página pública
+  if (!green.whatsapp && !green.instagramUrl) {
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: {
+        whatsapp: '+5512997572011',
+        instagramUrl: 'https://instagram.com/greenbarbershop',
+        facebookUrl: 'https://facebook.com/greenbarbershop',
+      },
+    });
+  }
+
   // "Sobre nós" da página pública
   if (!green.description) {
     await prisma.barbershop.update({

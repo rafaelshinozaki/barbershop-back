@@ -153,6 +153,30 @@ const PORTFOLIO_PHOTOS = 12;
 const MAX_AGENDA_ROWS = 3000;
 const TIME_OFF_REASONS = ['VACATION', 'SICK', 'PERSONAL', 'OTHER'];
 
+/**
+ * Link de rede social da página pública: aceita o link completo ou só o
+ * @usuário (vira https://<rede>/<usuário>). Só links da própria rede — o
+ * campo não vira atalho pra qualquer site. Vazio apaga.
+ */
+function socialUrl(value: string | null | undefined, host: string, label: string): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  const handle = v.replace(/^@/, '');
+  if (/^[\w.-]{1,60}$/.test(handle)) return `https://${host}/${handle}`;
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+  } catch {
+    throw new BadRequestException(`Link do ${label} inválido`);
+  }
+  const ok = url.hostname === host || url.hostname.endsWith(`.${host}`);
+  if (!ok || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+    throw new BadRequestException(`Use um link do ${label} (${host})`);
+  }
+  url.protocol = 'https:';
+  return url.toString().slice(0, 300);
+}
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -836,15 +860,42 @@ export class BarbershopService {
       currency: string;
       businessHours: string;
       description: string;
+      whatsapp: string;
+      instagramUrl: string;
+      facebookUrl: string;
+      linkedinUrl: string;
       isActive: boolean;
       subdomain: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id, 'manager');
-    const { subdomain, description, ...rest } = data;
-    const updateData: typeof rest & { subdomain?: string | null; description?: string | null } = {
+    const { subdomain, description, whatsapp, instagramUrl, facebookUrl, linkedinUrl, ...rest } =
+      data;
+    const updateData: typeof rest & {
+      subdomain?: string | null;
+      description?: string | null;
+      whatsapp?: string | null;
+      instagramUrl?: string | null;
+      facebookUrl?: string | null;
+      linkedinUrl?: string | null;
+    } = {
       ...rest,
     };
+    if (whatsapp !== undefined) {
+      const raw = whatsapp?.trim();
+      const e164 = raw ? normalizePhoneToE164(raw) : null;
+      if (raw && !e164) throw new BadRequestException('WhatsApp inválido (use o número com DDD)');
+      updateData.whatsapp = e164;
+    }
+    if (instagramUrl !== undefined) {
+      updateData.instagramUrl = socialUrl(instagramUrl, 'instagram.com', 'Instagram');
+    }
+    if (facebookUrl !== undefined) {
+      updateData.facebookUrl = socialUrl(facebookUrl, 'facebook.com', 'Facebook');
+    }
+    if (linkedinUrl !== undefined) {
+      updateData.linkedinUrl = socialUrl(linkedinUrl, 'linkedin.com', 'LinkedIn');
+    }
     if (description !== undefined) {
       const text = description?.trim() || null;
       if (text && text.length > MAX_DESCRIPTION) {

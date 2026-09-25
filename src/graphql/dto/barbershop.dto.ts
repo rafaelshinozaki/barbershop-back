@@ -92,6 +92,22 @@ export class UpdateBarbershopInput {
   @Field({ nullable: true })
   description?: string;
 
+  /** WhatsApp da página pública (número com DDD); vazio apaga */
+  @Field({ nullable: true })
+  whatsapp?: string;
+
+  /** Instagram: @usuário ou link; vazio apaga */
+  @Field({ nullable: true })
+  instagramUrl?: string;
+
+  /** Facebook: link da página; vazio apaga */
+  @Field({ nullable: true })
+  facebookUrl?: string;
+
+  /** LinkedIn: link da página; vazio apaga */
+  @Field({ nullable: true })
+  linkedinUrl?: string;
+
   @Field({ nullable: true })
   isActive?: boolean;
 
