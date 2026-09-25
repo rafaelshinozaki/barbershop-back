@@ -11,7 +11,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, NETWORK_AGENDA_CAP } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -739,6 +739,63 @@ describe('BarbershopService (integração com o banco)', () => {
   });
 
   // ============ Cargos: dono / gerente / barbeiro ============
+
+  describe('agenda da franquia no período', () => {
+    // Mês bem no futuro, só com os agendamentos deste teste
+    const year = new Date().getUTCFullYear() + 3;
+    const from = new Date(Date.UTC(year, 5, 1, 3)); // 1º/jun, 00:00 em São Paulo
+    const to = new Date(Date.UTC(year, 6, 1, 3));
+    const seed = async (count: number) => {
+      // Horários de 5 min seguidos, alternando os dois barbeiros: sem conflito
+      const data = Array.from({ length: count }, (_, i) => {
+        const startAt = new Date(from.getTime() + Math.floor(i / 2) * 5 * 60_000);
+        return {
+          barbershopId: A.shopId,
+          customerId: A.customerId,
+          barberId: i % 2 ? A.otherBarberId : A.barberId,
+          startAt,
+          endAt: new Date(startAt.getTime() + 5 * 60_000),
+          status: 'CONFIRMED',
+          source: 'PHONE',
+        };
+      });
+      await prisma.appointment.createMany({ data });
+    };
+    const clear = () =>
+      prisma.appointment.deleteMany({
+        where: { barbershopId: A.shopId, startAt: { gte: from, lt: to } },
+      });
+    afterEach(clear);
+
+    it('mais de 200 agendamentos no mês vêm todos (antes parava em 200)', async () => {
+      await seed(250);
+      const agenda = await service.getNetworkAgenda(A.ownerId, { startFrom: from, startTo: to });
+      expect(agenda.appointments).toHaveLength(250);
+      expect(agenda.truncated).toBe(false);
+      // O último dia pedido também vem (a ordem é crescente)
+      const last = agenda.appointments[agenda.appointments.length - 1];
+      expect(last.startAt.getTime()).toBeGreaterThan(from.getTime());
+      // A lista antiga, com período, segue o mesmo teto
+      expect(
+        await service.getNetworkAppointments(A.ownerId, { startFrom: from, startTo: to }),
+      ).toHaveLength(250);
+    });
+
+    it('acima do teto avisa que cortou; período longo demais é recusado', async () => {
+      await seed(NETWORK_AGENDA_CAP + 5);
+      const agenda = await service.getNetworkAgenda(A.ownerId, { startFrom: from, startTo: to });
+      expect(agenda.appointments).toHaveLength(NETWORK_AGENDA_CAP);
+      expect(agenda.truncated).toBe(true);
+
+      const tooLong = new Date(from.getTime() + 60 * 86_400_000);
+      await expect(
+        service.getNetworkAgenda(A.ownerId, { startFrom: from, startTo: tooLong }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.getNetworkAgenda(A.ownerId, { startFrom: to, startTo: from }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
 
   describe('cargos na unidade', () => {
     let managerUserId: number;

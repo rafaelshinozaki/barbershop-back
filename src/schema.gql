@@ -1649,6 +1649,15 @@ type NetworkActivityEvent {
   networkId: Int!
 }
 
+"""Agenda da franquia num período"""
+type NetworkAgenda {
+  appointments: [Appointment!]!
+  limit: Int!
+
+  """Passou do limite e nem todos vieram"""
+  truncated: Boolean!
+}
+
 type NetworkDashboardEvent {
   customerName: String
   date: String!
@@ -2223,6 +2232,9 @@ type Query {
   mySubscriptions: [PlanSubscription!]!
   myUnreadNotifications: [UserNotification!]!
   myUpcomingAppointments: [ManagedAppointmentType!]!
+
+  """Agenda da franquia no período visível (até 6 semanas)"""
+  networkAgenda(barbershopId: Int, endAt: String!, startAt: String!, status: String): NetworkAgenda!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats: NetworkDashboardStats!
   onlinePaymentsAvailable: Boolean!

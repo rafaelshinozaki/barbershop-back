@@ -46,6 +46,11 @@ import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
 import { appointmentCalendarLinks } from '../calendar/calendar-links';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
+/** Agenda da franquia: período máximo pedido (6 semanas = visão de mês) */
+export const NETWORK_AGENDA_MAX_DAYS = 43;
+/** Teto de segurança de agendamentos por período na agenda da franquia */
+export const NETWORK_AGENDA_CAP = 2000;
+
 const NETWORK_ACCENT_COLORS = [
   'gray',
   'gold',
@@ -2033,6 +2038,35 @@ export class BarbershopService {
     );
   }
 
+  /**
+   * Agenda da franquia num período (o que o calendário mostra): no máximo
+   * NETWORK_AGENDA_MAX_DAYS e até NETWORK_AGENDA_CAP agendamentos. Antes era
+   * um corte fixo de 200 em ordem crescente — no mês, uma franquia com
+   * movimento perdia os últimos dias. truncated avisa se ainda assim cortou.
+   */
+  async getNetworkAgenda(
+    userId: number,
+    filters: { barbershopId?: number; status?: string; startFrom: Date; startTo: Date },
+  ) {
+    const { startFrom, startTo } = filters;
+    if (isNaN(startFrom.getTime()) || isNaN(startTo.getTime()) || startTo <= startFrom) {
+      throw new BadRequestException('Período inválido');
+    }
+    const days = (startTo.getTime() - startFrom.getTime()) / 86_400_000;
+    if (days > NETWORK_AGENDA_MAX_DAYS) {
+      throw new BadRequestException(
+        `Período de no máximo ${NETWORK_AGENDA_MAX_DAYS} dias na agenda da franquia`,
+      );
+    }
+    const rows = await this.queryNetworkAppointments(userId, filters, NETWORK_AGENDA_CAP + 1);
+    return {
+      appointments: rows.slice(0, NETWORK_AGENDA_CAP),
+      truncated: rows.length > NETWORK_AGENDA_CAP,
+      limit: NETWORK_AGENDA_CAP,
+    };
+  }
+
+  /** Lista da franquia (legado): com período, até NETWORK_AGENDA_CAP; sem, 200 */
   async getNetworkAppointments(
     userId: number,
     filters?: {
@@ -2041,6 +2075,17 @@ export class BarbershopService {
       startFrom?: Date;
       startTo?: Date;
     },
+  ) {
+    const bounded = !!(filters?.startFrom && filters?.startTo);
+    return this.queryNetworkAppointments(userId, filters, bounded ? NETWORK_AGENDA_CAP : 200);
+  }
+
+  private async queryNetworkAppointments(
+    userId: number,
+    filters:
+      | { barbershopId?: number; status?: string; startFrom?: Date; startTo?: Date }
+      | undefined,
+    take: number,
   ) {
     const barbershops = await this.getMyBarbershops(userId);
     const allIds = barbershops.map((b) => b.id);
@@ -2075,7 +2120,7 @@ export class BarbershopService {
     if (filters?.startFrom || filters?.startTo) {
       where.startAt = {};
       if (filters.startFrom) where.startAt.gte = filters.startFrom;
-      if (filters.startTo) where.startAt.lte = filters.startTo;
+      if (filters.startTo) where.startAt.lt = filters.startTo;
     }
     const rows = await this.prisma.appointment.findMany({
       where,
@@ -2085,7 +2130,7 @@ export class BarbershopService {
         barber: { select: { name: true } },
       },
       orderBy: { startAt: 'asc' },
-      take: 200,
+      take,
     });
     // Nomes pra agenda da franquia (antes todo evento aparecia como
     // "Cliente — Profissional", porque o tipo não expunha os nomes)

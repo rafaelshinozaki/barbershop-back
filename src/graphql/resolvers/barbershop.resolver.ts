@@ -23,6 +23,7 @@ import {
   BarberScheduleType,
   BarberTimeOffType,
   Appointment,
+  NetworkAgenda,
   WalkIn,
   ServiceHistory,
   Sale,
@@ -922,6 +923,25 @@ export class BarbershopResolver {
       barberId,
       customerId,
       status,
+    });
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => NetworkAgenda, {
+    description: 'Agenda da franquia no período visível (até 6 semanas)',
+  })
+  async networkAgenda(
+    @CurrentUser() user: UserDTO,
+    @Args('startAt') startAt: string,
+    @Args('endAt') endAt: string,
+    @Args('barbershopId', { type: () => Int, nullable: true }) barbershopId?: number,
+    @Args('status', { nullable: true }) status?: string,
+  ) {
+    return this.barbershopService.getNetworkAgenda(user.id, {
+      barbershopId,
+      status,
+      startFrom: new Date(startAt),
+      startTo: new Date(endAt),
     });
   }
 
