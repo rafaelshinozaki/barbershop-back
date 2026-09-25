@@ -20,6 +20,7 @@ import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType } from './staff-roles';
+import { DEFAULT_WORKING_HOURS, WEEKDAY_KEYS } from './working-hours';
 import {
   addDaysStr,
   dayOfWeekOf,
@@ -324,6 +325,11 @@ export class BarbershopService {
    * Horário/folga de um barbeiro: gerente e dono mexem em qualquer um; o
    * barbeiro (e o básico), só no próprio. Recepção não mexe em horário.
    */
+  /** Escala semanal: gerente e dono de qualquer um; o profissional, só a dele. */
+  ensureCanManageBarberSchedule(userId: number, barbershopId: number, barberId: number) {
+    return this.ensureCanManageBarber(userId, barbershopId, barberId);
+  }
+
   private async ensureCanManageBarber(userId: number, barbershopId: number, barberId: number) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.manager) return barbershop;
@@ -2470,25 +2476,10 @@ export class BarbershopService {
 
   // ============ PÁGINA PÚBLICA E AGENDAMENTO ONLINE ============
 
-  private readonly DEFAULT_WORKING_HOURS: Record<number, { start: string; end: string } | null> = {
-    0: null, // domingo fechado por padrão
-    1: { start: '09:00', end: '18:00' },
-    2: { start: '09:00', end: '18:00' },
-    3: { start: '09:00', end: '18:00' },
-    4: { start: '09:00', end: '18:00' },
-    5: { start: '09:00', end: '18:00' },
-    6: { start: '09:00', end: '17:00' },
-  };
-
-  private readonly WEEKDAY_KEYS = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ];
+  // Horário padrão e dias da semana: ver working-hours.ts (a tela de horário
+  // de funcionamento usa os mesmos)
+  private readonly DEFAULT_WORKING_HOURS = DEFAULT_WORKING_HOURS;
+  private readonly WEEKDAY_KEYS = WEEKDAY_KEYS;
 
   async getPublicBarbershopByslug(slug: string) {
     const barbershop = await this.prisma.barbershop.findUnique({

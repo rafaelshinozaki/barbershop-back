@@ -21,7 +21,10 @@ describe('Responder, denunciar e moderar avaliações (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const reviews = new ReviewManagementService(prisma, barbershops);
+  const emails: any[] = [];
+  const reviews = new ReviewManagementService(prisma, barbershops, {
+    email: async (job: any) => void emails.push(job),
+  } as never);
 
   let ownerId: number;
   let staffUserId: number;
@@ -129,6 +132,51 @@ describe('Responder, denunciar e moderar avaliações (integração)', () => {
     await expect(reviews.reply(ownerId, shopId, elsewhere, 'oi')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('primeira resposta avisa o cliente por e-mail (editar não reenvia; descadastrado não recebe)', async () => {
+    const withEmail = await prisma.customer.create({
+      data: {
+        networkId,
+        name: 'Rui Email',
+        phone: `6${RUN.slice(-9)}1`,
+        email: `rui-${RUN}@test.local`,
+      },
+    });
+    const optedOut = await prisma.customer.create({
+      data: {
+        networkId,
+        name: 'Lia Sem',
+        phone: `6${RUN.slice(-9)}2`,
+        email: `lia-${RUN}@test.local`,
+        marketingOptOut: true,
+      },
+    });
+    const r1 = (
+      await prisma.review.create({
+        data: { barbershopId: shopId, customerId: withEmail.id, rating: 4, comment: 'Gostei' },
+      })
+    ).id;
+    const r2 = (
+      await prisma.review.create({
+        data: { barbershopId: shopId, customerId: optedOut.id, rating: 5 },
+      })
+    ).id;
+    emails.length = 0;
+
+    await reviews.reply(ownerId, shopId, r1, 'Valeu, Rui!');
+    await reviews.reply(ownerId, shopId, r1, 'Valeu mesmo, Rui!');
+    await reviews.reply(ownerId, shopId, r2, 'Obrigado!');
+    expect(emails).toHaveLength(1);
+    expect(emails[0]).toMatchObject({
+      template: 'review_reply',
+      to: `rui-${RUN}@test.local`,
+      context: expect.objectContaining({ CustomerName: 'Rui', Reply: 'Valeu, Rui!', Rating: 4 }),
+    });
+    expect(emails[0].context.PageURL).toContain(`/u/rvm-a-${RUN}`);
+    expect(emails[0].headers['List-Unsubscribe']).toBeTruthy();
+    // Não mexe na nota média dos próximos testes
+    await prisma.review.deleteMany({ where: { id: { in: [r1, r2] } } });
   });
 
   it('profissional não vê o painel, não responde nem denuncia', async () => {

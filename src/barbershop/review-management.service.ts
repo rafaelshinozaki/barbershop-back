@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { NotificationQueueService } from '../queue/notification-queue.service';
+import { langForCountry } from '../email/language';
+import { unsubscribeLinks } from './marketing-unsubscribe';
 
 const MAX_REPLY = 1000;
 const MAX_REASON = 500;
@@ -22,6 +25,7 @@ export class ReviewManagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly barbershopService: BarbershopService,
+    private readonly notificationQueue: NotificationQueueService,
   ) {}
 
   private include = {
@@ -60,7 +64,7 @@ export class ReviewManagementService {
   /** Responde (ou edita a resposta); vazio apaga a resposta. */
   async reply(userId: number, barbershopId: number, reviewId: number, text?: string | null) {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    await this.findInShop(barbershopId, reviewId);
+    const before = await this.findInShop(barbershopId, reviewId);
     const reply = text?.trim() || null;
     if (reply && reply.length > MAX_REPLY) {
       throw new BadRequestException(`Resposta com no máximo ${MAX_REPLY} caracteres`);
@@ -71,7 +75,65 @@ export class ReviewManagementService {
         ? { reply, repliedAt: new Date(), repliedByUserId: userId }
         : { reply: null, repliedAt: null, repliedByUserId: null },
     });
+    // Primeira resposta: o cliente fica sabendo (editar depois não reenvia)
+    if (reply && !before.reply) {
+      await this.notifyReviewer(reviewId, reply).catch(() => undefined);
+    }
     return true;
+  }
+
+  /**
+   * E-mail pro cliente com a resposta da unidade e o link pra página. Vai
+   * pro e-mail da conta (avaliou logado) ou da ficha (avaliou pelo link);
+   * quem se descadastrou dos e-mails não recebe.
+   */
+  private async notifyReviewer(reviewId: number, reply: string) {
+    const review = await this.prisma.review.findUnique({
+      where: { id: reviewId },
+      include: {
+        barbershop: true,
+        clientAccount: { select: { name: true, email: true } },
+        customer: { select: { id: true, name: true, email: true, marketingOptOut: true } },
+      },
+    });
+    if (!review) return;
+    const customer = review.customer;
+    if (customer?.marketingOptOut) return;
+    const to = review.clientAccount?.email || customer?.email;
+    // Conta excluída (LGPD) fica com e-mail inválido
+    if (!to || to.endsWith('.invalid')) return;
+    const shop = review.barbershop;
+    const lang = langForCountry(shop.country);
+    const unsubscribe = customer ? unsubscribeLinks(customer.id) : null;
+    const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const name = (review.clientAccount?.name ?? customer?.name ?? '').split(' ')[0];
+    await this.notificationQueue.email(
+      {
+        kind: 'customer',
+        loggedAgainstUserId: shop.ownerUserId ?? 0,
+        template: 'review_reply',
+        context: {
+          CustomerName: name,
+          BarbershopName: shop.name,
+          Rating: review.rating,
+          Comment: review.comment,
+          Reply: reply,
+          PageURL: `${front}/u/${shop.slug}`,
+          UnsubscribeURL: unsubscribe?.page ?? null,
+          Year: new Date().getFullYear(),
+        },
+        subject: {
+          pt: `${shop.name} respondeu sua avaliação`,
+          en: `${shop.name} replied to your review`,
+          es: `${shop.name} respondió a tu reseña`,
+        },
+        lang,
+        meta: 'review-reply',
+        to,
+        ...(unsubscribe ? { headers: unsubscribe.headers } : {}),
+      },
+      `review-reply-${reviewId}-${Date.now()}`,
+    );
   }
 
   /** Denuncia uma avaliação abusiva pra moderação da plataforma. */

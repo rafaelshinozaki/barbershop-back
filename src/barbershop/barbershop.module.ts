@@ -6,6 +6,7 @@ import { PayrollService } from './payroll.service';
 import { ReviewRequestService } from './review-request.service';
 import { ClosureService } from './closure.service';
 import { ReviewManagementService } from './review-management.service';
+import { ScheduleService } from './schedule.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { Module } from '@nestjs/common';
@@ -57,6 +58,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ReviewRequestService,
     ClosureService,
     ReviewManagementService,
+    ScheduleService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
@@ -64,6 +66,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ReviewRequestService,
     ClosureService,
     ReviewManagementService,
+    ScheduleService,
     EmployeeInviteService,
     AccountDeletionService,
     SharedLocationService,
