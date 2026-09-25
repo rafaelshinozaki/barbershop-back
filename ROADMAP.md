@@ -87,3 +87,83 @@ Barbearia conecta a própria Página do Facebook (e a conta comercial do Instagr
 
 ### 6. Site/domínio próprio do negócio
 Mesma página pública de sempre (`/u/:slug`), agora também acessível por um subdomínio próprio da unidade (ex.: `barbeariavintage.<domínio da plataforma>`) — novo campo `Barbershop.subdomain`, opcional, editável, validado como label de DNS e único. Frontend detecta o host e roteia pra mesma página; CORS liberado dinamicamente pra qualquer subdomínio. **Falta a parte de infraestrutura**: domínio próprio registrado, DNS curinga (`*.dominio`) e SSL configurados (a Vercel precisa de plano pago pra domínio curinga) — isso é ação de conta/pagamento de quem administra a plataforma, não código; até lá, funciona em `*.localhost` pra desenvolvimento. Domínio customizado de verdade por barbearia (`barbeariavintage.com.br` própria) foi descartado por ser bem mais esforço (onboarding de DNS por tenant) sem ganho proporcional nesta fase.
+
+## Horizonte futuro: Marketplace de profissionais — 💡 Ideias (não iniciado)
+
+Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app deixar de ser só "a agenda da barbearia" e virar um marketplace de pessoas, como Uber ou Airbnb: profissionais com vida própria na plataforma, que trabalham para uma ou várias barbearias, e clientes com histórico.
+
+### O que já existe e serve de base
+- **Uma conta em várias unidades + vínculo temporário** (`Barber.userId`, `currentEngagement()`): o mesmo usuário já pode trabalhar em mais de uma barbearia, inclusive como freelancer por período.
+- **Cadeira alugada** (Shared Location): profissional independente dentro do espaço de outra barbearia, com cobrança do aluguel.
+- **5 cargos** (básico, barbeiro, recepção, gerente, dono), escala, folgas, horário de funcionamento e checagem de conflito de horário por barbeiro.
+- **Página pública da unidade** com galeria, avaliações, foto dos profissionais, SEO e agendamento com "qualquer profissional".
+- **Taxa da plataforma** só em pagamento que passa pelo Stripe (sinal online, assinatura do cliente): regra atual, que continua valendo.
+
+### 1. Cadastro aberto para profissionais
+- Qualquer pessoa cria conta como **barbeiro, gerente ou recepção**, sem precisar do convite de um dono. Ela escolhe o papel (ou papéis) no cadastro.
+- O profissional se **vincula a uma ou várias barbearias ao mesmo tempo**. A barbearia convida ou o profissional pede para entrar, e a outra parte aceita. O vínculo pode ser fixo ou temporário, como já é hoje.
+- **Agenda única do profissional:** a disponibilidade dele é a soma das escalas em todas as unidades. A regra de conflito passa a valer **entre unidades**: não dá para marcar dois atendimentos no mesmo horário em lugares diferentes, nem escala sobreposta em duas barbearias. Hoje o conflito é checado por barbeiro, e cada unidade tem um `Barber` próprio. Precisa de uma identidade de profissional acima do `Barber` (ex.: `Professional` ligado ao `User`), com os `Barber` de cada unidade apontando para ela.
+- Gerente e recepção com várias unidades: mesma ideia. O painel mostra as unidades de que a pessoa participa, e o cargo pode ser diferente em cada uma.
+
+### 2. Página pública do profissional (`/p/:slug`)
+- Quantidade de serviços realizados (atendimentos concluídos) e tipos de serviço (categorias e mais feitos).
+- Galeria de trabalhos própria, independente da galeria da unidade, e especialidades (já existe `specialties` no barbeiro).
+- **Locais de atendimento:** barbearias onde atende hoje, com mapa, e se **atende a domicílio** (área/raio e taxa de deslocamento).
+- Nota média e comentários (avaliação do atendimento, não só da unidade), com resposta do profissional.
+- Histórico profissional: **franquias e barbearias onde já trabalhou**, com período, vindo dos vínculos encerrados. O profissional escolhe se mostra.
+- Botão de agendar com ele: escolhe o local (ou domicílio) e cai na agenda única.
+- SEO igual ao da página da unidade: meta tags, imagem de compartilhamento e sitemap.
+
+### 3. Perfil do cliente
+- Para o próprio cliente: histórico de cortes e serviços (quando, onde, com quem, qual serviço) e lugares onde já foi. Parte disso já existe em "Minha conta".
+- **Nota do cliente dada pelo profissional:** pontualidade, comparecimento, trato. Como no Uber, serve para o profissional decidir sobre agendamentos (ex.: exigir sinal de quem falta muito).
+  - ⚠️ **LGPD:** é dado pessoal com avaliação de conduta. Precisa de base legal clara e transparência (o cliente vê a própria nota e o que a compõe). Deve ser agregada (média, sem comentários livres sobre a pessoa) e vista só por profissionais que atendem ou vão atender o cliente. Nunca pública. Validar com jurídico antes.
+- Preferências (tipo de corte, observações, fotos de referência) que o cliente leva para qualquer profissional ou unidade, com consentimento.
+
+### 4. Domicílio e descoberta tipo Uber/Airbnb
+- Busca por profissional, não só por barbearia: especialidade, nota, preço, distância, "atende em casa", "disponível hoje".
+- Pedido a domicílio: o cliente informa o endereço, vê quem atende a região e o horário livre, e agenda. O sinal online (já existe) reduz calote.
+- Mais para frente: pagamento no app, com a taxa da plataforma sobre o que passa pelo Stripe, dentro da regra atual.
+
+### Monetização (sem cobrar do cliente final)
+Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria**. Quem trabalha dentro de uma franquia já é coberto pelo plano da franquia.
+
+| Quem | Paga? | Como |
+|---|---|---|
+| Cliente final | Nunca | — |
+| Profissional vinculado a uma franquia/barbearia com plano ativo | Não | Coberto pelo plano da unidade (que já é cobrado) |
+| Profissional independente, faturando até **X/mês** na plataforma | Não | Plano grátis, com página pública, agenda e até N clientes/mês |
+| Profissional independente acima de **X/mês** | Sim | Assinatura leve **ou** taxa pequena só sobre o excedente, o que for menor |
+| Gerente/recepção | Não | Sempre ligado a uma unidade pagante |
+| Barbearia/franquia | Sim | Planos atuais (Basic/Medium/Premium) |
+
+Proposta para o profissional independente, a validar com números:
+- **Base do "faturamento":** atendimentos concluídos pela plataforma no mês (valor dos serviços registrados), não o faturamento total da pessoa. É o que o sistema consegue medir e é justo: só conta o que a plataforma ajudou a acontecer.
+- **Limite X:** algo como R$ 3–5 mil/mês em atendimentos pela plataforma. Abaixo disso é grátis para sempre, o que ajuda a atrair profissionais em início de carreira.
+- **Acima de X,** o menor entre:
+  - assinatura fixa "Pro" (ex.: R$ 39–59/mês), com destaque na busca, domicílio, relatórios e link próprio; e
+  - taxa de 2–3% só sobre o valor que passa de X.
+
+  O teto evita que o custo cresça sem limite para quem fatura muito.
+- **Onde cobra a taxa:** se o pagamento passa pelo Stripe (sinal, pagamento no app), a taxa pode ser retida na hora, como hoje. Se foi pago por fora, entra na fatura mensal da assinatura.
+- **Extras opcionais**, pagos por quem quer mais alcance, nunca obrigatórios:
+  - "Destaque" do profissional na busca, mesmo modelo do destaque da barbearia (item 7 do Marketplace completo);
+  - raio maior para atender a domicílio;
+  - selo de verificado (checagem de documento e certificados).
+- **Receita do lado das barbearias:** a barbearia pode abrir vaga ("preciso de barbeiro sábado") e contratar freelancer pela plataforma. Cobra uma taxa pequena por vínculo temporário fechado ou inclui isso no Premium. É o lado "Airbnb" do aluguel de cadeira, que já existe.
+- **Transição suave:** avisar antes de cobrar (painel mostrando "você está em R$ Y de X este mês"), primeiro mês acima de X grátis e só cobrar a partir do segundo mês seguido.
+
+### Riscos e pontos em aberto
+- **Identidade do profissional:** hoje cada unidade tem o próprio `Barber`. Unificar sem quebrar escala, comissão, repasse e histórico é a maior mudança de modelo de dados. Fazer com migração cuidadosa: criar `Professional` e ligar os `Barber` existentes pelo `userId`.
+- **Conflito entre unidades:** precisa ser checado no banco (como o conflito atual por barbeiro) considerando todos os `Barber` do mesmo profissional, e o deslocamento entre locais também deveria contar.
+- **Quem é "dono" do cliente:** o cliente que o profissional levou para a barbearia continua na base da barbearia quando ele sai? Definir regras de portabilidade (LGPD: o dado é do cliente) e de não-aliciamento.
+- **Avaliação dupla** (cliente avalia profissional, profissional avalia cliente): antifraude (só quem teve atendimento concluído), moderação e direito de resposta.
+- **Fiscal:** cobrar o profissional pessoa física ou MEI exige nota fiscal e meio de pagamento. Usar a mesma cobrança Stripe dos planos.
+
+### Fases sugeridas
+1. Identidade `Professional` + agenda única com conflito entre unidades (base de tudo).
+2. Cadastro aberto de profissional + vínculo por pedido/convite.
+3. Página pública do profissional (sem domicílio) + avaliação do atendimento por profissional.
+4. Perfil/histórico do cliente e nota do cliente (depois da validação jurídica).
+5. Domicílio + busca por profissional.
+6. Monetização do independente (limite X, Pro, taxa sobre o excedente) + destaque e vagas para freelancer.
