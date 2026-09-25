@@ -1,4 +1,6 @@
 // src/app.module.ts
+// Antes de qualquer schema: Date em campo String sai em ISO
+import './graphql/string-dates';
 import { SeoModule } from './seo/seo.module';
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
