@@ -125,6 +125,65 @@ Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app
 - Pedido a domicílio: o cliente informa o endereço, vê quem atende a região e o horário livre, e agenda. O sinal online (já existe) reduz calote.
 - Mais para frente: pagamento no app, com a taxa da plataforma sobre o que passa pelo Stripe, dentro da regra atual.
 
+### 5. Perfis por tipo de usuário e controle de privacidade
+Cada tipo de usuário tem um **perfil** dentro da plataforma, e **a própria pessoa decide o que aparece e para quem**. O padrão é privado: nada fica público sem ela escolher.
+
+**Tipos de perfil.** Uma mesma pessoa pode ter vários: um barbeiro também é cliente, e um dono também pode atender.
+
+| Perfil | O que mostra (se a pessoa escolher) |
+|---|---|
+| Cliente | Histórico de cortes e serviços, onde já foi, preferências e fotos de referência (tudo privado por padrão) |
+| Profissional (barbeiro) | Serviços realizados, tipos, galeria, especialidades, locais, domicílio, nota e comentários, onde já trabalhou |
+| Gerente | Unidades que gerencia ou gerenciou, tempo de experiência, especialidades de gestão |
+| Recepção/atendente | Unidades onde atuou, idiomas, disponibilidade |
+| Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades |
+
+**Controles no perfil**, numa página nova "Perfis e privacidade" nas configurações da conta, ao lado de "Segurança":
+- **Visibilidade do perfil:**
+  - *Público*: aparece na busca, no Google e no sitemap;
+  - *Só na plataforma*: só usuários logados veem, fora do Google;
+  - *Oculto*: só quem já trabalha ou é atendido pela pessoa.
+- **Disponível para ser contratado** (open to work): sim ou não. Se sim:
+  - tipo (fixo, freelancer ou aluguel de cadeira);
+  - dias e horários livres, que vêm da agenda única;
+  - raio ou cidades;
+  - cargos que aceita.
+
+  As barbearias só encontram quem marcou essa opção, e mandam uma proposta que a pessoa aceita ou recusa.
+- **Aceitando novos clientes:** o profissional pode fechar a agenda para gente nova sem sumir da plataforma.
+- **Campo a campo:** mostrar ou esconder foto, nota, número de atendimentos, comentários, histórico de franquias, locais e contato. O contato fica oculto por padrão, e a conversa acontece pelo próprio app.
+- **"Ver como o público vê":** pré-visualização do perfil com as escolhas atuais.
+- **Cliente:** decide se os profissionais de *outras* barbearias podem ver o histórico e as preferências dele. É consentimento explícito e dá para revogar. A nota que os profissionais dão a ele (item 3) nunca aparece no perfil público.
+- **Regras gerais:**
+  - só perfis *Públicos* entram na busca aberta e no sitemap, e os outros ganham `noindex`;
+  - esconder o perfil não apaga nada;
+  - a exclusão de conta (LGPD, já existe) passa a valer por perfil e para a conta inteira.
+
+### 6. Cadastro com escolha do tipo de usuário
+Muda o cadastro inteiro. Hoje existem o `User` (dono e equipe, com tipo "padrão" ou "dono de barbearia", e funcionário entrando só por convite) e o `ClientAccount` (cliente, com login separado em `/client`).
+- **Primeiro passo do cadastro: "Como você vai usar?"**
+  - *Quero agendar* (cliente);
+  - *Sou profissional* (barbeiro, gerente ou recepção, podendo marcar mais de um);
+  - *Tenho uma barbearia/franquia* (fluxo atual de dono).
+
+  Depois o onboarding é específico de cada tipo: o profissional preenche especialidades, locais, domicílio e se está disponível para contratação; o dono cadastra a unidade, como hoje.
+- **Adicionar perfil depois:** quem entrou como cliente pode ativar "Sou profissional" nas configurações, e vice-versa, sem criar outra conta.
+- **Convite de barbearia continua existindo**, já com o tipo e o cargo preenchidos. Quem já tem conta só aceita o vínculo.
+- **Login social:** na primeira entrada, pergunta o tipo antes de seguir, como o passo acima.
+- **Unificar a identidade:** um login só (`User`) com perfis ligados (`ClientProfile`, `ProfessionalProfile`...), em vez de `User` e `ClientAccount` separados. É uma migração grande:
+  - juntar contas com o mesmo e-mail confirmado;
+  - manter as sessões, o "Lembrar de mim" e a verificação de e-mail;
+  - redirecionar as rotas `/client/*`.
+
+  Dá para fazer em etapas: primeiro os perfis de profissional no `User`, depois trazer o cliente.
+- **Impacto:**
+  - modelo de dados e guards de acesso: o cargo por unidade continua como está; o perfil é outra camada;
+  - telas de cadastro e onboarding;
+  - SEO e sitemap (só perfis públicos entram);
+  - e-mails de boas-vindas por tipo;
+  - exclusão de conta;
+  - todos os testes E2E de cadastro e login.
+
 ### Monetização (sem cobrar do cliente final)
 Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria**. Quem trabalha dentro de uma franquia já é coberto pelo plano da franquia.
 
@@ -162,7 +221,7 @@ Proposta para o profissional independente, a validar com números:
 
 ### Fases sugeridas
 1. Identidade `Professional` + agenda única com conflito entre unidades (base de tudo).
-2. Cadastro aberto de profissional + vínculo por pedido/convite.
+2. Cadastro com escolha do tipo de usuário + perfis e a página "Perfis e privacidade" (visibilidade, "disponível para contratação", campo a campo) + cadastro aberto de profissional e vínculo por pedido/convite. A privacidade vem junto com o cadastro aberto, não depois.
 3. Página pública do profissional (sem domicílio) + avaliação do atendimento por profissional.
 4. Perfil/histórico do cliente e nota do cliente (depois da validação jurídica).
 5. Domicílio + busca por profissional.
