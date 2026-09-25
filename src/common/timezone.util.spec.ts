@@ -1,4 +1,5 @@
 import {
+  reportPeriod,
   DEFAULT_TIMEZONE,
   addDaysStr,
   monthRangeUtc,
@@ -76,5 +77,17 @@ describe('timezone.util', () => {
     expect(sep.end.toISOString()).toBe('2026-10-01T03:00:00.000Z');
     const dec = monthRangeUtc(2026, 0, 'America/Sao_Paulo');
     expect(dec.start.toISOString()).toBe('2025-12-01T03:00:00.000Z');
+  });
+
+  it('reportPeriod: dias no calendário da unidade, último dia inteiro', () => {
+    const p = reportPeriod('America/Sao_Paulo', '2026-09-01', '2026-09-30');
+    expect(p.gte!.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+    expect(p.lte!.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+    expect(reportPeriod('America/Sao_Paulo')).toEqual({ gte: undefined, lte: undefined });
+    // Com hora, é o instante mesmo
+    expect(reportPeriod('Asia/Tokyo', '2026-09-01T10:00:00Z').gte!.toISOString()).toBe(
+      '2026-09-01T10:00:00.000Z',
+    );
+    expect(() => reportPeriod('UTC', 'ontem')).toThrow('Período inválido');
   });
 });

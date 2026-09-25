@@ -223,6 +223,14 @@ describe('Agendamento recorrente (integração)', () => {
     });
     await settle();
     emails.length = 0;
+    // Alguém esperando vaga num dos dias que vão ser liberados
+    const waiting = await prisma.waitlistEntry.create({
+      data: {
+        barbershopId: shopId,
+        customerId,
+        date: new Date(`${appts[2].startAt.toISOString().slice(0, 10)}T00:00:00Z`),
+      },
+    });
 
     expect((await series.cancelFromHere(ownerId, shopId, appts[1].id)).cancelledCount).toBe(3);
     const after = await prisma.appointment.findMany({
@@ -236,8 +244,13 @@ describe('Agendamento recorrente (integração)', () => {
       'CANCELLED',
     ]);
     await settle();
-    expect(emails).toHaveLength(1);
-    expect(emails[0].context.SeriesDates).toHaveLength(3);
+    const cancelledEmails = emails.filter((e) => e.template === 'appointment_cancelled');
+    expect(cancelledEmails).toHaveLength(1);
+    expect(cancelledEmails[0].context.SeriesDates).toHaveLength(3);
+    expect(emails.map((e) => e.template)).toContain('waitlist_slot_available');
+    expect(
+      (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: waiting.id } })).status,
+    ).toBe('NOTIFIED');
 
     // Avulso não é série
     const single = await barbershops.createAppointment(ownerId, shopId, {

@@ -5,6 +5,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
 import { verifyAppointmentToken } from './appointment-link';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { reportPeriod, safeTimeZone } from '../common/timezone.util';
 
 const KIND = 'appointment_deposit';
 
@@ -169,10 +170,21 @@ export class DepositPaymentService {
       return 'CONFIRMED';
     }
     if (appt.status === 'CANCELLED' && !appt.depositPaid) {
-      // Pagou depois que o horário foi liberado: devolve o dinheiro
-      await this.stripe
-        .createRefund(intent.id, undefined, 'requested_by_customer')
-        .catch((err) => this.logger.error(`Erro ao estornar o sinal ${intent.id}:`, err));
+      // Pagou depois que o horário foi liberado: devolve o dinheiro (uma vez)
+      const claimed = await this.prisma.appointment.updateMany({
+        where: { id: appt.id, depositRefundedAt: null },
+        data: { depositPaymentIntentId: intent.id, depositRefundedAt: new Date() },
+      });
+      if (claimed.count === 1) {
+        await this.stripe
+          .createRefund(
+            intent.id,
+            undefined,
+            'requested_by_customer',
+            `deposit-refund-${intent.id}`,
+          )
+          .catch((err) => this.logger.error(`Erro ao estornar o sinal ${intent.id}:`, err));
+      }
       return 'REFUNDED';
     }
     return appt.status;
@@ -185,7 +197,14 @@ export class DepositPaymentService {
   async expireHolds(now = new Date()) {
     const due = await this.prisma.appointment.findMany({
       where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now } },
-      select: { id: true, depositPaymentIntentId: true },
+      select: {
+        id: true,
+        barbershopId: true,
+        barberId: true,
+        startAt: true,
+        depositPaymentIntentId: true,
+        services: { select: { serviceId: true } },
+      },
       take: 200,
     });
     let released = 0;
@@ -211,6 +230,14 @@ export class DepositPaymentService {
         data: { status: 'CANCELLED', holdExpiresAt: null },
       });
       released += res.count;
+      // O horário voltou a ficar livre: pode ser a vaga de alguém da lista de espera
+      if (res.count) {
+        this.barbershopService
+          .checkWaitlistOnCancellation(appt.barbershopId, appt)
+          .catch((err) =>
+            this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
+          );
+      }
     }
     if (released) this.logger.log(`Horários liberados sem o sinal: ${released}`);
     return released;
@@ -222,16 +249,13 @@ export class DepositPaymentService {
    * à unidade. Estornados não contam. Não transfere nada — só calcula.
    */
   async payoutReport(userId: number, barbershopId: number, startDate?: string, endDate?: string) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const paid = await this.prisma.appointment.findMany({
       where: {
         barbershopId,
         depositPaid: true,
         depositPaymentIntentId: { not: null },
-        depositPaidAt: {
-          gte: startDate ? new Date(startDate) : undefined,
-          lte: endDate ? new Date(endDate) : undefined,
-        },
+        depositPaidAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
       },
       select: { depositAmount: true },
     });
@@ -247,17 +271,7 @@ export class DepositPaymentService {
   }
 
   /** Estorno do sinal quando o cliente cancela pelo link, dentro do prazo. */
-  async refundOnClientCancel(appointmentId: number) {
-    const appt = await this.prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      select: { depositPaid: true, depositPaymentIntentId: true },
-    });
-    if (!appt?.depositPaid || !appt.depositPaymentIntentId) return false;
-    await this.stripe.createRefund(appt.depositPaymentIntentId, undefined, 'requested_by_customer');
-    await this.prisma.appointment.update({
-      where: { id: appointmentId },
-      data: { depositPaid: false },
-    });
-    return true;
+  refundOnClientCancel(appointmentId: number) {
+    return this.barbershopService.refundOnlineDeposit(appointmentId);
   }
 }

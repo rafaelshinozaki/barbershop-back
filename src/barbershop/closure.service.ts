@@ -180,6 +180,11 @@ export class ClosureService {
         });
         if (res.count === 0) continue;
         cancelled++;
+        // A unidade fechou: o sinal pago online volta pro cliente. (Lista de
+        // espera não: com a unidade fechada, esse horário não existe mais.)
+        await this.barbershopService
+          .refundOnlineDeposit(a.id)
+          .catch((err) => this.logger.error(`Erro ao estornar o sinal #${a.id}:`, err));
         if (a.customer.email) {
           this.barbershopService
             .notifyAppointmentCancelled(a.id, a.customer.email, reason)

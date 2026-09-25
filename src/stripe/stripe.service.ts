@@ -262,6 +262,7 @@ export class StripeService {
     paymentIntentId: string,
     amount?: number,
     reason?: Stripe.RefundCreateParams.Reason,
+    idempotencyKey?: string,
   ) {
     const params: Stripe.RefundCreateParams = {
       payment_intent: paymentIntentId,
@@ -275,7 +276,10 @@ export class StripeService {
       params.reason = reason;
     }
 
-    return await this.stripe.refunds.create(params);
+    return await this.stripe.refunds.create(
+      params,
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
   }
 
   async cancelPaymentIntent(paymentIntentId: string) {

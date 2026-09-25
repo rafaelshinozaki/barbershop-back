@@ -332,3 +332,22 @@ Sem login no Google nem chave de API:
 - O dinheiro entra na conta da plataforma. A taxa da plataforma incide só
   nesse valor (pagamento que passa pelo Stripe); o repasse devido à unidade
   aparece em `depositPayoutReport` (sem os estornados).
+- A unidade cancelou (pela agenda, "este e os próximos" da série ou por um
+  fechamento): o sinal online é estornado sozinho. Ao cancelar pela agenda,
+  a equipe pode escolher reter (ex.: cliente desistiu em cima da hora).
+  Falta (no-show) retém o sinal.
+- Gerente e dono podem estornar na mão (`refundAppointmentDeposit`) sem
+  cancelar o horário. Um estorno só por pagamento, mesmo com dois cliques;
+  se o Stripe recusar, nada muda e dá pra tentar de novo. Sinal pago online
+  não se desmarca na mão e o horário não pode ser excluído (só cancelado).
+- Relatórios de repasse (sinal e assinaturas): período em dias do
+  calendário da unidade, com o último dia inteiro.
+
+## 16. Lista de espera
+
+- Todo horário que fica livre avisa o primeiro da lista de espera que
+  combine (dia, profissional e serviço): cancelamento (equipe, cliente pelo
+  link, "este e os próximos" da série), remarcação (o horário antigo) e
+  reserva aguardando o sinal que expirou sem pagamento.
+- Não avisa: horário que já passou e dia que a unidade fechou (o horário
+  deixou de existir).
