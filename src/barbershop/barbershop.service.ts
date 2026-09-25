@@ -146,6 +146,10 @@ export function parseEngagementPeriod(
 /** Cargos que veem só a própria agenda (e as próprias vendas) */
 const OWN_AGENDA_ONLY: AccessLevel[] = ['basic', 'barber'];
 
+const MAX_TIME_OFF_DAYS = 366;
+const MAX_AGENDA_ROWS = 3000;
+const TIME_OFF_REASONS = ['VACATION', 'SICK', 'PERSONAL', 'OTHER'];
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -1571,6 +1575,12 @@ export class BarbershopService {
 
   // ============ BARBER TIME OFF ============
 
+  /**
+   * Folga/férias/afastamento de um profissional (gerente e dono; o
+   * barbeiro, só a própria). O período sai da página pública e da série;
+   * horários já marcados nele continuam — volta quantos são, pra equipe
+   * remarcar ou cancelar.
+   */
   async createBarberTimeOff(
     userId: number,
     input: { barberId: number; startAt: string; endAt: string; reason?: string },
@@ -1578,14 +1588,49 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
     await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
-    return this.prisma.barberTimeOff.create({
-      data: {
-        barberId: input.barberId,
-        startAt: new Date(input.startAt),
-        endAt: new Date(input.endAt),
-        reason: input.reason ?? 'PERSONAL',
+    const startAt = new Date(input.startAt);
+    const endAt = new Date(input.endAt);
+    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime()) || endAt <= startAt) {
+      throw new BadRequestException('Período inválido');
+    }
+    if (endAt.getTime() - startAt.getTime() > MAX_TIME_OFF_DAYS * 86_400_000) {
+      throw new BadRequestException(`O período pode ter no máximo ${MAX_TIME_OFF_DAYS} dias`);
+    }
+    const reason = input.reason ?? 'PERSONAL';
+    if (!TIME_OFF_REASONS.includes(reason)) throw new BadRequestException('Motivo inválido');
+    const [timeOff, affectedAppointments] = await Promise.all([
+      this.prisma.barberTimeOff.create({
+        data: { barberId: input.barberId, startAt, endAt, reason },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          barberId: barber.id,
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+      }),
+    ]);
+    this.realtime.notify(barber.barbershopId, 'APPOINTMENT', 'UPDATED');
+    return { ...timeOff, affectedAppointments };
+  }
+
+  /** Folgas da unidade num período (fundo da agenda); barbeiro vê só as dele. */
+  async getBarbershopTimeOffs(userId: number, barbershopId: number, startAt: Date, endAt: Date) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    const own = await this.ownBarberIdIfBarber(userId, barbershop);
+    const rows = await this.prisma.barberTimeOff.findMany({
+      where: {
+        barber: { barbershopId },
+        ...(own !== null ? { barberId: own } : {}),
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
       },
+      include: { barber: { select: { name: true } } },
+      orderBy: { startAt: 'asc' },
+      take: 500,
     });
+    return rows.map(({ barber, ...t }) => ({ ...t, barberName: barber.name }));
   }
 
   async deleteBarberTimeOff(userId: number, timeOffId: number) {
@@ -1596,6 +1641,7 @@ export class BarbershopService {
     if (!timeOff) throw new NotFoundException('Afastamento não encontrado');
     await this.ensureCanManageBarber(userId, timeOff.barber.barbershopId, timeOff.barberId);
     await this.prisma.barberTimeOff.delete({ where: { id: timeOffId } });
+    this.realtime.notify(timeOff.barber.barbershopId, 'APPOINTMENT', 'UPDATED');
     return true;
   }
 
@@ -1905,13 +1951,22 @@ export class BarbershopService {
     }
     const appointments = await this.prisma.appointment.findMany({
       where,
-      include: { services: { include: { service: true } }, customer: true, barber: true },
+      include: {
+        services: { include: { service: true } },
+        customer: true,
+        barber: true,
+        sale: { select: { id: true } },
+      },
       orderBy: { startAt: 'asc' },
-      take: filters?.limit ?? 50,
+      // Agenda (semana/mês): o período inteiro — com 50 fixo, numa semana
+      // movimentada os horários além do 50º simplesmente não apareciam
+      take: filters?.limit ?? (filters?.startFrom && filters?.startTo ? MAX_AGENDA_ROWS : 50),
       skip: filters?.offset ?? 0,
     });
     const canSee = await this.contactVisibility(userId, barbershop);
-    return appointments.map((a) => this.hideAppointmentContact(canSee, a));
+    return appointments.map(({ sale, ...a }) =>
+      this.hideAppointmentContact(canSee, { ...a, saleId: sale?.id ?? null }),
+    );
   }
 
   async getNetworkAppointments(
@@ -4478,12 +4533,28 @@ export class BarbershopService {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    // Conta do horário: uma venda só por horário, e o sinal já pago (online
+    // ou na mão) é descontado do que se cobra agora
+    let depositPaidOnAppointment = 0;
     if (data.appointmentId) {
       const appt = await this.prisma.appointment.findFirst({
         where: { id: data.appointmentId, barbershopId },
-        select: { id: true },
+        select: {
+          id: true,
+          status: true,
+          depositPaid: true,
+          depositAmount: true,
+          sale: { select: { id: true } },
+        },
       });
       if (!appt) throw new NotFoundException('Agendamento não encontrado');
+      if (appt.sale) {
+        throw new BadRequestException(`Este atendimento já foi cobrado (venda #${appt.sale.id})`);
+      }
+      if (['CANCELLED', 'NO_SHOW', 'PENDING_PAYMENT'].includes(appt.status)) {
+        throw new BadRequestException('Este horário não pode ser cobrado');
+      }
+      if (appt.depositPaid) depositPaidOnAppointment = Number(appt.depositAmount ?? 0);
     }
     await this.ensureItemsOfBarbershop(
       barbershopId,
@@ -4520,7 +4591,9 @@ export class BarbershopService {
       loyaltyDiscountAmount = data.loyaltyPointsRedeemed * pointValue;
     }
 
-    const finalTotal = Math.max(0, data.total - giftCardAmountApplied - loyaltyDiscountAmount);
+    const afterDiscounts = Math.max(0, data.total - giftCardAmountApplied - loyaltyDiscountAmount);
+    const depositApplied = Math.min(depositPaidOnAppointment, afterDiscounts);
+    const finalTotal = Math.round((afterDiscounts - depositApplied) * 100) / 100;
 
     // Vincula a venda ao caixa aberto no momento, se houver um — é o que
     // permite reconciliar o fechamento de caixa depois (ver
@@ -4530,7 +4603,7 @@ export class BarbershopService {
     const openSession = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
-    return this.prisma.$transaction(async (tx) => {
+    const created = this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
         data: {
           barbershopId,
@@ -4551,8 +4624,16 @@ export class BarbershopService {
           loyaltyPointsRedeemed: data.loyaltyPointsRedeemed || null,
           loyaltyDiscountAmount:
             loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
+          depositApplied: depositApplied > 0 ? new Decimal(depositApplied) : null,
         },
       });
+      // Cobrou o atendimento: ele está concluído
+      if (data.appointmentId) {
+        await tx.appointment.updateMany({
+          where: { id: data.appointmentId, status: { in: ['CONFIRMED', 'IN_PROGRESS'] } },
+          data: { status: 'COMPLETED' },
+        });
+      }
 
       // Baixa condicional ("só se ainda tiver saldo"), dentro da transação:
       // a checagem lá em cima é de antes — duas vendas simultâneas passavam
@@ -4689,6 +4770,13 @@ export class BarbershopService {
         where: { id: sale.id },
         include: { items: true, customer: true, barber: true },
       });
+    });
+    // Duas pessoas cobrando o mesmo horário ao mesmo tempo: a venda é única
+    return created.catch((err) => {
+      if ((err as { code?: string })?.code === 'P2002' && data.appointmentId) {
+        throw new BadRequestException('Este atendimento já foi cobrado');
+      }
+      throw err;
     });
   }
 

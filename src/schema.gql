@@ -137,6 +137,7 @@ type Appointment {
   id: Int!
   notes: String
   resourceId: Int
+  saleId: Int
   seriesId: String
   seriesIndex: Int
   services: [AppointmentServiceType!]
@@ -286,7 +287,9 @@ type BarberScheduleType {
 }
 
 type BarberTimeOffType {
+  affectedAppointments: Int
   barberId: Int!
+  barberName: String
   createdAt: String!
   endAt: String!
   id: Int!
@@ -2098,6 +2101,7 @@ type Query {
   barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopSubscribers(barbershopId: Int!): [ClientSubscriptionType!]!
+  barbershopTimeOffs(barbershopId: Int!, endAt: String!, startAt: String!): [BarberTimeOffType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   businessHours(barbershopId: Int!): [BusinessDayType!]!
   canReviewBarbershop(barbershopId: Int!): Boolean!
@@ -2257,6 +2261,7 @@ type Sale {
   createdAt: String!
   customerId: Int
   customerName: String
+  depositApplied: Float
   discountAmount: Float!
   giftCardAmountApplied: Float
   giftCardId: Int

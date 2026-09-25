@@ -372,6 +372,14 @@ export class BarberTimeOffType {
   @Field()
   reason: string;
 
+  /** Folgas da unidade: nome do profissional */
+  @Field({ nullable: true })
+  barberName?: string;
+
+  /** Ao cadastrar: horários já marcados no período */
+  @Field(() => Int, { nullable: true })
+  affectedAppointments?: number;
+
   @Field()
   createdAt: string;
 
@@ -637,6 +645,10 @@ export class Appointment {
   @Field()
   updatedAt: string;
 
+  /** Conta já fechada: a venda desse horário */
+  @Field(() => Int, { nullable: true })
+  saleId?: number | null;
+
   /** Agendamento recorrente: horários da mesma série */
   @Field({ nullable: true })
   seriesId?: string;
@@ -808,6 +820,10 @@ export class Sale {
 
   @Field(() => Float, { nullable: true })
   loyaltyDiscountAmount?: number;
+
+  /** Sinal do horário descontado na conta */
+  @Field(() => Float, { nullable: true })
+  depositApplied?: number;
 
   @Field()
   createdAt: string;

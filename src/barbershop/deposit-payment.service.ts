@@ -3,11 +3,17 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
-import { verifyAppointmentToken } from './appointment-link';
+import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
+import { NotificationQueueService } from '../queue/notification-queue.service';
+import { langForCountry, LOCALE } from '../email/language';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
 
 const KIND = 'appointment_deposit';
+/** Lembra de pagar quem reservou e ainda não pagou depois desse tempo... */
+const REMIND_AFTER_MS = 5 * 60_000;
+/** ...se ainda der tempo de pagar */
+const REMIND_MIN_LEFT_MS = 2 * 60_000;
 
 /** Chave do Stripe configurada de verdade (não o exemplo do .env.example) */
 export function stripeConfigured() {
@@ -34,6 +40,7 @@ export class DepositPaymentService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly barbershopService: BarbershopService,
+    private readonly notificationQueue: NotificationQueueService,
   ) {}
 
   /** Liga/desliga o sinal online da unidade (gerente e dono). */
@@ -188,6 +195,79 @@ export class DepositPaymentService {
       return 'REFUNDED';
     }
     return appt.status;
+  }
+
+  /**
+   * Rotina: quem reservou e não pagou em alguns minutos (fechou a aba, o
+   * cartão foi recusado) recebe um e-mail com o link pra pagar antes de o
+   * horário ser liberado. Uma vez só por reserva.
+   */
+  async remindPendingHolds(now = new Date()) {
+    const due = await this.prisma.appointment.findMany({
+      where: {
+        status: 'PENDING_PAYMENT',
+        holdReminderSentAt: null,
+        createdAt: { lte: new Date(now.getTime() - REMIND_AFTER_MS) },
+        holdExpiresAt: { gt: new Date(now.getTime() + REMIND_MIN_LEFT_MS) },
+        customer: { email: { not: null } },
+      },
+      include: {
+        customer: { select: { name: true, email: true } },
+        barber: { select: { name: true } },
+        barbershop: true,
+      },
+      take: 100,
+    });
+    let sent = 0;
+    for (const appt of due) {
+      // Marca antes (duas rotinas ao mesmo tempo não mandam duas vezes)
+      const claimed = await this.prisma.appointment.updateMany({
+        where: { id: appt.id, status: 'PENDING_PAYMENT', holdReminderSentAt: null },
+        data: { holdReminderSentAt: now },
+      });
+      if (claimed.count === 0 || !appt.customer.email) continue;
+      const shop = appt.barbershop;
+      const lang = langForCountry(shop.country);
+      const timeZone = safeTimeZone(shop.timezone);
+      const time = (d: Date) =>
+        d.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit', timeZone });
+      try {
+        await this.notificationQueue.email(
+          {
+            kind: 'customer',
+            loggedAgainstUserId: shop.ownerUserId ?? 0,
+            template: 'deposit_pending',
+            context: {
+              CustomerName: appt.customer.name.split(' ')[0],
+              BarbershopName: shop.name,
+              BarberName: appt.barber.name,
+              AppointmentDate: appt.startAt.toLocaleDateString(LOCALE[lang], { timeZone }),
+              AppointmentTime: time(appt.startAt),
+              HoldUntil: time(appt.holdExpiresAt!),
+              DepositAmount: Number(appt.depositAmount ?? 0).toLocaleString(LOCALE[lang], {
+                style: 'currency',
+                currency: shop.currency,
+              }),
+              PayURL: appointmentManageUrl(appt.id),
+              Year: now.getFullYear(),
+            },
+            subject: {
+              pt: `Falta pagar o sinal — ${shop.name}`,
+              en: `Your deposit is still pending — ${shop.name}`,
+              es: `Falta pagar la seña — ${shop.name}`,
+            },
+            lang,
+            meta: 'deposit-pending',
+            to: appt.customer.email,
+          },
+          `deposit-pending-${appt.id}`,
+        );
+        sent++;
+      } catch (err) {
+        this.logger.error(`Erro ao lembrar o sinal do agendamento #${appt.id}:`, err);
+      }
+    }
+    return sent;
   }
 
   /**

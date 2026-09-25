@@ -928,6 +928,8 @@ model Appointment {
   depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
   // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
   holdExpiresAt  DateTime?
+  // Lembrete "pague o sinal" enviado (uma vez só)
+  holdReminderSentAt DateTime?
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -1151,6 +1153,8 @@ model Sale {
   loyaltyPointsEarned   Int?
   loyaltyPointsRedeemed Int?
   loyaltyDiscountAmount Decimal?
+  // Sinal já pago (online ou na mão) descontado ao fechar a conta do horário
+  depositApplied Decimal?
   barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer       Customer?  @relation(fields: [customerId], references: [id])
   barber         Barber?    @relation(fields: [barberId], references: [id])
