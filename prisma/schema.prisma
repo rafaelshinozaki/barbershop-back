@@ -482,6 +482,8 @@ model Barbershop {
   timezone       String    @default("America/Sao_Paulo")
   currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
+  // "Sobre nós" da página pública (texto da unidade, até 1000 caracteres)
+  description    String?
   isActive       Boolean   @default(true)
   featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
   networkId      Int

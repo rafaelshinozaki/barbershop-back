@@ -212,6 +212,9 @@ export class Barbershop {
   @Field({ nullable: true })
   businessHours?: string;
 
+  @Field({ nullable: true })
+  description?: string;
+
   @Field()
   isActive: boolean;
 

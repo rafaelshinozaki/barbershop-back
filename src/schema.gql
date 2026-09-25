@@ -310,6 +310,7 @@ type Barbershop {
   country: String!
   createdAt: String!
   currency: String!
+  description: String
   email: String!
   featuredUntil: String
   id: Int!
@@ -2011,16 +2012,22 @@ type PublicBarbershopType {
   complement2: String
   country: String!
   currency: String!
+  description: String
   email: String!
 
   """Tom de cinza da franquia (Radix); null = padrão"""
   grayColor: String
   id: Int!
   imageUrl: String
+  instagramUsername: String
   isFeatured: Boolean!
+  latitude: Float
+  longitude: Float
   name: String!
   onlineDeposit: Boolean!
+  openingHours: [PublicOpeningHoursType!]!
   phone: String!
+  portfolio: [PublicPortfolioPhotoType!]!
   postalCode: String!
   reviewCount: Int!
   services: [PublicServiceType!]!
@@ -2036,6 +2043,17 @@ type PublicNextSlotType {
   """Dia (YYYY-MM-DD, no fuso da unidade)"""
   date: String!
   startAt: String!
+}
+
+type PublicOpeningHoursType {
+  close: String
+  dayOfWeek: Int!
+  open: String
+}
+
+type PublicPortfolioPhotoType {
+  caption: String
+  url: String!
 }
 
 type PublicServiceType {
@@ -2591,6 +2609,7 @@ input UpdateBarbershopInput {
   complement2: String
   country: String
   currency: String
+  description: String
   email: String
   isActive: Boolean
   name: String

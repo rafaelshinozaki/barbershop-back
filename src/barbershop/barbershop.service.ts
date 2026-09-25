@@ -20,7 +20,7 @@ import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType } from './staff-roles';
-import { DEFAULT_WORKING_HOURS, WEEKDAY_KEYS } from './working-hours';
+import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
   addDaysStr,
   dayOfWeekOf,
@@ -147,6 +147,9 @@ export function parseEngagementPeriod(
 const OWN_AGENDA_ONLY: AccessLevel[] = ['basic', 'barber'];
 
 const MAX_TIME_OFF_DAYS = 366;
+const MAX_DESCRIPTION = 1000;
+/** Fotos de trabalhos (posts publicados) na página pública */
+const PORTFOLIO_PHOTOS = 12;
 const MAX_AGENDA_ROWS = 3000;
 const TIME_OFF_REASONS = ['VACATION', 'SICK', 'PERSONAL', 'OTHER'];
 
@@ -832,13 +835,23 @@ export class BarbershopService {
       timezone: string;
       currency: string;
       businessHours: string;
+      description: string;
       isActive: boolean;
       subdomain: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id, 'manager');
-    const { subdomain, ...rest } = data;
-    const updateData: typeof rest & { subdomain?: string | null } = { ...rest };
+    const { subdomain, description, ...rest } = data;
+    const updateData: typeof rest & { subdomain?: string | null; description?: string | null } = {
+      ...rest,
+    };
+    if (description !== undefined) {
+      const text = description?.trim() || null;
+      if (text && text.length > MAX_DESCRIPTION) {
+        throw new BadRequestException(`"Sobre nós" com no máximo ${MAX_DESCRIPTION} caracteres`);
+      }
+      updateData.description = text;
+    }
     if (subdomain !== undefined) {
       updateData.subdomain = await this.resolveSubdomainUpdate(id, subdomain);
     }
@@ -2698,6 +2711,13 @@ export class BarbershopService {
           orderBy: { name: 'asc' },
         },
         network: { select: { accentColor: true, grayColor: true } },
+        socialConnection: { select: { instagramUsername: true } },
+        socialPosts: {
+          where: { status: 'PUBLISHED' },
+          orderBy: { publishedAt: 'desc' },
+          take: PORTFOLIO_PHOTOS,
+          select: { imageKey: true, caption: true },
+        },
       },
     });
     if (!barbershop || !barbershop.isActive) {
@@ -2706,6 +2726,21 @@ export class BarbershopService {
     const imageUrl = barbershop.photoKey
       ? await this.s3Service.getDownloadUrl(barbershop.photoKey)
       : null;
+    // Horário de funcionamento (o da unidade ou o padrão), domingo a sábado
+    const week =
+      parseBusinessHours(barbershop.businessHours) ??
+      WEEKDAY_KEYS.map((_, i) => DEFAULT_WORKING_HOURS[i]);
+    const openingHours = week.map((d, dayOfWeek) => ({
+      dayOfWeek,
+      open: d?.start ?? null,
+      close: d?.end ?? null,
+    }));
+    const portfolio = await Promise.all(
+      barbershop.socialPosts.map(async (p) => ({
+        url: await this.s3Service.getDownloadUrl(p.imageKey),
+        caption: p.caption,
+      })),
+    );
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
     const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
     const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
@@ -2716,9 +2751,13 @@ export class BarbershopService {
           orderBy: { name: 'asc' },
         })
       : [];
+    const { socialConnection, socialPosts: _posts, ...shop } = barbershop;
     return {
-      ...barbershop,
+      ...shop,
       imageUrl,
+      openingHours,
+      portfolio,
+      instagramUsername: socialConnection?.instagramUsername ?? null,
       averageRating,
       reviewCount,
       isFeatured,

@@ -262,6 +262,27 @@ export class ClosureType {
 }
 
 @ObjectType()
+export class PublicOpeningHoursType {
+  @Field(() => Int)
+  dayOfWeek: number;
+
+  @Field(() => String, { nullable: true })
+  open: string | null;
+
+  @Field(() => String, { nullable: true })
+  close: string | null;
+}
+
+@ObjectType()
+export class PublicPortfolioPhotoType {
+  @Field()
+  url: string;
+
+  @Field({ nullable: true })
+  caption?: string;
+}
+
+@ObjectType()
 export class PublicBarbershopType {
   @Field(() => Int)
   id: number;
@@ -347,6 +368,27 @@ export class PublicBarbershopType {
   /** Feriados e fechamentos dos próximos 60 dias */
   @Field(() => [ClosureType], { defaultValue: [] })
   closures: ClosureType[];
+
+  /** "Sobre nós" */
+  @Field({ nullable: true })
+  description?: string;
+
+  /** Horário de funcionamento, domingo (0) a sábado (6); sem open = fechado */
+  @Field(() => [PublicOpeningHoursType], { defaultValue: [] })
+  openingHours: PublicOpeningHoursType[];
+
+  @Field(() => Float, { nullable: true })
+  latitude?: number;
+
+  @Field(() => Float, { nullable: true })
+  longitude?: number;
+
+  @Field({ nullable: true })
+  instagramUsername?: string;
+
+  /** Fotos de trabalhos (posts publicados pela unidade) */
+  @Field(() => [PublicPortfolioPhotoType], { defaultValue: [] })
+  portfolio: PublicPortfolioPhotoType[];
 }
 
 @ObjectType()

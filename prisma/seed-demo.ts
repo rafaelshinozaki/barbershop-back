@@ -2175,6 +2175,19 @@ async function ensureNewFeatures(prisma: PrismaClient) {
   const ownerId = green.ownerUserId;
   const shopId = green.id;
 
+  // "Sobre nós" da página pública
+  if (!green.description) {
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: {
+        description:
+          'Barbearia clássica no centro de São José dos Campos desde 2015. Corte na tesoura ' +
+          'e na máquina, barba com toalha quente e navalha, e aquele café enquanto você espera. ' +
+          'Trabalhamos com hora marcada — agende online em poucos segundos.',
+      },
+    });
+  }
+
   if (!(await prisma.barbershopClosure.count({ where: { barbershopId: shopId } }))) {
     console.log('Closures: a holiday, special hours and a fixed day off...');
     const closed = weekdayFrom(24);
