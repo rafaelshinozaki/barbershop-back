@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
@@ -22,6 +22,8 @@ const reviewerName = (r: {
  */
 @Injectable()
 export class ReviewManagementService {
+  private readonly logger = new Logger(ReviewManagementService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly barbershopService: BarbershopService,
@@ -77,7 +79,9 @@ export class ReviewManagementService {
     });
     // Primeira resposta: o cliente fica sabendo (editar depois não reenvia)
     if (reply && !before.reply) {
-      await this.notifyReviewer(reviewId, reply).catch(() => undefined);
+      await this.notifyReviewer(reviewId, reply).catch((err) =>
+        this.logger.error(`Erro ao avisar a resposta da avaliação #${reviewId}:`, err),
+      );
     }
     return true;
   }
