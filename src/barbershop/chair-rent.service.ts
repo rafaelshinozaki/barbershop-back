@@ -17,6 +17,7 @@ import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { BarbershopService } from './barbershop.service';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 
 const MIN_RENT = 1;
 const MAX_RENT = 100_000;
@@ -34,9 +35,19 @@ function addMonth(date: Date, dueDay: number): Date {
   return d;
 }
 
-/** Vencimento ao meio-dia UTC do dia (mesmo dia em qualquer fuso das Américas). */
-function dueDateOf(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12));
+/**
+ * Vencimento = um dia do calendário, gravado ao meio-dia UTC. O dia é o do
+ * espaço (fuso da unidade), não o do servidor: às 22h em São Paulo ainda é
+ * "hoje" lá, mesmo já sendo amanhã em UTC.
+ */
+export function dueDateOf(date: Date, timeZone: string): Date {
+  const [y, m, d] = toZonedParts(date, timeZone).dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+
+/** O vencimento já chegou no calendário do espaço? */
+export function dueReached(due: Date, timeZone: string, now = new Date()): boolean {
+  return due.toISOString().slice(0, 10) <= toZonedParts(now, timeZone).dateStr;
 }
 
 /**
@@ -72,7 +83,7 @@ export class ChairRentService {
     return this.prisma.sharedLocationMember.findUnique({
       where: { id: linkId },
       include: {
-        host: { select: { id: true, name: true, currency: true } },
+        host: { select: { id: true, name: true, currency: true, timezone: true } },
         member: { select: { id: true, name: true, ownerUserId: true } },
       },
     });
@@ -174,7 +185,9 @@ export class ChairRentService {
           rentStripePriceId: null,
           rentStatus: 'ACTIVE',
           // Primeira mensalidade vence hoje; as próximas, no mesmo dia do mês
-          rentStartedAt: wasManual ? link.rentStartedAt : dueDateOf(new Date()),
+          rentStartedAt: wasManual
+            ? link.rentStartedAt
+            : dueDateOf(new Date(), safeTimeZone(link.host.timezone)),
         },
       });
       await this.ensureDues(link.id);
@@ -365,6 +378,14 @@ export class ChairRentService {
    * rentStartedAt). Idempotente: o índice único (vínculo, vencimento) não
    * deixa duplicar, nem com duas chamadas juntas. Devolve quantas criou.
    */
+  private async hostTimeZone(hostBarbershopId: number) {
+    const host = await this.prisma.barbershop.findUnique({
+      where: { id: hostBarbershopId },
+      select: { timezone: true },
+    });
+    return safeTimeZone(host?.timezone);
+  }
+
   async ensureDues(linkId: number): Promise<number> {
     const link = await this.prisma.sharedLocationMember.findUnique({ where: { id: linkId } });
     if (
@@ -376,11 +397,11 @@ export class ChairRentService {
     ) {
       return 0;
     }
+    const timeZone = await this.hostTimeZone(link.hostBarbershopId);
     const dueDay = Math.min(link.rentStartedAt.getUTCDate(), 28);
     const dates: Date[] = [];
     let d = link.rentStartedAt;
-    const now = Date.now();
-    for (let i = 0; i < 240 && d.getTime() <= now; i++) {
+    for (let i = 0; i < 240 && dueReached(d, timeZone); i++) {
       dates.push(d);
       d = addMonth(d, dueDay);
     }
@@ -717,9 +738,10 @@ export class ChairRentService {
     const manual = link.rentBillingMode === 'MANUAL';
     let nextDueDate: Date | null = null;
     if (manual && link.rentStartedAt && link.rentAmount) {
+      const timeZone = await this.hostTimeZone(link.hostBarbershopId);
       const dueDay = Math.min(link.rentStartedAt.getUTCDate(), 28);
       let d = link.rentStartedAt;
-      for (let i = 0; i < 240 && d.getTime() <= Date.now(); i++) d = addMonth(d, dueDay);
+      for (let i = 0; i < 240 && dueReached(d, timeZone); i++) d = addMonth(d, dueDay);
       nextDueDate = d;
     }
     let status = link.rentStatus;

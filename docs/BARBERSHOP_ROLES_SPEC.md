@@ -287,3 +287,19 @@ Sem login no Google nem chave de API:
   cancelar esses horários avisando cada cliente por e-mail, com o motivo. A
   agenda da equipe não é bloqueada (dá pra marcar uma exceção).
 - A página pública mostra os fechamentos dos próximos 60 dias.
+
+## 13. Horário de funcionamento e escala da equipe
+
+- **Horário da unidade** (gerente e dono): os 7 dias, aberto (abre/fecha) ou
+  fechado. Sem configurar, vale o padrão (seg–sex 09–18, sáb 09–17, dom
+  fechado). `businessHours` / `setBusinessHours`.
+- **Escala semanal** de cada profissional: em cada dia, segue o horário da
+  unidade, tem horário próprio (com intervalo, ex.: almoço) ou folga fixa.
+  Gerente e dono mexem em qualquer um; o profissional, na própria ("Minha
+  escala"). `barberWeeklySchedule` / `setBarberWeeklySchedule` (a semana de
+  uma vez, validada: início antes do fim, intervalo dentro do expediente).
+- Ordem do que vale num dia: fechamento/horário especial da unidade (seção
+  12) > escala do profissional > horário da unidade > padrão. Folgas
+  pontuais continuam na agenda.
+- Resposta a avaliação (seção 11): a primeira resposta avisa o cliente por
+  e-mail (editar não reenvia; quem se descadastrou não recebe).

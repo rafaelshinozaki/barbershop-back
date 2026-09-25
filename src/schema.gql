@@ -373,6 +373,24 @@ input BulkUserAction {
   userIds: [Int!]!
 }
 
+input BusinessDayInput {
+  dayOfWeek: Int!
+  end: String
+  open: Boolean!
+  start: String
+}
+
+type BusinessDayType {
+  """0 = domingo"""
+  dayOfWeek: Int!
+  end: String
+
+  """A unidade ainda usa o horário padrão (nunca configurou)"""
+  isDefault: Boolean!
+  open: Boolean!
+  start: String
+}
+
 type CalendarFeedType {
   createdAt: DateTime!
   lastAccessAt: DateTime
@@ -1454,8 +1472,10 @@ type Mutation {
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
+  setBarberWeeklySchedule(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [WeeklyScheduleDayType!]!
   setBarbershopClosure(barbershopId: Int!, input: ClosureInput!): SetClosureResultType!
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
+  setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
@@ -2016,6 +2036,7 @@ type Query {
   barberPayStatement(barberId: Int, barbershopId: Int!): BarberPayStatementType!
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
   barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
+  barberWeeklySchedule(barberId: Int!): [WeeklyScheduleDayType!]!
   barbershop(id: Int!): Barbershop
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
@@ -2030,6 +2051,7 @@ type Query {
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopSubscribers(barbershopId: Int!): [ClientSubscriptionType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
+  businessHours(barbershopId: Int!): [BusinessDayType!]!
   canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
@@ -2871,4 +2893,29 @@ input WalkInServiceInput {
   notes: String
   quantity: Float = 1
   serviceId: Int!
+}
+
+input WeeklyScheduleDayInput {
+  breakEnd: String
+  breakStart: String
+  dayOfWeek: Int!
+  endTime: String
+
+  """SHOP | CUSTOM | OFF"""
+  mode: String!
+  startTime: String
+}
+
+type WeeklyScheduleDayType {
+  breakEnd: String
+  breakStart: String
+  dayOfWeek: Int!
+  endTime: String
+
+  """SHOP (horário da unidade) | CUSTOM (próprio) | OFF (folga fixa)"""
+  mode: String!
+  startTime: String
+
+  """Atende nesse dia"""
+  working: Boolean!
 }
