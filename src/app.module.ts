@@ -33,6 +33,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { LocationsModule } from './locations/locations.module';
 import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
+import { serializeDatesAsIso } from './graphql/date-iso.transform';
 
 @Module({
   imports: [
@@ -194,6 +195,8 @@ import { isAllowedOrigin } from './common/cors-origins';
       introspection: process.env.NODE_ENV !== 'production',
       debug: process.env.NODE_ENV !== 'production',
       sortSchema: true,
+      // Date em campo String sai como ISO 8601 (e não ms em texto); SDL intacto
+      transformSchema: serializeDatesAsIso,
       // Profundidade e nº de campos (aliases contam) por operação
       plugins: [queryLimitsPlugin()],
     }),
