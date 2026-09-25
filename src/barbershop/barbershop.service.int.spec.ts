@@ -1004,6 +1004,21 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(ids).not.toContain(receptionBarberId);
     });
 
+    it('página pública: "Sobre nós" e horário de funcionamento da semana', async () => {
+      const shop = await prisma.barbershop.findUniqueOrThrow({ where: { id: A.shopId } });
+      await service.updateBarbershop(A.ownerId, A.shopId, { description: '  Desde 2015.  ' });
+      await expect(
+        service.updateBarbershop(A.ownerId, A.shopId, { description: 'x'.repeat(1001) }),
+      ).rejects.toThrow('no máximo 1000');
+      const pub = await service.getPublicBarbershopByslug(shop.slug);
+      expect(pub.description).toBe('Desde 2015.');
+      expect(pub.openingHours).toHaveLength(7);
+      expect(pub.openingHours[1]).toMatchObject({ dayOfWeek: 1, open: expect.any(String) });
+      expect(pub.portfolio).toEqual([]);
+      await service.updateBarbershop(A.ownerId, A.shopId, { description: '' });
+      expect((await service.getPublicBarbershopByslug(shop.slug)).description).toBeNull();
+    });
+
     it('barbeiro mexe só na própria folga', async () => {
       const barber = A.staffUserId;
       const own = await service.createBarberTimeOff(barber, {

@@ -88,6 +88,10 @@ export class UpdateBarbershopInput {
   @Field({ nullable: true })
   businessHours?: string;
 
+  /** "Sobre nós" da página pública; vazio apaga */
+  @Field({ nullable: true })
+  description?: string;
+
   @Field({ nullable: true })
   isActive?: boolean;
 
