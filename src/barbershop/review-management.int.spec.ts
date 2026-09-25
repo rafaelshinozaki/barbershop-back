@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { ReviewManagementService } from './review-management.service';
 
+// O link de descadastro do e-mail é assinado (no CI não há .env)
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
 describe('Responder, denunciar e moderar avaliações (integração)', () => {
@@ -162,21 +164,24 @@ describe('Responder, denunciar e moderar avaliações (integração)', () => {
         data: { barbershopId: shopId, customerId: optedOut.id, rating: 5 },
       })
     ).id;
-    emails.length = 0;
+    try {
+      emails.length = 0;
 
-    await reviews.reply(ownerId, shopId, r1, 'Valeu, Rui!');
-    await reviews.reply(ownerId, shopId, r1, 'Valeu mesmo, Rui!');
-    await reviews.reply(ownerId, shopId, r2, 'Obrigado!');
-    expect(emails).toHaveLength(1);
-    expect(emails[0]).toMatchObject({
-      template: 'review_reply',
-      to: `rui-${RUN}@test.local`,
-      context: expect.objectContaining({ CustomerName: 'Rui', Reply: 'Valeu, Rui!', Rating: 4 }),
-    });
-    expect(emails[0].context.PageURL).toContain(`/u/rvm-a-${RUN}`);
-    expect(emails[0].headers['List-Unsubscribe']).toBeTruthy();
-    // Não mexe na nota média dos próximos testes
-    await prisma.review.deleteMany({ where: { id: { in: [r1, r2] } } });
+      await reviews.reply(ownerId, shopId, r1, 'Valeu, Rui!');
+      await reviews.reply(ownerId, shopId, r1, 'Valeu mesmo, Rui!');
+      await reviews.reply(ownerId, shopId, r2, 'Obrigado!');
+      expect(emails).toHaveLength(1);
+      expect(emails[0]).toMatchObject({
+        template: 'review_reply',
+        to: `rui-${RUN}@test.local`,
+        context: expect.objectContaining({ CustomerName: 'Rui', Reply: 'Valeu, Rui!', Rating: 4 }),
+      });
+      expect(emails[0].context.PageURL).toContain(`/u/rvm-a-${RUN}`);
+      expect(emails[0].headers['List-Unsubscribe']).toBeTruthy();
+    } finally {
+      // Não mexe na nota média dos próximos testes
+      await prisma.review.deleteMany({ where: { id: { in: [r1, r2] } } });
+    }
   });
 
   it('profissional não vê o painel, não responde nem denuncia', async () => {
