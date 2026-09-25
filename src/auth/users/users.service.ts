@@ -1360,6 +1360,7 @@ export class UserService {
     userId: number,
     page = 1,
     limit = 10,
+    currentSessionToken?: string,
   ): Promise<{
     data: LoginHistoryDTO[];
     total: number;
@@ -1380,9 +1381,21 @@ export class UserService {
       }),
     ]);
 
+    // Sessões ainda abertas por esses logins (o detalhe deixa encerrar)
+    const tokens = history.map((h) => h.sessionToken).filter((t): t is string => !!t);
+    const open = tokens.length
+      ? await this.prisma.activeSession.findMany({
+          where: { userId, sessionToken: { in: tokens } },
+          select: { id: true, sessionToken: true },
+        })
+      : [];
+    const openByToken = new Map(open.map((s) => [s.sessionToken, s.id]));
+
     return {
-      data: history.map((item) => ({
+      data: history.map(({ sessionToken, ...item }) => ({
         ...item,
+        sessionId: (sessionToken && openByToken.get(sessionToken)) ?? null,
+        isCurrent: !!sessionToken && sessionToken === currentSessionToken,
         createdAt: item.createdAt.toISOString(),
       })),
       total,
@@ -1406,22 +1419,33 @@ export class UserService {
   }> {
     const skip = (page - 1) * limit;
 
-    // Consulta real ao banco de dados
-    const [total, sessions] = await this.prisma.$transaction([
+    // A sessão em uso vem sempre primeiro (senão, com muitas sessões, ela
+    // caía em outra página); as demais, da mais recente pra mais antiga
+    const current = currentSessionToken
+      ? await this.prisma.activeSession.findFirst({
+          where: { userId, sessionToken: currentSessionToken },
+        })
+      : null;
+    const others = { userId, ...(current && { NOT: { sessionToken: current.sessionToken } }) };
+    const [total, rest] = await this.prisma.$transaction([
       this.prisma.activeSession.count({ where: { userId } }),
       this.prisma.activeSession.findMany({
-        where: { userId },
+        where: others,
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+        skip: current ? Math.max(skip - 1, 0) : skip,
+        take: current && skip === 0 ? limit - 1 : limit,
       }),
     ]);
+    const sessions = current && skip === 0 ? [current, ...rest] : rest;
 
     // Adiciona isCurrent baseado no sessionToken atual — nunca o IP, que
     // pode ser compartilhado por várias sessões/dispositivos diferentes.
-    const data = sessions.map((session) => ({
+    // createdAt em ISO: o Date ia pro GraphQL como número em texto e a tela
+    // não conseguia mostrar a data/hora da sessão
+    const data = sessions.map(({ sessionToken, ...session }) => ({
       ...session,
-      isCurrent: currentSessionToken ? session.sessionToken === currentSessionToken : false,
+      createdAt: session.createdAt.toISOString(),
+      isCurrent: currentSessionToken ? sessionToken === currentSessionToken : false,
     }));
 
     return {

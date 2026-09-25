@@ -1,4 +1,4 @@
-import { ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
+import { ObjectType, Field, Int, Float, registerEnumType } from '@nestjs/graphql';
 
 export enum NotificationType {
   INFO = 'info',
@@ -194,6 +194,21 @@ export class LoginHistory {
   @Field()
   location: string;
 
+  @Field(() => Float, { nullable: true, description: 'Aproximada, pelo IP' })
+  latitude?: number | null;
+
+  @Field(() => Float, { nullable: true })
+  longitude?: number | null;
+
+  @Field(() => Int, {
+    nullable: true,
+    description: 'Sessão aberta por esse login, se ainda estiver ativa',
+  })
+  sessionId?: number | null;
+
+  @Field({ description: 'É o login da sessão em uso agora' })
+  isCurrent: boolean;
+
   @Field()
   createdAt: string;
 }
@@ -223,6 +238,12 @@ export class ActiveSession {
 
   @Field()
   isCurrent: boolean;
+
+  @Field(() => Float, { nullable: true, description: 'Aproximada, pelo IP' })
+  latitude?: number | null;
+
+  @Field(() => Float, { nullable: true })
+  longitude?: number | null;
 
   @Field()
   createdAt: string;
