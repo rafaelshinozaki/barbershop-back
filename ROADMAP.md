@@ -136,7 +136,7 @@ Cada tipo de usuário tem um **perfil** dentro da plataforma, e **a própria pes
 | Profissional (barbeiro) | Serviços realizados, tipos, galeria, especialidades, locais, domicílio, nota e comentários, onde já trabalhou |
 | Gerente | Unidades que gerencia ou gerenciou, tempo de experiência, especialidades de gestão |
 | Recepção/atendente | Unidades onde atuou, idiomas, disponibilidade |
-| Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades |
+| Dono de barbearia/franquia | Já tem a página da unidade; pode ter um perfil pessoal que liga as unidades e, se também atender (item 7), o perfil de profissional |
 
 **Controles no perfil**, numa página nova "Perfis e privacidade" nas configurações da conta, ao lado de "Segurança":
 - **Visibilidade do perfil:**
@@ -164,7 +164,7 @@ Muda o cadastro inteiro. Hoje existem o `User` (dono e equipe, com tipo "padrão
 - **Primeiro passo do cadastro: "Como você vai usar?"**
   - *Quero agendar* (cliente);
   - *Sou profissional* (barbeiro, gerente ou recepção, podendo marcar mais de um);
-  - *Tenho uma barbearia/franquia* (fluxo atual de dono).
+  - *Tenho uma barbearia/franquia* (fluxo atual de dono), com a opção "Eu também atendo" (item 7).
 
   Depois o onboarding é específico de cada tipo: o profissional preenche especialidades, locais, domicílio e se está disponível para contratação; o dono cadastra a unidade, como hoje.
 - **Adicionar perfil depois:** quem entrou como cliente pode ativar "Sou profissional" nas configurações, e vice-versa, sem criar outra conta.
@@ -183,6 +183,20 @@ Muda o cadastro inteiro. Hoje existem o `User` (dono e equipe, com tipo "padrão
   - e-mails de boas-vindas por tipo;
   - exclusão de conta;
   - todos os testes E2E de cadastro e login.
+
+### 7. Dono (e gerente) que também atende
+O dono da barbearia ou da franquia pode cortar cabelo também, **se quiser**. Hoje não há tipo de funcionário "dono": para aparecer na agenda, ele precisa se cadastrar como funcionário da própria unidade, como o seed faz com o "Cayo Carlos". Funciona, mas é gambiarra.
+- **Opção "Eu também atendo"** nas unidades do dono (e no cadastro "Tenho uma barbearia/franquia"). Ligar essa opção:
+  - cria (ou reaproveita) o perfil de profissional dele;
+  - vincula esse perfil à unidade como quem atende, com escala, folgas e serviços próprios;
+  - põe o dono na agenda, na página pública e no "qualquer profissional".
+- Ele continua sendo o dono, com todas as permissões. "Atender" é uma camada a mais, não troca o cargo. Vale para **cada unidade**: pode atender numa e só administrar outra.
+- Na agenda única (item 1), os horários em que ele atende entram na checagem de conflito entre unidades, como os de qualquer profissional.
+- **Perfil público:** os atendimentos dele contam para a página de profissional, e ele escolhe se mostra que é o dono.
+- **Comissão e pagamento:** dono que atende na própria unidade não gera comissão para si mesmo (a receita já é dele), mas aparece nos relatórios por profissional. Gerente que atende segue as regras normais de comissão.
+- **Plano:** o dono que atende **não conta** no limite de profissionais por unidade dos planos (`maxBarbersPerShop`), para não punir o pequeno dono que corta sozinho.
+- **Monetização:** dono que atende dentro da própria unidade pagante não paga nada a mais (está na linha "vinculado a uma franquia com plano ativo").
+- O mesmo vale para o gerente: hoje ele já pode ser agendado (só a recepção não atende). O que falta é o mesmo "Eu também atendo" deixar isso explícito e opcional.
 
 ### Monetização (sem cobrar do cliente final)
 Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria**. Quem trabalha dentro de uma franquia já é coberto pelo plano da franquia.
