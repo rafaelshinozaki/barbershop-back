@@ -820,6 +820,22 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [BarberTimeOffType])
+  async barbershopTimeOffs(
+    @CurrentUser() user: UserDTO,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('startAt') startAt: string,
+    @Args('endAt') endAt: string,
+  ) {
+    return this.barbershopService.getBarbershopTimeOffs(
+      user.id,
+      barbershopId,
+      new Date(startAt),
+      new Date(endAt),
+    );
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async deleteBarberTimeOff(
     @Args('id', { type: () => Int }) id: number,

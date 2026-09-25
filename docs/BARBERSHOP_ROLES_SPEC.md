@@ -351,3 +351,24 @@ Sem login no Google nem chave de API:
   reserva aguardando o sinal que expirou sem pagamento.
 - Não avisa: horário que já passou e dia que a unidade fechou (o horário
   deixou de existir).
+- Quem reservou e não pagou o sinal em 5 minutos recebe um e-mail com o
+  link pra pagar (uma vez só, e só se ainda faltarem mais de 2 minutos).
+
+## 17. Folgas e férias
+
+- Gerente e dono cadastram folga, férias, atestado ou outro afastamento de
+  qualquer profissional; o barbeiro, só a própria. Período de até 366 dias.
+- O período sai da página pública e das séries. Horários já marcados nele
+  continuam — ao cadastrar, a equipe vê quantos são pra remarcar ou cancelar.
+- A agenda mostra as folgas da unidade (o barbeiro vê só as dele).
+
+## 18. Fechar a conta do horário
+
+- "Concluir e cobrar" abre a venda com os serviços do horário. O sinal já
+  pago (online ou marcado na mão) é descontado do que se cobra agora e fica
+  registrado na venda (`depositApplied`); o total da venda é o valor
+  recebido no caixa.
+- Uma venda só por horário (mesmo com duas pessoas cobrando ao mesmo
+  tempo); cobrar conclui o horário. Cancelado, falta ou aguardando sinal
+  não se cobra.
+- A agenda traz o período inteiro (antes parava em 50 horários).

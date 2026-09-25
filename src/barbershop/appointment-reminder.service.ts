@@ -160,7 +160,7 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'enqueue-due-reminders', repeat: { every: 5 * 60 * 1000 } },
       // "Como foi?" depois do atendimento (ver ReviewRequestService)
       { id: 'enqueue-review-requests', repeat: { every: 15 * 60 * 1000 } },
-      // Libera horários reservados cujo sinal online não foi pago a tempo
+      // Sinal online: lembra quem não pagou e libera o que passou do prazo
       { id: 'expire-deposit-holds', repeat: { every: 60 * 1000 } },
     ]);
   }
@@ -178,7 +178,10 @@ export class AppointmentReminderProcessor extends WorkerHost {
 
   async process(job: Job) {
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
-    if (job.name === 'expire-deposit-holds') return this.deposits.expireHolds();
+    if (job.name === 'expire-deposit-holds') {
+      await this.deposits.remindPendingHolds();
+      return this.deposits.expireHolds();
+    }
     return this.reminders.enqueueDueReminders();
   }
 }

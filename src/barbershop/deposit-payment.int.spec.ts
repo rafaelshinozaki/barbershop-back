@@ -68,7 +68,9 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     { email: async (job: any) => void emails.push(job), whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const deposits = new DepositPaymentService(prisma, stripe as never, barbershops);
+  const deposits = new DepositPaymentService(prisma, stripe as never, barbershops, {
+    email: async (job: any) => void emails.push(job),
+  } as never);
   const monday = mondayAhead();
   const pay = (id: string) => (intents.get(id)!.status = 'succeeded');
 
@@ -165,6 +167,8 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     if (stripeKeyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
     else process.env.STRIPE_SECRET_KEY = stripeKeyBefore;
     await prisma.waitlistEntry.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.saleItem.deleteMany({ where: { sale: { barbershopId: shopId } } });
+    await prisma.sale.deleteMany({ where: { barbershopId: shopId } });
     await prisma.appointmentService.deleteMany({
       where: { appointment: { barbershopId: shopId } },
     });
@@ -400,5 +404,104 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect((await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } })).status).toBe(
       'WAITING',
     );
+  });
+
+  it('lembrete do sinal: depois de alguns minutos sem pagar, uma vez só, com o link', async () => {
+    const appt = await book('13:30');
+    // Acabou de reservar: ainda não lembra
+    expect(await deposits.remindPendingHolds()).toBe(0);
+    const later = new Date(Date.now() + 6 * 60_000);
+    expect(await deposits.remindPendingHolds(later)).toBeGreaterThanOrEqual(1);
+    await settle();
+    const to = (
+      await prisma.appointment.findUniqueOrThrow({
+        where: { id: appt!.id },
+        include: { customer: true },
+      })
+    ).customer.email;
+    const reminder = emails.find((e) => e.template === 'deposit_pending' && e.to === to);
+    expect(reminder).toBeTruthy();
+    expect(reminder.context.PayURL).toContain('/booking/manage?t=');
+    expect(reminder.context.DepositAmount).toContain('20');
+    // Não repete
+    expect(await deposits.remindPendingHolds(later)).toBe(0);
+    // Perto de expirar não adianta lembrar
+    const late = await book('14:30');
+    expect(await deposits.remindPendingHolds(new Date(Date.now() + 14 * 60_000))).toBe(0);
+    expect((await load(late!.id)).holdReminderSentAt).toBeNull();
+    expect((await load(appt!.id)).holdReminderSentAt).toBeInstanceOf(Date);
+  });
+
+  it('fechar a conta do horário: sinal descontado, conclui, uma venda só', async () => {
+    const a = await paidBooking('11:30');
+    const sale = (payload: object = {}) =>
+      barbershops.createSale(ownerId, shopId, {
+        appointmentId: a.id,
+        barberId,
+        saleType: 'SERVICE',
+        items: [{ itemType: 'SERVICE', serviceId, quantity: 1, unitPrice: 80, totalPrice: 80 }],
+        subtotal: 80,
+        total: 80,
+        paymentStatus: 'PAID',
+        paymentMethod: 'CASH',
+        ...payload,
+      });
+    const created = await sale();
+    expect(Number(created!.total)).toBe(60);
+    expect(Number(created!.depositApplied)).toBe(20);
+    expect((await load(a.id)).status).toBe('COMPLETED');
+    await expect(sale()).rejects.toThrow('já foi cobrado');
+    const [listed] = (await barbershops.getAppointments(ownerId, shopId, {})).filter(
+      (x) => x.id === a.id,
+    );
+    expect(listed).toMatchObject({ saleId: created!.id });
+
+    // Horário cancelado não se cobra
+    const cancelled = await paidBooking('12:30');
+    await barbershops.updateAppointment(ownerId, shopId, cancelled.id, { status: 'CANCELLED' });
+    await expect(
+      barbershops.createSale(ownerId, shopId, {
+        appointmentId: cancelled.id,
+        saleType: 'SERVICE',
+        items: [],
+        subtotal: 0,
+        total: 0,
+      }),
+    ).rejects.toThrow('não pode ser cobrado');
+  });
+
+  it('folga: valida o período, conta os horários marcados e aparece na agenda da unidade', async () => {
+    const monday9 = at(monday, '09:00');
+    await expect(
+      barbershops.createBarberTimeOff(ownerId, {
+        barberId,
+        startAt: monday9.toISOString(),
+        endAt: monday9.toISOString(),
+      }),
+    ).rejects.toThrow('Período inválido');
+    await expect(
+      barbershops.createBarberTimeOff(ownerId, {
+        barberId,
+        startAt: monday9.toISOString(),
+        endAt: at(monday, '10:00').toISOString(),
+        reason: 'FERIAS',
+      }),
+    ).rejects.toThrow('Motivo inválido');
+    // A própria barbeira marca a folga dela; o horário das 09:00 continua lá
+    const off = await barbershops.createBarberTimeOff(staffUserId, {
+      barberId,
+      startAt: at(monday, '08:00').toISOString(),
+      endAt: at(monday, '09:30').toISOString(),
+      reason: 'PERSONAL',
+    });
+    expect(off.affectedAppointments).toBe(1);
+    const list = await barbershops.getBarbershopTimeOffs(
+      ownerId,
+      shopId,
+      at(monday, '00:00'),
+      at(monday, '23:59'),
+    );
+    expect(list).toEqual([expect.objectContaining({ id: off.id, barberName: 'Ana' })]);
+    await barbershops.deleteBarberTimeOff(ownerId, off.id);
   });
 });
