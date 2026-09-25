@@ -10,6 +10,7 @@ import { BarbershopService } from '@/barbershop/barbershop.service';
 import { SharedLocationService } from '@/barbershop/shared-location.service';
 import { ReviewRequestService } from '@/barbershop/review-request.service';
 import { ClosureService } from '@/barbershop/closure.service';
+import { DepositPaymentService } from '@/barbershop/deposit-payment.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
@@ -18,6 +19,7 @@ import {
   PublicAppointmentType,
   PublicNextSlotType,
   ReviewRequestType,
+  DepositPaymentType,
   ManagedAppointmentType,
   PublicBarbershopSearchResultType,
   ReviewType,
@@ -62,6 +64,7 @@ export class PublicBookingResolver {
     private readonly sharedLocation: SharedLocationService,
     private readonly reviewRequests: ReviewRequestService,
     private readonly closures: ClosureService,
+    private readonly deposits: DepositPaymentService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -227,9 +230,28 @@ export class PublicBookingResolver {
   @Mutation(() => ManagedAppointmentType)
   async cancelManagedAppointment(@Args('token') token: string) {
     const { id, barbershopId } = await this.barbershopService.cancelManagedAppointment(token);
+    // Cancelou dentro do prazo: o sinal pago online volta pro cartão
+    await this.deposits.refundOnClientCancel(id);
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     void this.activity.appointmentStatusChanged(id, 'CANCELLED', null);
     return this.barbershopService.getManagedAppointment(token);
+  }
+
+  /** Sinal online: começa (ou retoma) o pagamento do horário reservado */
+  @ThrottleSlotSearch()
+  @Mutation(() => DepositPaymentType)
+  async startDepositPayment(@Args('token') token: string) {
+    return this.deposits.start(token);
+  }
+
+  /** A tela voltou do cartão: confere no Stripe e confirma o horário */
+  @ThrottleSlotSearch()
+  @Mutation(() => ManagedAppointmentType)
+  async confirmDepositPayment(@Args('token') token: string) {
+    const status = await this.deposits.confirm(token);
+    const appt = await this.barbershopService.getManagedAppointment(token);
+    if (status === 'CONFIRMED') this.realtime.notify(appt.barbershopId, 'APPOINTMENT', 'UPDATED');
+    return appt;
   }
 
   @ThrottlePublicBooking()

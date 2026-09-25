@@ -8,6 +8,7 @@ import { ClosureService } from './closure.service';
 import { ReviewManagementService } from './review-management.service';
 import { ScheduleService } from './schedule.service';
 import { AppointmentSeriesService } from './appointment-series.service';
+import { DepositPaymentService } from './deposit-payment.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { Module } from '@nestjs/common';
@@ -61,6 +62,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ReviewManagementService,
     ScheduleService,
     AppointmentSeriesService,
+    DepositPaymentService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
@@ -70,6 +72,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ReviewManagementService,
     ScheduleService,
     AppointmentSeriesService,
+    DepositPaymentService,
     EmployeeInviteService,
     AccountDeletionService,
     SharedLocationService,

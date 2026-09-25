@@ -20,7 +20,11 @@ export class StripeService {
     customerId?: string,
     // 'off_session': guarda o cartão no cliente pra cobrar a renovação
     // sem o cliente presente
-    options: { setupFutureUsage?: 'off_session' } = {},
+    options: {
+      setupFutureUsage?: 'off_session';
+      metadata?: Record<string, string>;
+      description?: string;
+    } = {},
   ) {
     this.logger.log(
       `Creating PaymentIntent - Amount: ${amount}, Currency: ${currency}, CustomerId: ${customerId}`,
@@ -38,6 +42,8 @@ export class StripeService {
     if (options.setupFutureUsage) {
       params.setup_future_usage = options.setupFutureUsage;
     }
+    if (options.metadata) params.metadata = options.metadata;
+    if (options.description) params.description = options.description;
 
     this.logger.log(`PaymentIntent params:`, JSON.stringify(params, null, 2));
 
@@ -270,6 +276,10 @@ export class StripeService {
     }
 
     return await this.stripe.refunds.create(params);
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string) {
+    return await this.stripe.paymentIntents.cancel(paymentIntentId);
   }
 
   async isAvailable(): Promise<boolean> {

@@ -175,6 +175,10 @@ export class Barbershop {
   @Field({ nullable: true })
   subdomain?: string;
 
+  /** Sinal pago online (cartão) ao agendar pela página pública */
+  @Field({ nullable: true })
+  onlineDeposit?: boolean;
+
   @Field()
   address: string;
 

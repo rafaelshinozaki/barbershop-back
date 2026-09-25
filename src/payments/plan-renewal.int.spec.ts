@@ -341,6 +341,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       payments,
       // Nenhuma fatura destes testes é de aluguel da cadeira
       { handleInvoice: async () => false, handleSubscriptionDeleted: async () => false } as never,
+      // Nem de sinal de agendamento
+      { finalize: async () => 'NOT_FOUND' } as never,
     );
     const deliver = (event: unknown) =>
       controller.handleWebhook('sig', { rawBody: Buffer.from(JSON.stringify(event)) } as never);
