@@ -1,5 +1,6 @@
 import { InputType, Field } from '@nestjs/graphql';
-import { IsEmail, IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsEmail, IsString, IsOptional, IsBoolean, IsArray, IsEnum } from 'class-validator';
+import { TreatmentCategory } from '../types/enums';
 
 @InputType()
 export class LoginInput {
@@ -108,6 +109,132 @@ export class BarbershopSignupData {
   @IsOptional()
   @IsString()
   businessType?: string;
+
+  /** Dono que também atende. Ausente mantém o comportamento atual (entra na agenda). */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  alsoServes?: boolean;
+}
+
+@InputType()
+export class ProfessionalSignupInput {
+  @Field(() => [String])
+  @IsArray()
+  @IsString({ each: true })
+  roles: string[];
+
+  @Field(() => [TreatmentCategory], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(TreatmentCategory, { each: true })
+  specialties?: TreatmentCategory[];
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cities?: string[];
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  openToWork?: boolean;
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  engagements?: string[];
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acceptedRoles?: string[];
+}
+
+@InputType()
+export class UpdateProfilePrivacyInput {
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  visibility?: string;
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roles?: string[];
+
+  @Field(() => [TreatmentCategory], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(TreatmentCategory, { each: true })
+  specialties?: TreatmentCategory[];
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cities?: string[];
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  openToWork?: boolean;
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  engagements?: string[];
+
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acceptedRoles?: string[];
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  acceptingClients?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showPhoto?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showRating?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showAppointmentCount?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showReviews?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showWorkHistory?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showLocations?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  showContact?: boolean;
 }
 
 /** Endereço pessoal do usuário no cadastro */
@@ -196,6 +323,11 @@ export class CreateUserInput {
   @Field({ nullable: true })
   @IsOptional()
   barbershopData?: BarbershopSignupData;
+
+  /** Papéis e especialidades quando signupType='professional' */
+  @Field({ nullable: true })
+  @IsOptional()
+  professionalData?: ProfessionalSignupInput;
 }
 
 @InputType()
@@ -404,4 +536,18 @@ export class SocialSignupInput {
   @Field()
   @IsString()
   provider: string;
+
+  /** client fica no cadastro de cliente. Aqui: professional ou barbershop_owner. */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  signupType?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  professionalData?: ProfessionalSignupInput;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  barbershopData?: BarbershopSignupData;
 }

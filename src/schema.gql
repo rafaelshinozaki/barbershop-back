@@ -355,6 +355,7 @@ type Barbershop {
   ownerUserId: Int
   phone: String!
   postalCode: String!
+  practiceKind: String!
   slug: String!
   state: String!
   subdomain: String
@@ -420,6 +421,7 @@ type BarbershopServiceType {
 
 input BarbershopSignupData {
   address: String!
+  alsoServes: Boolean
   businessHours: String
 
   """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
@@ -496,6 +498,7 @@ type CareerOverviewType {
   slug: String
   topServices: [CareerServiceCountType!]!
   uniqueClients: Int!
+  visibility: String!
 }
 
 type CareerPastVisitType {
@@ -1131,6 +1134,7 @@ input CreateUserInput {
   idDocNumber: String!
   password: String!
   phone: String!
+  professionalData: ProfessionalSignupInput
   readTerms: Boolean!
   signupType: String
 }
@@ -1606,6 +1610,7 @@ type Mutation {
   deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   disconnectSocialAccount(barbershopId: Int!): Boolean!
+  enableMyProfessionalProfile(input: ProfessionalSignupInput!): ProfilePrivacyType!
   endSharedLocation(barbershopId: Int!, id: Int!): Boolean!
   forgotPassword(input: ForgotPasswordInput!): Boolean!
   forgotPasswordCheck(input: ForgotPasswordCheckInput!): Boolean!
@@ -1614,6 +1619,7 @@ type Mutation {
   getPhotoUploadUrl(contentType: String): PresignedUploadType!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, productId: Int!): PresignedUploadType!
   getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
+  importShopData(barbershopId: Int!, csv: String!): ShopImportResultType!
   inviteToSharedLocation(barbershopId: Int!, memberPageLink: String!): SharedLocationLinkType!
   login(input: LoginInput!): User!
   logout: Boolean!
@@ -1671,6 +1677,7 @@ type Mutation {
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   startDepositPayment(token: String!): DepositPaymentType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
+  startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
   submitReviewByLink(comment: String, rating: Int!, token: String!): Boolean!
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
@@ -1689,6 +1696,7 @@ type Mutation {
   updateCoupon(data: UpdateCouponInput!, id: Int!): Coupon!
   updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
   updateInventoryItem(barbershopId: Int!, input: UpdateInventoryItemInput!, productId: Int!): InventoryItemType!
+  updateMyProfilePrivacy(input: UpdateProfilePrivacyInput!): ProfilePrivacyType!
   updateNetwork(input: UpdateNetworkInput!): Network!
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
@@ -2131,6 +2139,50 @@ type ProductCategoryType {
   updatedAt: String!
 }
 
+input ProfessionalSignupInput {
+  acceptedRoles: [String!]
+  cities: [String!]
+  engagements: [String!]
+  openToWork: Boolean
+  roles: [String!]!
+  specialties: [TreatmentCategory!]
+}
+
+type ProfilePrivacyType {
+  acceptedRoles: [String!]!
+  acceptingClients: Boolean!
+  cities: [String!]!
+  completedAppointments: Int!
+  email: String!
+  engagements: [String!]!
+  fullName: String!
+  hasProfile: Boolean!
+  openToWork: Boolean!
+  owns: [CareerShopLinkType!]!
+  phone: String
+  photoUrl: String
+  roles: [String!]!
+  shifts: [ProfileShiftType!]!
+  showAppointmentCount: Boolean!
+  showContact: Boolean!
+  showLocations: Boolean!
+  showPhoto: Boolean!
+  showRating: Boolean!
+  showReviews: Boolean!
+  showWorkHistory: Boolean!
+  specialties: [TreatmentCategory!]!
+  visibility: String!
+  workedAt: [CareerShopLinkType!]!
+  worksAt: [CareerShopLinkType!]!
+}
+
+type ProfileShiftType {
+  dayOfWeek: Int!
+  endTime: String!
+  shopName: String!
+  startTime: String!
+}
+
 type PublicAppointmentType {
   barberName: String!
   barbershopName: String!
@@ -2239,9 +2291,14 @@ type PublicPortfolioPhotoType {
 }
 
 type PublicProfessionalType {
-  completedAppointments: Int!
+  completedAppointments: Int
+  email: String
   fullName: String!
   owns: [CareerShopLinkType!]!
+  phone: String
+  photoUrl: String
+  visibility: String!
+  workedAt: [CareerShopLinkType!]!
   worksAt: [CareerShopLinkType!]!
 }
 
@@ -2371,7 +2428,9 @@ type Query {
   myNotificationsCount: NotificationCount!
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
+  myProfilePrivacy: ProfilePrivacyType!
   myReview(barbershopId: Int!): MyReviewType
+  mySoloPractice: SoloPracticeType!
   mySubscriptions: [PlanSubscription!]!
   myUnreadNotifications: [UserNotification!]!
   myUpcomingAppointments: [ManagedAppointmentType!]!
@@ -2385,6 +2444,7 @@ type Query {
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
+  previewShopImport(barbershopId: Int!, csv: String!): ShopImportResultType!
   publicAvailableSlots(barberId: Int, barbershopId: Int!, date: String!, serviceId: Int, serviceIds: [Int!]): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
   publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
@@ -2628,6 +2688,16 @@ type SharedLocationShopType {
   state: String!
 }
 
+type ShopImportResultType {
+  appointmentsCreated: Int!
+  appointmentsSkipped: Int!
+  customersCreated: Int!
+  customersReused: Int!
+  errors: [String!]!
+  servicesCreated: Int!
+  servicesReused: Int!
+}
+
 type ShopRevenueItem {
   id: Int!
   name: String!
@@ -2658,14 +2728,47 @@ type SocialPostType {
 }
 
 input SocialSignupInput {
+  barbershopData: BarbershopSignupData
   birthdate: DateTime!
   email: String!
   fullName: String!
   gender: String!
   idDocNumber: String!
   phone: String!
+  professionalData: ProfessionalSignupInput
   provider: String!
   readTerms: Boolean!
+  signupType: String
+}
+
+type SoloPracticeType {
+  active: Boolean!
+  barbershopId: Int
+  blocked: Boolean!
+  completedThisMonth: Int!
+  grace: Boolean!
+  limit: Int!
+  name: String
+  nearLimit: Boolean!
+  proAvailable: Boolean!
+  productBlocked: Boolean!
+  productGrace: Boolean!
+  productLimit: Int!
+  productNearLimit: Boolean!
+  productRemaining: Int!
+  productsThisMonth: Int!
+  remaining: Int!
+  slug: String
+}
+
+input StartSoloPracticeInput {
+  address: String!
+  city: String!
+  country: String!
+  name: String!
+  phone: String!
+  postalCode: String!
+  state: String!
 }
 
 type StatusDistribution {
@@ -2962,6 +3065,24 @@ input UpdateProductCategoryInput {
   displayOrder: Int
   icon: String
   name: String
+}
+
+input UpdateProfilePrivacyInput {
+  acceptedRoles: [String!]
+  acceptingClients: Boolean
+  cities: [String!]
+  engagements: [String!]
+  openToWork: Boolean
+  roles: [String!]
+  showAppointmentCount: Boolean
+  showContact: Boolean
+  showLocations: Boolean
+  showPhoto: Boolean
+  showRating: Boolean
+  showReviews: Boolean
+  showWorkHistory: Boolean
+  specialties: [TreatmentCategory!]
+  visibility: String
 }
 
 input UpdateResourceInput {

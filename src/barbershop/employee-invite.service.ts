@@ -10,6 +10,7 @@ import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional } from './professional';
+import { assertSoloSinglePerson } from './solo';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
 
@@ -70,6 +71,7 @@ export class EmployeeInviteService {
   async createInvite(userId: number, input: CreateEmployeeInviteInput) {
     // Dono e gerente convidam a equipe, gerentes inclusive (como no Booksy)
     await this.barbershopService.ensureAccess(userId, input.barbershopId, 'manager');
+    await assertSoloSinglePerson(this.prisma, input.barbershopId);
 
     const email = input.email.toLowerCase().trim();
     if (!email) {

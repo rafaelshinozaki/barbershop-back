@@ -1,4 +1,5 @@
 import { Field, Float, GraphQLISODateTime, Int, ObjectType } from '@nestjs/graphql';
+import { TreatmentCategory } from './enums';
 
 @ObjectType()
 export class CareerPlaceType {
@@ -91,6 +92,9 @@ export class CareerOverviewType {
 
   @Field()
   isPublic: boolean;
+
+  @Field()
+  visibility: string;
 }
 
 /** Atendimento antigo: primeiro nome e data. Sem contato. */
@@ -120,6 +124,63 @@ export class PublicProfessionalType {
   @Field()
   fullName: string;
 
+  @Field()
+  visibility: string;
+
+  @Field(() => String, { nullable: true })
+  photoUrl: string | null;
+
+  @Field(() => String, { nullable: true })
+  phone: string | null;
+
+  @Field(() => String, { nullable: true })
+  email: string | null;
+
+  @Field(() => Int, { nullable: true })
+  completedAppointments: number | null;
+
+  @Field(() => [CareerShopLinkType])
+  worksAt: CareerShopLinkType[];
+
+  @Field(() => [CareerShopLinkType])
+  workedAt: CareerShopLinkType[];
+
+  @Field(() => [CareerShopLinkType])
+  owns: CareerShopLinkType[];
+}
+
+@ObjectType()
+export class ProfileShiftType {
+  @Field(() => Int)
+  dayOfWeek: number;
+
+  @Field()
+  startTime: string;
+
+  @Field()
+  endTime: string;
+
+  @Field()
+  shopName: string;
+}
+
+@ObjectType()
+export class ProfilePrivacyType {
+  @Field()
+  hasProfile: boolean;
+
+  @Field()
+  fullName: string;
+
+  @Field(() => String, { nullable: true })
+  phone: string | null;
+
+  @Field()
+  email: string;
+
+  @Field(() => String, { nullable: true })
+  photoUrl: string | null;
+
   @Field(() => Int)
   completedAppointments: number;
 
@@ -127,5 +188,56 @@ export class PublicProfessionalType {
   worksAt: CareerShopLinkType[];
 
   @Field(() => [CareerShopLinkType])
+  workedAt: CareerShopLinkType[];
+
+  @Field(() => [CareerShopLinkType])
   owns: CareerShopLinkType[];
+
+  @Field(() => [ProfileShiftType])
+  shifts: ProfileShiftType[];
+
+  @Field()
+  visibility: string;
+
+  @Field(() => [String])
+  roles: string[];
+
+  @Field(() => [TreatmentCategory])
+  specialties: TreatmentCategory[];
+
+  @Field(() => [String])
+  cities: string[];
+
+  @Field()
+  openToWork: boolean;
+
+  @Field(() => [String])
+  engagements: string[];
+
+  @Field(() => [String])
+  acceptedRoles: string[];
+
+  @Field()
+  acceptingClients: boolean;
+
+  @Field()
+  showPhoto: boolean;
+
+  @Field()
+  showRating: boolean;
+
+  @Field()
+  showAppointmentCount: boolean;
+
+  @Field()
+  showReviews: boolean;
+
+  @Field()
+  showWorkHistory: boolean;
+
+  @Field()
+  showLocations: boolean;
+
+  @Field()
+  showContact: boolean;
 }

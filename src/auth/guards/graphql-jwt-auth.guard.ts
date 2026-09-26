@@ -1,10 +1,14 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { SmartLogger } from '@/common/logger.util';
 import { renewIfStale, type SessionPayload } from '@/auth/session-cookie';
+
+/** A query segue sem usuário quando não há sessão. Token inválido também não bloqueia. */
+export const OptionalAuth = () => SetMetadata('authOptional', true);
 
 @Injectable()
 export class GraphQLJwtAuthGuard implements CanActivate {
@@ -14,9 +18,14 @@ export class GraphQLJwtAuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext) {
+    const optional = this.reflector.getAllAndOverride<boolean>('authOptional', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     const gqlContext = GqlExecutionContext.create(context);
     const { req, res } = gqlContext.getContext();
 
@@ -39,14 +48,11 @@ export class GraphQLJwtAuthGuard implements CanActivate {
 
     // Debug log
     if (!token) {
+      if (optional) return true;
       this.logger.warn('No authentication token found');
-    } else {
-      this.logger.debug('Token found');
-    }
-
-    if (!token) {
       throw new UnauthorizedException('No authentication token found');
     }
+    this.logger.debug('Token found');
 
     try {
       // Decode the JWT
@@ -103,6 +109,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
 
       return true;
     } catch (error) {
+      if (optional) return true;
       this.logger.warn('Invalid token', error);
       throw new UnauthorizedException('Invalid token');
     }

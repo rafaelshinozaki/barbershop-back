@@ -244,6 +244,10 @@ export class Barbershop {
   @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
   businessType: string;
 
+  /** shop = estabelecimento. solo = agenda de uma pessoa, com cota mensal. */
+  @Field()
+  practiceKind: string;
+
   @Field()
   name: string;
 

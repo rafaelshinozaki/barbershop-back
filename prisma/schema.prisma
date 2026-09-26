@@ -486,6 +486,9 @@ model Barbershop {
   // Tipo de estabelecimento (src/barbershop/business-types.ts): barbershop,
   // beauty_salon, nail_salon... Define o catálogo sugerido e o texto da página
   businessType   String    @default("barbershop")
+  // shop = estabelecimento. solo = agenda de uma pessoa, fora do plano da
+  // unidade, com cota de 30 atendimentos e 30 produtos por mês.
+  practiceKind   String    @default("shop")
   address        String
   complement1    String?
   complement2    String?
@@ -552,6 +555,7 @@ model Barbershop {
 
   @@index([networkId])
   @@index([ownerUserId])
+  @@index([ownerUserId, practiceKind])
   @@index([isActive])
   @@index([slug])
   calendarFeeds   CalendarFeed[]
@@ -772,9 +776,29 @@ model Professional {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    Int      @unique
-  // Página pública /p/:slug. O padrão é oculto: só entra no ar se a pessoa ligar.
+  // Página /p/:slug. O padrão é oculto: nada fica público sem a pessoa escolher.
   slug      String?  @unique
+  // Espelho de visibility = public, para consultas antigas.
   isPublic  Boolean  @default(false)
+  // hidden | platform | public
+  visibility String  @default("hidden")
+  // Papéis que a pessoa oferece (barber, manager, reception). O cargo na unidade é o do Barber.
+  roles      String[] @default([])
+  specialties TreatmentCategory[] @default([])
+  cities     String[] @default([])
+  openToWork Boolean  @default(false)
+  // fixed | freelance | chair_rent
+  engagements String[] @default([])
+  acceptedRoles String[] @default([])
+  acceptingClients Boolean @default(true)
+  showPhoto Boolean @default(true)
+  showRating Boolean @default(true)
+  showAppointmentCount Boolean @default(true)
+  showReviews Boolean @default(true)
+  showWorkHistory Boolean @default(true)
+  showLocations Boolean @default(true)
+  // Contato oculto por padrão: a conversa fica no app.
+  showContact Boolean @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
 }
@@ -967,7 +991,7 @@ model Appointment {
   endAt        DateTime
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   notes        String?
-  source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN
+  source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN, IMPORT, HISTORY
   reminderSentAt DateTime?
   reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
   // Agendamento recorrente (a cada N semanas): mesmo seriesId, ordem na série

@@ -30,9 +30,10 @@ export const categorySlug = (category: string) => category.toLowerCase().replace
 
 /**
  * sitemap.xml das páginas públicas, pro Google achar tudo o que dá pra
- * agendar: a página de cada unidade ativa (/u/:slug) e as buscas por
+ * agendar: a página de cada unidade ativa (/u/:slug), o perfil de
+ * profissional que a pessoa deixou público (/p/:slug) e as buscas por
  * categoria, por cidade e por categoria × cidade (/search/...) que têm
- * resultado. Nada de área logada.
+ * resultado. Perfil oculto ou só na plataforma fica de fora. Nada de área logada.
  */
 @Injectable()
 export class SitemapService {
@@ -60,12 +61,27 @@ export class SitemapService {
       orderBy: { id: 'asc' },
     });
 
+    const profiles = await this.prisma.professional.findMany({
+      where: { visibility: 'public', slug: { not: null } },
+      select: { slug: true, updatedAt: true },
+      orderBy: { id: 'asc' },
+    });
+
     const urls: Url[] = [{ loc: `${front}/search`, priority: '0.8', changefreq: 'daily' }];
     for (const shop of shops) {
       urls.push({
         loc: `${front}/u/${encodeURIComponent(shop.slug)}`,
         lastmod: shop.updatedAt,
         priority: '1.0',
+        changefreq: 'weekly',
+      });
+    }
+    for (const profile of profiles) {
+      if (!profile.slug) continue;
+      urls.push({
+        loc: `${front}/p/${encodeURIComponent(profile.slug)}`,
+        lastmod: profile.updatedAt,
+        priority: '0.7',
         changefreq: 'weekly',
       });
     }

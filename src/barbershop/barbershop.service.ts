@@ -21,6 +21,8 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional, shiftsOverlap } from './professional';
+import { acceptsNewClient } from './profile-privacy';
+import { assertSoloBookingAllowed, assertSoloProductSaleAllowed, assertSoloSinglePerson, productUnits } from './solo';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
@@ -1116,6 +1118,8 @@ export class BarbershopService {
       currency?: string;
       businessHours?: string;
       businessType?: string;
+      /** false: o dono administra e não entra na agenda. Ausente: entra, como hoje. */
+      ownerTakesAppointments?: boolean;
     },
   ) {
     const businessType = this.parseBusinessType(data.businessType) ?? DEFAULT_BUSINESS_TYPE;
@@ -1127,7 +1131,9 @@ export class BarbershopService {
     }
     const network = await this.findOrCreateNetwork(userId);
     const limits = await this.getPlanLimitsForOwner(userId);
-    const currentCount = await this.prisma.barbershop.count({ where: { networkId: network.id } });
+    const currentCount = await this.prisma.barbershop.count({
+      where: { networkId: network.id, practiceKind: 'shop' },
+    });
     if (currentCount >= limits.maxBarbershops) {
       throw new BadRequestException(
         `Seu plano permite no máximo ${limits.maxBarbershops} unidade(s). Faça upgrade para cadastrar mais.`,
@@ -1166,6 +1172,7 @@ export class BarbershopService {
           email: owner.email,
           staffType: 'barber',
           specialization: 'Proprietário',
+          ...(data.ownerTakesAppointments === false ? { takesAppointments: false } : {}),
         },
       });
       await linkBarberToProfessional(this.prisma, ownerBarber.id, userId);
@@ -1504,6 +1511,7 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    await assertSoloSinglePerson(this.prisma, barbershopId);
     // Só ocupa vaga quem atende (o padrão aqui é barbeiro)
     if (data.takesAppointments !== false) await this.ensureBarberLimitNotExceeded(barbershopId);
 
@@ -2349,6 +2357,9 @@ export class BarbershopService {
     opts: { notify?: boolean } = {},
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    if (data.source !== 'HISTORY') {
+      await assertSoloBookingAllowed(this.prisma, barbershopId, data.startAt);
+    }
     const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
     if (ownBarberId !== null && data.barberId !== ownBarberId) {
       throw new ForbiddenException('Seu cargo só permite agendar na sua própria agenda.');
@@ -3698,6 +3709,24 @@ export class BarbershopService {
     return { startAt, endAt };
   }
 
+  /** Agenda fechada para gente nova. Quem já teve horário com o profissional continua. */
+  private async professionalAcceptsNewBooking(barberId: number, customerId: number | null) {
+    const barber = await this.prisma.barber.findUnique({
+      where: { id: barberId },
+      select: { professional: { select: { id: true, acceptingClients: true } } },
+    });
+    if (!barber?.professional || barber.professional.acceptingClients) return true;
+    if (!customerId) return false;
+    const prior = await this.prisma.appointment.count({
+      where: {
+        customerId,
+        status: { not: 'CANCELLED' },
+        barber: { professionalId: barber.professional.id },
+      },
+    });
+    return acceptsNewClient(false, prior);
+  }
+
   async createPublicAppointment(input: {
     barbershopId: number;
     /** Sem profissional: "qualquer profissional" — o sistema escolhe um livre */
@@ -3716,6 +3745,15 @@ export class BarbershopService {
       where: { id: input.barbershopId, isActive: true },
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const requestedStart = new Date(input.startAt);
+    if (!isNaN(requestedStart.getTime())) {
+      await assertSoloBookingAllowed(this.prisma, barbershop.id, requestedStart);
+    }
+
+    const returningCustomer = await this.prisma.customer.findFirst({
+      where: { networkId: barbershop.networkId, phone: input.customerPhone },
+      select: { id: true },
+    });
 
     const { services, durationMinutes } = await this.publicServices(
       input.barbershopId,
@@ -3745,7 +3783,15 @@ export class BarbershopService {
     let endAt!: Date;
     const free: number[] = [];
     let lastError: unknown = null;
+    let refusedNewClient = false;
     for (const c of candidates) {
+      if (!(await this.professionalAcceptsNewBooking(c.id, returningCustomer?.id ?? null))) {
+        refusedNewClient = true;
+        if (!auto) {
+          throw new BadRequestException('Este profissional não está aceitando clientes novos');
+        }
+        continue;
+      }
       try {
         const slot = await this.ensurePublicSlot(barbershop, c.id, durationMinutes, input.startAt);
         await this.ensureBarberAvailable(input.barbershopId, c.id, slot.startAt, slot.endAt);
@@ -3760,6 +3806,9 @@ export class BarbershopService {
       }
     }
     if (free.length === 0) {
+      if (refusedNewClient && !lastError) {
+        throw new BadRequestException('Não há profissional aceitando clientes novos neste horário');
+      }
       throw lastError ?? new BadRequestException('Esse horário não está mais disponível');
     }
 
@@ -5031,6 +5080,7 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    await assertSoloBookingAllowed(this.prisma, barbershopId, new Date());
     const maxPos = await this.prisma.walkIn.aggregate({
       where: { barbershopId, status: 'WAITING' },
       _max: { queuePosition: true },
@@ -5170,6 +5220,7 @@ export class BarbershopService {
       data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
       data.items.filter((i) => i.productId).map((i) => i.productId as number),
     );
+    await assertSoloProductSaleAllowed(this.prisma, barbershopId, new Date(), productUnits(data.items));
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
 
@@ -5466,6 +5517,20 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    if (data.items) {
+      const existingItems = await this.prisma.saleItem.findMany({
+        where: { saleId, sale: { barbershopId } },
+        select: { itemType: true, productId: true, quantity: true },
+      });
+      const sale = await this.prisma.sale.findFirst({
+        where: { id: saleId, barbershopId },
+        select: { createdAt: true },
+      });
+      if (sale) {
+        const adding = productUnits(data.items) - productUnits(existingItems);
+        await assertSoloProductSaleAllowed(this.prisma, barbershopId, sale.createdAt, adding);
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.sale.findFirst({
         where: { id: saleId, barbershopId },

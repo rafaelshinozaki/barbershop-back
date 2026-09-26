@@ -1,16 +1,20 @@
 import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
-import { UseGuards, UseFilters } from '@nestjs/common';
+import { BadRequestException, UseGuards, UseFilters } from '@nestjs/common';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { UserService } from '../../auth/users/users.service';
 import { BarbershopService } from '../../barbershop/barbershop.service';
+import { CareerService } from '../../barbershop/career.service';
+import { parseProfessionalSignup, ProfilePrivacyError } from '../../barbershop/profile-privacy';
 import { User, LinkedSocialAccountType } from '../types/user.type';
 import { Role } from '../../auth/interfaces/roles';
 import {
   LoginInput,
   Verify2FAInput,
   CreateUserInput,
+  BarbershopSignupData,
+  ProfessionalSignupInput,
   ForgotPasswordInput,
   ForgotPasswordCheckInput,
   ResetPasswordInput,
@@ -76,6 +80,7 @@ export class AuthResolver {
     private readonly authService: AuthService,
     private readonly userService: UserService,
     private readonly barbershopService: BarbershopService,
+    private readonly career: CareerService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -117,6 +122,8 @@ export class AuthResolver {
   @ThrottleAuth()
   async createUser(@Args('input') createUserInput: CreateUserInput): Promise<any> {
     const isBarbershopOwner = createUserInput.signupType === 'barbershop_owner';
+    const isProfessional = createUserInput.signupType === 'professional';
+    if (isProfessional) this.assertProfessionalSignup(createUserInput.professionalData);
 
     const userData: Record<string, any> = {
       ...createUserInput,
@@ -146,28 +153,15 @@ export class AuthResolver {
     if (isBarbershopOwner && createUserInput.barbershopData) {
       userData.roleName = Role.BARBERSHOP_OWNER;
     }
+    if (isProfessional) {
+      userData.roleName = Role.BARBERSHOP_EMPLOYEE;
+    }
 
     const dbUser = await this.userService.createUser(userData as NewUserSchema);
 
-    if (isBarbershopOwner && createUserInput.barbershopData) {
+    if (isBarbershopOwner || isProfessional) {
       try {
-        await this.barbershopService.createBarbershop(dbUser.id, {
-          name: createUserInput.barbershopData.name,
-          slug: createUserInput.barbershopData.slug,
-          address: createUserInput.barbershopData.address,
-          complement1: createUserInput.barbershopData.complement1,
-          complement2: createUserInput.barbershopData.complement2,
-          city: createUserInput.barbershopData.city,
-          state: createUserInput.barbershopData.state,
-          country: createUserInput.barbershopData.country,
-          postalCode: createUserInput.barbershopData.postalCode,
-          phone: createUserInput.barbershopData.phone,
-          email: createUserInput.barbershopData.email,
-          timezone: createUserInput.barbershopData.timezone,
-          businessHours: createUserInput.barbershopData.businessHours,
-          currency: createUserInput.barbershopData.currency,
-          businessType: createUserInput.barbershopData.businessType,
-        });
+        await this.attachSignup(dbUser.id, createUserInput);
       } catch (error) {
         // userService.createUser() e barbershopService.createBarbershop() não
         // rodam na mesma transação — se a barbearia falhar (ex.: slug
@@ -188,28 +182,7 @@ export class AuthResolver {
         // usuário com FK RESTRICT — apagar a Network leva Barbershop/Barber
         // junto por cascade. As demais tabelas com FK RESTRICT pra User que um
         // cadastro recém-criado pode ter preenchido também são limpas.
-        const userId = dbUser.id;
-        try {
-          await this.prisma.$transaction([
-            this.prisma.network.deleteMany({ where: { ownerUserId: userId } }),
-            this.prisma.address.deleteMany({ where: { userId } }),
-            this.prisma.userSystemConfig.deleteMany({ where: { userId } }),
-            this.prisma.notificationPreference.deleteMany({ where: { userId } }),
-            this.prisma.subscription.deleteMany({ where: { userId } }),
-            this.prisma.emailLogger.deleteMany({ where: { userId } }),
-            this.prisma.verificationCode.deleteMany({ where: { userId } }),
-            this.prisma.loginHistory.deleteMany({ where: { userId } }),
-            this.prisma.activeSession.deleteMany({ where: { userId } }),
-            this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${userId}`,
-          ]);
-        } catch (cleanupError) {
-          // Não mascara o erro original (é ele que explica pro cliente o que
-          // deu errado no cadastro) — só registra a falha de limpeza.
-          this.logger.error(
-            `Falha ao desfazer cadastro incompleto do usuário ${userId}`,
-            cleanupError,
-          );
-        }
+        await this.removeOrphanSignup(dbUser.id);
         throw error;
       }
     }
@@ -397,10 +370,17 @@ export class AuthResolver {
       throw new Error('Invalid or expired social signup token');
     }
     pendingSocialSignups.delete(token);
+    if (input.signupType === 'professional') this.assertProfessionalSignup(input.professionalData);
     const userData = {
       ...input,
       provider: input.provider,
       password: randomUUID(),
+      roleName:
+        input.signupType === 'professional'
+          ? Role.BARBERSHOP_EMPLOYEE
+          : input.signupType === 'barbershop_owner'
+            ? Role.BARBERSHOP_OWNER
+            : undefined,
       address: {
         zipcode: '',
         street: '',
@@ -420,8 +400,79 @@ export class AuthResolver {
       },
     };
     const dbUser = await this.userService.createUser(userData);
+    if (input.signupType === 'professional' || input.signupType === 'barbershop_owner') {
+      try {
+        await this.attachSignup(dbUser.id, input);
+      } catch (error) {
+        await this.removeOrphanSignup(dbUser.id);
+        throw error;
+      }
+    }
     // Acabou de criar a conta: fica lembrado (como o login social)
     await this.authService.login(dbUser, req, res, true);
     return toGraphQLUser(dbUser) as any;
+  }
+
+  private assertProfessionalSignup(input?: ProfessionalSignupInput) {
+    try {
+      parseProfessionalSignup(input);
+    } catch (error) {
+      if (error instanceof ProfilePrivacyError) throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  private async attachSignup(
+    userId: number,
+    input: {
+      signupType?: string;
+      professionalData?: ProfessionalSignupInput;
+      barbershopData?: BarbershopSignupData;
+    },
+  ) {
+    if (input.signupType === 'professional') {
+      await this.career.applySignup(userId, input.professionalData);
+      return;
+    }
+    const data = input.barbershopData;
+    if (input.signupType !== 'barbershop_owner' || !data) return;
+    await this.barbershopService.createBarbershop(userId, {
+      name: data.name,
+      slug: data.slug,
+      address: data.address,
+      complement1: data.complement1,
+      complement2: data.complement2,
+      city: data.city,
+      state: data.state,
+      country: data.country,
+      postalCode: data.postalCode,
+      phone: data.phone,
+      email: data.email,
+      timezone: data.timezone,
+      businessHours: data.businessHours,
+      currency: data.currency,
+      businessType: data.businessType,
+      ownerTakesAppointments: data.alsoServes !== false,
+    });
+  }
+
+  /** Cadastro pela metade não pode prender o e-mail: o unique ignora o soft-delete. */
+  private async removeOrphanSignup(userId: number) {
+    try {
+      await this.prisma.$transaction([
+        this.prisma.network.deleteMany({ where: { ownerUserId: userId } }),
+        this.prisma.address.deleteMany({ where: { userId } }),
+        this.prisma.userSystemConfig.deleteMany({ where: { userId } }),
+        this.prisma.notificationPreference.deleteMany({ where: { userId } }),
+        this.prisma.subscription.deleteMany({ where: { userId } }),
+        this.prisma.emailLogger.deleteMany({ where: { userId } }),
+        this.prisma.verificationCode.deleteMany({ where: { userId } }),
+        this.prisma.loginHistory.deleteMany({ where: { userId } }),
+        this.prisma.activeSession.deleteMany({ where: { userId } }),
+        this.prisma.$executeRaw`DELETE FROM "User" WHERE id = ${userId}`,
+      ]);
+    } catch (cleanupError) {
+      this.logger.error(`Falha ao desfazer cadastro incompleto do usuário ${userId}`, cleanupError);
+    }
   }
 }
