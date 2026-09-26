@@ -221,6 +221,9 @@ type Barber {
   specialization: String
   specialties: [TreatmentCategory!]!
   staffType: String
+
+  """Atende clientes; vazio = pelo cargo (recepção não, os demais sim)"""
+  takesAppointments: Boolean
   updatedAt: String!
   userId: Int
 }
@@ -823,6 +826,7 @@ input CreateBarberInput {
   phone: String!
   specialization: String
   specialties: [TreatmentCategory!]
+  takesAppointments: Boolean
   userId: Float
 }
 
@@ -1961,6 +1965,13 @@ type PlanDistribution {
   plans: ChartData!
 }
 
+"""Vagas do plano na unidade: só quem atende ocupa"""
+type PlanSeatUsage {
+  """null = sem limite"""
+  limit: Int
+  used: Int!
+}
+
 type PlanSubscription {
   cancelationDate: String
   createdAt: String!
@@ -2164,6 +2175,9 @@ type Query {
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
   barbershopPhotos(barbershopId: Int!): [BarbershopPhotoType!]!
+
+  """Vagas do plano ocupadas na unidade (só quem atende conta)"""
+  barbershopPlanSeats(barbershopId: Int!): PlanSeatUsage!
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
@@ -2645,6 +2659,7 @@ input UpdateBarberInput {
   specialization: String
   specialties: [TreatmentCategory!]
   staffType: String
+  takesAppointments: Boolean
   userId: Float
 }
 
