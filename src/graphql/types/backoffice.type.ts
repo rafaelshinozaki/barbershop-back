@@ -156,6 +156,63 @@ export class DetailedUsersResponse {
 }
 
 @ObjectType()
+export class MarketplaceRetention {
+  @Field(() => Int)
+  prior: number;
+
+  @Field(() => Int)
+  returning: number;
+
+  @Field(() => Float)
+  rate: number;
+}
+
+@ObjectType()
+export class TimeToFirstAppointment {
+  @Field(() => Float, { nullable: true })
+  medianDays: number | null;
+
+  @Field(() => Int)
+  withAppointment: number;
+
+  @Field(() => Int)
+  withoutAppointment: number;
+
+  @Field(() => Float, { nullable: true })
+  activatedWithin7DaysRate: number | null;
+
+  @Field(() => Int)
+  eligibleFor7Days: number;
+}
+
+@ObjectType()
+export class MarketplaceMetrics {
+  @Field(() => Int)
+  activeProfessionals: number;
+
+  @Field(() => Int)
+  activeBarbershops: number;
+
+  @Field(() => ChartData)
+  appointmentsByWeek: ChartData;
+
+  @Field(() => MarketplaceRetention)
+  clientRetention: MarketplaceRetention;
+
+  @Field(() => MarketplaceRetention)
+  professionalRetention: MarketplaceRetention;
+
+  @Field(() => MarketplaceRetention)
+  barbershopRetention: MarketplaceRetention;
+
+  @Field(() => TimeToFirstAppointment)
+  shopTimeToFirst: TimeToFirstAppointment;
+
+  @Field(() => TimeToFirstAppointment)
+  professionalTimeToFirst: TimeToFirstAppointment;
+}
+
+@ObjectType()
 export class BackofficeDashboard {
   @Field(() => BackofficeStats)
   stats: BackofficeStats;
@@ -171,6 +228,9 @@ export class BackofficeDashboard {
 
   @Field(() => PlanDistribution)
   planDistribution: PlanDistribution;
+
+  @Field(() => MarketplaceMetrics)
+  marketplaceMetrics: MarketplaceMetrics;
 }
 
 @ObjectType()

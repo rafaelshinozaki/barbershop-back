@@ -12,6 +12,19 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SmartLogger } from '../common/logger.util';
 import { EmailService } from '../email/email.service';
 import { PAGAMENTO_STATUS } from '../common/contants';
+import { takesAppointments } from '../barbershop/staff-roles';
+import {
+  COUNTED_APPOINTMENT_STATUSES,
+  METRIC_WEEKS,
+  RETENTION_DAYS,
+  countByWeek,
+  professionalKey,
+  retentionOf,
+  retentionWindows,
+  timeToFirst,
+  weekRangeUtc,
+  weekStarts,
+} from './marketplace-metrics';
 
 const ROLE_NAME_TO_ENUM: Record<string, string> = {
   SystemAdmin: 'SYSTEM_ADMIN',
@@ -725,6 +738,142 @@ export class BackofficeService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Uso da plataforma, no fuso padrão: quem atende agora, agendamentos das
+   * últimas 8 semanas, retenção (últimas 4 semanas contra as 4 anteriores)
+   * de cliente, profissional e unidade, e mediana de dias até o primeiro
+   * atendimento. Cancelado e reserva sem pagamento não entram.
+   */
+  async getMarketplaceMetrics() {
+    const timeZone = DEFAULT_TIMEZONE;
+    const now = new Date();
+    const today = toZonedParts(now, timeZone).dateStr;
+    const starts = weekStarts(today, METRIC_WEEKS);
+    const weeks = weekRangeUtc(starts, timeZone);
+    const windows = retentionWindows(today, RETENTION_DAYS, timeZone);
+    const from = weeks.start < windows.priorStart ? weeks.start : windows.priorStart;
+    const to = weeks.end > windows.end ? weeks.end : windows.end;
+    const counted = { in: [...COUNTED_APPOINTMENT_STATUSES] };
+
+    const [barbers, shops, appointments, firstByShop, firstByBarber] = await Promise.all([
+      this.prisma.barber.findMany({
+        select: {
+          id: true,
+          userId: true,
+          createdAt: true,
+          isActive: true,
+          staffType: true,
+          takesAppointments: true,
+          accessStartsAt: true,
+          accessEndsAt: true,
+          barbershop: { select: { isActive: true } },
+        },
+      }),
+      this.prisma.barbershop.findMany({ select: { id: true, createdAt: true, isActive: true } }),
+      this.prisma.appointment.findMany({
+        where: { startAt: { gte: from, lt: to }, status: counted },
+        select: {
+          startAt: true,
+          customerId: true,
+          barbershopId: true,
+          barberId: true,
+          barber: { select: { userId: true } },
+        },
+      }),
+      this.prisma.appointment.groupBy({
+        by: ['barbershopId'],
+        where: { status: counted },
+        _min: { startAt: true },
+      }),
+      this.prisma.appointment.groupBy({
+        by: ['barberId'],
+        where: { status: counted },
+        _min: { startAt: true },
+      }),
+    ]);
+
+    const bookable = barbers.filter((barber) => takesAppointments(barber));
+    const activeKeys = bookable
+      .filter(
+        (barber) =>
+          barber.isActive &&
+          barber.barbershop.isActive &&
+          (!barber.accessStartsAt || barber.accessStartsAt <= now) &&
+          (!barber.accessEndsAt || barber.accessEndsAt >= now),
+      )
+      .map((barber) => professionalKey(barber));
+
+    const weekDates = appointments
+      .filter((appointment) => appointment.startAt >= weeks.start && appointment.startAt < weeks.end)
+      .map((appointment) => toZonedParts(appointment.startAt, timeZone).dateStr);
+
+    const priorClients: string[] = [];
+    const currentClients: string[] = [];
+    const priorProfessionals: string[] = [];
+    const currentProfessionals: string[] = [];
+    const priorShops: string[] = [];
+    const currentShops: string[] = [];
+    for (const appointment of appointments) {
+      if (appointment.startAt < windows.priorStart || appointment.startAt >= windows.end) continue;
+      const current = appointment.startAt >= windows.currentStart;
+      const client = String(appointment.customerId);
+      const professional = professionalKey({
+        id: appointment.barberId,
+        userId: appointment.barber.userId,
+      });
+      const shop = String(appointment.barbershopId);
+      if (current) {
+        currentClients.push(client);
+        currentProfessionals.push(professional);
+        currentShops.push(shop);
+      } else {
+        priorClients.push(client);
+        priorProfessionals.push(professional);
+        priorShops.push(shop);
+      }
+    }
+
+    const firstShopAt = new Map(
+      firstByShop.flatMap((row) => (row._min.startAt ? [[row.barbershopId, row._min.startAt] as const] : [])),
+    );
+    const firstBarberAt = new Map(
+      firstByBarber.flatMap((row) => (row._min.startAt ? [[row.barberId, row._min.startAt] as const] : [])),
+    );
+
+    const people = new Map<string, { createdAt: Date; firstAt: Date | null }>();
+    for (const barber of bookable) {
+      const key = professionalKey(barber);
+      const firstAt = firstBarberAt.get(barber.id) ?? null;
+      const existing = people.get(key);
+      if (!existing) {
+        people.set(key, { createdAt: barber.createdAt, firstAt });
+        continue;
+      }
+      if (barber.createdAt < existing.createdAt) existing.createdAt = barber.createdAt;
+      if (firstAt && (!existing.firstAt || firstAt < existing.firstAt)) existing.firstAt = firstAt;
+    }
+
+    return {
+      activeProfessionals: new Set(activeKeys).size,
+      activeBarbershops: shops.filter((shop) => shop.isActive).length,
+      appointmentsByWeek: {
+        labels: starts,
+        data: countByWeek(weekDates, starts),
+      },
+      clientRetention: retentionOf(priorClients, currentClients),
+      professionalRetention: retentionOf(priorProfessionals, currentProfessionals),
+      barbershopRetention: retentionOf(priorShops, currentShops),
+      shopTimeToFirst: timeToFirst(
+        shops.map((shop) => ({
+          createdAt: shop.createdAt,
+          firstAt: firstShopAt.get(shop.id) ?? null,
+        })),
+        now,
+      ),
+      professionalTimeToFirst: timeToFirst([...people.values()], now),
     };
   }
 }

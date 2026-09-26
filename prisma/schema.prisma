@@ -48,6 +48,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   barbershopsOwned    Barbershop[]  @relation("BarbershopOwner")
   barberProfiles     Barber[]
+  professional       Professional?
   networksOwned      Network[]     @relation("NetworkOwner")
   sentEmployeeInvites    EmployeeInvite[] @relation("EmployeeInviteInviter")
   acceptedEmployeeInvites EmployeeInvite[] @relation("EmployeeInviteAcceptedBy")
@@ -87,6 +88,8 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([expiresAt])
 }
 
 model VerificationCode {
@@ -99,6 +102,8 @@ model VerificationCode {
   updatedAt DateTime @updatedAt
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([expiresAt])
 }
 
 model UserSystemConfig {
@@ -270,6 +275,8 @@ model EmailLogger {
   meta      String
   createdAt DateTime @default(now())
   user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
 }
 
 model LoginHistory {
@@ -286,6 +293,8 @@ model LoginHistory {
   sessionToken String?
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
 }
 
 model ActiveSession {
@@ -321,6 +330,7 @@ model UserNotification {
   @@index([userId, createdAt])
   @@index([userId, isRead])
   @@index([userId, isNew])
+  @@index([createdAt])
 }
 
 model InvalidatedToken {
@@ -755,6 +765,17 @@ model ClientFavorite {
   @@index([networkId])
 }
 
+// A pessoa que atende, acima do vínculo em cada unidade. Quem trabalha em
+// duas barbearias tem um Professional e dois Barber apontando pra ele.
+model Professional {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  barbers   Barber[]
+}
+
 model Barber {
   id             Int              @id @default(autoincrement())
   createdAt      DateTime         @default(now())
@@ -763,6 +784,7 @@ model Barber {
   // Um vínculo por unidade: a mesma pessoa pode estar na equipe de várias
   // unidades (até de donos diferentes), com um cargo em cada
   userId         Int?
+  professionalId Int?
   staffType      String?          @default("barber") // basic | barber | reception | manager
   // Atende clientes (entra na agenda e ocupa vaga do plano). Null = pelo cargo:
   // recepção não atende, os demais atendem. Dono, gerente e recepção podem
@@ -784,6 +806,7 @@ model Barber {
   accessEndsAt   DateTime?
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   user           User?            @relation(fields: [userId], references: [id])
+  professional   Professional?    @relation(fields: [professionalId], references: [id], onDelete: SetNull)
   employeeInvites EmployeeInvite[]
   schedules      BarberSchedule[]
   timeOffs       BarberTimeOff[]
@@ -800,6 +823,7 @@ model Barber {
   @@unique([barbershopId, userId])
   @@index([barbershopId])
   @@index([userId])
+  @@index([professionalId])
   @@index([barbershopId, isActive])
 }
 

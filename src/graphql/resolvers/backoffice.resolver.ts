@@ -17,6 +17,7 @@ import {
   DemographicAnalysis,
   DetailedUsersResponse,
   BackofficeDashboard,
+  MarketplaceMetrics,
   OverduePaymentDetail,
   AdminProcessAllRecurringPaymentsResponse,
   AdminProcessRecurringPaymentResponse,
@@ -117,24 +118,36 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Query(() => MarketplaceMetrics)
+  async marketplaceMetrics() {
+    return this.backofficeService.getMarketplaceMetrics();
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Query(() => BackofficeDashboard)
   async backofficeDashboard() {
     this.logger.log('backofficeDashboard called');
 
     try {
-      const [stats, userGrowth, roleDistribution, statusDistribution, planDistribution] =
+      const [stats, userGrowth, roleDistribution, statusDistribution, planDistribution, marketplaceMetrics] =
         await Promise.all([
           this.backofficeService.getStats(),
           this.backofficeService.getUserGrowth(),
           this.backofficeService.getRoleDistribution(),
           this.backofficeService.getStatusDistribution(),
           this.backofficeService.getPlanDistribution(),
+          this.backofficeService.getMarketplaceMetrics(),
         ]);
 
       this.logger.log('All dashboard data retrieved successfully');
       this.logger.logEssential('Stats', stats, ['totalUsers', 'activeUsers', 'newUsersThisMonth']);
       this.logger.logEssential('User growth', userGrowth, ['labels', 'data']);
       this.logger.logEssential('Role distribution', roleDistribution, ['labels', 'data']);
+      this.logger.logEssential('Marketplace', marketplaceMetrics, [
+        'activeProfessionals',
+        'activeBarbershops',
+      ]);
 
       return {
         stats,
@@ -142,6 +155,7 @@ export class BackofficeResolver {
         roleDistribution,
         statusDistribution,
         planDistribution,
+        marketplaceMetrics,
       };
     } catch (error) {
       this.logger.error('Error in backofficeDashboard', error);

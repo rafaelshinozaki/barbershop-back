@@ -166,7 +166,10 @@ export class AccountDeletionService {
         data: { acceptedByUserId: null },
       }),
       // Funcionário: perfil de barbeiro fica na empresa, sem a conta
-      this.prisma.barber.updateMany({ where: { userId }, data: { userId: null } }),
+      this.prisma.barber.updateMany({
+        where: { userId },
+        data: { userId: null, professionalId: null },
+      }),
       this.prisma.user.update({
         where: { id: userId },
         data: {

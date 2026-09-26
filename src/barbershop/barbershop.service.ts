@@ -20,6 +20,7 @@ import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType, takesAppointments } from './staff-roles';
+import { linkBarberToProfessional, shiftsOverlap } from './professional';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
@@ -1156,7 +1157,7 @@ export class BarbershopService {
     if (owner) {
       // O dono entra na equipe de cada unidade dele (a agenda dele é uma só:
       // o mesmo horário não é vendido em duas unidades)
-      await this.prisma.barber.create({
+      const ownerBarber = await this.prisma.barber.create({
         data: {
           barbershopId: barbershop.id,
           userId,
@@ -1167,6 +1168,7 @@ export class BarbershopService {
           specialization: 'Proprietário',
         },
       });
+      await linkBarberToProfessional(this.prisma, ownerBarber.id, userId);
     }
 
     return barbershop;
@@ -1993,6 +1995,12 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
+    await this.ensureShiftFreeAcrossShops(
+      input.barberId,
+      input.dayOfWeek,
+      input.startTime,
+      input.endTime,
+    );
     return this.prisma.barberSchedule.create({
       data: {
         barberId: input.barberId,
@@ -2022,6 +2030,12 @@ export class BarbershopService {
     });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
     await this.ensureCanManageBarber(userId, schedule.barber.barbershopId, schedule.barberId);
+    const startTime = data.startTime ?? schedule.startTime;
+    const endTime = data.endTime ?? schedule.endTime;
+    const active = data.isActive ?? schedule.isActive;
+    if (active) {
+      await this.ensureShiftFreeAcrossShops(schedule.barberId, schedule.dayOfWeek, startTime, endTime);
+    }
     return this.prisma.barberSchedule.update({ where: { id }, data });
   }
 
@@ -2224,12 +2238,49 @@ export class BarbershopService {
   /** Os vínculos da mesma pessoa em todas as unidades (ou só este, sem conta) */
   private async samePersonBarberIds(
     barberId: number,
-    userId: number | null | undefined,
+    person: { userId?: number | null; professionalId?: number | null } | null | undefined,
     client: Prisma.TransactionClient = this.prisma,
   ): Promise<number[]> {
-    if (!userId) return [barberId];
-    const all = await client.barber.findMany({ where: { userId }, select: { id: true } });
-    return [...new Set([barberId, ...all.map((b) => b.id)])];
+    if (person?.professionalId) {
+      const all = await client.barber.findMany({
+        where: { professionalId: person.professionalId },
+        select: { id: true },
+      });
+      return [...new Set([barberId, ...all.map((b) => b.id)])];
+    }
+    if (person?.userId) {
+      const all = await client.barber.findMany({
+        where: { userId: person.userId },
+        select: { id: true },
+      });
+      return [...new Set([barberId, ...all.map((b) => b.id)])];
+    }
+    return [barberId];
+  }
+
+  /** Escala semanal: o mesmo turno não vale em duas unidades. */
+  private async ensureShiftFreeAcrossShops(
+    barberId: number,
+    dayOfWeek: number,
+    startTime: string,
+    endTime: string,
+  ) {
+    const barber = await this.prisma.barber.findUnique({
+      where: { id: barberId },
+      select: { userId: true, professionalId: true },
+    });
+    const ids = await this.samePersonBarberIds(barberId, barber);
+    const others = ids.filter((id) => id !== barberId);
+    if (others.length === 0) return;
+    const shifts = await this.prisma.barberSchedule.findMany({
+      where: { barberId: { in: others }, dayOfWeek, isActive: true },
+      select: { startTime: true, endTime: true },
+    });
+    if (shifts.some((shift) => shiftsOverlap(startTime, endTime, shift.startTime, shift.endTime))) {
+      throw new BadRequestException(
+        'Este profissional já tem escala nesse horário em outra unidade',
+      );
+    }
   }
 
   // Faltava checar conflito por BARBEIRO (só existia para resourceId) — dois
@@ -2246,7 +2297,7 @@ export class BarbershopService {
   ) {
     const barber = await client.barber.findFirst({
       where: { id: barberId, barbershopId },
-      select: { userId: true, accessStartsAt: true, accessEndsAt: true },
+      select: { userId: true, professionalId: true, accessStartsAt: true, accessEndsAt: true },
     });
     if (barber && !withinEngagement(barber, startAt)) {
       throw new BadRequestException(
@@ -2254,7 +2305,7 @@ export class BarbershopService {
       );
     }
     // A mesma pessoa pode atender em outras unidades: o horário dela é um só
-    const barberIds = await this.samePersonBarberIds(barberId, barber?.userId, client);
+    const barberIds = await this.samePersonBarberIds(barberId, barber, client);
     const conflict = await client.appointment.findFirst({
       where: {
         barberId: { in: barberIds },
@@ -3537,6 +3588,7 @@ export class BarbershopService {
     barber: {
       id: number;
       userId: number | null;
+      professionalId?: number | null;
       accessStartsAt: Date | null;
       accessEndsAt: Date | null;
     },
@@ -3546,7 +3598,7 @@ export class BarbershopService {
   ) {
     const window = await this.getWorkingWindowOn(barbershopId, barber.id, dateStr);
     if (!window) return [];
-    const barberIds = await this.samePersonBarberIds(barber.id, barber.userId);
+    const barberIds = await this.samePersonBarberIds(barber.id, barber);
 
     const dayStart = zonedTimeToUtc(dateStr, 0, timeZone);
     const dayEnd = zonedTimeToUtc(nextDateStr(dateStr), 0, timeZone);

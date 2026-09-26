@@ -225,6 +225,38 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     ).toBe(1);
   });
 
+  it('escala sobreposta em outra unidade não passa; turno encostado passa', async () => {
+    const dow = (new Date(`${day}T12:00:00Z`).getUTCDay() + 1) % 7;
+    await service.createBarberSchedule(shops[0].ownerId, {
+      barberId: proInA,
+      dayOfWeek: dow,
+      startTime: '09:00',
+      endTime: '12:00',
+    });
+    await expect(
+      service.createBarberSchedule(shops[1].ownerId, {
+        barberId: proInB,
+        dayOfWeek: dow,
+        startTime: '11:00',
+        endTime: '14:00',
+      }),
+    ).rejects.toThrow(/outra unidade/);
+    await expect(
+      service.createBarberSchedule(shops[1].ownerId, {
+        barberId: proInB,
+        dayOfWeek: dow,
+        startTime: '12:00',
+        endTime: '18:00',
+      }),
+    ).resolves.toMatchObject({ barberId: proInB });
+    const [inA, inB] = await Promise.all([
+      prisma.barber.findUniqueOrThrow({ where: { id: proInA } }),
+      prisma.barber.findUniqueOrThrow({ where: { id: proInB } }),
+    ]);
+    expect(inA.professionalId).toBeTruthy();
+    expect(inB.professionalId).toBe(inA.professionalId);
+  });
+
   it('o horário dele é um só: a outra unidade vê "ocupado", sem detalhes', async () => {
     await book(0, proInA, at(day, '16:00'));
     await expect(book(1, proInB, at(day, '16:00'))).rejects.toThrow(/ocupado em outra unidade/);

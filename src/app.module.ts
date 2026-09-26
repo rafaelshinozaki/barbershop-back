@@ -31,6 +31,7 @@ import { RedisModule } from './redis/redis.module';
 import { FailOpenRedisThrottlerStorage } from './redis/redis-throttler.storage';
 import { redisUrl } from './redis/redis-url';
 import { QueueModule } from './queue/queue.module';
+import { PrivacyModule } from './privacy/privacy.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { LocationsModule } from './locations/locations.module';
 import type { IncomingMessage } from 'http';
@@ -201,6 +202,7 @@ import { isAllowedOrigin } from './common/cors-origins';
     }),
     RedisModule,
     QueueModule,
+    PrivacyModule,
     RealtimeModule,
     LocationsModule,
     AuthModule,

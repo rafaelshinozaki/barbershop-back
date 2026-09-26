@@ -206,6 +206,7 @@ type AuthorizeChairRentResultType {
 }
 
 type BackofficeDashboard {
+  marketplaceMetrics: MarketplaceMetrics!
   planDistribution: PlanDistribution!
   roleDistribution: RoleDistribution!
   stats: BackofficeStats!
@@ -1425,6 +1426,23 @@ type MarketingSegmentPreviewType {
   recipientCount: Int!
 }
 
+type MarketplaceMetrics {
+  activeBarbershops: Int!
+  activeProfessionals: Int!
+  appointmentsByWeek: ChartData!
+  barbershopRetention: MarketplaceRetention!
+  clientRetention: MarketplaceRetention!
+  professionalRetention: MarketplaceRetention!
+  professionalTimeToFirst: TimeToFirstAppointment!
+  shopTimeToFirst: TimeToFirstAppointment!
+}
+
+type MarketplaceRetention {
+  prior: Int!
+  rate: Float!
+  returning: Int!
+}
+
 enum MembershipStatus {
   BASIC
   ENTERPRISE
@@ -2281,6 +2299,7 @@ type Query {
   managedAppointment(token: String!): ManagedAppointmentType!
   managedReviews(barbershopId: Int!): [ManagedReviewType!]!
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
+  marketplaceMetrics: MarketplaceMetrics!
   me: User!
   myBarbershops: [Barbershop!]!
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
@@ -2633,6 +2652,14 @@ type SubscriptionRevenueReportType {
 
 type SubscriptionSetupIntentType {
   clientSecret: String!
+}
+
+type TimeToFirstAppointment {
+  activatedWithin7DaysRate: Float
+  eligibleFor7Days: Int!
+  medianDays: Float
+  withAppointment: Int!
+  withoutAppointment: Int!
 }
 
 type TopProductRow {

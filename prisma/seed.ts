@@ -700,6 +700,23 @@ async function main() {
       });
     }
 
+    const unlinked = await prisma.barber.findMany({
+      where: { userId: { not: null }, professionalId: null },
+      select: { id: true, userId: true },
+    });
+    for (const row of unlinked) {
+      if (row.userId == null) continue;
+      const professional = await prisma.professional.upsert({
+        where: { userId: row.userId },
+        create: { userId: row.userId },
+        update: {},
+      });
+      await prisma.barber.update({
+        where: { id: row.id },
+        data: { professionalId: professional.id },
+      });
+    }
+
     console.log('Seeding completed.');
   } catch (error) {
     console.error(error);

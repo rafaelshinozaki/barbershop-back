@@ -9,6 +9,7 @@ export const APPOINTMENT_REMINDERS_QUEUE = 'appointment-reminders';
 export const RECURRING_PAYMENTS_QUEUE = 'recurring-payments';
 export const SOCIAL_POSTS_QUEUE = 'social-posts';
 export const CHAIR_RENT_QUEUE = 'chair-rent';
+export const DATA_RETENTION_QUEUE = 'data-retention';
 
 // Tentativas com espera exponencial (30s, 1min, 2min, 4min, 8min) — cobre
 // instabilidade do Mailgun/Meta sem martelar o provedor. Guarda histórico

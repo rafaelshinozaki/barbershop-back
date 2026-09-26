@@ -9,6 +9,7 @@ import { randomBytes } from 'crypto';
 import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
+import { linkBarberToProfessional } from './professional';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
 
@@ -353,10 +354,7 @@ export class EmployeeInviteService {
       },
     });
 
-    await this.prisma.barber.update({
-      where: { id: invite.barberId },
-      data: { userId: newUser.id },
-    });
+    await linkBarberToProfessional(this.prisma, invite.barberId, newUser.id);
 
     await this.prisma.employeeInvite.update({
       where: { id: invite.id },
@@ -403,7 +401,7 @@ export class EmployeeInviteService {
           id: { not: invite.barberId },
           isActive: false,
         },
-        data: { userId: null },
+        data: { userId: null, professionalId: null },
       });
       const active = await tx.barber.findFirst({
         where: { barbershopId: invite.barbershopId, userId, isActive: true },
@@ -411,7 +409,7 @@ export class EmployeeInviteService {
       if (active) {
         throw new BadRequestException('Você já está na equipe desta unidade');
       }
-      await tx.barber.update({ where: { id: invite.barberId }, data: { userId } });
+      await linkBarberToProfessional(tx, invite.barberId, userId);
       await tx.employeeInvite.update({
         where: { id: invite.id },
         data: { status: 'ACCEPTED', acceptedByUserId: userId },

@@ -97,6 +97,8 @@ Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app
 - **Cadeira alugada** (Shared Location): profissional independente dentro do espaço de outra barbearia, com cobrança do aluguel.
 - **5 cargos** (básico, barbeiro, recepção, gerente, dono), escala, folgas, horário de funcionamento e checagem de conflito de horário por barbeiro.
 - **Página pública da unidade** com galeria, avaliações, foto dos profissionais, SEO e agendamento com "qualquer profissional".
+- **Pedido de avaliação por e-mail** algumas horas depois do atendimento concluído, com link sem login. Hoje só o cliente avalia a unidade, e cliente recorrente não recebe de novo antes de 60 dias.
+- **Histórico do atendimento** (`Appointment`, serviços do horário, `ServiceHistory`) preso à unidade.
 - **Taxa da plataforma** só em pagamento que passa pelo Stripe (sinal online, assinatura do cliente): regra atual, que continua valendo.
 
 ### 1. Cadastro aberto para profissionais
@@ -115,7 +117,7 @@ Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app
 - SEO igual ao da página da unidade: meta tags, imagem de compartilhamento e sitemap.
 
 ### 3. Perfil do cliente
-- Para o próprio cliente: histórico de cortes e serviços (quando, onde, com quem, qual serviço) e lugares onde já foi. Parte disso já existe em "Minha conta".
+- Para o próprio cliente: histórico de cortes e serviços (quando, onde, com quem, qual serviço) e lugares onde já foi. Parte disso já existe em "Minha conta". Quem vê esse perfil está no item 11: o próprio cliente, o profissional que atendeu ou vai atender, e a unidade desse atendimento. Não é página pública.
 - **Nota do cliente dada pelo profissional:** pontualidade, comparecimento, trato. Como no Uber, serve para o profissional decidir sobre agendamentos (ex.: exigir sinal de quem falta muito).
   - ⚠️ **LGPD:** é dado pessoal com avaliação de conduta. Precisa de base legal clara e transparência (o cliente vê a própria nota e o que a compõe). Deve ser agregada (média, sem comentários livres sobre a pessoa) e vista só por profissionais que atendem ou vão atender o cliente. Nunca pública. Validar com jurídico antes.
 - Preferências (tipo de corte, observações, fotos de referência) que o cliente leva para qualquer profissional ou unidade, com consentimento.
@@ -152,7 +154,7 @@ Cada tipo de usuário tem um **perfil** dentro da plataforma, e **a própria pes
 - **Aceitando novos clientes:** o profissional pode fechar a agenda para gente nova sem sumir da plataforma.
 - **Campo a campo:** mostrar ou esconder foto, nota, número de atendimentos, comentários, histórico de franquias, locais e contato. O contato fica oculto por padrão, e a conversa acontece pelo próprio app.
 - **"Ver como o público vê":** pré-visualização do perfil com as escolhas atuais.
-- **Cliente:** decide se os profissionais de *outras* barbearias podem ver o histórico e as preferências dele. É consentimento explícito e dá para revogar. A nota que os profissionais dão a ele (item 3) nunca aparece no perfil público.
+- **Cliente:** o perfil é o do item 11 (só ele, o profissional do atendimento e a unidade). Ele pode, em consentimento explícito e revogável, deixar profissionais de *outras* unidades verem o histórico e as preferências. A nota que os profissionais dão a ele (item 3) nunca aparece no perfil público — e o perfil de cliente não é público.
 - **Regras gerais:**
   - só perfis *Públicos* entram na busca aberta e no sitemap, e os outros ganham `noindex`;
   - esconder o perfil não apaga nada;
@@ -291,6 +293,58 @@ O produto não deve ficar preso a "barbearia". Salões de beleza, esmalterias, e
 
 **Monetização:** o mesmo modelo para qualquer área. Planos por estabelecimento contando quem atende (item 7), profissional solo grátis até N atendimentos/mês (item 8) e cliente final sem pagar nada.
 
+### 11. Depois do atendimento: chat, avaliação dos três lados, histórico e caixinha
+Registrado em 2026-09-26. O modelo é o do iFood no chat (conversa presa ao pedido) e o do Airbnb no perfil e nos selos (cada um vê o que a relação permite, e o selo vem do uso real).
+
+**Chat, preso ao atendimento**
+Duas conversas, como o chat do pedido no iFood. O telefone continua oculto (item 5).
+- **Cliente e unidade**, quando o atendimento é numa barbearia ou salão. No modo solo (item 8) essa conversa não existe, porque não há unidade.
+- **Cliente e o profissional que fez o atendimento.**
+- Cada conversa é só de quem participa. A unidade não lê o chat do profissional com o cliente, e o profissional não lê o chat da unidade, salvo quando é a mesma pessoa (dono que também atende).
+- Abre no agendamento e segue depois de concluído. O histórico da conversa fica guardado com o atendimento.
+
+**Ao finalizar o atendimento**
+Um e-mail por atendimento concluído, no lugar do pedido atual que a unidade manda só ao cliente e no máximo a cada 60 dias. O mesmo link serve para avaliar e, no e-mail do cliente, para a caixinha.
+- **Cliente:** avalia o profissional e a unidade, e pode deixar caixinha.
+- **Unidade** (quando houver) **e o profissional:** avaliam o cliente.
+- Só quem participou daquele atendimento concluído avalia. Uma avaliação por lado, com direito de resposta. A nota do cliente segue o item 3: agregada, o cliente vê a própria nota, e ela nunca entra em página pública.
+
+**Histórico dos três**
+Cada atendimento concluído entra no histórico da unidade, do profissional e do cliente: quando, onde, com quem, quais serviços, a avaliação e a caixinha. Os serviços daquele horário já estão no agendamento; o que falta é mostrá-los na ficha de cada um. O histórico do profissional atravessa as unidades (depende da identidade do item 1). O do cliente é a linha do tempo do perfil privado.
+
+**Caixinha (gorjeta)**
+O cliente escolhe o destino: o profissional **ou** a unidade. É opcional e separada do preço do serviço.
+- **Na hora, registrado pela equipe:** dinheiro, Pix e "a mais no cartão" da maquininha. O sistema guarda o valor, o destino e o meio. O dinheiro não passa pela plataforma, no mesmo espírito do sinal manual.
+- **Pelo app:** Stripe, quando o cartão já está na plataforma (sinal online ou pagamento no app). A taxa da plataforma só incide sobre o que passa pelo Stripe, como hoje.
+- O e-mail de fechamento leva o cliente para essa escolha junto com a avaliação.
+
+**Perfis**
+- **Cliente, no modelo do hóspede do Airbnb.** Página privada. Veem: o próprio cliente, o profissional que o atendeu ou vai atender, e a unidade desse atendimento. Fora isso, ninguém. Não entra na busca nem no sitemap. O cliente vê o próprio histórico, os serviços feitos, as notas que recebeu e os selos.
+- **Profissional, compartilhável.** É a página do item 2, com o controle de visibilidade do item 5 (pública, só na plataforma ou oculta) e link para mandar a outras pessoas. O perfil do cliente não tem esse link.
+
+**Selos**
+Gamificação no estilo dos selos do Airbnb: o selo aparece porque o histórico sustenta, e some se deixar de sustentar. Não se compra. O selo de identidade verificada continua sendo o do item 9 e do H4.
+- **Profissional e unidade:** nota alta sustentada, pontualidade, volume de atendimentos concluídos, resposta no chat, poucos cancelamentos. Aparecem na página compartilhável se a pessoa deixar o campo visível.
+- **Cliente:** comparece, pontual. Só no perfil privado, para o cliente, o profissional e a unidade. Nunca na busca.
+
+**Por quanto tempo cada dado fica**
+A LGPD (arts. 15 e 16) e, se houver pessoa na União Europeia, o GDPR (art. 5º, princípio da limitação da conservação, e art. 17, apagamento) não dizem um único "guarde por X anos". Os dois dizem o contrário: guarda-se pelo tempo do propósito, e apaga-se quando ele acaba. A exceção é a obrigação legal, em que o dado **não pode** sair antes do prazo da lei. No Brasil, documento fiscal em geral fica 5 anos. Na Europa o piso fiscal depende do país. O jurídico confirma os números; o sistema já nasce com um relógio por tipo, não com guarda eterna.
+
+Proposta, até o jurídico fechar:
+
+| Dado | Relógio | Quando acaba |
+|---|---|---|
+| Cópia de e-mail enviado, histórico de login e aviso no app | 12 meses | A tarefa diária apaga. Código de verificação e token de senha vencidos saem no mesmo dia |
+| Texto do chat | 12 meses depois da última mensagem daquele atendimento | Apaga o texto. Se houve denúncia ou disputa aberta, segura até ela fechar |
+| Endereço de domicílio | some depois do atendimento, com uma janela curta | Já é visto só por quem vai atender e só perto do horário (item 9) |
+| Nota de conduta do cliente | enquanto a relação existe, ou até 2 anos sem novo atendimento | Sai também na exclusão da conta. Nunca vira página pública |
+| Histórico de serviços com o nome da pessoa | enquanto a conta existe | Na exclusão, tira o nome. O profissional fica com a contagem e o tipo de serviço, sem saber quem era |
+| Comentário de avaliação pública | enquanto o perfil público existir | Na exclusão, o texto sai. A média da unidade pode ficar se não der para identificar a pessoa |
+| Caixinha, pagamento, nota | o prazo legal fiscal (Brasil, em geral 5 anos), mesmo depois do pedido de exclusão | Acesso restrito. Passado o prazo, anonimiza |
+| Selo | o mesmo relógio do dado que o sustenta | Recalcula quando esse dado sai |
+
+A exclusão de conta que já existe passa a alcançar chat, avaliação, perfil e selo. Não apaga o registro fiscal antes do prazo legal: troca o nome por um identificador interno e restringe quem lê. A política de privacidade publica essa tabela. Sem isso, milhões de usuários viram um arquivo que a lei manda esvaziar e o sistema não sabe por onde começar.
+
 ### Monetização (sem cobrar do cliente final)
 Princípio: **conta de profissional é grátis**. Só paga quem tira valor de verdade da plataforma **por conta própria** e em volume. Quem trabalha dentro de uma barbearia já é coberto pelo plano dela.
 
@@ -328,24 +382,26 @@ O que tiramos disso:
 - **Identidade do profissional:** hoje cada unidade tem o próprio `Barber`. Unificar sem quebrar escala, comissão, repasse e histórico é a maior mudança de modelo de dados. Fazer com migração cuidadosa: criar `Professional` e ligar os `Barber` existentes pelo `userId`.
 - **Conflito entre unidades:** precisa ser checado no banco (como o conflito atual por barbeiro) considerando todos os `Barber` do mesmo profissional, e o deslocamento entre locais também deveria contar.
 - **Quem é "dono" do cliente:** o cliente que o profissional levou para a barbearia continua na base da barbearia quando ele sai? Definir regras de portabilidade (LGPD: o dado é do cliente) e de não-aliciamento.
-- **Avaliação dupla** (cliente avalia profissional, profissional avalia cliente): antifraude (só quem teve atendimento concluído), moderação e direito de resposta.
+- **Avaliação dos três lados** (item 11: cliente avalia profissional e unidade; profissional e unidade avaliam o cliente): antifraude (só quem teve atendimento concluído), moderação e direito de resposta. A nota do cliente continua sujeita à validação jurídica.
+- **Caixinha:** dinheiro e Pix registrados na mão não têm taxa. A que passa pelo Stripe usa a mesma decisão de repasse do pagamento no app. Gorjeta é rendimento de quem recebe: nota fiscal fica junto da decisão fiscal do H4.
+- **Relógio de guarda** (item 11): a lei não dá um X único. Cada tipo tem propósito, prazo máximo e, no fiscal, prazo mínimo. Vale LGPD e, para pessoa na União Europeia, o GDPR. Os números da tabela são proposta até o jurídico confirmar.
 - **Fiscal:** cobrar o profissional pessoa física ou MEI exige nota fiscal e meio de pagamento. Usar a mesma cobrança Stripe dos planos.
 
 ### Horizontes e por onde começar
 Ordem pensada para **entregar valor cedo sem esperar o marketplace inteiro**. Primeiro, o que dá para fazer sem mudar o modelo de dados. Depois, a base (identidade e agenda única) e o chamariz dos profissionais (modo solo grátis). Só no fim abre o marketplace para o público, quando confiança, pagamento e regras estiverem prontos. Cada horizonte tem objetivo e critério de sucesso: só se passa para o próximo quando o anterior mostrou resultado.
 
-#### H1. Ganhos rápidos, sem mudar o modelo de dados — **começar por aqui**
+#### H1. Ganhos rápidos, sem mudar o modelo de dados — código concluído
 Objetivo: resolver incômodos reais de quem já usa e preparar o terreno.
 - **Plano conta só quem atende** (item 7): recepção e gerente que não atendem deixam de ocupar vaga. A mudança só favorece o cliente e é pequena (é o `ensureBarberLimitNotExceeded`).
 - **"Eu também atendo"** para dono, gerente e recepção (item 7), usando o `Barber` atual. O perfil `Professional` vem no H2.
 - **Tipo de estabelecimento + linguagem neutra** (item 10): "estabelecimento"/"profissional" nas telas, e-mails e SEO, e catálogo inicial por tipo (barbearia, salão, esmalteria, estética…). Abre para outras áreas sem mexer no banco.
-- **Métricas de base**: profissionais e unidades ativas, agendamentos por semana, retenção dos dois lados e tempo até o primeiro agendamento. Sem isso não dá para medir os próximos horizontes.
+- **Métricas de base** ✅: no backoffice, seção "Atividade da plataforma" — profissionais e unidades ativas, agendamentos por semana, retenção de cliente/profissional/unidade (4 semanas contra as 4 anteriores) e mediana de dias até o primeiro agendamento.
 
 Sucesso: nenhuma unidade barrada no limite por causa de equipe administrativa, e primeiros estabelecimentos que não são barbearia cadastrados.
 
 #### H2. O profissional no centro
 Objetivo: o profissional passa a ter vida própria na plataforma, e o modo solo grátis traz gente nova.
-- **Identidade `Professional` + agenda única** com conflito entre unidades (item 1). É a maior mudança de modelo: migração cuidadosa, ligando os `Barber` existentes pelo `userId`.
+- **Identidade `Professional` + agenda única** com conflito entre unidades (item 1) ✅: um `Professional` por conta, os `Barber` existentes ligados por `userId`. Atendimento no mesmo horário em outra unidade já era recusado; a escala semanal sobreposta também passa a ser.
 - **Cadastro com escolha de tipo + "Perfis e privacidade"** (itens 5 e 6), começando pelo profissional dentro do `User`. Unificar com o `ClientAccount` fica para o H3.
 - **Panorama de carreira**, sempre grátis (item 8).
 - **Modo solo** com cota de N atendimentos/mês, plano Pro e regras anti-abuso (item 8).
@@ -356,20 +412,22 @@ Pré-requisitos: H1 (métricas), decisão sobre N e o preço do Pro. Sucesso: X 
 
 #### H3. Vitrine: ser encontrado
 Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.
-- **Página pública do profissional** + avaliação por profissional (item 2).
+- **Página pública do profissional** + avaliação por profissional (item 2), com link compartilhável.
 - **Busca por localização de verdade** (distância, raio, filtros), com PostGIS ou similar, por profissional e por categoria (item 4).
 - **Favoritos e "agendar de novo com o mesmo profissional"**, e política de cancelamento visível antes de agendar.
-- **Unificar `User` e `ClientAccount`** (item 6, segunda etapa): o cliente passa a ter o mesmo login e o próprio histórico (item 3, parte do cliente).
-- Moderação de galerias, comentários e perfis públicos.
+- **Unificar `User` e `ClientAccount`** (item 6, segunda etapa): o cliente passa a ter o mesmo login e o perfil privado (item 11), com o histórico de serviços.
+- **Fechamento do atendimento** (item 11, a parte que não depende de chat nem de Stripe): e-mail a cada atendimento concluído para o cliente avaliar profissional e unidade e deixar caixinha; e-mail para a unidade e o profissional avaliarem o cliente; histórico dos três com os serviços feitos; caixinha registrada na mão (dinheiro, Pix, a mais no cartão); selos calculados desse histórico.
+- Moderação de galerias, comentários e perfis públicos. O perfil do cliente não entra nessa moderação pública: ele não é público.
 
 Sucesso: agendamentos vindos da busca (e não do link direto da unidade), e taxa de reserva por busca.
 
 #### H4. Confiança e dinheiro
 Objetivo: dar condições de a plataforma intermediar estranhos com segurança.
 - **Verificação de identidade** (documento + selfie) e selo de verificado. Checagem de antecedentes (terceiro) para quem quiser atender a domicílio.
-- **Chat dentro do app** (sem expor telefone) e **notificações no celular** (PWA primeiro, app nativo depois).
-- **Pagamento no app**: reavaliar a decisão de não usar Stripe Connect. Alternativas: Connect opcional só para quem quer receber pelo app, ou split via Pix. Mais reembolso, disputas e nota fiscal das taxas e da assinatura.
-- **Jurídico/LGPD**: termos de marketplace (plataforma intermediária, cancelamento, responsabilidade), contrato do profissional autônomo (sem vínculo), DPO e relatório de impacto para a **nota do cliente** e a **ficha técnica**, política de retenção.
+- **Chat do atendimento** (item 11): cliente–unidade, quando houver unidade, e cliente–profissional. Sem expor telefone. Notificações no celular (PWA primeiro, app nativo depois).
+- **Caixinha pelo Stripe** (item 11), no mesmo fluxo do pagamento no app.
+- **Pagamento no app**: reavaliar a decisão de não usar Stripe Connect. Alternativas: Connect opcional só para quem quer receber pelo app, ou split via Pix. Mais reembolso, disputas e nota fiscal das taxas, da assinatura e da caixinha que passar pelo Stripe.
+- **Jurídico (LGPD e GDPR)**: termos de marketplace (plataforma intermediária, cancelamento, responsabilidade), contrato do profissional autônomo (sem vínculo), DPO e relatório de impacto para a **nota do cliente** e a **ficha técnica**. A política de retenção é a tabela do item 11, confirmada pelo jurídico e publicada. A tarefa diária já apaga cópia de e-mail, histórico de login, aviso no app e token vencido. Chat e nota de conduta entram nela quando existirem. O chat fica particionado por mês para esse apagamento ser descartar a partição velha, em vez de varrer a tabela inteira. Pagamento e caixinha não entram nessa tarefa.
 - Denúncia, bloqueio, suspensão e suporte humano.
 
 Sucesso: pagamentos pelo app sem aumento de disputas; jurídico aprovado para a nota do cliente e o domicílio.
@@ -387,7 +445,7 @@ Sucesso: liquidez na cidade piloto (a maioria das buscas encontra horário em at
 #### Decisões em aberto (definir antes do horizonte indicado)
 - **N** da cota do modo solo e **preço do Pro** (H2); se a cota é por atendimentos ou por faturamento.
 - **Marca** que sirva para beleza em geral (H1/H3).
-- **Pagamento no app**: Connect opcional, Pix com split ou continuar manual (H4).
+- **Pagamento no app e caixinha pelo Stripe**: Connect opcional, Pix com split ou continuar manual, com o repasse da gorjeta na mesma regra (H4).
 - **Cobrar por cliente novo do marketplace?** Se sim, taxa pequena com teto baixo, nunca os 30% do Booksy (H5).
 - **Cidade e categorias do piloto** (H5).
-- **Validação jurídica**: nota do cliente, ficha técnica, domicílio e contrato do autônomo (H4).
+- **Validação jurídica**: nota do cliente, ficha técnica, domicílio, contrato do autônomo e os prazos da tabela de guarda, inclusive o piso fiscal no Brasil e em cada país europeu em que houver cliente (H4).
