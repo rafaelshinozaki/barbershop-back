@@ -4,19 +4,64 @@
 
 Backend do sistema de gerenciamento de barbearias, construído com o framework [NestJS](https://nestjs.com/), usando Prisma como ORM. Oferece autenticação, gestão de barbearias, agendamentos, clientes, pagamentos via Stripe e outras funcionalidades.
 
+## Stack local
+
+Na pasta deste repositório, com o Docker no ar e o front em `../barbershop-front`:
+
+```bash
+pnpm run stack
+```
+
+O comando faz sempre a mesma coisa, exista a stack ou não:
+
+1. Sobe Postgres 16 (porta **5433**) e Redis 7 (porta **6379**) com `infra/compose.yaml`. Se os containers já existem, eles continuam. O volume não é apagado.
+2. Aplica só as migrations pendentes (`prisma migrate deploy`).
+3. Roda o seed de novo com `SEED_DEMO`, sem `SEED_RESET`. O que já existe fica; o que falta é criado.
+4. Sobe a API na porta **3020** e o front na **5173** só se a porta estiver livre.
+
+Se a API ou o front foram iniciados por esse comando, o terminal fica com os logs. Ctrl+C encerra só esses processos. Banco e Redis continuam.
+
+| Serviço | Endereço |
+| --- | --- |
+| API | http://localhost:3020 |
+| GraphQL | http://localhost:3020/graphql |
+| Swagger | http://localhost:3020/swagger |
+| Saúde | http://localhost:3020/health |
+| Front | http://localhost:5173 |
+| Postgres | `localhost:5433`, usuário `barbershop`, senha `barbershop`, banco `barbershop` |
+| Redis | `redis://localhost:6379` |
+
+Contas do seed (senha `pwned`, só em desenvolvimento):
+
+| E-mail | Papel |
+| --- | --- |
+| `rafael.sinosaki@barbershop.com` | SystemAdmin |
+| `jacqueline.mariane@barbershop.com` | SystemManager |
+| `cayo.carlos@barbershop.com` | Dono da Green Barbershop |
+| `bianca.silverio@barbershop.com` | Gerente |
+| `minion.cayo@barbershop.com` | Barbeiro |
+| `julia.recepcao@barbershop.com` | Recepção |
+| `pedro.basico@barbershop.com` | Básico |
+
+`SEED_RESET=true` apaga as tabelas públicas antes de semear. O `pnpm run stack` não define essa variável. Não use em um banco que você quer conservar.
+
 ## Instalação
 
 ```bash
-$ npm install
+pnpm install
+cp .env.example .env
 ```
 
-## Configuração do Banco de Dados
-
-O projeto usa Prisma para interagir com o banco de dados. Primeiro, configure seu banco de dados no arquivo `.env`:
+No `.env` local, aponte o Prisma para o Postgres do compose (a porta do host é 5433, não 5432):
 
 ```env
-DATABASE_URL="file:./dev.db"
+PORT=3020
+FRONTEND_URL=http://localhost:5173
+DATABASE_URL="postgresql://barbershop:barbershop@localhost:5433/barbershop"
+REDIS_URL=redis://localhost:6379
 ```
+
+O restante das variáveis está no `.env.example`.
 
 ## Redis (filas e login)
 
@@ -48,94 +93,71 @@ tentativas de login ficam suspensos, o login por senha funciona, e só o
 login por código/2FA responde "temporariamente indisponível". Filas e
 agendamentos voltam sozinhos quando o Redis volta.
 
-Local: `docker compose -f infra/compose.yaml up -d redis`. Em produção, use
-persistência (`appendonly yes`) e `maxmemory-policy noeviction` pra não
-perder jobs. O `/health` mostra `redis: connected`.
+O Redis local sobe junto com o Postgres em `pnpm run stack` (o compose já usa `appendonly yes`). Em produção, use também `maxmemory-policy noeviction` pra não perder jobs. O `/health` mostra `redis: connected`.
 
 ## Documentação da API
 
-Após iniciar a aplicação, acesse `http://localhost:3000/swagger` para visualizar a documentação gerada pelo Swagger.
+Com a API no ar, o Swagger fica em `http://localhost:3020/swagger` e o GraphQL em `http://localhost:3020/graphql`.
 
-Em seguida, execute as migrações do Prisma para criar as tabelas no banco de dados:
-
-```bash
-$ npx prisma migrate dev
-```
-
-Visualizar os dados do banco de dados:
+Pra inspecionar o banco:
 
 ```bash
-$ npx prisma studio
+pnpm exec prisma studio
 ```
 
 ## Rodando a Aplicação
 
-```bash
-# Desenvolvimento
-$ pnpm run start:dev
+O caminho normal em desenvolvimento é `pnpm run stack` (seção acima). Pra subir só a API, com Postgres, Redis e migrations já aplicados:
 
-# Produção
-$ npm run build
-$ npm run start:prod
+```bash
+pnpm run start:dev
+```
+
+Produção:
+
+```bash
+pnpm run build
+pnpm run start:prod
+```
+
+Nova migration, a partir de uma mudança no `schema.prisma`:
+
+```bash
+pnpm exec prisma migrate dev --name nome_da_migracao
+```
+
+`migrate dev` pode pedir para resetar o banco se o histórico divergir. Em um banco que já tem dados, aplique o que está pendente com `pnpm exec prisma migrate deploy` — é o que o `pnpm run stack` usa.
+
+Seed sozinho, sem apagar nada:
+
+```bash
+pnpm run seed
 ```
 
 ## Rodando os Testes
 
 ```bash
-# Testes unitários
-$ npm run test
-
-# Testes com cobertura
-$ npm run test:cov
-
-# Testes end-to-end
-$ npm run test:e2e
+pnpm run test
+pnpm run test:cov
+pnpm run test:e2e
 ```
 
 ### Versão
 
-##### Node.js: 22.1.0
-
-##### NPM: 10.7.0
+Node.js 22. O gerenciador de pacotes é pnpm 9 (`packageManager` no `package.json`).
 
 ## Exemplo de .env
 
-```
+O arquivo completo é o `.env.example`. O mínimo pra stack local:
+
+```env
 PORT=3020
-SESSION_SECRET=
-
-DB_DIALECT=mysql
-DB_HOST=
-DB_PORT=
-DB_USER=
-DB_PASSWORD=
-DB_NAME=
-
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_SECURE=false
-EMAIL_USER=your-email@example.com
-EMAIL_PASS=your-password
-EMAIL_FROM=postmaster@sandbox.mailgun.org
-MAILGUN_API_KEY=
-MAILGUN_DOMAIN=
-ENABLE_GOOGLE_AUTH=true
-ENABLE_FACEBOOK_AUTH=true
-ENABLE_APPLE_AUTH=true
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=
-GOOGLE_CLIENT_CALLBACK_URL=
-FACEBOOK_CLIENT_ID=
-FACEBOOK_CLIENT_SECRET=
-FACEBOOK_CALLBACK_URL=
-FACEBOOK_CLIENT_CALLBACK_URL=
-APPLE_CLIENT_ID=
-APPLE_TEAM_ID=
-APPLE_KEY_ID=
-APPLE_PRIVATE_KEY=
-APPLE_CALLBACK_URL=
-APPLE_CLIENT_CALLBACK_URL=
+FRONTEND_URL=http://localhost:5173
+PUBLIC_API_URL=http://localhost:3020
+DATABASE_URL="postgresql://barbershop:barbershop@localhost:5433/barbershop"
+REDIS_URL=redis://localhost:6379
+SESSION_SECRET=gere_uma_chave_secreta_aleatoria
+JWT_SECRET=gere_uma_chave_secreta_aleatoria
 ```
 
 ## Login Social
@@ -161,13 +183,15 @@ O logout remove a sessão correspondente do registro de sessões ativas.
 
 ## Scripts Disponíveis
 
+- `stack`: Sobe Postgres, Redis, migrations, seed, API e front. Repetir o comando não apaga dados.
+- `seed`: Roda o seed de novo, criando só o que falta
 - `prebuild`: Limpa a pasta `dist`
 - `build`: Compila a aplicação
 - `format`: Formata o código usando Prettier
-- `start`: Inicia a aplicação em modo de produção
+- `start`: Inicia a aplicação
 - `start:dev`: Inicia a aplicação em modo de desenvolvimento
 - `start:debug`: Inicia a aplicação em modo de depuração
-- `start:prod`: Inicia a aplicação em modo de produção
+- `start:prod`: Inicia a aplicação compilada
 - `lint`: Executa o linting no código
 - `test`: Executa os testes unitários
 - `test:watch`: Executa os testes unitários em modo de observação
@@ -182,15 +206,16 @@ Caso haja uma atualização no esquema Prisma, siga os passos abaixo para aplica
 1. Gere uma nova migração e aplique as mudanças no banco de dados:
 
    ```bash
-   $ npx prisma migrate dev --name <nome_da_migracao>
+   pnpm exec prisma migrate dev --name nome_da_migracao
    ```
 
-2. Gere o cliente Prisma atualizado:
+2. Gere o cliente Prisma atualizado (`pnpm install` já faz isso no `postinstall`):
+
    ```bash
-   $ npx prisma generate
+   pnpm exec prisma generate
    ```
 
-Substitua `<nome_da_migracao>` pelo nome adequado que descreva a migração.
+O nome da migration descreve a mudança. O `pnpm run stack` aplica as migrations já geradas sem criar uma nova.
 
 ## Dependências
 
