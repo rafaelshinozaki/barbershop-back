@@ -331,11 +331,63 @@ O que tiramos disso:
 - **Avaliação dupla** (cliente avalia profissional, profissional avalia cliente): antifraude (só quem teve atendimento concluído), moderação e direito de resposta.
 - **Fiscal:** cobrar o profissional pessoa física ou MEI exige nota fiscal e meio de pagamento. Usar a mesma cobrança Stripe dos planos.
 
-### Fases sugeridas
-1. Identidade `Professional` + agenda única com conflito entre unidades (base de tudo).
-2. Cadastro com escolha do tipo de usuário + perfis e a página "Perfis e privacidade" (visibilidade, "disponível para contratação", campo a campo) + cadastro aberto de profissional e vínculo por pedido/convite. A privacidade vem junto com o cadastro aberto, não depois.
-3. Página pública do profissional (sem domicílio) + avaliação do atendimento por profissional.
-4. Perfil/histórico do cliente e nota do cliente (depois da validação jurídica).
-5. Atendimento a domicílio (estabelecimentos e profissionais: área, taxa, deslocamento na agenda, segurança) + busca por profissional e por categoria.
-5b. Tipo de estabelecimento, catálogos por área e linguagem neutra ("estabelecimento"/"profissional") para abrir para salões, manicures, estética etc. Pode andar em paralelo, porque é mais texto e cadastro do que modelo de dados.
-6. Panorama de carreira (grátis) + modo solo com cota de N atendimentos/mês, plano Pro e regras anti-abuso + destaque e vagas para freelancer.
+### Horizontes e por onde começar
+Ordem pensada para **entregar valor cedo sem esperar o marketplace inteiro**. Primeiro, o que dá para fazer sem mudar o modelo de dados. Depois, a base (identidade e agenda única) e o chamariz dos profissionais (modo solo grátis). Só no fim abre o marketplace para o público, quando confiança, pagamento e regras estiverem prontos. Cada horizonte tem objetivo e critério de sucesso: só se passa para o próximo quando o anterior mostrou resultado.
+
+#### H1. Ganhos rápidos, sem mudar o modelo de dados — **começar por aqui**
+Objetivo: resolver incômodos reais de quem já usa e preparar o terreno.
+- **Plano conta só quem atende** (item 7): recepção e gerente que não atendem deixam de ocupar vaga. A mudança só favorece o cliente e é pequena (é o `ensureBarberLimitNotExceeded`).
+- **"Eu também atendo"** para dono, gerente e recepção (item 7), usando o `Barber` atual. O perfil `Professional` vem no H2.
+- **Tipo de estabelecimento + linguagem neutra** (item 10): "estabelecimento"/"profissional" nas telas, e-mails e SEO, e catálogo inicial por tipo (barbearia, salão, esmalteria, estética…). Abre para outras áreas sem mexer no banco.
+- **Métricas de base**: profissionais e unidades ativas, agendamentos por semana, retenção dos dois lados e tempo até o primeiro agendamento. Sem isso não dá para medir os próximos horizontes.
+
+Sucesso: nenhuma unidade barrada no limite por causa de equipe administrativa, e primeiros estabelecimentos que não são barbearia cadastrados.
+
+#### H2. O profissional no centro
+Objetivo: o profissional passa a ter vida própria na plataforma, e o modo solo grátis traz gente nova.
+- **Identidade `Professional` + agenda única** com conflito entre unidades (item 1). É a maior mudança de modelo: migração cuidadosa, ligando os `Barber` existentes pelo `userId`.
+- **Cadastro com escolha de tipo + "Perfis e privacidade"** (itens 5 e 6), começando pelo profissional dentro do `User`. Unificar com o `ClientAccount` fica para o H3.
+- **Panorama de carreira**, sempre grátis (item 8).
+- **Modo solo** com cota de N atendimentos/mês, plano Pro e regras anti-abuso (item 8).
+- **Importação de dados** de outros sistemas (Booksy, Trinks, planilha): clientes, serviços e agenda. É a maior barreira para migrar.
+- **Indicação entre profissionais**, que ganham meses de Pro.
+
+Pré-requisitos: H1 (métricas), decisão sobre N e o preço do Pro. Sucesso: X profissionais solo ativos por mês, e parte deles convertendo para Pro ou levando a barbearia para a plataforma.
+
+#### H3. Vitrine: ser encontrado
+Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.
+- **Página pública do profissional** + avaliação por profissional (item 2).
+- **Busca por localização de verdade** (distância, raio, filtros), com PostGIS ou similar, por profissional e por categoria (item 4).
+- **Favoritos e "agendar de novo com o mesmo profissional"**, e política de cancelamento visível antes de agendar.
+- **Unificar `User` e `ClientAccount`** (item 6, segunda etapa): o cliente passa a ter o mesmo login e o próprio histórico (item 3, parte do cliente).
+- Moderação de galerias, comentários e perfis públicos.
+
+Sucesso: agendamentos vindos da busca (e não do link direto da unidade), e taxa de reserva por busca.
+
+#### H4. Confiança e dinheiro
+Objetivo: dar condições de a plataforma intermediar estranhos com segurança.
+- **Verificação de identidade** (documento + selfie) e selo de verificado. Checagem de antecedentes (terceiro) para quem quiser atender a domicílio.
+- **Chat dentro do app** (sem expor telefone) e **notificações no celular** (PWA primeiro, app nativo depois).
+- **Pagamento no app**: reavaliar a decisão de não usar Stripe Connect. Alternativas: Connect opcional só para quem quer receber pelo app, ou split via Pix. Mais reembolso, disputas e nota fiscal das taxas e da assinatura.
+- **Jurídico/LGPD**: termos de marketplace (plataforma intermediária, cancelamento, responsabilidade), contrato do profissional autônomo (sem vínculo), DPO e relatório de impacto para a **nota do cliente** e a **ficha técnica**, política de retenção.
+- Denúncia, bloqueio, suspensão e suporte humano.
+
+Sucesso: pagamentos pelo app sem aumento de disputas; jurídico aprovado para a nota do cliente e o domicílio.
+
+#### H5. Marketplace aberto + domicílio (cidade piloto)
+Objetivo: abrir de verdade, começando pequeno.
+- **Cidade piloto + 1–2 categorias** (ex.: barbeiro e manicure em uma cidade). Enche a oferta primeiro (com o modo solo do H2) e só depois abre a busca ao público.
+- **Atendimento a domicílio** (item 9): área, taxa, deslocamento na agenda, sinal obrigatório/recomendado, endereço só para quem atende, botão de ajuda.
+- **Nota do cliente** dada pelo profissional (item 3), só depois do jurídico no H4.
+- **Vagas para freelancer** e "Destaque" do profissional (monetização).
+- Lista de espera no marketplace (avisar quando um profissional disputado abrir horário).
+
+Sucesso: liquidez na cidade piloto (a maioria das buscas encontra horário em até 48h), retenção dos dois lados; só então replicar para outras cidades.
+
+#### Decisões em aberto (definir antes do horizonte indicado)
+- **N** da cota do modo solo e **preço do Pro** (H2); se a cota é por atendimentos ou por faturamento.
+- **Marca** que sirva para beleza em geral (H1/H3).
+- **Pagamento no app**: Connect opcional, Pix com split ou continuar manual (H4).
+- **Cobrar por cliente novo do marketplace?** Se sim, taxa pequena com teto baixo, nunca os 30% do Booksy (H5).
+- **Cidade e categorias do piloto** (H5).
+- **Validação jurídica**: nota do cliente, ficha técnica, domicílio e contrato do autônomo (H4).
