@@ -168,7 +168,7 @@ export class SocialService {
 
       return { barbershopId };
     } catch (err) {
-      this.logger.error(`Erro ao conectar rede social da barbearia #${barbershopId}:`, err);
+      this.logger.error(`Erro ao conectar rede social da unidade #${barbershopId}:`, err);
       return {
         barbershopId,
         error: err instanceof Error ? err.message : 'Erro ao conectar conta.',

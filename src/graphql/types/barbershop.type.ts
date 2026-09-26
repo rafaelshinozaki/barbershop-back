@@ -166,6 +166,9 @@ export class Barbershop {
   @Field(() => Int)
   id: number;
 
+  @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
+  businessType: string;
+
   @Field()
   name: string;
 

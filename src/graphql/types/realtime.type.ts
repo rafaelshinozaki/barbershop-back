@@ -1,6 +1,6 @@
 import { Field, Int, ObjectType } from '@nestjs/graphql';
 
-@ObjectType({ description: 'Algo mudou numa barbearia — o dashboard recarrega os dados' })
+@ObjectType({ description: 'Algo mudou numa unidade — o dashboard recarrega os dados' })
 export class NetworkActivityEvent {
   @Field(() => Int)
   networkId: number;
@@ -27,7 +27,7 @@ export class NotificationEvent {
   title?: string;
 }
 
-@ObjectType({ description: 'A agenda da barbearia mudou — a página pública recarrega os horários' })
+@ObjectType({ description: 'A agenda da unidade mudou — a página pública recarrega os horários' })
 export class PublicSlotsChangedEvent {
   @Field(() => Int)
   barbershopId: number;

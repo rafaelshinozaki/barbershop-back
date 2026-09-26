@@ -166,6 +166,7 @@ export class AuthResolver {
           timezone: createUserInput.barbershopData.timezone,
           businessHours: createUserInput.barbershopData.businessHours,
           currency: createUserInput.barbershopData.currency,
+          businessType: createUserInput.barbershopData.businessType,
         });
       } catch (error) {
         // userService.createUser() e barbershopService.createBarbershop() não

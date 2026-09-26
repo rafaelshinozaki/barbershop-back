@@ -24,6 +24,12 @@ export class SearchBarbershopsInput {
   @IsEnum(TreatmentCategory)
   category?: TreatmentCategory;
 
+  /** Tipo de estabelecimento (salão, esmalteria...) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  businessType?: string;
+
   @Field({ nullable: true })
   @IsOptional()
   @IsString()

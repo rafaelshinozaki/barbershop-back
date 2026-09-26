@@ -61,8 +61,8 @@ describe('EmployeeInviteService — idioma do convite', () => {
 
   it.each([
     ['reception', { pt: 'Recepcionista', en: 'Receptionist', es: 'Recepcionista' }],
-    ['basic', { pt: 'Barbeiro básico', en: 'Basic barber', es: 'Barbero básico' }],
-    ['barber', { pt: 'Barbeiro', en: 'Barber', es: 'Barbero' }],
+    ['basic', { pt: 'Profissional básico', en: 'Basic professional', es: 'Profesional básico' }],
+    ['barber', { pt: 'Profissional', en: 'Professional', es: 'Profesional' }],
   ])('cargo %s aparece com o nome certo no convite', async (staffType, label) => {
     await send('BR', 'BarbershopEmployee', staffType);
     const [, , context] = sent[0] as [unknown, unknown, { RoleLabel: unknown }];

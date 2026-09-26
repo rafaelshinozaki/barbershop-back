@@ -45,10 +45,24 @@ export class CreateBarbershopInput {
 
   @Field({ nullable: true })
   businessHours?: string;
+
+  @Field({
+    nullable: true,
+    description:
+      'Tipo de estabelecimento: barbershop, beauty_salon, nail_salon, aesthetics, brows_lashes, massage, makeup, independent, other',
+  })
+  businessType?: string;
 }
 
 @InputType()
 export class UpdateBarbershopInput {
+  @Field({
+    nullable: true,
+    description:
+      'Tipo de estabelecimento: barbershop, beauty_salon, nail_salon, aesthetics, brows_lashes, massage, makeup, independent, other',
+  })
+  businessType?: string;
+
   @Field({ nullable: true })
   name?: string;
 

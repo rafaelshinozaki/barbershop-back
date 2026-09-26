@@ -473,6 +473,9 @@ model Barbershop {
   // Sinal pago online (cartão, Stripe) ao agendar pela página pública: o
   // horário fica reservado até pagar. Desligado, a equipe marca o sinal na mão
   onlineDeposit  Boolean   @default(false)
+  // Tipo de estabelecimento (src/barbershop/business-types.ts): barbershop,
+  // beauty_salon, nail_salon... Define o catálogo sugerido e o texto da página
+  businessType   String    @default("barbershop")
   address        String
   complement1    String?
   complement2    String?

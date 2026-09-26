@@ -740,6 +740,44 @@ describe('BarbershopService (integração com o banco)', () => {
 
   // ============ Cargos: dono / gerente / barbeiro ============
 
+  describe('tipo de estabelecimento', () => {
+    let shopId: number;
+    const slug = `int-btype-${RUN}`;
+    beforeAll(async () => {
+      shopId = (await createShop(A.networkId, A.ownerId, 'btype')).id;
+    });
+    afterAll(async () => {
+      await prisma.barbershop.delete({ where: { id: shopId } });
+    });
+
+    it('unidade nova é barbearia; muda pra salão, aparece na página e filtra a busca', async () => {
+      expect(
+        (await prisma.barbershop.findUniqueOrThrow({ where: { id: shopId } })).businessType,
+      ).toBe('barbershop');
+      await expect(
+        service.updateBarbershop(A.ownerId, shopId, { businessType: 'padaria' }),
+      ).rejects.toThrow('Tipo de estabelecimento inválido');
+
+      const updated = await service.updateBarbershop(A.ownerId, shopId, {
+        businessType: 'beauty_salon',
+      });
+      expect(updated.businessType).toBe('beauty_salon');
+      expect((await service.getPublicBarbershopByslug(slug)).businessType).toBe('beauty_salon');
+
+      const salons = await service.searchPublicBarbershops({
+        businessType: 'beauty_salon',
+        limit: 500,
+      });
+      expect(salons.map((r) => r.slug)).toContain(slug);
+      expect(salons.every((r) => r.businessType === 'beauty_salon')).toBe(true);
+      const barbershops = await service.searchPublicBarbershops({
+        businessType: 'barbershop',
+        limit: 500,
+      });
+      expect(barbershops.map((r) => r.slug)).not.toContain(slug);
+    });
+  });
+
   describe('vagas do plano: só quem atende ocupa', () => {
     // Unidade só deste teste; dono sem assinatura = plano Basic (3 vagas)
     let shopId: number;

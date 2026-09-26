@@ -20,6 +20,7 @@ import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType, takesAppointments } from './staff-roles';
+import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
   addDaysStr,
@@ -361,11 +362,11 @@ export class BarbershopService {
       include: { network: true },
     });
     if (!barbershop) {
-      throw new ForbiddenException('Barbearia não encontrada');
+      throw new ForbiddenException('Unidade não encontrada');
     }
     const level = await this.accessLevelOf(userId, barbershop);
     if (!level) {
-      throw new ForbiddenException('Você não tem acesso a esta barbearia');
+      throw new ForbiddenException('Você não tem acesso a esta unidade');
     }
     if (ACCESS_RANK[level] < ACCESS_RANK[min]) {
       throw new ForbiddenException('Seu cargo nesta unidade não permite essa ação.');
@@ -791,6 +792,15 @@ export class BarbershopService {
 
   // ============ BARBERSHOP ============
 
+  /** Tipo de estabelecimento válido; vazio = não informado */
+  private parseBusinessType(value: string | null | undefined): BusinessType | undefined {
+    if (value == null || value === '') return undefined;
+    if (!isBusinessType(value)) {
+      throw new BadRequestException(`Tipo de estabelecimento inválido: ${value}`);
+    }
+    return value;
+  }
+
   async createBarbershop(
     userId: number,
     data: {
@@ -808,13 +818,15 @@ export class BarbershopService {
       timezone?: string;
       currency?: string;
       businessHours?: string;
+      businessType?: string;
     },
   ) {
+    const businessType = this.parseBusinessType(data.businessType) ?? DEFAULT_BUSINESS_TYPE;
     const existing = await this.prisma.barbershop.findUnique({
       where: { slug: data.slug },
     });
     if (existing) {
-      throw new BadRequestException('Já existe uma barbearia com este slug');
+      throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
     }
     const network = await this.findOrCreateNetwork(userId);
     const limits = await this.getPlanLimitsForOwner(userId);
@@ -830,6 +842,7 @@ export class BarbershopService {
       .create({
         data: {
           ...data,
+          businessType,
           timezone: data.timezone ?? 'America/Sao_Paulo',
           currency: data.currency ?? network.currency,
           networkId: network.id,
@@ -838,7 +851,7 @@ export class BarbershopService {
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new BadRequestException('Já existe uma barbearia com este slug');
+          throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
         }
         throw error;
       });
@@ -890,7 +903,7 @@ export class BarbershopService {
     const barbershop = await this.prisma.barbershop.findUnique({
       where: { id },
     });
-    if (!barbershop) throw new NotFoundException('Barbearia não encontrada');
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
     return barbershop;
   }
 
@@ -918,9 +931,16 @@ export class BarbershopService {
       linkedinUrl: string;
       isActive: boolean;
       subdomain: string;
+      businessType: string;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id, 'manager');
+    if (data.businessType !== undefined) {
+      data = {
+        ...data,
+        businessType: this.parseBusinessType(data.businessType) ?? DEFAULT_BUSINESS_TYPE,
+      };
+    }
     const { subdomain, description, whatsapp, instagramUrl, facebookUrl, linkedinUrl, ...rest } =
       data;
     const updateData: typeof rest & {
@@ -986,7 +1006,7 @@ export class BarbershopService {
       where: { subdomain: trimmed, NOT: { id: barbershopId } },
     });
     if (existing) {
-      throw new BadRequestException('Esse subdomínio já está em uso por outra barbearia.');
+      throw new BadRequestException('Esse subdomínio já está em uso por outra unidade.');
     }
     return trimmed;
   }
@@ -1194,7 +1214,7 @@ export class BarbershopService {
       where: { barbershopId, phone, isActive: true },
     });
     if (existingByPhone) {
-      throw new BadRequestException('Já existe um funcionário com este telefone nesta barbearia');
+      throw new BadRequestException('Já existe um funcionário com este telefone nesta unidade');
     }
 
     if (data.email) {
@@ -1203,7 +1223,7 @@ export class BarbershopService {
         where: { barbershopId, email, isActive: true },
       });
       if (existingByEmail) {
-        throw new BadRequestException('Já existe um funcionário com este email nesta barbearia');
+        throw new BadRequestException('Já existe um funcionário com este email nesta unidade');
       }
     }
 
@@ -1245,7 +1265,7 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     const period = parseEngagementPeriod(
       data.accessStartsAt === undefined ? barber.accessStartsAt : data.accessStartsAt,
       data.accessEndsAt === undefined ? barber.accessEndsAt : data.accessEndsAt,
@@ -1293,7 +1313,7 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.prisma.barber.update({
       where: { id: barberId },
       data: { isActive: false },
@@ -1305,7 +1325,7 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
     });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     // Antes não conferia o plano: reativar quem atende ocupa vaga de novo
     if (!barber.isActive && takesAppointments(barber)) {
       await this.ensureSeatFor(barbershopId, barber.userId);
@@ -1322,9 +1342,9 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
       include: { user: true },
     });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     const email = barber.user?.email ?? barber.email;
-    if (!email) throw new BadRequestException('Barbeiro não possui email cadastrado');
+    if (!email) throw new BadRequestException('Profissional não possui email cadastrado');
     const user = await this.prisma.user.findFirst({
       where: { email, provider: 'local' },
     });
@@ -1559,7 +1579,7 @@ export class BarbershopService {
       where: { id: data.productId, barbershopId },
     });
     if (!product) {
-      throw new NotFoundException('Produto não encontrado nesta barbearia');
+      throw new NotFoundException('Produto não encontrado nesta unidade');
     }
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.inventoryItem.findUnique({
@@ -1613,7 +1633,7 @@ export class BarbershopService {
       where: { id: productId, barbershopId },
     });
     if (!product) {
-      throw new NotFoundException('Produto não encontrado nesta barbearia');
+      throw new NotFoundException('Produto não encontrado nesta unidade');
     }
     return this.prisma.inventoryItem.upsert({
       where: { barbershopId_productId: { barbershopId, productId } },
@@ -1659,7 +1679,7 @@ export class BarbershopService {
 
   async getBarberSchedulesByBarber(userId: number, barberId: number) {
     const barber = await this.prisma.barber.findUnique({ where: { id: barberId } });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     return this.getBarberSchedules(userId, barber.barbershopId, barberId);
   }
 
@@ -1675,7 +1695,7 @@ export class BarbershopService {
     },
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
     return this.prisma.barberSchedule.create({
       data: {
@@ -1732,7 +1752,7 @@ export class BarbershopService {
     input: { barberId: number; startAt: string; endAt: string; reason?: string },
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
     const startAt = new Date(input.startAt);
     const endAt = new Date(input.endAt);
@@ -1797,7 +1817,7 @@ export class BarbershopService {
     filters?: { startAt?: Date; endAt?: Date },
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: barberId } });
-    if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.ensureBarbershopAccess(userId, barber.barbershopId, 'basic');
     const where: any = { barberId };
     if (filters?.startAt || filters?.endAt) {
@@ -3663,7 +3683,7 @@ export class BarbershopService {
       throw new BadRequestException('Este agendamento não pode mais ser alterado');
     }
     throw new BadRequestException(
-      'O prazo para cancelar ou remarcar pelo link já passou. Fale com a barbearia.',
+      'O prazo para cancelar ou remarcar pelo link já passou. Fale com o estabelecimento.',
     );
   }
 
@@ -3760,7 +3780,7 @@ export class BarbershopService {
     });
     if (!barber) {
       throw new BadRequestException(
-        'Este profissional não está mais disponível. Fale com a barbearia.',
+        'Este profissional não está mais disponível. Fale com o estabelecimento.',
       );
     }
     const durationMs = appt.endAt.getTime() - appt.startAt.getTime();
@@ -3872,6 +3892,7 @@ export class BarbershopService {
   async searchPublicBarbershops(input: {
     query?: string;
     category?: TreatmentCategory;
+    businessType?: string;
     city?: string;
     citySlug?: string;
     lat?: number;
@@ -3888,6 +3909,7 @@ export class BarbershopService {
       });
     }
     if (input.city) AND.push({ city: { contains: input.city, mode: 'insensitive' } });
+    if (input.businessType) AND.push({ businessType: this.parseBusinessType(input.businessType) });
     if (input.category) {
       AND.push({ services: { some: { isActive: true, category: input.category } } });
     }
@@ -3919,6 +3941,7 @@ export class BarbershopService {
         id: b.id,
         name: b.name,
         slug: b.slug,
+        businessType: b.businessType,
         city: b.city,
         state: b.state,
         address: b.address,
@@ -5182,7 +5205,7 @@ export class BarbershopService {
       where: { barbershopId, status: 'OPEN' },
     });
     if (existing) {
-      throw new BadRequestException('Já existe um caixa aberto para esta barbearia');
+      throw new BadRequestException('Já existe um caixa aberto para esta unidade');
     }
     const session = await this.prisma.cashSession.create({
       data: {
@@ -5210,7 +5233,7 @@ export class BarbershopService {
       where: { barbershopId, status: 'OPEN' },
     });
     if (!session) {
-      throw new NotFoundException('Nenhum caixa aberto para esta barbearia');
+      throw new NotFoundException('Nenhum caixa aberto para esta unidade');
     }
     const [cashSales, cashExpenses, cashRent] = await Promise.all([
       this.prisma.sale.aggregate({

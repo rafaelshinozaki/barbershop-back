@@ -100,6 +100,14 @@ export class BarbershopSignupData {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @Field({
+    nullable: true,
+    description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)',
+  })
+  @IsOptional()
+  @IsString()
+  businessType?: string;
 }
 
 /** Endereço pessoal do usuário no cadastro */

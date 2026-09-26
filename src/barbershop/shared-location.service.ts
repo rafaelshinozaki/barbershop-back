@@ -38,7 +38,7 @@ export class SharedLocationService {
     const slug = this.slugFrom(memberSlugOrLink);
     const member = await this.prisma.barbershop.findUnique({ where: { slug } });
     if (!member || !member.isActive) {
-      throw new NotFoundException('Não achamos essa barbearia. Confira o link da página dela.');
+      throw new NotFoundException('Não achamos essa unidade. Confira o link da página dela.');
     }
     if (member.id === host.id) {
       throw new BadRequestException('Esse é o seu próprio espaço');
@@ -46,7 +46,7 @@ export class SharedLocationService {
     if (member.networkId === host.networkId) {
       // Mesmo dono: é unidade da mesma rede, não profissional independente
       throw new BadRequestException(
-        'Essa barbearia é da sua própria rede. Para trabalhar nas duas, adicione a pessoa à equipe.',
+        'Essa unidade é da sua própria rede. Para trabalhar nas duas, adicione a pessoa à equipe.',
       );
     }
     const existing = await this.prisma.sharedLocationMember.findUnique({
