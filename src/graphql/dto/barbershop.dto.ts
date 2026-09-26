@@ -247,6 +247,10 @@ export class CreateBarberInput {
 
   @Field({ nullable: true })
   userId?: number;
+
+  /** Atende clientes (ocupa vaga do plano). Vazio = sim */
+  @Field(() => Boolean, { nullable: true })
+  takesAppointments?: boolean | null;
 }
 
 @InputType()
@@ -281,6 +285,10 @@ export class UpdateBarberInput {
   /** Cargo: basic | barber | reception | manager */
   @Field({ nullable: true })
   staffType?: string;
+
+  /** Atende clientes ("Eu também atendo"). null = pelo cargo */
+  @Field(() => Boolean, { nullable: true })
+  takesAppointments?: boolean | null;
 
   /** Vínculo temporário: início e fim (ISO). null limpa */
   @Field(() => String, { nullable: true })

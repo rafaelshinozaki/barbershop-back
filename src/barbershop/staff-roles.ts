@@ -20,3 +20,14 @@ export const STAFF_ROLE_LABEL: Record<StaffType, { pt: string; en: string; es: s
 export function staffRoleLabel(staffType: string | null | undefined) {
   return STAFF_ROLE_LABEL[isStaffType(staffType) ? staffType : 'barber'];
 }
+
+/**
+ * Atende clientes? O campo explícito vale; vazio segue o cargo (recepção não
+ * atende, os demais atendem).
+ */
+export function takesAppointments(b: {
+  takesAppointments?: boolean | null;
+  staffType?: string | null;
+}): boolean {
+  return b.takesAppointments ?? b.staffType !== 'reception';
+}

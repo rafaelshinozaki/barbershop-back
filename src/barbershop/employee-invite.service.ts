@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
-import { isStaffType, StaffType, staffRoleLabel } from './staff-roles';
+import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
 
@@ -20,6 +20,8 @@ export interface CreateEmployeeInviteInput {
   role: EmployeeRole;
   /** Cargo na unidade: basic | barber | reception | manager (padrão: pelo role) */
   staffType?: StaffType;
+  /** Atende clientes (vazio = pelo cargo: recepção não, os demais sim) */
+  takesAppointments?: boolean | null;
   specialization?: string;
   hireDate?: string;
   /** Vínculo temporário (freelancer): início e fim, ISO. Vazio = sem limite */
@@ -67,7 +69,6 @@ export class EmployeeInviteService {
   async createInvite(userId: number, input: CreateEmployeeInviteInput) {
     // Dono e gerente convidam a equipe, gerentes inclusive (como no Booksy)
     await this.barbershopService.ensureAccess(userId, input.barbershopId, 'manager');
-    await this.barbershopService.ensureBarberLimitNotExceeded(input.barbershopId);
 
     const email = input.email.toLowerCase().trim();
     if (!email) {
@@ -122,6 +123,10 @@ export class EmployeeInviteService {
       input.role === 'BarbershopManager' ? 'manager' : input.staffType ?? 'barber';
     // Gerente tem conta de gerente; os outros cargos, de funcionário
     const role: EmployeeRole = staffType === 'manager' ? 'BarbershopManager' : 'BarbershopEmployee';
+    // Só ocupa vaga do plano quem vai atender (recepção/gerente sem agenda não)
+    if (takesAppointments({ takesAppointments: input.takesAppointments, staffType })) {
+      await this.barbershopService.ensureBarberLimitNotExceeded(input.barbershopId);
+    }
     const inviteToken = randomBytes(32).toString('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
@@ -141,6 +146,7 @@ export class EmployeeInviteService {
             : undefined),
         hireDate: input.hireDate ? new Date(input.hireDate) : undefined,
         staffType,
+        takesAppointments: input.takesAppointments ?? null,
         ...period,
       },
     });
