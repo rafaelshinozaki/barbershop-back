@@ -5,6 +5,7 @@ import { ChairRentService, ChairRentScheduler, ChairRentProcessor } from './chai
 import { PayrollService } from './payroll.service';
 import { CareerService } from './career.service';
 import { SoloService } from './solo.service';
+import { ProReferralService } from './pro-referral.service';
 import { ImportService } from './import.service';
 import { ReviewRequestService } from './review-request.service';
 import { ClosureService } from './closure.service';
@@ -58,6 +59,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PayrollService,
     CareerService,
     SoloService,
+    ProReferralService,
     ImportService,
     CalendarService,
     ChairRentScheduler,
@@ -92,6 +94,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PayrollService,
     CareerService,
     SoloService,
+    ProReferralService,
     ImportService,
     CalendarService,
   ],

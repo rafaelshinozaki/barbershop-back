@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
-import { parseSheet, sheetKey, SheetAppointment } from './import-sheet';
+import { parseSheet, phoneMatchKey, sheetKey, SheetAppointment } from './import-sheet';
 import { PrismaService } from '../prisma/prisma.service';
 import { TreatmentCategory } from '@prisma/client';
 import { takesAppointments } from './staff-roles';
@@ -66,7 +66,7 @@ export class ImportService {
         select: { id: true, name: true, staffType: true, takesAppointments: true },
       }),
     ]);
-    const phones = new Map(customers.map((customer) => [customer.phone.replace(/\D/g, ''), customer.id]));
+    const phones = new Map(customers.map((customer) => [phoneMatchKey(customer.phone), customer.id]));
     const catalog = new Map(
       services.map((service) => [
         sheetKey(service.name),
@@ -76,12 +76,12 @@ export class ImportService {
     const bookable = barbers.filter((barber) => takesAppointments(barber));
 
     for (const row of parsed.customers) {
-      if (phones.has(row.phoneDigits)) {
+      if (phones.has(phoneMatchKey(row.phone))) {
         result.customersReused++;
         continue;
       }
       if (!apply) {
-        phones.set(row.phoneDigits, 0);
+        phones.set(phoneMatchKey(row.phone), 0);
         result.customersCreated++;
         continue;
       }
@@ -92,7 +92,7 @@ export class ImportService {
           email: row.email,
           notes: row.notes,
         });
-        phones.set(row.phoneDigits, created.id);
+        phones.set(phoneMatchKey(row.phone), created.id);
         result.customersCreated++;
       } catch (error) {
         pushError(`Linha ${row.line}: ${messageOf(error)}`);
@@ -100,9 +100,9 @@ export class ImportService {
     }
 
     for (const row of parsed.appointments) {
-      if (phones.has(row.phoneDigits)) continue;
+      if (phones.has(phoneMatchKey(row.phone))) continue;
       if (!apply) {
-        phones.set(row.phoneDigits, 0);
+        phones.set(phoneMatchKey(row.phone), 0);
         result.customersCreated++;
         continue;
       }
@@ -111,7 +111,7 @@ export class ImportService {
           name: row.name,
           phone: row.phone,
         });
-        phones.set(row.phoneDigits, created.id);
+        phones.set(phoneMatchKey(row.phone), created.id);
         result.customersCreated++;
       } catch (error) {
         pushError(`Linha ${row.line}: ${messageOf(error)}`);
@@ -176,7 +176,7 @@ export class ImportService {
     bookable: Array<{ id: number; name: string }>,
     apply: boolean,
   ): Promise<'created' | string> {
-    const customerId = phones.get(row.phoneDigits);
+    const customerId = phones.get(phoneMatchKey(row.phone));
     if (!customerId && customerId !== 0) return `Linha ${row.line}: cliente sem telefone conhecido.`;
     const service = catalog.get(sheetKey(row.serviceName));
     if (!service) return `Linha ${row.line}: serviço "${row.serviceName}" não encontrado.`;

@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { monthRangeUtc, safeTimeZone, toZonedParts } from '../common/timezone.util';
+import { isProActive } from './pro';
 
 /** Atendimentos solo concluídos no mês, de graça, para sempre. */
 export const SOLO_SERVICE_LIMIT = 30;
@@ -142,6 +143,7 @@ export async function assertSoloBookingAllowed(db: Db, barbershopId: number, whe
     select: { practiceKind: true, ownerUserId: true, timezone: true },
   });
   if (!shop || shop.practiceKind !== 'solo' || shop.ownerUserId == null) return;
+  if (await hasActivePro(db, shop.ownerUserId, when)) return;
   const usage = await soloUsage(db, shop.ownerUserId, shop.timezone, when);
   if (usage.services.blocked) throw new BadRequestException(SOLO_BLOCKED_MESSAGE);
 }
@@ -154,8 +156,14 @@ export async function assertSoloProductSaleAllowed(db: Db, barbershopId: number,
     select: { practiceKind: true, ownerUserId: true, timezone: true },
   });
   if (!shop || shop.practiceKind !== 'solo' || shop.ownerUserId == null) return;
+  if (await hasActivePro(db, shop.ownerUserId, when)) return;
   const usage = await soloUsage(db, shop.ownerUserId, shop.timezone, when);
   if (usage.products.blocked) throw new BadRequestException(SOLO_PRODUCT_BLOCKED_MESSAGE);
+}
+
+async function hasActivePro(db: Db, userId: number, when: Date) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { proUntil: true } });
+  return isProActive(user?.proUntil, when);
 }
 
 /** Sem segundo profissional, recepção ou gerente. */

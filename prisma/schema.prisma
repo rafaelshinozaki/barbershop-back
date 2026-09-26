@@ -22,6 +22,10 @@ model User {
   birthdate           DateTime
   readTerms           Boolean
   membership          String             @default("FREE")
+  // Plano Pro da agenda solo. Enquanto esta data está no futuro, a cota de 30 não trava.
+  proUntil            DateTime?
+  // Código para indicar outro profissional. Cada indicação aceita rende meses de Pro aos dois.
+  proReferralCode     String?            @unique
   isActive            Boolean            @default(false)
   stripeCustomerId    String?
   trialStartDate      DateTime?
@@ -37,6 +41,8 @@ model User {
   notificationPreference NotificationPreference?
   acceptedInvites     FriendInvite[]     @relation("AcceptedBy")
   sentInvites         FriendInvite[]     @relation("Inviter")
+  proReferralsSent    ProReferral[]      @relation("ProReferralInviter")
+  proReferralReceived ProReferral?       @relation("ProReferralInvited")
   invalidatedTokens   InvalidatedToken[]
   LoginHistory        LoginHistory[]
   subscriptions       Subscription[]
@@ -363,6 +369,20 @@ model FriendInvite {
   @@unique([inviterId, friendEmail])
   @@index([inviteToken])
   @@index([status])
+}
+
+// Indicação entre profissionais. Uma pessoa só pode ser indicada uma vez.
+// Os meses de Pro são creditados na hora, nos dois lados.
+model ProReferral {
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  inviterUserId  Int
+  invitedUserId  Int      @unique
+  months         Int
+  inviter        User     @relation("ProReferralInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  invited        User     @relation("ProReferralInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  @@index([inviterUserId])
 }
 
 model EmployeeInvite {

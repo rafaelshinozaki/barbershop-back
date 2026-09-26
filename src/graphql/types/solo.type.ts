@@ -50,7 +50,43 @@ export class SoloPracticeType {
   @Field()
   productBlocked: boolean;
 
-  /** Falso enquanto o preço do Pro não estiver definido. */
+  /** O preço do Pro está definido. */
   @Field()
   proAvailable: boolean;
+
+  @Field()
+  proActive: boolean;
+
+  @Field({ nullable: true })
+  proUntil: string | null;
+
+  @Field()
+  proPriceLabel: string;
+}
+
+@ObjectType()
+export class ProReferralType {
+  @Field()
+  code: string;
+
+  @Field(() => Int)
+  priceCents: number;
+
+  @Field()
+  priceLabel: string;
+
+  @Field(() => Int)
+  months: number;
+
+  @Field({ nullable: true })
+  proUntil: string | null;
+
+  @Field()
+  proActive: boolean;
+
+  @Field(() => Int)
+  invitedCount: number;
+
+  @Field()
+  claimed: boolean;
 }

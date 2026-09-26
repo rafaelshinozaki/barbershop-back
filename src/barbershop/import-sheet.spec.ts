@@ -1,4 +1,4 @@
-import { parseSheet } from './import-sheet';
+import { parseSheet, phoneMatchKey } from './import-sheet';
 
 const NOW = new Date('2026-09-26T15:00:00.000Z');
 
@@ -42,6 +42,10 @@ describe('parseSheet', () => {
     );
     expect(parsed.appointments).toHaveLength(1);
     expect(parsed.appointments[0]).toMatchObject({ status: 'COMPLETED', source: 'HISTORY' });
+  });
+
+  it('trata telefone com e sem DDI como o mesmo cliente', () => {
+    expect(phoneMatchKey('11988887777')).toBe(phoneMatchKey('+55 (11) 98888-7777'));
   });
 
   it('lê serviços pela duração e o preço', () => {

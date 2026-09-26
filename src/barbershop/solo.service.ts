@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { linkBarberToProfessional } from './professional';
 import { SOLO_PRODUCT_LIMIT, SOLO_SERVICE_LIMIT, soloUsage } from './solo';
+import { isProActive, proPriceLabel } from './pro';
 
 export type StartSoloInput = {
   name: string;
@@ -30,8 +31,11 @@ export type SoloStatus = {
   productNearLimit: boolean;
   productGrace: boolean;
   productBlocked: boolean;
-  /** O preço do Pro ainda não foi definido. */
+  /** O preço do Pro está definido. A cobrança em si continua no Stripe dos planos. */
   proAvailable: boolean;
+  proActive: boolean;
+  proUntil: string | null;
+  proPriceLabel: string;
 };
 
 const EMPTY: SoloStatus = {
@@ -51,7 +55,10 @@ const EMPTY: SoloStatus = {
   productNearLimit: false,
   productGrace: false,
   productBlocked: false,
-  proAvailable: false,
+  proAvailable: true,
+  proActive: false,
+  proUntil: null,
+  proPriceLabel: proPriceLabel(),
 };
 
 function required(value: string, label: string) {
@@ -80,9 +87,9 @@ export class SoloService {
       where: { ownerUserId: userId, practiceKind: 'solo' },
       orderBy: { id: 'asc' },
     });
-    if (!shop) return EMPTY;
+    if (!shop) return { ...EMPTY, ...(await this.proFields(userId)) };
     const usage = await soloUsage(this.prisma, userId, shop.timezone, new Date());
-    return this.toStatus(shop, usage);
+    return this.toStatus(shop, usage, await this.proFields(userId));
   }
 
   /** Uma agenda pessoal. Não ocupa vaga de unidade do plano do estabelecimento. */
@@ -154,12 +161,24 @@ export class SoloService {
   private async statusOf(barbershopId: number, userId: number): Promise<SoloStatus> {
     const shop = await this.prisma.barbershop.findUniqueOrThrow({ where: { id: barbershopId } });
     const usage = await soloUsage(this.prisma, userId, shop.timezone, new Date());
-    return this.toStatus(shop, usage);
+    return this.toStatus(shop, usage, await this.proFields(userId));
+  }
+
+  private async proFields(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { proUntil: true } });
+    const proActive = isProActive(user?.proUntil, new Date());
+    return {
+      proAvailable: true as const,
+      proActive,
+      proUntil: user?.proUntil?.toISOString() ?? null,
+      proPriceLabel: proPriceLabel(),
+    };
   }
 
   private toStatus(
     shop: { id: number; slug: string; name: string },
     usage: Awaited<ReturnType<typeof soloUsage>>,
+    pro: { proAvailable: true; proActive: boolean; proUntil: string | null; proPriceLabel: string },
   ): SoloStatus {
     return {
       active: true,
@@ -170,15 +189,15 @@ export class SoloService {
       limit: usage.services.limit,
       remaining: usage.services.remaining,
       nearLimit: usage.services.nearLimit,
-      grace: usage.services.grace,
-      blocked: usage.services.blocked,
+      grace: usage.services.grace && !pro.proActive,
+      blocked: usage.services.blocked && !pro.proActive,
       productsThisMonth: usage.products.completed,
       productLimit: usage.products.limit,
       productRemaining: usage.products.remaining,
       productNearLimit: usage.products.nearLimit,
-      productGrace: usage.products.grace,
-      productBlocked: usage.products.blocked,
-      proAvailable: false,
+      productGrace: usage.products.grace && !pro.proActive,
+      productBlocked: usage.products.blocked && !pro.proActive,
+      ...pro,
     };
   }
 

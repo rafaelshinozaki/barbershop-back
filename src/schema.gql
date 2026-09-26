@@ -1539,6 +1539,7 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  claimProReferral(code: String!): ProReferralType!
   clientDeleteAccount(input: ClientDeleteAccountInput!): Boolean!
   clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
   clientLogin(input: ClientLoginInput!): ClientAccountType!
@@ -2115,6 +2116,17 @@ type PresignedUploadType {
   url: String!
 }
 
+type ProReferralType {
+  claimed: Boolean!
+  code: String!
+  invitedCount: Int!
+  months: Int!
+  priceCents: Int!
+  priceLabel: String!
+  proActive: Boolean!
+  proUntil: String
+}
+
 type ProcessAllRecurringPaymentsResponse {
   message: String!
   processedAt: String!
@@ -2428,6 +2440,7 @@ type Query {
   myNotificationsCount: NotificationCount!
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
+  myProReferral: ProReferralType!
   myProfilePrivacy: ProfilePrivacyType!
   myReview(barbershopId: Int!): MyReviewType
   mySoloPractice: SoloPracticeType!
@@ -2750,7 +2763,10 @@ type SoloPracticeType {
   limit: Int!
   name: String
   nearLimit: Boolean!
+  proActive: Boolean!
   proAvailable: Boolean!
+  proPriceLabel: String!
+  proUntil: String
   productBlocked: Boolean!
   productGrace: Boolean!
   productLimit: Int!

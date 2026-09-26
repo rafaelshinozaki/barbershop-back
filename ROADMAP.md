@@ -238,7 +238,7 @@ Muitos profissionais trabalham numa barbearia e também atendem por fora: em cas
 - **Só contam os atendimentos solo.** O que ele faz dentro de uma barbearia que já paga plano nunca conta, porque já está coberto.
 - O painel mostra "você fez Y de 30 atendimentos por conta própria este mês" e "Z de 30 produtos", com aviso ao chegar perto do limite.
 - **Acima de 30:** o profissional escolhe entre
-  - o plano **Pro** (preço fixo baixo, ex.: R$ 39–59/mês, sem limite de atendimentos solo, com destaque e domicílio com raio maior); ou
+  - o plano **Pro** (preço provisório **R$ 49/mês**, dentro da faixa R$ 39–59, sem limite de atendimentos solo; destaque e domicílio com raio maior ficam para quando esses recursos existirem); ou
   - continuar grátis e, naquele mês, não marcar mais atendimentos solo pelo sistema. Os que já estavam marcados continuam, só novos param.
 
   Ninguém é cobrado sem escolher. O primeiro mês acima do limite é tolerado, e a cobrança só é oferecida a partir do segundo mês seguido.
@@ -408,11 +408,12 @@ Objetivo: o profissional passa a ter vida própria na plataforma, e o modo solo 
 - **Identidade `Professional` + agenda única** com conflito entre unidades (item 1) ✅: um `Professional` por conta, os `Barber` existentes ligados por `userId`. Atendimento no mesmo horário em outra unidade já era recusado; a escala semanal sobreposta também passa a ser.
 - **Cadastro com escolha de tipo + "Perfis e privacidade"** ✅ (itens 5 e 6), começando pelo profissional dentro do `User`. O primeiro passo é "quero agendar" (segue no login de cliente), "sou profissional" ou "tenho um estabelecimento", com "eu também atendo". A página ao lado de Segurança guarda visibilidade (público, só na plataforma, oculto), disponível para contratação, aceitando clientes novos e o que cada campo mostra. Unificar com o `ClientAccount` fica para o H3. Domicílio continua no H5.
 - **Panorama de carreira** ✅, sempre grátis (item 8): `myCareer` junta as unidades em que a pessoa ainda está ligada. De uma unidade da qual ela saiu, cada atendimento antigo mostra só o primeiro nome e a data. O perfil público (`/p/:slug`) nasce oculto; quando ela liga, a página é de profissional e, se for dona, aponta para o estabelecimento. A nota pessoal ainda não existe (a avaliação hoje é da unidade).
-- **Modo solo** ✅ com cota de **30** atendimentos concluídos e **30** produtos vendidos por mês (item 8). A agenda, os clientes, os serviços e o link `/u/:slug` nascem como uma unidade de uma pessoa só, fora da cota de unidades do plano. O primeiro mês acima de cada teto segue aberto; no segundo mês seguido, o que é novo para e o que já estava marcado ou vendido continua. O preço do Pro, o limite de sessões e a cota por CPF continuam em aberto.
-- **Importação de dados** ✅ de outros sistemas (Booksy, Trinks, planilha): clientes, serviços e agenda, com prévia antes de gravar. Horário passado entra como histórico e não consome a cota do solo; horário futuro entra na agenda. A indicação que rende meses de Pro continua em aberto, porque o preço do Pro ainda não existe.
-- **Indicação entre profissionais**, que ganham meses de Pro.
+- **Modo solo** ✅ com cota de **30** atendimentos concluídos e **30** produtos vendidos por mês (item 8). A agenda, os clientes, os serviços e o link `/u/:slug` nascem como uma unidade de uma pessoa só, fora da cota de unidades do plano. O primeiro mês acima de cada teto segue aberto; no segundo mês seguido, o que é novo para e o que já estava marcado ou vendido continua. O limite de sessões e a cota por CPF continuam em aberto.
+- **Preço do Pro** ✅ provisório: **R$ 49,00 por mês** (`PRO_PRICE_CENTS` em `src/barbershop/pro.ts`), no meio da faixa R$ 39–59. Enquanto o Pro vale, a cota do solo não trava. A cobrança no cartão continua na mesma trilha Stripe dos planos e será ajustada quando o mercado fechar o número.
+- **Importação de dados** ✅ de outros sistemas (Booksy, Trinks, planilha): clientes, serviços e agenda, com prévia antes de gravar. Horário passado entra como histórico e não consome a cota do solo; horário futuro entra na agenda.
+- **Indicação entre profissionais** ✅: cada um tem um código. Quem entra com o código de outro profissional ganha **1 mês de Pro**, e quem indicou também. Uma conta só aceita uma indicação. Não dá para usar o próprio código.
 
-Pré-requisitos: H1 (métricas) e o preço do Pro. A cota grátis é 30 atendimentos e 30 produtos. Sucesso: X profissionais solo ativos por mês, e parte deles convertendo para Pro ou levando a barbearia para a plataforma.
+Pré-requisitos: H1 (métricas). O preço provisório do Pro é R$ 49/mês. A cota grátis é 30 atendimentos e 30 produtos. Sucesso: X profissionais solo ativos por mês, e parte deles convertendo para Pro ou levando a barbearia para a plataforma. O limite de sessões e a cota por CPF continuam em aberto.
 
 #### H3. Vitrine: ser encontrado
 Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.

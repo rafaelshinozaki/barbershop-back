@@ -1,3 +1,4 @@
+import { normalizePhoneToE164 } from '../common/phone.util';
 import { safeTimeZone, zonedTimeToUtc } from '../common/timezone.util';
 
 const MAX_CHARS = 80_000;
@@ -150,6 +151,12 @@ function parseCsv(text: string): string[][] {
 
 function digits(phone: string) {
   return phone.replace(/\D/g, '');
+}
+
+/** Mesma leitura de telefone do resto do app: 11988887777 e +55 11 98888-7777 são o mesmo cliente. */
+export function phoneMatchKey(phone: string) {
+  const normalized = normalizePhoneToE164(phone);
+  return (normalized ?? phone).replace(/\D/g, '');
 }
 
 function money(value: string): number {
