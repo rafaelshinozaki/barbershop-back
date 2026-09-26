@@ -287,6 +287,9 @@ export class PublicBarbershopType {
   @Field(() => Int)
   id: number;
 
+  @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
+  businessType: string;
+
   @Field({ nullable: true, description: 'Cor de destaque da franquia (Radix); null = padrão' })
   accentColor?: string;
 
@@ -413,6 +416,9 @@ export class PublicBarbershopType {
 export class PublicBarbershopSearchResultType {
   @Field(() => Int)
   id: number;
+
+  @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
+  businessType: string;
 
   @Field()
   name: string;

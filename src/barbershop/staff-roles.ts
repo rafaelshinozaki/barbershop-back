@@ -11,8 +11,8 @@ export function isStaffType(value: unknown): value is StaffType {
 
 /** Nome do cargo em cada idioma (minúsculo, pra usar no meio da frase) */
 export const STAFF_ROLE_LABEL: Record<StaffType, { pt: string; en: string; es: string }> = {
-  basic: { pt: 'barbeiro básico', en: 'basic barber', es: 'barbero básico' },
-  barber: { pt: 'barbeiro', en: 'barber', es: 'barbero' },
+  basic: { pt: 'profissional básico', en: 'basic professional', es: 'profesional básico' },
+  barber: { pt: 'profissional', en: 'professional', es: 'profesional' },
   reception: { pt: 'recepcionista', en: 'receptionist', es: 'recepcionista' },
   manager: { pt: 'gerente', en: 'manager', es: 'gerente' },
 };

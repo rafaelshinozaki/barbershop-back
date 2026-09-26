@@ -32,7 +32,7 @@
     </div>
     <div class="content">
       <h2>Olá, {{CustomerName}}!</h2>
-      <p>Seu horário foi cancelado pela barbearia:</p>
+      <p>Seu horário foi cancelado pelo estabelecimento:</p>
       <div class="details">
         <p><strong>Serviço:</strong> {{ServiceNames}}</p>
         <p><strong>Profissional:</strong> {{BarberName}}</p>
@@ -42,7 +42,7 @@
         {{#if SeriesDates}}<p><strong>Horários cancelados:</strong></p><ul>{{#each SeriesDates}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
         {{#if Reason}}<p><strong>Motivo:</strong> {{Reason}}</p>{{/if}}
       </div>
-      <p>Quer marcar outro? Escolha um novo horário pela página da barbearia ou ligue para {{BarbershopPhone}}.</p>
+      <p>Quer marcar outro? Escolha um novo horário pela página do estabelecimento ou ligue para {{BarbershopPhone}}.</p>
       <p style="text-align:center"><a class="button" href="{{BookURL}}">Agendar de novo</a></p>
     </div>
     <div class="footer">

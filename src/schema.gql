@@ -315,6 +315,9 @@ type Barbershop {
   """
   availableModules: [String!]
   businessHours: String
+
+  """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
+  businessType: String!
   city: String!
   country: String!
   coverUrl: String
@@ -401,6 +404,9 @@ type BarbershopServiceType {
 input BarbershopSignupData {
   address: String!
   businessHours: String
+
+  """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
+  businessType: String
   city: String!
   complement1: String
   complement2: String
@@ -849,6 +855,11 @@ input CreateBarberTimeOffInput {
 input CreateBarbershopInput {
   address: String!
   businessHours: String
+
+  """
+  Tipo de estabelecimento: barbershop, beauty_salon, nail_salon, aesthetics, brows_lashes, massage, makeup, independent, other
+  """
+  businessType: String
   city: String!
   complement1: String
   complement2: String
@@ -1641,7 +1652,7 @@ type Network {
   updatedAt: String!
 }
 
-"""Algo mudou numa barbearia — o dashboard recarrega os dados"""
+"""Algo mudou numa unidade — o dashboard recarrega os dados"""
 type NetworkActivityEvent {
   """CREATED | UPDATED | DELETED"""
   action: String!
@@ -2044,6 +2055,9 @@ type PublicBarberType {
 type PublicBarbershopSearchResultType {
   address: String!
   averageRating: Float
+
+  """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
+  businessType: String!
   categories: [TreatmentCategory!]!
   city: String!
   distanceKm: Float
@@ -2063,6 +2077,9 @@ type PublicBarbershopType {
   address: String!
   averageRating: Float
   barbers: [PublicBarberType!]!
+
+  """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
+  businessType: String!
   city: String!
   closures: [ClosureType!]!
   complement1: String
@@ -2129,7 +2146,7 @@ type PublicServiceType {
   price: Float!
 }
 
-"""A agenda da barbearia mudou — a página pública recarrega os horários"""
+"""A agenda da unidade mudou — a página pública recarrega os horários"""
 type PublicSlotsChangedEvent {
   at: String!
   barbershopId: Int!
@@ -2381,6 +2398,7 @@ type SaleItemType {
 }
 
 input SearchBarbershopsInput {
+  businessType: String
   category: TreatmentCategory
   city: String
   citySlug: String
@@ -2674,6 +2692,11 @@ input UpdateBarberScheduleInput {
 input UpdateBarbershopInput {
   address: String
   businessHours: String
+
+  """
+  Tipo de estabelecimento: barbershop, beauty_salon, nail_salon, aesthetics, brows_lashes, massage, makeup, independent, other
+  """
+  businessType: String
   city: String
   complement1: String
   complement2: String
