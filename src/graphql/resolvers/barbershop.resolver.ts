@@ -24,6 +24,7 @@ import {
   BarberTimeOffType,
   Appointment,
   NetworkAgenda,
+  PlanSeatUsage,
   WalkIn,
   ServiceHistory,
   Sale,
@@ -388,6 +389,17 @@ export class BarbershopResolver {
     const result = await this.barbershopService.createBarber(user.id, barbershopId, data);
     this.realtime.notify(barbershopId, 'BARBER', 'CREATED');
     return result;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => PlanSeatUsage, {
+    description: 'Vagas do plano ocupadas na unidade (só quem atende conta)',
+  })
+  async barbershopPlanSeats(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getPlanSeatUsage(user.id, barbershopId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

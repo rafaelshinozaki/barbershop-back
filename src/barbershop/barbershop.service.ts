@@ -19,7 +19,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
-import { isStaffType, StaffType } from './staff-roles';
+import { isStaffType, StaffType, takesAppointments } from './staff-roles';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
   addDaysStr,
@@ -104,8 +104,15 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
 const NEXT_AVAILABLE_DAYS = 60;
 /** Quanto tempo o horário fica reservado esperando o sinal online */
 export const DEPOSIT_HOLD_MINUTES = 15;
+/** Quem atende: marcado pra atender, ou sem marcação e fora da recepção */
 const BOOKABLE_STAFF = {
-  OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
+  OR: [
+    { takesAppointments: true },
+    {
+      takesAppointments: null,
+      OR: [{ staffType: null }, { staffType: { not: 'reception' } }],
+    },
+  ],
 } satisfies Prisma.BarberWhereInput;
 /**
  * Vínculo valendo agora: ativo e dentro do período (freelancer com data de
@@ -278,20 +285,60 @@ export class BarbershopService {
     return getPlanLimits(subscription?.plan?.name ?? '');
   }
 
-  /** Lança BadRequestException se a unidade já estiver no limite de profissionais do plano. */
-  async ensureBarberLimitNotExceeded(barbershopId: number) {
-    const limits = await this.getPlanLimitsForBarbershop(barbershopId);
-    // Freelancer com vínculo encerrado não ocupa vaga
-    const currentCount = await this.prisma.barber.count({
+  /** Donos da unidade (dela e da rede): quem atende sendo dono não ocupa vaga */
+  private async shopOwnerIds(barbershopId: number): Promise<number[]> {
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { ownerUserId: true, network: { select: { ownerUserId: true } } },
+    });
+    return [shop?.ownerUserId, shop?.network?.ownerUserId].filter(
+      (id): id is number => typeof id === 'number',
+    );
+  }
+
+  /**
+   * Vagas do plano ocupadas: quem atende clientes (ativo, no período). Quem só
+   * administra (recepção, gerente sem agenda) e o dono que atende não contam.
+   */
+  async countPlanSeats(barbershopId: number) {
+    const owners = await this.shopOwnerIds(barbershopId);
+    return this.prisma.barber.count({
       where: {
         barbershopId,
         isActive: true,
-        OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: new Date() } }],
+        AND: [
+          // Freelancer com vínculo encerrado não ocupa vaga
+          { OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: new Date() } }] },
+          BOOKABLE_STAFF,
+          ...(owners.length ? [{ OR: [{ userId: null }, { userId: { notIn: owners } }] }] : []),
+        ],
       },
     });
+  }
+
+  /** Uso das vagas do plano na unidade (null = sem limite) */
+  async getPlanSeatUsage(userId: number, barbershopId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const [limits, used] = await Promise.all([
+      this.getPlanLimitsForBarbershop(barbershopId),
+      this.countPlanSeats(barbershopId),
+    ]);
+    return {
+      used,
+      limit: Number.isFinite(limits.maxBarbersPerShop) ? limits.maxBarbersPerShop : null,
+    };
+  }
+
+  /**
+   * Lança BadRequestException se a unidade já estiver no limite do plano — só
+   * pra quem vai passar a atender (quem só administra não ocupa vaga).
+   */
+  async ensureBarberLimitNotExceeded(barbershopId: number) {
+    const limits = await this.getPlanLimitsForBarbershop(barbershopId);
+    const currentCount = await this.countPlanSeats(barbershopId);
     if (currentCount >= limits.maxBarbersPerShop) {
       throw new BadRequestException(
-        `Seu plano permite no máximo ${limits.maxBarbersPerShop} profissional(is) por unidade. Faça upgrade para adicionar mais.`,
+        `Seu plano permite no máximo ${limits.maxBarbersPerShop} profissional(is) que atendem por unidade — quem só administra (recepção, gerente sem agenda) não conta. Faça upgrade para adicionar mais.`,
       );
     }
   }
@@ -1116,6 +1163,14 @@ export class BarbershopService {
 
   // ============ BARBER ============
 
+  /** Confere a vaga do plano pra alguém que vai passar a atender (dono não ocupa) */
+  private async ensureSeatFor(barbershopId: number, personUserId: number | null) {
+    if (personUserId != null && (await this.shopOwnerIds(barbershopId)).includes(personUserId)) {
+      return;
+    }
+    await this.ensureBarberLimitNotExceeded(barbershopId);
+  }
+
   async createBarber(
     userId: number,
     barbershopId: number,
@@ -1127,10 +1182,12 @@ export class BarbershopService {
       specialization?: string;
       specialties?: TreatmentCategory[];
       hireDate?: Date;
+      takesAppointments?: boolean | null;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
-    await this.ensureBarberLimitNotExceeded(barbershopId);
+    // Só ocupa vaga quem atende (o padrão aqui é barbeiro)
+    if (data.takesAppointments !== false) await this.ensureBarberLimitNotExceeded(barbershopId);
 
     const phone = data.phone.trim();
     const existingByPhone = await this.prisma.barber.findFirst({
@@ -1179,6 +1236,7 @@ export class BarbershopService {
       specialties: TreatmentCategory[];
       isActive: boolean;
       staffType: string;
+      takesAppointments: boolean | null;
       accessStartsAt: string | Date | null;
       accessEndsAt: string | Date | null;
     }>,
@@ -1194,23 +1252,38 @@ export class BarbershopService {
     );
     if (data.accessStartsAt !== undefined) data.accessStartsAt = period.accessStartsAt;
     if (data.accessEndsAt !== undefined) data.accessEndsAt = period.accessEndsAt;
-    if (data.staffType !== undefined) {
-      if (!isStaffType(data.staffType)) throw new BadRequestException('Cargo inválido');
-      // Quem vira recepção deixa de atender: não pode ter horário marcado
-      if (data.staffType === 'reception' && barber.staffType !== 'reception') {
-        const upcoming = await this.prisma.appointment.count({
-          where: {
-            barberId,
-            startAt: { gte: new Date() },
-            status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
-          },
-        });
-        if (upcoming > 0) {
-          throw new BadRequestException(
-            'Esse profissional tem agendamentos marcados. Remarque-os antes de passar pra recepção.',
-          );
-        }
+    if (data.staffType !== undefined && !isStaffType(data.staffType)) {
+      throw new BadRequestException('Cargo inválido');
+    }
+    // Mudou o cargo sem dizer se atende: volta a seguir o cargo
+    if (data.staffType !== undefined && data.takesAppointments === undefined) {
+      data.takesAppointments = null;
+    }
+    const servesBefore = takesAppointments(barber);
+    const servesAfter = takesAppointments({
+      takesAppointments:
+        data.takesAppointments === undefined ? barber.takesAppointments : data.takesAppointments,
+      staffType: data.staffType ?? barber.staffType,
+    });
+    // Quem deixa de atender não pode ter horário marcado
+    if (servesBefore && !servesAfter) {
+      const upcoming = await this.prisma.appointment.count({
+        where: {
+          barberId,
+          startAt: { gte: new Date() },
+          status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
+        },
+      });
+      if (upcoming > 0) {
+        throw new BadRequestException(
+          'Esse profissional tem agendamentos marcados. Remarque-os antes de ele deixar de atender.',
+        );
       }
+    }
+    // Passou a ocupar vaga (começou a atender ou voltou a ficar ativo)
+    const activeAfter = data.isActive ?? barber.isActive;
+    if (activeAfter && servesAfter && !(barber.isActive && servesBefore)) {
+      await this.ensureSeatFor(barbershopId, barber.userId);
     }
     return this.prisma.barber.update({ where: { id: barberId }, data });
   }
@@ -1233,6 +1306,10 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
     });
     if (!barber) throw new NotFoundException('Barbeiro não encontrado');
+    // Antes não conferia o plano: reativar quem atende ocupa vaga de novo
+    if (!barber.isActive && takesAppointments(barber)) {
+      await this.ensureSeatFor(barbershopId, barber.userId);
+    }
     return this.prisma.barber.update({
       where: { id: barberId },
       data: { isActive: true },

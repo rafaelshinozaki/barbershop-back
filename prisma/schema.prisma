@@ -761,6 +761,10 @@ model Barber {
   // unidades (até de donos diferentes), com um cargo em cada
   userId         Int?
   staffType      String?          @default("barber") // basic | barber | reception | manager
+  // Atende clientes (entra na agenda e ocupa vaga do plano). Null = pelo cargo:
+  // recepção não atende, os demais atendem. Dono, gerente e recepção podem
+  // ligar/desligar ("Eu também atendo")
+  takesAppointments Boolean?
   name           String
   phone          String
   email          String?

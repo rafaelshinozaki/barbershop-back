@@ -740,6 +740,92 @@ describe('BarbershopService (integração com o banco)', () => {
 
   // ============ Cargos: dono / gerente / barbeiro ============
 
+  describe('vagas do plano: só quem atende ocupa', () => {
+    // Unidade só deste teste; dono sem assinatura = plano Basic (3 vagas)
+    let shopId: number;
+    const phone = (n: number) => `1197${RUN}`.slice(0, 9) + String(n).padStart(2, '0');
+    beforeAll(async () => {
+      shopId = (await createShop(A.networkId, A.ownerId, 'seats')).id;
+    });
+    afterAll(async () => {
+      await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
+      await prisma.barbershop.delete({ where: { id: shopId } });
+    });
+
+    it('recepção/gerente sem agenda e o dono que atende não ocupam vaga; quem passa a atender ocupa', async () => {
+      const add = (n: number, takesAppointments?: boolean) =>
+        service.createBarber(A.ownerId, shopId, {
+          name: `Vaga ${n}`,
+          phone: phone(n),
+          takesAppointments,
+        });
+      const first = await add(1);
+      await add(2);
+      // Equipe que só administra: não conta
+      const admin = await add(3, false);
+      await add(4, false);
+      // O dono cadastrado como quem atende ("Eu também atendo"): não conta
+      await prisma.barber.create({
+        data: {
+          barbershopId: shopId,
+          userId: A.ownerId,
+          name: 'Dono',
+          phone: phone(5),
+          staffType: 'manager',
+        },
+      });
+      expect(await service.getPlanSeatUsage(A.ownerId, shopId)).toEqual({ used: 2, limit: 3 });
+
+      await add(6); // 3ª vaga
+      await expect(add(7)).rejects.toBeInstanceOf(BadRequestException);
+      // Quem só administra ligar "atende" também esbarra no limite
+      await expect(
+        service.updateBarber(A.ownerId, shopId, admin.id, { takesAppointments: true }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      // Desativar libera a vaga; reativar confere o plano de novo (antes não conferia)
+      await service.deleteBarber(A.ownerId, shopId, first.id);
+      const serving = await service.updateBarber(A.ownerId, shopId, admin.id, {
+        takesAppointments: true,
+      });
+      expect(serving.takesAppointments).toBe(true);
+      await expect(service.reactivateBarber(A.ownerId, shopId, first.id)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(await service.getPlanSeatUsage(A.ownerId, shopId)).toEqual({ used: 3, limit: 3 });
+
+      // Deixar de atender libera a vaga
+      await service.updateBarber(A.ownerId, shopId, admin.id, { takesAppointments: false });
+      expect((await service.getPlanSeatUsage(A.ownerId, shopId)).used).toBe(2);
+    });
+
+    it('recepção que liga "atende" aparece pra agendar; mudar o cargo volta a seguir o cargo', async () => {
+      // Aqui a unidade está com 2 de 3 vagas (fim do teste anterior)
+      const reception = await prisma.barber.create({
+        data: { barbershopId: shopId, name: 'Recepção', phone: phone(20), staffType: 'reception' },
+      });
+      const onPublicPage = async () =>
+        (await service.getPublicBarbershopByslug(`int-seats-${RUN}`))!.barbers.some(
+          (b) => b.id === reception.id,
+        );
+      expect(reception.takesAppointments).toBeNull();
+      expect(await onPublicPage()).toBe(false);
+
+      const on = await service.updateBarber(A.ownerId, shopId, reception.id, {
+        takesAppointments: true,
+      });
+      expect(on.staffType).toBe('reception');
+      expect(await onPublicPage()).toBe(true);
+
+      // Trocar o cargo sem dizer se atende: volta a seguir o cargo (recepção não)
+      const back = await service.updateBarber(A.ownerId, shopId, reception.id, {
+        staffType: 'reception',
+      });
+      expect(back.takesAppointments).toBeNull();
+      expect(await onPublicPage()).toBe(false);
+    });
+  });
+
   describe('agenda da franquia no período', () => {
     // Mês bem no futuro, só com os agendamentos deste teste
     const year = new Date().getUTCFullYear() + 3;

@@ -290,6 +290,12 @@ export class Barber {
   @Field(() => Int)
   id: number;
 
+  @Field(() => Boolean, {
+    nullable: true,
+    description: 'Atende clientes; vazio = pelo cargo (recepção não, os demais sim)',
+  })
+  takesAppointments?: boolean | null;
+
   @Field(() => Int)
   barbershopId: number;
 
@@ -1620,3 +1626,12 @@ export class SubscriptionRevenueReportType {
 
 // Type alias for resolver (naming consistency)
 export const Customer = BarbershopCustomer;
+
+@ObjectType({ description: 'Vagas do plano na unidade: só quem atende ocupa' })
+export class PlanSeatUsage {
+  @Field(() => Int)
+  used: number;
+
+  @Field(() => Int, { nullable: true, description: 'null = sem limite' })
+  limit?: number | null;
+}
