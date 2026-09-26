@@ -206,8 +206,11 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => NetworkDashboardStats)
-  async networkDashboardStats(@CurrentUser() user: UserDTO) {
-    return this.barbershopService.getNetworkDashboardStats(user.id);
+  async networkDashboardStats(
+    @CurrentUser() user: UserDTO,
+    @Args('barbershopId', { type: () => Int, nullable: true }) barbershopId?: number,
+  ) {
+    return this.barbershopService.getNetworkDashboardStats(user.id, barbershopId);
   }
 
   // ============ CARTÃO-PRESENTE ============

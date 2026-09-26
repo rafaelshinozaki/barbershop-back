@@ -116,6 +116,48 @@ export class NetworkDashboardEvent {
   /** For sales: localize title on the client */
   @Field(() => Int, { nullable: true })
   saleId?: number;
+
+  @Field(() => Int, { nullable: true })
+  appointmentId?: number;
+
+  @Field(() => Int, { nullable: true })
+  barbershopId?: number;
+
+  @Field({ nullable: true })
+  barbershopName?: string;
+
+  @Field({ nullable: true })
+  barberName?: string;
+
+  @Field({ nullable: true })
+  status?: string;
+
+  @Field({ nullable: true })
+  endAt?: string;
+
+  @Field({ nullable: true })
+  notes?: string;
+
+  @Field({ nullable: true })
+  paymentMethod?: string;
+
+  @Field(() => [String], { nullable: true })
+  serviceNames?: string[];
+
+  @Field(() => [String], { nullable: true })
+  itemLines?: string[];
+}
+
+@ObjectType()
+export class ShopRevenueItem {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field(() => Float)
+  total: number;
 }
 
 @ObjectType()
@@ -159,6 +201,39 @@ export class NetworkDashboardStats {
 
   @Field(() => [NetworkDashboardEvent])
   recentEvents: NetworkDashboardEvent[];
+
+  /**
+   * network: dono/gerente (faturamento da unidade).
+   * desk: recepção (agenda e caixa do dia, sem histórico financeiro).
+   * mine: profissional (só a própria agenda e as próprias vendas).
+   * empty: sem vínculo com unidade.
+   */
+  @Field()
+  view: string;
+
+  @Field(() => Int)
+  appointmentsToday: number;
+
+  @Field(() => Float)
+  revenueToday: number;
+
+  /** Esconde o card de faturamento (profissional básico não vê vendas). */
+  @Field(() => Boolean)
+  showRevenueToday: boolean;
+
+  @Field(() => Int)
+  walkInsWaiting: number;
+
+  /** Esconde a fila (profissional básico não acessa). */
+  @Field(() => Boolean)
+  showQueue: boolean;
+
+  @Field(() => [NetworkDashboardEvent])
+  upcomingAppointments: NetworkDashboardEvent[];
+
+  /** Faturamento pago do mês, por unidade. Só a visão de dono/gerente. */
+  @Field(() => [ShopRevenueItem])
+  revenueByBarbershop: ShopRevenueItem[];
 }
 
 @ObjectType()
@@ -1375,6 +1450,30 @@ export class TopProductRow {
 }
 
 @ObjectType()
+export class RevenueByBarberRow {
+  @Field(() => Int)
+  barberId: number;
+
+  @Field()
+  barberName: string;
+
+  @Field(() => Float)
+  revenue: number;
+
+  @Field(() => Int)
+  salesCount: number;
+}
+
+@ObjectType()
+export class AppointmentStatusCount {
+  @Field()
+  status: string;
+
+  @Field(() => Int)
+  count: number;
+}
+
+@ObjectType()
 export class AdvancedReportsType {
   @Field(() => Int)
   totalNoShow: number;
@@ -1405,6 +1504,33 @@ export class AdvancedReportsType {
 
   @Field(() => Float)
   retentionRate: number;
+
+  @Field(() => Int)
+  salesCount: number;
+
+  @Field(() => Float)
+  averageTicket: number;
+
+  @Field(() => Float)
+  serviceRevenue: number;
+
+  @Field(() => Float)
+  productRevenue: number;
+
+  @Field(() => Int)
+  walkIns: number;
+
+  @Field(() => Int)
+  cancelledCount: number;
+
+  @Field(() => Float)
+  cancellationRate: number;
+
+  @Field(() => [RevenueByBarberRow])
+  revenueByBarber: RevenueByBarberRow[];
+
+  @Field(() => [AppointmentStatusCount])
+  appointmentsByStatus: AppointmentStatusCount[];
 }
 
 @ObjectType()

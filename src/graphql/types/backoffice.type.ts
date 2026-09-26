@@ -24,6 +24,12 @@ export class BackofficeStats {
 
   @Field(() => Float)
   revenue: number;
+
+  @Field(() => Int)
+  totalBarbershops: number;
+
+  @Field(() => Int)
+  appointmentsToday: number;
 }
 
 @ObjectType()

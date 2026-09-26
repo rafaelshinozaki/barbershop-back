@@ -618,12 +618,316 @@ export class BarbershopService {
     });
   }
 
-  /** Dashboard stats agregados para dono da franquia */
-  async getNetworkDashboardStats(userId: number) {
+  private emptyDashboard(currency = 'BRL') {
+    return {
+      view: 'empty',
+      totalBarbers: 0,
+      totalBarbershops: 0,
+      totalServicesDone: 0,
+      totalProductsSold: 0,
+      revenueThisMonth: 0,
+      currency,
+      monthlyRevenue: [] as { month: string; monthIndex: number; year: number; total: number }[],
+      recentEvents: [] as Array<{
+        id: string;
+        type: string;
+        date: string;
+        title: string;
+        subtitle?: string;
+        value?: number;
+        customerName?: string;
+        saleId?: number;
+      }>,
+      appointmentsToday: 0,
+      revenueToday: 0,
+      showRevenueToday: false,
+      walkInsWaiting: 0,
+      showQueue: false,
+      upcomingAppointments: [] as Array<{
+        id: string;
+        type: string;
+        date: string;
+        title: string;
+        subtitle?: string;
+        customerName?: string;
+      }>,
+      revenueByBarbershop: [] as Array<{ id: number; name: string; total: number }>,
+    };
+  }
+
+  private appointmentDashboardEvent(
+    a: {
+      id: number;
+      startAt: Date;
+      endAt: Date;
+      status: string;
+      notes: string | null;
+      barbershopId: number;
+      barbershop: { name: string };
+      customer: { name: string } | null;
+      barber: { name: string } | null;
+      services?: Array<{ service: { name: string } | null }>;
+    },
+    idPrefix: string,
+  ) {
+    const customerName = a.customer?.name ?? '-';
+    const barberName = a.barber?.name ?? '-';
+    const serviceNames = (a.services ?? []).map((s) => s.service?.name).filter((n): n is string => !!n);
+    return {
+      id: `${idPrefix}-${a.id}`,
+      type: 'appointment',
+      date: a.startAt,
+      title: idPrefix === 'next' ? customerName : `Agendamento: ${customerName}`,
+      subtitle: [a.barbershop.name, barberName, serviceNames.join(', ')].filter(Boolean).join(' • '),
+      customerName,
+      appointmentId: a.id,
+      barbershopId: a.barbershopId,
+      barbershopName: a.barbershop.name,
+      barberName,
+      status: a.status,
+      endAt: a.endAt.toISOString(),
+      notes: a.notes || undefined,
+      serviceNames,
+      itemLines: [] as string[],
+    };
+  }
+
+  private saleDashboardEvent(s: {
+    id: number;
+    createdAt: Date;
+    total: { toString(): string } | number;
+    paymentMethod: string | null;
+    paymentStatus: string;
+    barbershopId: number;
+    barbershop: { name: string };
+    barber: { name: string } | null;
+    customer: { name: string } | null;
+    items?: Array<{
+      quantity: number;
+      product: { name: string } | null;
+      service: { name: string } | null;
+    }>;
+  }) {
+    const barberName = s.barber?.name ?? '-';
+    const itemLines = (s.items ?? []).map((item) => {
+      const name = item.product?.name ?? item.service?.name ?? '-';
+      return item.quantity > 1 ? `${name} × ${item.quantity}` : name;
+    });
+    return {
+      id: `sale-${s.id}`,
+      type: 'sale',
+      date: s.createdAt,
+      title: `Venda #${s.id}`,
+      subtitle: `${s.barbershop.name} • ${barberName}`,
+      value: Number(s.total),
+      customerName: s.customer?.name ?? undefined,
+      saleId: s.id,
+      barbershopId: s.barbershopId,
+      barbershopName: s.barbershop.name,
+      barberName,
+      status: s.paymentStatus,
+      paymentMethod: s.paymentMethod ?? undefined,
+      serviceNames: [] as string[],
+      itemLines,
+    };
+  }
+
+  /**
+   * Números do dia, no fuso da primeira unidade. `barberIds` null = agenda
+   * de todos; lista = só esses profissionais. `revenueBarberIds` null = vendas
+   * da unidade; lista vazia = não soma faturamento.
+   */
+  private async dashboardPulse(
+    shops: { id: number; timezone: string | null }[],
+    opts: {
+      barberIds: number[] | null;
+      revenueBarberIds: number[] | null;
+      includeQueue: boolean;
+    },
+  ) {
+    const timeZone = safeTimeZone(shops[0]?.timezone);
+    const now = new Date();
+    const today = toZonedParts(now, timeZone).dateStr;
+    const start = zonedTimeToUtc(today, 0, timeZone);
+    const end = zonedTimeToUtc(nextDateStr(today), 0, timeZone);
+    const shopIds = shops.map((s) => s.id);
+    const barberFilter = opts.barberIds ? { barberId: { in: opts.barberIds } } : {};
+
+    const [appointmentsToday, revenueAgg, walkInsWaiting, upcoming] = await Promise.all([
+      this.prisma.appointment.count({
+        where: {
+          barbershopId: { in: shopIds },
+          ...barberFilter,
+          startAt: { gte: start, lt: end },
+          status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] },
+        },
+      }),
+      opts.revenueBarberIds && opts.revenueBarberIds.length === 0
+        ? Promise.resolve({ _sum: { total: null as Decimal | null } })
+        : this.prisma.sale.aggregate({
+            where: {
+              barbershopId: { in: shopIds },
+              paymentStatus: 'PAID',
+              createdAt: { gte: start, lt: end },
+              ...(opts.revenueBarberIds
+                ? { barberId: { in: opts.revenueBarberIds } }
+                : {}),
+            },
+            _sum: { total: true },
+          }),
+      opts.includeQueue
+        ? this.prisma.walkIn.count({
+            where: { barbershopId: { in: shopIds }, status: 'WAITING' },
+          })
+        : Promise.resolve(0),
+      this.prisma.appointment.findMany({
+        where: {
+          barbershopId: { in: shopIds },
+          ...barberFilter,
+          startAt: { gte: now },
+          status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        },
+        orderBy: { startAt: 'asc' },
+        take: 6,
+        include: {
+          barbershop: { select: { name: true } },
+          customer: { select: { name: true } },
+          barber: { select: { name: true } },
+          services: { include: { service: { select: { name: true } } } },
+        },
+      }),
+    ]);
+
+    return {
+      appointmentsToday,
+      revenueToday: Number(revenueAgg._sum.total ?? 0),
+      walkInsWaiting,
+      upcomingAppointments: upcoming.map((a) => {
+        const event = this.appointmentDashboardEvent(a, 'next');
+        return { ...event, date: event.date.toISOString() };
+      }),
+    };
+  }
+
+  /** Agenda e vendas recentes, restritas aos profissionais quando `barberIds` vem preenchido. */
+  private async scopedRecentEvents(shopIds: number[], barberIds: number[] | null) {
+    const barberFilter = barberIds ? { barberId: { in: barberIds } } : {};
+    const [recentAppointments, recentSales] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: { barbershopId: { in: shopIds }, ...barberFilter },
+        orderBy: { startAt: 'desc' },
+        take: 8,
+        include: {
+          barbershop: { select: { name: true } },
+          customer: { select: { name: true } },
+          barber: { select: { name: true } },
+          services: { include: { service: { select: { name: true } } } },
+        },
+      }),
+      this.prisma.sale.findMany({
+        where: {
+          barbershopId: { in: shopIds },
+          paymentStatus: 'PAID',
+          ...barberFilter,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        include: {
+          barbershop: { select: { name: true } },
+          customer: { select: { name: true } },
+          barber: { select: { name: true } },
+          items: { include: { product: { select: { name: true } }, service: { select: { name: true } } } },
+        },
+      }),
+    ]);
+    const events = [
+      ...recentAppointments.map((a) => this.appointmentDashboardEvent(a, 'apt')),
+      ...recentSales.map((s) => this.saleDashboardEvent(s)),
+    ];
+    events.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return events.slice(0, 12).map((e) => ({ ...e, date: e.date.toISOString() }));
+  }
+
+  /**
+   * Quem não é dono nem gerente não vê o faturamento histórico da unidade.
+   * Recepção vê o dia inteiro (agenda, fila e caixa). Profissional vê só o
+   * próprio. Básico não vê fila nem vendas.
+   */
+  private async staffDashboard(userId: number, barbershopId?: number) {
+    const staff = await this.prisma.barber.findMany({
+      where: {
+        userId,
+        ...currentEngagement(),
+        ...(barbershopId != null ? { barbershopId } : {}),
+      },
+      select: {
+        id: true,
+        staffType: true,
+        barbershop: { select: { id: true, name: true, timezone: true, currency: true } },
+      },
+    });
+    if (staff.length === 0) return this.emptyDashboard();
+
+    const levelOf = (staffType: string | null): AccessLevel =>
+      isStaffType(staffType) ? staffType : 'barber';
+    const shopsOf = (rows: typeof staff) => {
+      const map = new Map<number, (typeof staff)[number]['barbershop']>();
+      for (const row of rows) map.set(row.barbershop.id, row.barbershop);
+      return [...map.values()];
+    };
+
+    const desk = staff.filter((s) => levelOf(s.staffType) === 'reception');
+    if (desk.length > 0) {
+      const shops = shopsOf(desk);
+      const pulse = await this.dashboardPulse(shops, {
+        barberIds: null,
+        revenueBarberIds: null,
+        includeQueue: true,
+      });
+      const recentEvents = await this.scopedRecentEvents(
+        shops.map((s) => s.id),
+        null,
+      );
+      return {
+        ...this.emptyDashboard(shops[0].currency || 'BRL'),
+        view: 'desk',
+        showRevenueToday: true,
+        showQueue: true,
+        ...pulse,
+        recentEvents,
+      };
+    }
+
+    const own = staff.filter((s) => OWN_AGENDA_ONLY.includes(levelOf(s.staffType)));
+    if (own.length === 0) return this.emptyDashboard();
+    const billable = own.filter((s) => levelOf(s.staffType) !== 'basic');
+    const shops = shopsOf(own);
+    const pulse = await this.dashboardPulse(shops, {
+      barberIds: own.map((s) => s.id),
+      revenueBarberIds: billable.map((s) => s.id),
+      includeQueue: billable.length > 0,
+    });
+    const recentEvents = await this.scopedRecentEvents(
+      shops.map((s) => s.id),
+      own.map((s) => s.id),
+    );
+    return {
+      ...this.emptyDashboard(shops[0].currency || 'BRL'),
+      view: 'mine',
+      showRevenueToday: billable.length > 0,
+      showQueue: billable.length > 0,
+      ...pulse,
+      recentEvents,
+    };
+  }
+
+  /** Dashboard stats agregados para dono da franquia. Com `barbershopId`, só essa unidade. */
+  async getNetworkDashboardStats(userId: number, barbershopId?: number | null) {
     // Faturamento da rede: só as unidades onde a pessoa é dona ou gerente
     // (antes o barbeiro via o faturamento de todas onde trabalha)
     const barbershops = await this.prisma.barbershop.findMany({
       where: {
+        ...(barbershopId != null ? { id: barbershopId } : {}),
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
@@ -633,16 +937,7 @@ export class BarbershopService {
     });
     const barbershopIds = barbershops.map((b) => b.id);
     if (barbershopIds.length === 0) {
-      return {
-        totalBarbers: 0,
-        totalBarbershops: 0,
-        totalServicesDone: 0,
-        totalProductsSold: 0,
-        revenueThisMonth: 0,
-        currency: 'BRL',
-        monthlyRevenue: [],
-        recentEvents: [],
-      };
+      return this.staffDashboard(userId, barbershopId ?? undefined);
     }
 
     // Meses no fuso da rede (o da primeira unidade — todas as unidades de uma
@@ -685,6 +980,22 @@ export class BarbershopService {
     });
     const revenueThisMonth = Number(revenueThisMonthResult._sum.total ?? 0);
 
+    const revenueByShopRows = await this.prisma.sale.groupBy({
+      by: ['barbershopId'],
+      where: {
+        barbershopId: { in: barbershopIds },
+        paymentStatus: 'PAID',
+        createdAt: { gte: startOfMonth },
+      },
+      _sum: { total: true },
+    });
+    const revenueByShop = new Map(
+      revenueByShopRows.map((row) => [row.barbershopId, Number(row._sum.total ?? 0)]),
+    );
+    const revenueByBarbershop = barbershops
+      .map((shop) => ({ id: shop.id, name: shop.name, total: revenueByShop.get(shop.id) ?? 0 }))
+      .sort((a, b) => b.total - a.total);
+
     // Comparativo mensal (últimos 6 meses)
     const monthlyRevenue: {
       month: string;
@@ -722,6 +1033,7 @@ export class BarbershopService {
           barbershop: { select: { name: true } },
           customer: { select: { name: true } },
           barber: { select: { name: true } },
+          services: { include: { service: { select: { name: true } } } },
         },
       }),
       this.prisma.sale.findMany({
@@ -733,44 +1045,17 @@ export class BarbershopService {
         take: 10,
         include: {
           barbershop: { select: { name: true } },
+          customer: { select: { name: true } },
           barber: { select: { name: true } },
+          items: { include: { product: { select: { name: true } }, service: { select: { name: true } } } },
         },
       }),
     ]);
 
-    const events: Array<{
-      id: string;
-      type: string;
-      date: Date;
-      title: string;
-      subtitle?: string;
-      value?: number;
-      customerName?: string;
-      saleId?: number;
-    }> = [];
-
-    recentAppointments.forEach((a) => {
-      const customerName = a.customer?.name ?? '-';
-      events.push({
-        id: `apt-${a.id}`,
-        type: 'appointment',
-        date: a.startAt,
-        title: `Agendamento: ${customerName}`,
-        subtitle: `${a.barbershop.name} • ${a.barber?.name ?? '-'}`,
-        customerName,
-      });
-    });
-    recentSales.forEach((s) => {
-      events.push({
-        id: `sale-${s.id}`,
-        type: 'sale',
-        date: s.createdAt,
-        title: `Venda #${s.id}`,
-        subtitle: `${s.barbershop.name} • ${s.barber?.name ?? '-'}`,
-        value: Number(s.total),
-        saleId: s.id,
-      });
-    });
+    const events = [
+      ...recentAppointments.map((a) => this.appointmentDashboardEvent(a, 'apt')),
+      ...recentSales.map((s) => this.saleDashboardEvent(s)),
+    ];
 
     events.sort((a, b) => b.date.getTime() - a.date.getTime());
     const recentEvents = events.slice(0, 15).map((e) => ({
@@ -778,7 +1063,14 @@ export class BarbershopService {
       date: e.date.toISOString(),
     }));
 
+    const pulse = await this.dashboardPulse(barbershops, {
+      barberIds: null,
+      revenueBarberIds: null,
+      includeQueue: true,
+    });
+
     return {
+      view: 'network',
       totalBarbers,
       totalBarbershops: barbershops.length,
       totalServicesDone,
@@ -787,6 +1079,10 @@ export class BarbershopService {
       currency: barbershops[0].currency,
       monthlyRevenue,
       recentEvents,
+      showRevenueToday: true,
+      showQueue: true,
+      revenueByBarbershop,
+      ...pulse,
     };
   }
 
@@ -5813,7 +6109,8 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'reports');
 
-    const [appointments, saleItems, customersInPeriod] = await Promise.all([
+    const [appointments, saleItems, customersInPeriod, paidSales, statusGroups, walkIns] =
+      await Promise.all([
       // Taxa de não-comparecimento: só entre agendamentos que de fato
       // chegaram no horário marcado (COMPLETED ou NO_SHOW) — CANCELLED e
       // outros status não representam "cliente não apareceu".
@@ -5846,6 +6143,26 @@ export class BarbershopService {
         },
         select: { customerId: true },
         distinct: ['customerId'],
+      }),
+      this.prisma.sale.findMany({
+        where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+        select: {
+          total: true,
+          barberId: true,
+          barber: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.appointment.groupBy({
+        by: ['status'],
+        where: { barbershopId, startAt: { gte: from, lte: to } },
+        _count: { _all: true },
+      }),
+      this.prisma.walkIn.count({
+        where: {
+          barbershopId,
+          createdAt: { gte: from, lte: to },
+          status: { not: 'CANCELLED' },
+        },
       }),
     ]);
 
@@ -5962,6 +6279,41 @@ export class BarbershopService {
     const returningCustomers = returningSet.size;
     const newCustomers = totalCustomers - returningCustomers;
 
+    const serviceRevenue = Array.from(serviceSales.values()).reduce((sum, s) => sum + s.revenue, 0);
+    const productRevenue = Array.from(productSales.values()).reduce((sum, p) => sum + p.revenue, 0);
+    const salesCount = paidSales.length;
+    const salesTotal = paidSales.reduce((sum, s) => sum + Number(s.total), 0);
+    const byBarberRevenue = new Map<number, { name: string; revenue: number; salesCount: number }>();
+    for (const sale of paidSales) {
+      const barberId = sale.barberId ?? 0;
+      if (!byBarberRevenue.has(barberId)) {
+        byBarberRevenue.set(barberId, {
+          name: sale.barber?.name ?? '',
+          revenue: 0,
+          salesCount: 0,
+        });
+      }
+      const acc = byBarberRevenue.get(barberId)!;
+      acc.revenue += Number(sale.total);
+      acc.salesCount += 1;
+    }
+    const revenueByBarber = Array.from(byBarberRevenue.entries())
+      .map(([barberId, acc]) => ({
+        barberId,
+        barberName: acc.name,
+        revenue: acc.revenue,
+        salesCount: acc.salesCount,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const appointmentsByStatus = statusGroups
+      .map((row) => ({ status: row.status, count: row._count._all }))
+      .sort((a, b) => b.count - a.count);
+    const statusCount = (status: string) =>
+      appointmentsByStatus.find((row) => row.status === status)?.count ?? 0;
+    const cancelledCount = statusCount('CANCELLED');
+    const finished = statusCount('COMPLETED') + statusCount('NO_SHOW') + cancelledCount;
+
     return {
       totalNoShow,
       totalCompletedOrNoShow: appointments.length,
@@ -5973,6 +6325,15 @@ export class BarbershopService {
       newCustomers,
       returningCustomers,
       retentionRate: totalCustomers > 0 ? returningCustomers / totalCustomers : 0,
+      salesCount,
+      averageTicket: salesCount > 0 ? salesTotal / salesCount : 0,
+      serviceRevenue,
+      productRevenue,
+      walkIns,
+      cancelledCount,
+      cancellationRate: finished > 0 ? cancelledCount / finished : 0,
+      revenueByBarber,
+      appointmentsByStatus,
     };
   }
 }

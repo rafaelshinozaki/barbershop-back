@@ -993,8 +993,12 @@ describe('BarbershopService (integração com o banco)', () => {
       await denied(service.getCashSessions(barber, A.shopId));
       await denied(service.deleteBarber(barber, A.shopId, A.otherBarberId));
       await denied(service.deleteBarbershop(barber, A.shopId));
-      // Rede: o barbeiro não vê o faturamento das unidades
-      expect((await service.getNetworkDashboardStats(barber)).totalBarbershops).toBe(0);
+      // Rede: o barbeiro não vê o faturamento das unidades, só a própria agenda
+      const mine = await service.getNetworkDashboardStats(barber);
+      expect(mine.totalBarbershops).toBe(0);
+      expect(mine.view).toBe('mine');
+      expect(mine.showRevenueToday).toBe(true);
+      expect(mine.showQueue).toBe(true);
     });
 
     it('barbeiro (o "Staffer" do Booksy): só a própria agenda; contato só de quem agendou com ele', async () => {
@@ -1098,6 +1102,10 @@ describe('BarbershopService (integração com o banco)', () => {
         }),
       );
       await denied(service.getWalkIns(basic, A.shopId));
+      const basicHome = await service.getNetworkDashboardStats(basic);
+      expect(basicHome.view).toBe('mine');
+      expect(basicHome.showQueue).toBe(false);
+      expect(basicHome.showRevenueToday).toBe(false);
       await denied(service.getWaitlistEntries(basic, A.shopId));
       await denied(service.getCurrentCashSession(basic, A.shopId));
 
@@ -1167,7 +1175,11 @@ describe('BarbershopService (integração com o banco)', () => {
           endAt: at(day, '08:30').toISOString(),
         }),
       );
-      expect((await service.getNetworkDashboardStats(reception)).totalBarbershops).toBe(0);
+      const desk = await service.getNetworkDashboardStats(reception);
+      expect(desk.totalBarbershops).toBe(0);
+      expect(desk.view).toBe('desk');
+      expect(desk.showQueue).toBe(true);
+      expect(desk.showRevenueToday).toBe(true);
       // Na rede, vê a agenda da unidade inteira — com os nomes (sem telefone)
       const network = await service.getNetworkAppointments(reception);
       expect(network.map((a) => a.id)).toContain(forOther.id);
@@ -1282,6 +1294,8 @@ describe('BarbershopService (integração com o banco)', () => {
       await expect(service.getCashSessions(managerUserId, A.shopId)).resolves.toBeTruthy();
       await expect(service.getNetworkDashboardStats(managerUserId)).resolves.toMatchObject({
         totalBarbershops: 1,
+        view: 'network',
+        showRevenueToday: true,
       });
       // Gerente toca o caixa: despesas e resumo da unidade
       await expect(service.getExpenses(managerUserId, A.shopId)).resolves.toBeTruthy();

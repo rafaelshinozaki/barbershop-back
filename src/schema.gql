@@ -109,16 +109,25 @@ type AdminRecurringPaymentsStats {
 }
 
 type AdvancedReportsType {
+  appointmentsByStatus: [AppointmentStatusCount!]!
+  averageTicket: Float!
+  cancellationRate: Float!
+  cancelledCount: Int!
   newCustomers: Int!
   noShowByBarber: [NoShowByBarberRow!]!
   noShowByService: [NoShowByServiceRow!]!
   noShowRate: Float!
+  productRevenue: Float!
   retentionRate: Float!
   returningCustomers: Int!
+  revenueByBarber: [RevenueByBarberRow!]!
+  salesCount: Int!
+  serviceRevenue: Float!
   topProducts: [TopProductRow!]!
   topServices: [TopServiceRow!]!
   totalCompletedOrNoShow: Int!
   totalNoShow: Int!
+  walkIns: Int!
 }
 
 type ApplyCouponResult {
@@ -186,6 +195,11 @@ type AppointmentServiceType {
   unitPrice: Float!
 }
 
+type AppointmentStatusCount {
+  count: Int!
+  status: String!
+}
+
 type AuthorizeChairRentResultType {
   clientSecret: String
   link: ChairRentType!
@@ -201,8 +215,10 @@ type BackofficeDashboard {
 
 type BackofficeStats {
   activeUsers: Int!
+  appointmentsToday: Int!
   newUsersThisMonth: Int!
   revenue: Float!
+  totalBarbershops: Int!
   totalUsers: Int!
 }
 
@@ -1674,10 +1690,20 @@ type NetworkAgenda {
 }
 
 type NetworkDashboardEvent {
+  appointmentId: Int
+  barberName: String
+  barbershopId: Int
+  barbershopName: String
   customerName: String
   date: String!
+  endAt: String
   id: String!
+  itemLines: [String!]
+  notes: String
+  paymentMethod: String
   saleId: Int
+  serviceNames: [String!]
+  status: String
   subtitle: String
   title: String!
   type: String!
@@ -1685,14 +1711,22 @@ type NetworkDashboardEvent {
 }
 
 type NetworkDashboardStats {
+  appointmentsToday: Int!
   currency: String!
   monthlyRevenue: [MonthlyRevenueItem!]!
   recentEvents: [NetworkDashboardEvent!]!
+  revenueByBarbershop: [ShopRevenueItem!]!
   revenueThisMonth: Float!
+  revenueToday: Float!
+  showQueue: Boolean!
+  showRevenueToday: Boolean!
   totalBarbers: Int!
   totalBarbershops: Int!
   totalProductsSold: Int!
   totalServicesDone: Int!
+  upcomingAppointments: [NetworkDashboardEvent!]!
+  view: String!
+  walkInsWaiting: Int!
 }
 
 type NetworkTheme {
@@ -2267,7 +2301,7 @@ type Query {
   """Agenda da franquia no período visível (até 6 semanas)"""
   networkAgenda(barbershopId: Int, endAt: String!, startAt: String!, status: String): NetworkAgenda!
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
-  networkDashboardStats: NetworkDashboardStats!
+  networkDashboardStats(barbershopId: Int): NetworkDashboardStats!
   onlinePaymentsAvailable: Boolean!
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
@@ -2325,6 +2359,13 @@ type ResourceType {
   name: String!
   type: String!
   updatedAt: String!
+}
+
+type RevenueByBarberRow {
+  barberId: Int!
+  barberName: String!
+  revenue: Float!
+  salesCount: Int!
 }
 
 type ReviewRequestType {
@@ -2506,6 +2547,12 @@ type SharedLocationShopType {
   name: String!
   slug: String!
   state: String!
+}
+
+type ShopRevenueItem {
+  id: Int!
+  name: String!
+  total: Float!
 }
 
 input SignConsentFormInput {

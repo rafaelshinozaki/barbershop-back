@@ -4,7 +4,9 @@ import {
   addDaysStr,
   dayOfWeekOf,
   monthRangeUtc,
+  nextDateStr,
   toZonedParts,
+  zonedTimeToUtc,
 } from '../common/timezone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartLogger } from '../common/logger.util';
@@ -34,11 +36,29 @@ export class BackofficeService {
   }
 
   async getStats() {
-    const [totalUsers, activeUsers, newUsersThisMonth, totalRevenue] = await Promise.all([
+    const timeZone = DEFAULT_TIMEZONE;
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    const dayStart = zonedTimeToUtc(today, 0, timeZone);
+    const dayEnd = zonedTimeToUtc(nextDateStr(today), 0, timeZone);
+    const [
+      totalUsers,
+      activeUsers,
+      newUsersThisMonth,
+      totalRevenue,
+      totalBarbershops,
+      appointmentsToday,
+    ] = await Promise.all([
       this.getTotalUsers(),
       this.getActiveUsers(),
       this.getNewUsersThisMonth(),
       this.getTotalRevenue(),
+      this.prisma.barbershop.count(),
+      this.prisma.appointment.count({
+        where: {
+          startAt: { gte: dayStart, lt: dayEnd },
+          status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] },
+        },
+      }),
     ]);
 
     return {
@@ -46,6 +66,8 @@ export class BackofficeService {
       activeUsers,
       newUsersThisMonth,
       revenue: totalRevenue,
+      totalBarbershops,
+      appointmentsToday,
     };
   }
 
