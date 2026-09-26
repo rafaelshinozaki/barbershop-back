@@ -1,4 +1,6 @@
 import { AccountDeletionResolver } from './resolvers/account-deletion.resolver';
+import { CareerResolver } from './resolvers/career.resolver';
+import { PublicProfessionalResolver } from './resolvers/public-professional.resolver';
 import { Module } from '@nestjs/common';
 import { AuthResolver } from './resolvers/auth.resolver';
 import { UserResolver } from './resolvers/user.resolver';
@@ -84,6 +86,8 @@ import { SocialModule } from '../social/social.module';
     PublicBarberAvatarResolver,
     SocialResolver,
     AccountDeletionResolver,
+    CareerResolver,
+    PublicProfessionalResolver,
   ],
   exports: [
     AuthResolver,

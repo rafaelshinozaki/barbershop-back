@@ -475,6 +475,56 @@ type Card {
   last4: String!
 }
 
+type CareerCurrencyType {
+  commission: Float!
+  currency: String!
+  paid: Float!
+  revenue: Float!
+  tips: Float!
+}
+
+type CareerOverviewType {
+  busiestHour: Int
+  byCurrency: [CareerCurrencyType!]!
+  completedAppointments: Int!
+  isPublic: Boolean!
+  noShows: Int!
+  ownedShops: [CareerShopLinkType!]!
+  pastVisits: [CareerPastVisitType!]!
+  places: [CareerPlaceType!]!
+  returningClients: Int!
+  slug: String
+  topServices: [CareerServiceCountType!]!
+  uniqueClients: Int!
+}
+
+type CareerPastVisitType {
+  firstName: String!
+  occurredAt: DateTime!
+  shopName: String!
+}
+
+type CareerPlaceType {
+  active: Boolean!
+  barberId: Int!
+  commissionPercent: Float
+  endedAt: DateTime
+  shopId: Int!
+  shopName: String!
+  staffType: String
+  startedAt: DateTime!
+}
+
+type CareerServiceCountType {
+  count: Int!
+  name: String!
+}
+
+type CareerShopLinkType {
+  name: String!
+  slug: String!
+}
+
 type CashSessionType {
   barbershopId: Int!
   closedAt: String
@@ -1614,6 +1664,7 @@ type Mutation {
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
+  setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -2187,6 +2238,13 @@ type PublicPortfolioPhotoType {
   url: String!
 }
 
+type PublicProfessionalType {
+  completedAppointments: Int!
+  fullName: String!
+  owns: [CareerShopLinkType!]!
+  worksAt: [CareerShopLinkType!]!
+}
+
 type PublicServiceType {
   category: TreatmentCategory!
   depositAmount: Float
@@ -2303,6 +2361,7 @@ type Query {
   me: User!
   myBarbershops: [Barbershop!]!
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
+  myCareer: CareerOverviewType!
   myClientSubscriptions: [ClientSubscriptionType!]!
   myCoupons: [Coupon!]!
   myNetwork: Network
@@ -2331,6 +2390,7 @@ type Query {
   publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
   publicCities: [String!]!
   publicNextAvailableSlot(barberId: Int, barbershopId: Int!, fromDate: String, serviceIds: [Int!]!): PublicNextSlotType
+  publicProfessional(slug: String!): PublicProfessionalType!
   publicServiceCategories: [TreatmentCategory!]!
   recurringPaymentsStats: UserRecurringPaymentsStats!
   reportedReviews: [ManagedReviewType!]!

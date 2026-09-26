@@ -3,6 +3,7 @@ import { AccountDeletionService } from './account-deletion.service';
 import { SharedLocationService } from './shared-location.service';
 import { ChairRentService, ChairRentScheduler, ChairRentProcessor } from './chair-rent.service';
 import { PayrollService } from './payroll.service';
+import { CareerService } from './career.service';
 import { ReviewRequestService } from './review-request.service';
 import { ClosureService } from './closure.service';
 import { ReviewManagementService } from './review-management.service';
@@ -53,6 +54,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SharedLocationService,
     ChairRentService,
     PayrollService,
+    CareerService,
     CalendarService,
     ChairRentScheduler,
     ChairRentProcessor,
@@ -84,6 +86,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SharedLocationService,
     ChairRentService,
     PayrollService,
+    CareerService,
     CalendarService,
   ],
 })

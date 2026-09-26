@@ -113,6 +113,7 @@ Registrado em 2026-09-25 como direção de produto para depois. A ideia é o app
 - **Locais de atendimento:** barbearias onde atende hoje, com mapa, e se **atende a domicílio** (área/raio e taxa de deslocamento).
 - Nota média e comentários (avaliação do atendimento, não só da unidade), com resposta do profissional.
 - Histórico profissional: **franquias e barbearias onde já trabalhou**, com período, vindo dos vínculos encerrados. O profissional escolhe se mostra.
+- A página é de **profissional**. Se ele também for dono de um estabelecimento, um elo aponta para a página dessa unidade ("dono de …"), sem transformar o perfil num perfil de dono.
 - Botão de agendar com ele: escolhe o local (ou domicílio) e cai na agenda única.
 - SEO igual ao da página da unidade: meta tags, imagem de compartilhamento e sitemap.
 
@@ -222,6 +223,7 @@ Muitos profissionais trabalham numa barbearia e também atendem por fora: em cas
 - total de atendimentos, serviços mais feitos, faturamento gerado e comissão/pagamentos recebidos (vêm do módulo de pagamento da equipe, que já existe);
 - nota média e evolução, clientes que voltam, horários mais cheios;
 - tudo junto: o que fez nas barbearias **e** por conta própria, num lugar só.
+- De uma unidade da qual ele **já saiu**, cada atendimento antigo mostra só o primeiro nome e a data. Sobrenome, e-mail, telefone e o resto da ficha ficam na unidade. Na unidade em que ele ainda trabalha, a ficha continua completa.
 - É o que prende o profissional à plataforma, qualquer que seja a barbearia onde ele esteja, e é o que alimenta a página pública (item 2).
 
 **Agenda "por conta própria" (modo solo)**
@@ -230,11 +232,11 @@ Muitos profissionais trabalham numa barbearia e também atendem por fora: em cas
 - Entra na **agenda única** (item 1): não dá para marcar um atendimento solo no horário em que ele está escalado na barbearia.
 
 **Cota grátis por número de atendimentos, não por faturamento**
-- Até **N atendimentos concluídos por conta própria por mês** (ex.: 30–40) é **grátis para sempre**.
+- Até **40 atendimentos concluídos por conta própria por mês** é **grátis para sempre**. Quarenta é cerca de dois por dia nos dias em que ele atende fora de uma unidade: cobre o extra e quem está começando, e fica pequeno demais para uma barbearia disfarçada (quem faz o volume de uma unidade assina o plano dela).
 - Contar atendimentos é mais simples e mais difícil de burlar do que faturamento declarado: o preço pode ser registrado a menos, mas o atendimento está na agenda.
 - **Só contam os atendimentos solo.** O que ele faz dentro de uma barbearia que já paga plano nunca conta, porque já está coberto.
-- O painel mostra "você fez Y de N atendimentos por conta própria este mês", com aviso ao chegar perto do limite.
-- **Acima de N:** o profissional escolhe entre
+- O painel mostra "você fez Y de 40 atendimentos por conta própria este mês", com aviso ao chegar perto do limite.
+- **Acima de 40:** o profissional escolhe entre
   - o plano **Pro** (preço fixo baixo, ex.: R$ 39–59/mês, sem limite de atendimentos solo, com destaque e domicílio com raio maior); ou
   - continuar grátis e, naquele mês, não marcar mais atendimentos solo pelo sistema. Os que já estavam marcados continuam, só novos param.
 
@@ -291,7 +293,7 @@ O produto não deve ficar preso a "barbearia". Salões de beleza, esmalterias, e
 - **Busca e marketplace por categoria**, não só por "barbearias perto de mim": "manicure a domicílio em Campinas", "design de sobrancelha hoje".
 - **Marca e domínio:** o nome "Barbershop" e o código cheio de `barbershop*` funcionam por dentro, mas o **produto** que o público vê precisa de um nome que sirva para beleza em geral. Renomear o código não é necessário: a mudança é no que aparece para o usuário.
 
-**Monetização:** o mesmo modelo para qualquer área. Planos por estabelecimento contando quem atende (item 7), profissional solo grátis até N atendimentos/mês (item 8) e cliente final sem pagar nada.
+**Monetização:** o mesmo modelo para qualquer área. Planos por estabelecimento contando quem atende (item 7), profissional solo grátis até 40 atendimentos/mês (item 8) e cliente final sem pagar nada.
 
 ### 11. Depois do atendimento: chat, avaliação dos três lados, histórico e caixinha
 Registrado em 2026-09-26. O modelo é o do iFood no chat (conversa presa ao pedido) e o do Airbnb no perfil e nos selos (cada um vê o que a relação permite, e o selo vem do uso real).
@@ -353,8 +355,8 @@ Princípio: **conta de profissional é grátis**. Só paga quem tira valor de ve
 | Cliente final | Nunca | — |
 | Profissional dentro de barbearia/franquia com plano ativo | Não | Coberto pelo plano da unidade |
 | Profissional: panorama de carreira e página pública | Não | Sempre grátis |
-| Profissional solo até **N atendimentos/mês** por conta própria | Não | Grátis para sempre (item 8) |
-| Profissional solo acima de **N/mês** | Opcional | Plano **Pro**, fixo e baixo, **ou** para de marcar atendimentos solo novos naquele mês |
+| Profissional solo até **40 atendimentos/mês** por conta própria | Não | Grátis para sempre (item 8) |
+| Profissional solo acima de **40/mês** | Opcional | Plano **Pro**, fixo e baixo, **ou** para de marcar atendimentos solo novos naquele mês |
 | Dono/gerente/recepção | Não | Ligados a uma unidade pagante; se atendem, seguem o item 7 |
 | Barbearia/franquia | Sim | Planos atuais, com o limite passando a contar só quem atende (item 7) |
 
@@ -376,12 +378,13 @@ Proposta, a validar com números:
 O que tiramos disso:
 1. Cobrar **por quem atende** faz sentido, e é o que o item 7 propõe.
 2. **Não copiar o Boost de 30%.** Se um dia cobrarmos por cliente novo vindo do marketplace, que seja uma taxa pequena com teto baixo, e anunciar isso como diferencial.
-3. O **profissional solo grátis até N atendimentos** é algo que o Booksy não tem (lá o solo paga os mesmos US$ 29,99), e é o que traz o profissional para a plataforma antes de ele ter barbearia.
+3. O **profissional solo grátis até 40 atendimentos** é algo que o Booksy não tem (lá o solo paga os mesmos US$ 29,99), e é o que traz o profissional para a plataforma antes de ele ter barbearia.
 
 ### Riscos e pontos em aberto
 - **Identidade do profissional:** hoje cada unidade tem o próprio `Barber`. Unificar sem quebrar escala, comissão, repasse e histórico é a maior mudança de modelo de dados. Fazer com migração cuidadosa: criar `Professional` e ligar os `Barber` existentes pelo `userId`.
 - **Conflito entre unidades:** precisa ser checado no banco (como o conflito atual por barbeiro) considerando todos os `Barber` do mesmo profissional, e o deslocamento entre locais também deveria contar.
-- **Quem é "dono" do cliente:** o cliente que o profissional levou para a barbearia continua na base da barbearia quando ele sai? Definir regras de portabilidade (LGPD: o dado é do cliente) e de não-aliciamento.
+- **Quem é "dono" do cliente:** a ficha fica na barbearia. Quando ele sai, a lista, o telefone, o e-mail, o sobrenome e a ficha técnica continuam só na unidade. No panorama dele, cada atendimento antigo mostra **só o primeiro nome e a data** — sem meio de contato. A nota que segue é a **dele**, dos atendimentos que ele fez. A nota da unidade continua sendo da unidade. Ele escolhe se o lugar antigo aparece no perfil público.
+- **Dono que também é o barbeiro** (saiu de uma unidade, abriu a própria e assina o plano): é a mesma conta. Na unidade nova ele é dono e, com "Eu também atendo", profissional da casa. No perfil público ele aparece como profissional, com um elo para o estabelecimento de que é dono. A nota e o histórico de cortes são do `Professional`, somando onde ele já trabalhou e onde trabalha agora. Sair não apaga o vínculo: ele fica inativo e o histórico permanece. O que apaga o vínculo é reingresso na mesma unidade (libera a vaga) ou exclusão da conta.
 - **Avaliação dos três lados** (item 11: cliente avalia profissional e unidade; profissional e unidade avaliam o cliente): antifraude (só quem teve atendimento concluído), moderação e direito de resposta. A nota do cliente continua sujeita à validação jurídica.
 - **Caixinha:** dinheiro e Pix registrados na mão não têm taxa. A que passa pelo Stripe usa a mesma decisão de repasse do pagamento no app. Gorjeta é rendimento de quem recebe: nota fiscal fica junto da decisão fiscal do H4.
 - **Relógio de guarda** (item 11): a lei não dá um X único. Cada tipo tem propósito, prazo máximo e, no fiscal, prazo mínimo. Vale LGPD e, para pessoa na União Europeia, o GDPR. Os números da tabela são proposta até o jurídico confirmar.
@@ -403,12 +406,12 @@ Sucesso: nenhuma unidade barrada no limite por causa de equipe administrativa, e
 Objetivo: o profissional passa a ter vida própria na plataforma, e o modo solo grátis traz gente nova.
 - **Identidade `Professional` + agenda única** com conflito entre unidades (item 1) ✅: um `Professional` por conta, os `Barber` existentes ligados por `userId`. Atendimento no mesmo horário em outra unidade já era recusado; a escala semanal sobreposta também passa a ser.
 - **Cadastro com escolha de tipo + "Perfis e privacidade"** (itens 5 e 6), começando pelo profissional dentro do `User`. Unificar com o `ClientAccount` fica para o H3.
-- **Panorama de carreira**, sempre grátis (item 8).
-- **Modo solo** com cota de N atendimentos/mês, plano Pro e regras anti-abuso (item 8).
+- **Panorama de carreira** ✅, sempre grátis (item 8): `myCareer` junta as unidades em que a pessoa ainda está ligada. De uma unidade da qual ela saiu, cada atendimento antigo mostra só o primeiro nome e a data. O perfil público (`/p/:slug`) nasce oculto; quando ela liga, a página é de profissional e, se for dona, aponta para o estabelecimento. A nota pessoal ainda não existe (a avaliação hoje é da unidade).
+- **Modo solo** com cota de **40** atendimentos concluídos por mês, plano Pro e regras anti-abuso (item 8). O preço do Pro continua em aberto.
 - **Importação de dados** de outros sistemas (Booksy, Trinks, planilha): clientes, serviços e agenda. É a maior barreira para migrar.
 - **Indicação entre profissionais**, que ganham meses de Pro.
 
-Pré-requisitos: H1 (métricas), decisão sobre N e o preço do Pro. Sucesso: X profissionais solo ativos por mês, e parte deles convertendo para Pro ou levando a barbearia para a plataforma.
+Pré-requisitos: H1 (métricas) e o preço do Pro. A cota grátis é 40. Sucesso: X profissionais solo ativos por mês, e parte deles convertendo para Pro ou levando a barbearia para a plataforma.
 
 #### H3. Vitrine: ser encontrado
 Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.
@@ -443,7 +446,7 @@ Objetivo: abrir de verdade, começando pequeno.
 Sucesso: liquidez na cidade piloto (a maioria das buscas encontra horário em até 48h), retenção dos dois lados; só então replicar para outras cidades.
 
 #### Decisões em aberto (definir antes do horizonte indicado)
-- **N** da cota do modo solo e **preço do Pro** (H2); se a cota é por atendimentos ou por faturamento.
+- **Preço do Pro** (H2). A cota grátis já está definida: **40 atendimentos concluídos por conta própria por mês**, não por faturamento.
 - **Marca** que sirva para beleza em geral (H1/H3).
 - **Pagamento no app e caixinha pelo Stripe**: Connect opcional, Pix com split ou continuar manual, com o repasse da gorjeta na mesma regra (H4).
 - **Cobrar por cliente novo do marketplace?** Se sim, taxa pequena com teto baixo, nunca os 30% do Booksy (H5).

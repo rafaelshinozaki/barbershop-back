@@ -772,6 +772,9 @@ model Professional {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    Int      @unique
+  // Página pública /p/:slug. O padrão é oculto: só entra no ar se a pessoa ligar.
+  slug      String?  @unique
+  isPublic  Boolean  @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
 }
