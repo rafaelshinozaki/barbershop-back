@@ -12,6 +12,7 @@ import { langForCountry, LOCALE, normalizeLang } from '../email/language';
 import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { ModerationService } from './moderation.service';
 
 export type ChatKind = 'unit' | 'professional';
 export const CHAT_KINDS: ChatKind[] = ['unit', 'professional'];
@@ -50,6 +51,7 @@ export class ChatService {
     private readonly barbershops: BarbershopService,
     private readonly queue: NotificationQueueService,
     private readonly realtime: RealtimeService,
+    private readonly moderation: ModerationService,
   ) {}
 
   private loadAppointment(appointmentId: number) {
@@ -76,6 +78,7 @@ export class ChatService {
             name: true,
             email: true,
             clientAccountId: true,
+            blockedAt: true,
             clientAccount: { select: { email: true, name: true, language: true, deletedAt: true } },
           },
         },
@@ -148,7 +151,14 @@ export class ChatService {
         kind,
         title: this.titleFor(appt, kind, viewer),
         startAt: appt.startAt,
-        canSend: appt.status !== 'CANCELLED',
+        // Cancelado, encerrado pela moderação ou cliente bloqueado pela unidade: só leitura
+        canSend:
+          appt.status !== 'CANCELLED' &&
+          !thread?.closedAt &&
+          !(viewer.side === 'client' && appt.customer.blockedAt),
+        reported: !!thread?.retainUntil,
+        closed: !!thread?.closedAt,
+        blocked: !!appt.customer.blockedAt,
         messages: (thread?.messages ?? []).map((m) => ({
           id: m.id,
           createdAt: m.createdAt,
@@ -177,6 +187,16 @@ export class ChatService {
     if (!kinds.includes(kind as ChatKind)) throw new ForbiddenException('Conversa indisponível');
     if (appt.status === 'CANCELLED') {
       throw new BadRequestException('Atendimento cancelado: a conversa não recebe mensagens.');
+    }
+    if (viewer.side === 'client' && appt.customer.blockedAt) {
+      throw new ForbiddenException('A unidade não recebe mensagens deste cliente.');
+    }
+    const existing = await this.prisma.chatThread.findUnique({
+      where: { appointmentId_kind: { appointmentId, kind } },
+      select: { closedAt: true },
+    });
+    if (existing?.closedAt) {
+      throw new BadRequestException('Conversa encerrada pela moderação.');
     }
     const now = new Date();
     const thread = await this.prisma.chatThread.upsert({
@@ -308,6 +328,31 @@ export class ChatService {
     } catch (error) {
       this.logger.warn(`Aviso de mensagem não enviado (conversa ${thread.id}): ${error}`);
     }
+  }
+
+  /**
+   * Denunciar a conversa (quem participa dela): vai pra fila de moderação e
+   * o texto fica guardado até a decisão, mesmo depois dos 12 meses.
+   */
+  async report(
+    appointmentId: number,
+    kind: string,
+    input: { reason: string; details?: string | null },
+    viewer: ChatViewer,
+    barbershopId?: number,
+  ) {
+    const { kinds } = await this.appointmentFor(appointmentId, viewer, barbershopId);
+    if (!kinds.includes(kind as ChatKind)) throw new ForbiddenException('Conversa indisponível');
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { appointmentId_kind: { appointmentId, kind } },
+      select: { id: true },
+    });
+    if (!thread) throw new NotFoundException('Conversa sem mensagens');
+    const reporter =
+      viewer.side === 'staff'
+        ? `staff:${viewer.userId}`
+        : `client:${viewer.clientAccountId ?? viewer.manageToken ?? ''}`;
+    return this.moderation.reportChatThread(thread.id, input, reporter);
   }
 
   /** Caixa de entrada da equipe: as conversas de que a pessoa participa, mais recentes primeiro */

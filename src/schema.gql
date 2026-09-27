@@ -394,6 +394,10 @@ type Barbershop {
 
 type BarbershopCustomer {
   birthDate: String
+
+  """Bloqueado pela unidade: não agenda online nem manda mensagem"""
+  blockedAt: DateTime
+  blockedReason: String
   createdAt: String!
   email: String
   id: Int!
@@ -690,12 +694,23 @@ type ChatMessageType {
 type ChatThreadType {
   appointmentId: Int!
 
-  """Atendimento cancelado não recebe mensagem"""
+  """Cliente bloqueado pela unidade"""
+  blocked: Boolean!
+
+  """
+  Atendimento cancelado, conversa encerrada pela moderação ou cliente bloqueado: só leitura
+  """
   canSend: Boolean!
+
+  """Encerrada pela moderação"""
+  closed: Boolean!
 
   """unit (cliente e unidade) | professional (cliente e profissional)"""
   kind: String!
   messages: [ChatMessageType!]!
+
+  """Denunciada e esperando a moderação (o texto fica guardado)"""
+  reported: Boolean!
   startAt: DateTime!
 
   """
@@ -1741,6 +1756,7 @@ type Mutation {
   clientLogin(input: ClientLoginInput!): ClientAccountType!
   clientLogout: Boolean!
   clientOpenStaffArea: Boolean!
+  clientReportChat(appointmentId: Int!, details: String, kind: String!, manageToken: String, reason: String!): Boolean!
   clientResendVerificationEmail: Boolean!
   clientResetPassword(input: ClientResetPasswordInput!): Boolean!
   clientSendChatMessage(appointmentId: Int!, body: String!, kind: String!, manageToken: String): ChatMessageType!
@@ -1858,6 +1874,7 @@ type Mutation {
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
   replyToProfessionalReview(reply: String, reviewId: Int!): Boolean!
   replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
+  reportChat(appointmentId: Int!, barbershopId: Int!, details: String, kind: String!, reason: String!): Boolean!
   reportContent(details: String, reason: String!, targetId: Int!, targetType: String!): Boolean!
   reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
@@ -1881,6 +1898,9 @@ type Mutation {
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
+
+  """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
+  setCustomerBlocked(barbershopId: Int!, blocked: Boolean!, customerId: Int!, reason: String): BarbershopCustomer!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!

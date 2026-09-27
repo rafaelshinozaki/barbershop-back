@@ -1526,6 +1526,57 @@ export class BarbershopService {
     await this.prisma.customer.delete({ where: { id: customerId } });
   }
 
+  /**
+   * Bloqueio de cliente pela unidade (gerente para cima): o cliente
+   * bloqueado não agenda online em nenhuma unidade da rede nem manda
+   * mensagem no chat. O atendimento no balcão continua possível.
+   */
+  async setCustomerBlocked(
+    userId: number,
+    barbershopId: number,
+    customerId: number,
+    blocked: boolean,
+    reason?: string | null,
+  ) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId: barbershop.networkId },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    const trimmed = reason?.trim().slice(0, 500) || null;
+    const updated = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: blocked
+        ? {
+            blockedAt: customer.blockedAt ?? new Date(),
+            blockedReason: trimmed,
+            blockedByUserId: userId,
+          }
+        : { blockedAt: null, blockedReason: null, blockedByUserId: null },
+    });
+    return this.hideContact(await this.contactVisibility(userId, barbershop), updated);
+  }
+
+  /** Agendamento online: recusa cliente bloqueado (pelo telefone, e-mail ou conta) */
+  private async ensureNotBlocked(
+    networkId: number,
+    input: { customerPhone: string; customerEmail?: string; clientAccountId?: number },
+  ) {
+    const or: Prisma.CustomerWhereInput[] = [{ phone: input.customerPhone }];
+    const email = input.customerEmail?.trim();
+    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    if (input.clientAccountId) or.push({ clientAccountId: input.clientAccountId });
+    const blocked = await this.prisma.customer.findFirst({
+      where: { networkId, blockedAt: { not: null }, OR: or },
+      select: { id: true },
+    });
+    if (blocked) {
+      throw new ForbiddenException(
+        'Não é possível agendar online nesta unidade. Fale diretamente com a unidade.',
+      );
+    }
+  }
+
   // ============ BARBER ============
 
   /** Confere a vaga do plano pra alguém que vai passar a atender (dono não ocupa) */
@@ -3822,6 +3873,8 @@ export class BarbershopService {
     if (!isNaN(requestedStart.getTime())) {
       await assertSoloBookingAllowed(this.prisma, barbershop.id, requestedStart);
     }
+
+    await this.ensureNotBlocked(barbershop.networkId, input);
 
     const returningCustomer = await this.prisma.customer.findFirst({
       where: { networkId: barbershop.networkId, phone: input.customerPhone },

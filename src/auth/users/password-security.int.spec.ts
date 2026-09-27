@@ -182,4 +182,17 @@ describe('Senha: sessões e link de redefinição (integração)', () => {
     // Os dois passam por um bcrypt (dezenas de ms); sem conta não pode ser instantâneo
     expect(missing).toBeGreaterThan(wrong / 3);
   });
+
+  it('desativar a conta derruba as sessões abertas; reativar não abre nada', async () => {
+    await openSession('desativa-a');
+    await openSession('desativa-b');
+    await service.setUserActive(userId, false);
+    expect(await sessions()).toEqual([]);
+    await openSession('volta');
+    await service.setUserActive(userId, true);
+    expect(await sessions()).toEqual([`volta-${RUN}`]);
+    await service.setMultipleUsersActive([userId], false);
+    expect(await sessions()).toEqual([]);
+    await service.setUserActive(userId, true);
+  });
 });

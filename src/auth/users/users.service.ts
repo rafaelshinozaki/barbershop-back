@@ -2049,6 +2049,8 @@ export class UserService {
 
   async setUserActive(userId: number, active: boolean) {
     await this.prisma.user.update({ where: { id: userId }, data: { isActive: active } });
+    // Desativada: as sessões já abertas caem na hora (a área do cliente ligada continua)
+    if (!active) await this.prisma.activeSession.deleteMany({ where: { userId } });
   }
 
   async setMultipleUsersActive(userIds: number[], active: boolean) {
@@ -2066,6 +2068,8 @@ export class UserService {
         isActive: active,
       },
     });
+
+    if (!active) await this.prisma.activeSession.deleteMany({ where: { userId: { in: userIds } } });
 
     this.logger.log(`Updated ${result.count} users to active status: ${active}`);
     return {
