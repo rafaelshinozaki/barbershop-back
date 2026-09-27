@@ -16,7 +16,13 @@ const HOUR = 3_600_000;
 
 describe('Pedido de avaliação (integração)', () => {
   const prisma = new PrismaService();
-  const sent: Array<{ to: string; template: string; context: any; headers?: any }> = [];
+  const sent: Array<{
+    to: string;
+    template: string;
+    context: any;
+    headers?: any;
+    subject: Record<string, string>;
+  }> = [];
   const posted: unknown[][] = [];
   const stub = {} as never;
   const barbershops = new BarbershopService(
@@ -133,6 +139,7 @@ describe('Pedido de avaliação (integração)', () => {
 
   afterAll(async () => {
     await prisma.review.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: shopId } });
     await prisma.appointmentService.deleteMany({
       where: { appointment: { barbershopId: shopId } },
     });
@@ -178,18 +185,30 @@ describe('Pedido de avaliação (integração)', () => {
     void tooOld;
   });
 
-  it('não manda pra quem não tem e-mail, se descadastrou, já avaliou ou recebeu outro há pouco', async () => {
+  it('não manda pra quem não tem e-mail, se descadastrou ou já avaliou esse atendimento', async () => {
     await appointment((await customer({ email: null })).id, 3);
     const optedOut = await customer({ marketingOptOut: true });
     await appointment(optedOut.id, 3);
 
+    // Avaliou pelo link que a equipe mandou antes do e-mail sair
     const reviewed = await customer();
-    await prisma.review.create({
-      data: { barbershopId: shopId, customerId: reviewed.id, rating: 5 },
+    const reviewedAppt = await appointment(reviewed.id, 3);
+    await reviewRequests.submitReview(createReviewToken(reviewedAppt.id), {
+      professionalRating: 5,
     });
-    await appointment(reviewed.id, 3);
 
+    // Não concluído não conta
+    await appointment((await customer()).id, 3, 'NO_SHOW');
+
+    await reviewRequests.enqueueDueRequests();
+    expect(ours()).toHaveLength(0);
+  });
+
+  it('um e-mail por atendimento concluído: cliente de sempre recebe de novo, mesmo já tendo avaliado a unidade', async () => {
     const regular = await customer();
+    await prisma.review.create({
+      data: { barbershopId: shopId, customerId: regular.id, rating: 5 },
+    });
     const earlier = await appointment(regular.id, 24 * 20);
     await prisma.appointment.update({
       where: { id: earlier.id },
@@ -197,11 +216,11 @@ describe('Pedido de avaliação (integração)', () => {
     });
     await appointment(regular.id, 3);
 
-    // Não concluído não conta
-    await appointment((await customer()).id, 3, 'NO_SHOW');
-
     await reviewRequests.enqueueDueRequests();
-    expect(ours()).toHaveLength(0);
+    const mine = sentTo(regular.email);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].context).toMatchObject({ BarberName: 'Ana', Solo: false });
+    expect(mine[0].subject.pt).toBe('Como foi com Ana em Barbearia Estrela?');
   });
 
   it('avaliar pelo link, sem conta: cria, reenviar atualiza a mesma; aparece na página', async () => {
@@ -218,8 +237,8 @@ describe('Pedido de avaliação (integração)', () => {
       rating: null,
     });
 
-    await reviewRequests.submitReview(token, 4, '  Ótimo corte  ');
-    await reviewRequests.submitReview(token, 5, 'Voltei a pensar: perfeito');
+    await reviewRequests.submitReview(token, { rating: 4, comment: '  Ótimo corte  ' });
+    await reviewRequests.submitReview(token, { rating: 5, comment: 'Voltei a pensar: perfeito' });
     const reviews = await prisma.review.findMany({
       where: { barbershopId: shopId, customerId: c.id },
     });
@@ -278,7 +297,7 @@ describe('Pedido de avaliação (integração)', () => {
       data: { barbershopId: shopId, clientAccountId: account.id, rating: 2 },
     });
     const appt = await appointment(c.id, 3);
-    await reviewRequests.submitReview(createReviewToken(appt.id), 5);
+    await reviewRequests.submitReview(createReviewToken(appt.id), { rating: 5 });
     const reviews = await prisma.review.findMany({
       where: { barbershopId: shopId, OR: [{ clientAccountId: account.id }, { customerId: c.id }] },
     });
@@ -299,13 +318,121 @@ describe('Pedido de avaliação (integração)', () => {
       reviewRequests.getReviewRequest(createAppointmentToken(done.id)),
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
-      reviewRequests.submitReview(createReviewToken(other.id), 5),
+      reviewRequests.submitReview(createReviewToken(other.id), { rating: 5 }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    await expect(reviewRequests.submitReview(createReviewToken(done.id), 6)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
     await expect(
-      reviewRequests.submitReview(createReviewToken(done.id), 5, 'x'.repeat(1001)),
+      reviewRequests.submitReview(createReviewToken(done.id), { rating: 6 }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      reviewRequests.submitReview(createReviewToken(done.id), { professionalRating: 0 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      reviewRequests.submitReview(createReviewToken(done.id), {
+        rating: 5,
+        comment: 'x'.repeat(1001),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // Sem nota nenhuma
+    await expect(
+      reviewRequests.submitReview(createReviewToken(done.id), {}),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('avalia o profissional (uma por atendimento, soma pela conta) e a unidade no mesmo link', async () => {
+    const proUser = await prisma.user.create({
+      data: {
+        email: `rev-pro-${RUN}@test.local`,
+        password: 'x',
+        fullName: 'Bruno Profissional',
+        idDocNumber: `${RUN}pro`.slice(-20),
+        phone: `+5531${RUN}`.slice(0, 20),
+        gender: 'male',
+        birthdate: new Date('1990-01-01'),
+        readTerms: true,
+        roleId: (await prisma.role.findFirstOrThrow({ where: { name: 'BarbershopOwner' } })).id,
+      },
+    });
+    const professional = await prisma.professional.create({ data: { userId: proUser.id } });
+    const bruno = await prisma.barber.create({
+      data: {
+        barbershopId: shopId,
+        name: 'Bruno',
+        phone: '11922222222',
+        userId: proUser.id,
+        professionalId: professional.id,
+      },
+    });
+    const c = await customer();
+    const appt = await prisma.appointment.create({
+      data: {
+        barbershopId: shopId,
+        customerId: c.id,
+        barberId: bruno.id,
+        startAt: new Date(Date.now() - 4 * HOUR),
+        endAt: new Date(Date.now() - 3 * HOUR),
+        status: 'COMPLETED',
+      },
+    });
+    const token = createReviewToken(appt.id);
+
+    await reviewRequests.submitReview(token, {
+      professionalRating: 4,
+      professionalComment: ' Caprichou ',
+      rating: 3,
+      comment: 'Recepção demorou',
+    });
+    // Reenviar muda a mesma (uma por atendimento)
+    await reviewRequests.submitReview(token, {
+      professionalRating: 5,
+      professionalComment: 'Caprichou',
+    });
+    const proReviews = await prisma.professionalReview.findMany({
+      where: { appointmentId: appt.id },
+    });
+    expect(proReviews).toHaveLength(1);
+    expect(proReviews[0]).toMatchObject({
+      rating: 5,
+      comment: 'Caprichou',
+      barberId: bruno.id,
+      professionalId: professional.id,
+      customerId: c.id,
+    });
+    const unitReview = await prisma.review.findFirstOrThrow({
+      where: { barbershopId: shopId, customerId: c.id },
+    });
+    expect(unitReview).toMatchObject({ rating: 3, comment: 'Recepção demorou' });
+    expect(await reviewRequests.getReviewRequest(token)).toMatchObject({
+      solo: false,
+      rating: 3,
+      professionalRating: 5,
+      professionalComment: 'Caprichou',
+    });
+
+    await prisma.professionalReview.deleteMany({ where: { barberId: bruno.id } });
+    await prisma.appointment.delete({ where: { id: appt.id } });
+    await prisma.barber.delete({ where: { id: bruno.id } });
+    await prisma.professional.delete({ where: { id: professional.id } });
+  });
+
+  it('modo solo: a nota do profissional vale também pra página da unidade', async () => {
+    await prisma.barbershop.update({ where: { id: shopId }, data: { practiceKind: 'solo' } });
+    try {
+      const c = await customer();
+      const appt = await appointment(c.id, 3);
+      const token = createReviewToken(appt.id);
+      expect((await reviewRequests.getReviewRequest(token)).solo).toBe(true);
+      await reviewRequests.submitReview(token, {
+        professionalRating: 4,
+        professionalComment: 'Bom',
+      });
+      expect(
+        await prisma.review.findFirstOrThrow({ where: { barbershopId: shopId, customerId: c.id } }),
+      ).toMatchObject({ rating: 4, comment: 'Bom' });
+      expect(
+        await prisma.professionalReview.findUniqueOrThrow({ where: { appointmentId: appt.id } }),
+      ).toMatchObject({ rating: 4, comment: 'Bom', professionalId: null });
+    } finally {
+      await prisma.barbershop.update({ where: { id: shopId }, data: { practiceKind: 'shop' } });
+    }
   });
 });

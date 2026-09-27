@@ -1648,6 +1648,7 @@ type Mutation {
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
+  replyToProfessionalReview(reply: String, reviewId: Int!): Boolean!
   replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
   reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
@@ -1679,7 +1680,17 @@ type Mutation {
   startDepositPayment(token: String!): DepositPaymentType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
-  submitReviewByLink(comment: String, rating: Int!, token: String!): Boolean!
+  submitReviewByLink(
+    comment: String
+    professionalComment: String
+
+    """Nota do profissional que atendeu"""
+    professionalRating: Int
+
+    """Nota da unidade"""
+    rating: Int
+    token: String!
+  ): Boolean!
   subscribeToPlan(input: SubscribeToPlanInput!): SubscribeToPlanResultType!
   syncPlansWithStripe: Boolean!
   terminateSession(sessionId: String!): Boolean!
@@ -1716,6 +1727,28 @@ type Mutation {
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
   waiveNoShowFee(barbershopId: Int!, id: Int!): Boolean!
+}
+
+type MyProfessionalReviewType {
+  appointmentAt: DateTime!
+  comment: String
+  createdAt: DateTime!
+
+  """Ocultada pela moderação (fora da página e da nota)"""
+  hidden: Boolean!
+  id: Int!
+  rating: Int!
+  repliedAt: DateTime
+
+  """Resposta do profissional"""
+  reply: String
+
+  """Primeiro nome e inicial do sobrenome"""
+  reviewerName: String!
+  serviceNames: String!
+
+  """Unidade do atendimento"""
+  shopName: String!
 }
 
 type MyReviewType {
@@ -2302,13 +2335,38 @@ type PublicPortfolioPhotoType {
   url: String!
 }
 
+type PublicProfessionalReviewType {
+  comment: String
+  createdAt: DateTime!
+  id: Int!
+  rating: Int!
+  repliedAt: DateTime
+
+  """Resposta do profissional"""
+  reply: String
+
+  """Primeiro nome e inicial do sobrenome"""
+  reviewerName: String!
+
+  """Unidade do atendimento"""
+  shopName: String!
+}
+
 type PublicProfessionalType {
+  """Nota média (null: oculta ou sem avaliação)"""
+  averageRating: Float
   completedAppointments: Int
   email: String
   fullName: String!
   owns: [CareerShopLinkType!]!
   phone: String
   photoUrl: String
+
+  """Quantas avaliações (null: oculta)"""
+  reviewCount: Int
+
+  """Vazio se o profissional esconde"""
+  reviews: [PublicProfessionalReviewType!]!
   visibility: String!
   workedAt: [CareerShopLinkType!]!
   worksAt: [CareerShopLinkType!]!
@@ -2441,6 +2499,7 @@ type Query {
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
   myProReferral: ProReferralType!
+  myProfessionalReviews: [MyProfessionalReviewType!]!
   myProfilePrivacy: ProfilePrivacyType!
   myReview(barbershopId: Int!): MyReviewType
   mySoloPractice: SoloPracticeType!
@@ -2528,10 +2587,17 @@ type ReviewRequestType {
 
   """Primeiro nome do cliente"""
   customerName: String!
+  professionalComment: String
 
-  """Nota que o cliente já deu (editar)"""
+  """Nota que já deu ao profissional (editar)"""
+  professionalRating: Int
+
+  """Nota que o cliente já deu à unidade (editar)"""
   rating: Int
   serviceNames: String!
+
+  """Modo solo: não há unidade, a nota é só do profissional"""
+  solo: Boolean!
   startAt: String!
   timezone: String
 }

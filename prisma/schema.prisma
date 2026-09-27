@@ -561,6 +561,7 @@ model Barbershop {
   payEntries      BarberPayEntry[]
   payouts         BarberPayout[]
   reviews         Review[]
+  professionalReviews ProfessionalReview[]
   // Espaço compartilhado (cadeira alugada, como o "Shared Location" do
   // Booksy): profissionais independentes, cada um com o seu negócio
   sharedLocationMembers SharedLocationMember[] @relation("SharedLocationHost")
@@ -626,6 +627,7 @@ model Customer {
   referralReceived CustomerReferral?  @relation("ReferralReceived")
   noShowFees       NoShowFee[]
   reviews          Review[]
+  professionalReviews ProfessionalReview[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -764,6 +766,36 @@ model Review {
   @@index([barbershopId])
 }
 
+// Avaliação do profissional num atendimento concluído (uma por atendimento),
+// feita pelo link do e-mail de fechamento. Soma entre as unidades pelo
+// Professional (a conta); quem não tem conta fica só no Barber da unidade.
+model ProfessionalReview {
+  id             Int           @id @default(autoincrement())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  appointmentId  Int           @unique
+  barberId       Int
+  barbershopId   Int
+  professionalId Int?
+  // Null depois que o cliente exclui a conta (a nota fica, o texto sai)
+  customerId     Int?
+  rating         Int // 1 a 5
+  comment        String?
+  // Resposta pública do profissional
+  reply          String?
+  repliedAt      DateTime?
+  // Ocultada pela moderação (fora da página e da nota)
+  hiddenAt       DateTime?
+  appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  barber         Barber        @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  barbershop     Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([professionalId, createdAt])
+  @@index([barberId])
+}
+
 model ClientLinkedSocialAccount {
   id              Int           @id @default(autoincrement())
   createdAt       DateTime      @default(now())
@@ -821,6 +853,7 @@ model Professional {
   showContact Boolean @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
+  reviews   ProfessionalReview[]
 }
 
 model Barber {
@@ -854,6 +887,7 @@ model Barber {
   barbershop     Barbershop       @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   user           User?            @relation(fields: [userId], references: [id])
   professional   Professional?    @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  professionalReviews ProfessionalReview[]
   employeeInvites EmployeeInvite[]
   schedules      BarberSchedule[]
   timeOffs       BarberTimeOff[]
@@ -1035,6 +1069,7 @@ model Appointment {
   serviceHistory ServiceHistory[]
   sale         Sale?
   noShowFee    NoShowFee?
+  professionalReview ProfessionalReview?
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])

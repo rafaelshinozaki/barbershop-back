@@ -119,6 +119,47 @@ export class CareerShopLinkType {
   slug: string;
 }
 
+/** Avaliação do profissional na página pública */
+@ObjectType()
+export class PublicProfessionalReviewType {
+  @Field(() => Int)
+  id: number;
+
+  @Field(() => Int)
+  rating: number;
+
+  @Field(() => String, { nullable: true })
+  comment: string | null;
+
+  @Field()
+  createdAt: Date;
+
+  @Field({ description: 'Primeiro nome e inicial do sobrenome' })
+  reviewerName: string;
+
+  @Field({ description: 'Unidade do atendimento' })
+  shopName: string;
+
+  @Field(() => String, { nullable: true, description: 'Resposta do profissional' })
+  reply: string | null;
+
+  @Field(() => Date, { nullable: true })
+  repliedAt: Date | null;
+}
+
+/** Avaliação recebida, vista pelo próprio profissional (pra responder) */
+@ObjectType()
+export class MyProfessionalReviewType extends PublicProfessionalReviewType {
+  @Field()
+  appointmentAt: Date;
+
+  @Field()
+  serviceNames: string;
+
+  @Field({ description: 'Ocultada pela moderação (fora da página e da nota)' })
+  hidden: boolean;
+}
+
 @ObjectType()
 export class PublicProfessionalType {
   @Field()
@@ -147,6 +188,15 @@ export class PublicProfessionalType {
 
   @Field(() => [CareerShopLinkType])
   owns: CareerShopLinkType[];
+
+  @Field(() => Float, { nullable: true, description: 'Nota média (null: oculta ou sem avaliação)' })
+  averageRating: number | null;
+
+  @Field(() => Int, { nullable: true, description: 'Quantas avaliações (null: oculta)' })
+  reviewCount: number | null;
+
+  @Field(() => [PublicProfessionalReviewType], { description: 'Vazio se o profissional esconde' })
+  reviews: PublicProfessionalReviewType[];
 }
 
 @ObjectType()

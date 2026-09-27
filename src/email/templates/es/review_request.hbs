@@ -31,11 +31,12 @@
     </div>
     <div class="content">
       <h2>¡Hola, {{CustomerName}}!</h2>
-      <p>Gracias por visitar <strong>{{BarbershopName}}</strong> el {{AppointmentDate}} ({{ServiceNames}} con {{BarberName}}). ¿Qué tal fue?</p>
-      <p style="text-align:center">Toca una estrella para dar tu nota:</p>
+      <p>Gracias por visitar <strong>{{BarbershopName}}</strong> el {{AppointmentDate}} ({{ServiceNames}}). ¿Qué tal fue la atención de <strong>{{BarberName}}</strong>?</p>
+      <p style="text-align:center">Toca una estrella para calificar a {{BarberName}}:</p>
       <div class="stars">
         {{#each Stars}}<a href="{{this.URL}}" title="{{this.N}}">&#9733;</a>{{/each}}
       </div>
+      {{#unless Solo}}<p style="text-align:center;font-size:14px;color:#666">En la misma página también calificas {{BarbershopName}}.</p>{{/unless}}
       <p style="text-align:center"><a class="button" href="{{ReviewURL}}">Dejar mi reseña</a></p>
       <p style="font-size:14px;color:#666">Toma menos de un minuto y ayuda a otras personas a elegir — y al equipo a mejorar.</p>
     </div>

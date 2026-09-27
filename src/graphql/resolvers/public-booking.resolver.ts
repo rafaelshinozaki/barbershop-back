@@ -323,10 +323,23 @@ export class PublicBookingResolver {
   @ThrottleSlotSearch()
   async submitReviewByLink(
     @Args('token') token: string,
-    @Args('rating', { type: () => Int }) rating: number,
+    @Args('rating', { type: () => Int, nullable: true, description: 'Nota da unidade' })
+    rating?: number,
     @Args('comment', { nullable: true }) comment?: string,
+    @Args('professionalRating', {
+      type: () => Int,
+      nullable: true,
+      description: 'Nota do profissional que atendeu',
+    })
+    professionalRating?: number,
+    @Args('professionalComment', { nullable: true }) professionalComment?: string,
   ) {
-    await this.reviewRequests.submitReview(token, rating, comment);
+    await this.reviewRequests.submitReview(token, {
+      rating,
+      comment,
+      professionalRating,
+      professionalComment,
+    });
     return true;
   }
 

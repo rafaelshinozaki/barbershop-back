@@ -488,6 +488,12 @@ export class ClientAuthService {
       this.prisma.review.deleteMany({ where: { clientAccountId } }),
       // As que deixou pelo link do e-mail (ligadas às fichas da conta)
       this.prisma.review.deleteMany({ where: { customer: { clientAccountId } } }),
+      // Avaliação do profissional: o texto sai e a ligação com a pessoa também;
+      // a nota fica na média dele sem dar pra saber de quem era
+      this.prisma.professionalReview.updateMany({
+        where: { customer: { clientAccountId } },
+        data: { comment: null, customerId: null },
+      }),
       this.prisma.clientFavorite.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),

@@ -12,16 +12,27 @@ import { BarbershopService } from './barbershop.service';
 // nunca uma avalanche de pedidos de coisas antigas
 const SEND_AFTER_MS = 2 * 3_600_000;
 const MAX_AGE_MS = 3 * 86_400_000;
-// Cliente de sempre não recebe o pedido a cada corte
-const MIN_DAYS_BETWEEN_REQUESTS = 60;
 const BATCH_SIZE = 500;
 const MAX_COMMENT = 1000;
 
+/** Nota de 1 a 5 e comentário opcional (até MAX_COMMENT) */
+function checkReview(rating: number, comment?: string | null) {
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new BadRequestException('A nota deve ser um número inteiro entre 1 e 5.');
+  }
+  const text = comment?.trim() || null;
+  if (text && text.length > MAX_COMMENT) {
+    throw new BadRequestException(`Comentário com no máximo ${MAX_COMMENT} caracteres.`);
+  }
+  return text;
+}
+
 /**
- * Pedido de avaliação depois do atendimento, como no Booksy: e-mail "como
- * foi?" com as estrelas e um link pra avaliar sem login nem conta. Uma vez
- * por atendimento, só pra quem ainda não avaliou a unidade e não recebeu
- * outro pedido há pouco; quem se descadastrou dos e-mails não recebe.
+ * Fechamento do atendimento: um e-mail "como foi?" por atendimento
+ * concluído, com as estrelas e um link pra avaliar sem login nem conta. O
+ * link avalia o profissional daquele atendimento e a unidade (no modo solo
+ * não há unidade: a nota é uma só). Quem se descadastrou dos e-mails não
+ * recebe.
  */
 @Injectable()
 export class ReviewRequestService {
@@ -82,22 +93,12 @@ export class ReviewRequestService {
       if (claimed.count === 0) continue;
       const customer = appt.customer;
       if (!customer.email || customer.marketingOptOut) continue;
-      if (await this.alreadyReviewed(appt.barbershopId, customer.id, customer.clientAccountId)) {
-        continue;
-      }
-      const recent = await this.prisma.appointment.findFirst({
-        where: {
-          id: { not: appt.id },
-          barbershopId: appt.barbershopId,
-          customerId: customer.id,
-          reviewRequestSentAt: {
-            gte: new Date(now.getTime() - MIN_DAYS_BETWEEN_REQUESTS * 86_400_000),
-            lt: now,
-          },
-        },
+      // Já avaliou esse atendimento (pelo link que a equipe mandou, por exemplo)
+      const reviewed = await this.prisma.professionalReview.findUnique({
+        where: { appointmentId: appt.id },
         select: { id: true },
       });
-      if (recent) continue;
+      if (reviewed) continue;
 
       const shop = appt.barbershop;
       const lang = langForCountry(shop.country);
@@ -112,6 +113,7 @@ export class ReviewRequestService {
               CustomerName: customer.name.split(' ')[0],
               BarbershopName: shop.name,
               BarberName: appt.barber.name,
+              Solo: shop.practiceKind === 'solo',
               ServiceNames:
                 appt.services
                   .map((s) => s.service?.name)
@@ -127,9 +129,9 @@ export class ReviewRequestService {
               Year: now.getFullYear(),
             },
             subject: {
-              pt: `Como foi em ${shop.name}?`,
-              en: `How was your visit to ${shop.name}?`,
-              es: `¿Qué tal en ${shop.name}?`,
+              pt: `Como foi com ${appt.barber.name} em ${shop.name}?`,
+              en: `How was your appointment with ${appt.barber.name} at ${shop.name}?`,
+              es: `¿Qué tal con ${appt.barber.name} en ${shop.name}?`,
             },
             lang,
             meta: 'review-request',
@@ -151,21 +153,6 @@ export class ReviewRequestService {
     return enqueued;
   }
 
-  private async alreadyReviewed(
-    barbershopId: number,
-    customerId: number,
-    clientAccountId: number | null,
-  ) {
-    const review = await this.prisma.review.findFirst({
-      where: {
-        barbershopId,
-        OR: [{ customerId }, ...(clientAccountId ? [{ clientAccountId }] : [])],
-      },
-      select: { id: true },
-    });
-    return Boolean(review);
-  }
-
   private async loadByToken(token: string) {
     const id = verifyReviewToken(token);
     const appt = id
@@ -174,8 +161,9 @@ export class ReviewRequestService {
           include: {
             customer: true,
             barbershop: true,
-            barber: { select: { name: true } },
+            barber: { select: { name: true, professionalId: true } },
             services: { include: { service: { select: { name: true } } } },
+            professionalReview: true,
           },
         })
       : null;
@@ -217,49 +205,93 @@ export class ReviewRequestService {
         .join(', '),
       startAt: appt.startAt.toISOString(),
       timezone: appt.barbershop.timezone,
+      solo: appt.barbershop.practiceKind === 'solo',
       rating: existing?.rating ?? null,
       comment: existing?.comment ?? null,
+      professionalRating: appt.professionalReview?.rating ?? null,
+      professionalComment: appt.professionalReview?.comment ?? null,
     };
   }
 
   /**
-   * Avaliar pelo link. Uma avaliação por cliente e unidade (mandar de novo
-   * atualiza a mesma); se o cliente tem conta e já avaliou logado, é essa
-   * que muda.
+   * Avaliar pelo link: o profissional (uma avaliação por atendimento) e a
+   * unidade (uma por cliente e unidade: mandar de novo atualiza a mesma; se
+   * o cliente tem conta e já avaliou logado, é essa que muda). Dá pra mandar
+   * só uma das duas. No modo solo a nota do profissional vale também pra
+   * página da unidade (é a mesma pessoa).
    */
-  async submitReview(token: string, rating: number, comment?: string | null) {
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      throw new BadRequestException('A nota deve ser um número inteiro entre 1 e 5.');
-    }
-    const text = comment?.trim() || null;
-    if (text && text.length > MAX_COMMENT) {
-      throw new BadRequestException(`Comentário com no máximo ${MAX_COMMENT} caracteres.`);
-    }
+  async submitReview(
+    token: string,
+    input: {
+      rating?: number | null;
+      comment?: string | null;
+      professionalRating?: number | null;
+      professionalComment?: string | null;
+    },
+  ) {
     const appt = await this.loadByToken(token);
+    const solo = appt.barbershop.practiceKind === 'solo';
+    const pro =
+      input.professionalRating != null
+        ? {
+            rating: input.professionalRating,
+            comment: checkReview(input.professionalRating, input.professionalComment),
+          }
+        : null;
+    let unit =
+      input.rating != null
+        ? { rating: input.rating, comment: checkReview(input.rating, input.comment) }
+        : null;
+    if (solo && pro) unit = pro;
+    if (!pro && !unit) throw new BadRequestException('Dê uma nota de 1 a 5.');
+
     const { barbershopId, customerId } = appt;
     const clientAccountId = appt.customer.clientAccountId;
-    const existing = await this.findExisting(barbershopId, customerId, clientAccountId);
-    if (existing) {
-      await this.prisma.review.update({
-        where: { id: existing.id },
-        data: { rating, comment: text },
-      });
-    } else {
-      // Dois envios ao mesmo tempo: o índice único (unidade + ficha) segura
-      // o segundo, que vira atualização
-      await this.prisma.review.upsert({
-        where: { barbershopId_customerId: { barbershopId, customerId } },
-        create: { barbershopId, customerId, clientAccountId, rating, comment: text },
-        update: { rating, comment: text },
+    if (pro) {
+      await this.prisma.professionalReview.upsert({
+        where: { appointmentId: appt.id },
+        create: {
+          appointmentId: appt.id,
+          barberId: appt.barberId,
+          barbershopId,
+          professionalId: appt.barber.professionalId,
+          customerId,
+          rating: pro.rating,
+          comment: pro.comment,
+        },
+        update: { rating: pro.rating, comment: pro.comment },
       });
     }
-    void this.activity.reviewPosted(
-      barbershopId,
-      clientAccountId,
-      rating,
-      text,
-      appt.customer.name,
-    );
+    if (unit) {
+      const existing = await this.findExisting(barbershopId, customerId, clientAccountId);
+      if (existing) {
+        await this.prisma.review.update({
+          where: { id: existing.id },
+          data: { rating: unit.rating, comment: unit.comment },
+        });
+      } else {
+        // Dois envios ao mesmo tempo: o índice único (unidade + ficha) segura
+        // o segundo, que vira atualização
+        await this.prisma.review.upsert({
+          where: { barbershopId_customerId: { barbershopId, customerId } },
+          create: {
+            barbershopId,
+            customerId,
+            clientAccountId,
+            rating: unit.rating,
+            comment: unit.comment,
+          },
+          update: { rating: unit.rating, comment: unit.comment },
+        });
+      }
+      void this.activity.reviewPosted(
+        barbershopId,
+        clientAccountId,
+        unit.rating,
+        unit.comment,
+        appt.customer.name,
+      );
+    }
     return { barbershopSlug: appt.barbershop.slug };
   }
 }

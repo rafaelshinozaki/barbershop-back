@@ -304,6 +304,30 @@ describe('Conta do cliente final (integração com o banco)', () => {
       await prisma.review.create({
         data: { barbershopId: shopId, clientAccountId: account.id, rating: 5, comment: 'Ótimo' },
       });
+      // Avaliação do profissional num atendimento (pelo link do e-mail)
+      const barber = await prisma.barber.create({
+        data: { barbershopId: shopId, name: 'Profissional', phone: '11933333333' },
+      });
+      const appt = await prisma.appointment.create({
+        data: {
+          barbershopId: shopId,
+          customerId: customer.id,
+          barberId: barber.id,
+          startAt: new Date(Date.now() - 7_200_000),
+          endAt: new Date(Date.now() - 3_600_000),
+          status: 'COMPLETED',
+        },
+      });
+      const proReview = await prisma.professionalReview.create({
+        data: {
+          appointmentId: appt.id,
+          barberId: barber.id,
+          barbershopId: shopId,
+          customerId: customer.id,
+          rating: 4,
+          comment: 'Atrasou um pouco',
+        },
+      });
       const svc = await prisma.barbershopService.create({
         data: { barbershopId: shopId, name: 'Corte', durationMinutes: 30, price: 50 },
       });
@@ -355,6 +379,10 @@ describe('Conta do cliente final (integração com o banco)', () => {
       expect(await guardAccepts(fresh)).toBe(false);
       expect(await prisma.review.count({ where: { clientAccountId: account.id } })).toBe(0);
       expect(await prisma.clientFavorite.count({ where: { clientAccountId: account.id } })).toBe(0);
+      // Do profissional: a nota fica na média, sem o texto e sem a pessoa
+      expect(
+        await prisma.professionalReview.findUniqueOrThrow({ where: { id: proReview.id } }),
+      ).toMatchObject({ rating: 4, comment: null, customerId: null });
       // A ficha continua na barbearia (é registro dela), só desligada
       expect(
         (await prisma.customer.findUnique({ where: { id: customer.id } }))!.clientAccountId,

@@ -1,4 +1,4 @@
-import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
@@ -6,7 +6,12 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { CareerService } from '../../barbershop/career.service';
 import { S3Service } from '../../aws/s3.service';
-import { CareerOverviewType, ProfilePrivacyType } from '../types/career.type';
+import {
+  CareerOverviewType,
+  MyProfessionalReviewType,
+  ProfilePrivacyType,
+} from '../types/career.type';
+import { ProfessionalReviewService } from '../../barbershop/professional-review.service';
 import { ProfessionalSignupInput, UpdateProfilePrivacyInput } from '../dto/auth.dto';
 
 /** Panorama da carreira da pessoa logada, em todas as unidades. */
@@ -14,7 +19,27 @@ import { ProfessionalSignupInput, UpdateProfilePrivacyInput } from '../dto/auth.
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
 export class CareerResolver {
-  constructor(private readonly career: CareerService, private readonly s3: S3Service) {}
+  constructor(
+    private readonly career: CareerService,
+    private readonly s3: S3Service,
+    private readonly professionalReviews: ProfessionalReviewService,
+  ) {}
+
+  /** Avaliações que a pessoa recebeu como profissional, em todas as unidades */
+  @Query(() => [MyProfessionalReviewType])
+  myProfessionalReviews(@CurrentUser() user: UserDTO) {
+    return this.professionalReviews.mine(user.id);
+  }
+
+  /** Resposta pública do profissional a uma avaliação; vazio apaga */
+  @Mutation(() => Boolean)
+  replyToProfessionalReview(
+    @Args('reviewId', { type: () => Int }) reviewId: number,
+    @CurrentUser() user: UserDTO,
+    @Args('reply', { nullable: true }) reply?: string,
+  ) {
+    return this.professionalReviews.reply(user.id, reviewId, reply);
+  }
 
   @Query(() => CareerOverviewType)
   myCareer(@CurrentUser() user: UserDTO) {

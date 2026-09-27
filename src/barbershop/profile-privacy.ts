@@ -187,7 +187,7 @@ export function acceptsNewClient(acceptingClients: boolean, priorAppointments: n
 }
 
 /** O que a página mostra. Esconder não apaga: só tira do que sai. */
-export function presentPublicProfile<T extends PublicShopLink>(source: {
+export function presentPublicProfile<T extends PublicShopLink, R = never>(source: {
   fullName: string;
   photoKey: string | null;
   phone: string | null;
@@ -196,6 +196,9 @@ export function presentPublicProfile<T extends PublicShopLink>(source: {
   worksAt: T[];
   workedAt: T[];
   owns: T[];
+  /** Nota média e quantas avaliações (vazio = ainda não tem) */
+  rating?: { averageRating: number | null; reviewCount: number };
+  reviews?: R[];
   choices: Pick<
     ProfileChoices,
     | 'visibility'
@@ -204,7 +207,8 @@ export function presentPublicProfile<T extends PublicShopLink>(source: {
     | 'showWorkHistory'
     | 'showLocations'
     | 'showContact'
-  >;
+  > &
+    Partial<Pick<ProfileChoices, 'showRating' | 'showReviews'>>;
 }) {
   const { choices } = source;
   return {
@@ -217,5 +221,8 @@ export function presentPublicProfile<T extends PublicShopLink>(source: {
     worksAt: choices.showLocations ? source.worksAt : [],
     workedAt: choices.showWorkHistory ? source.workedAt : [],
     owns: source.owns,
+    averageRating: choices.showRating !== false ? source.rating?.averageRating ?? null : null,
+    reviewCount: choices.showRating !== false ? source.rating?.reviewCount ?? null : null,
+    reviews: choices.showReviews !== false ? source.reviews ?? [] : [],
   };
 }
