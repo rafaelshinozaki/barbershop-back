@@ -6,6 +6,7 @@ import { PayrollService } from './payroll.service';
 import { CareerService } from './career.service';
 import { ProfessionalReviewService } from './professional-review.service';
 import { CustomerRatingService } from './customer-rating.service';
+import { TipService } from './tip.service';
 import { SoloService } from './solo.service';
 import { ProReferralService } from './pro-referral.service';
 import { ImportService } from './import.service';
@@ -62,6 +63,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     CareerService,
     ProfessionalReviewService,
     CustomerRatingService,
+    TipService,
     SoloService,
     ProReferralService,
     ImportService,
@@ -99,6 +101,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     CareerService,
     ProfessionalReviewService,
     CustomerRatingService,
+    TipService,
     SoloService,
     ProReferralService,
     ImportService,

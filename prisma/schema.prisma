@@ -563,6 +563,7 @@ model Barbershop {
   reviews         Review[]
   professionalReviews ProfessionalReview[]
   customerRatings CustomerRating[]
+  tips            AppointmentTip[]
   // Espaço compartilhado (cadeira alugada, como o "Shared Location" do
   // Booksy): profissionais independentes, cada um com o seu negócio
   sharedLocationMembers SharedLocationMember[] @relation("SharedLocationHost")
@@ -823,6 +824,38 @@ model CustomerRating {
   @@index([customerId])
 }
 
+// Caixinha (gorjeta) de um atendimento concluído, registrada na mão pela
+// equipe: o dinheiro não passa pela plataforma. O cliente escolhe o destino
+// (o profissional ou a unidade). Quando é do profissional mas a unidade
+// recebeu (a mais no cartão, ou dinheiro/Pix no balcão), vira um lançamento
+// TIP no pagamento dele (payEntryId). Registro financeiro: fica pelo prazo
+// fiscal, não entra na tarefa de retenção.
+model AppointmentTip {
+  id              Int         @id @default(autoincrement())
+  createdAt       DateTime    @default(now())
+  appointmentId   Int
+  barbershopId    Int
+  // Profissional do atendimento (destino professional)
+  barberId        Int?
+  // professional | unit
+  destination     String
+  // CASH | PIX | CARD
+  method          String
+  amount          Decimal
+  currency        String
+  // A unidade recebeu (e repassa ao profissional no pagamento)
+  receivedByUnit  Boolean     @default(false)
+  payEntryId      Int?        @unique
+  createdByUserId Int
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  barbershop      Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  barber          Barber?     @relation(fields: [barberId], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId])
+  @@index([barbershopId, createdAt])
+  @@index([barberId])
+}
+
 model ClientLinkedSocialAccount {
   id              Int           @id @default(autoincrement())
   createdAt       DateTime      @default(now())
@@ -915,6 +948,7 @@ model Barber {
   user           User?            @relation(fields: [userId], references: [id])
   professional   Professional?    @relation(fields: [professionalId], references: [id], onDelete: SetNull)
   professionalReviews ProfessionalReview[]
+  tips           AppointmentTip[]
   employeeInvites EmployeeInvite[]
   schedules      BarberSchedule[]
   timeOffs       BarberTimeOff[]
@@ -1099,6 +1133,7 @@ model Appointment {
   noShowFee    NoShowFee?
   professionalReview ProfessionalReview?
   customerRatings CustomerRating[]
+  tips           AppointmentTip[]
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])
