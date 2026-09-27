@@ -64,6 +64,9 @@ model User {
   linkedSocialAccounts   LinkedSocialAccount[]
   // Conta de cliente da mesma pessoa (área do cliente)
   clientAccount          ClientAccount?
+  // Identidade confirmada (documento + selfie ao vivo, pelo Stripe Identity): selo "Verificado"
+  identityVerifiedAt     DateTime?
+  identityVerifications  IdentityVerification[]
 
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
@@ -938,6 +941,8 @@ model Professional {
   showLocations Boolean @default(true)
   // Contato oculto por padrão: a conversa fica no app.
   showContact Boolean @default(false)
+  // "Atendo a domicílio": só aparece no perfil depois da identidade verificada (H4); área e taxa no H5
+  offersHomeService Boolean @default(false)
   // Suspenso pela moderação (denúncia): a página /p/:slug e a busca somem
   suspendedAt DateTime?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1885,4 +1890,26 @@ model ContentReport {
 
   @@index([targetType, targetId])
   @@index([status, createdAt])
+}
+
+
+// Verificação de identidade do profissional (H4), feita no Stripe Identity:
+// documento com foto e selfie ao vivo. Aqui só o resultado e o id da sessão;
+// as imagens ficam no Stripe e são apagadas (redact) na exclusão da conta.
+model IdentityVerification {
+  id            Int       @id @default(autoincrement())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  userId        Int
+  // stripe | fake (só fora de produção, pra desenvolvimento e testes)
+  provider      String
+  sessionId     String    @unique
+  // pending | processing | verified | requires_input | canceled | name_mismatch
+  status        String    @default("pending")
+  // Motivo do Stripe quando pede de novo (ex.: document_expired, selfie_mismatch)
+  lastErrorCode String?
+  verifiedAt    DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

@@ -235,6 +235,11 @@ export class UpdateProfilePrivacyInput {
   @IsOptional()
   @IsBoolean()
   showContact?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  offersHomeService?: boolean;
 }
 
 /** Endereço pessoal do usuário no cadastro */

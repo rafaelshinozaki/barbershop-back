@@ -22,6 +22,7 @@ import { Request } from 'express';
 import { PaymentsService } from '../payments/payments.service';
 import { ChairRentService } from '../barbershop/chair-rent.service';
 import { DepositPaymentService } from '../barbershop/deposit-payment.service';
+import { IdentityVerificationService } from '../barbershop/identity-verification.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -36,6 +37,7 @@ export class StripeController {
     private paymentsService: PaymentsService,
     private chairRent: ChairRentService,
     private deposits: DepositPaymentService,
+    private identity: IdentityVerificationService,
   ) {}
 
   @Post('webhook')
@@ -89,6 +91,15 @@ export class StripeController {
           break;
         case 'payment_intent.payment_failed':
           await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+          break;
+        // Verificação de identidade do profissional (Stripe Identity)
+        case 'identity.verification_session.processing':
+        case 'identity.verification_session.requires_input':
+        case 'identity.verification_session.verified':
+        case 'identity.verification_session.canceled':
+          await this.identity.handleStripeSession(
+            (event.data.object as Stripe.Identity.VerificationSession).id,
+          );
           break;
         default:
           this.logger.log(`Unhandled event type: ${event.type}`);

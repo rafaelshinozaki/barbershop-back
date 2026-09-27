@@ -4514,7 +4514,7 @@ export class BarbershopService {
         ...(AND.length ? { AND } : {}),
       },
       include: {
-        user: { select: { fullName: true, photoKey: true } },
+        user: { select: { fullName: true, photoKey: true, identityVerifiedAt: true } },
         barbers: {
           where: activeBarber,
           select: {
@@ -4579,6 +4579,8 @@ export class BarbershopService {
           cities,
           shops: shops.map((s) => ({ name: s.name, slug: s.slug })),
           acceptingClients: p.acceptingClients,
+          // Atende a domicílio só com a identidade verificada
+          homeService: p.offersHomeService && !!p.user.identityVerifiedAt,
           distanceKm: distances.length ? Math.round(Math.min(...distances) * 10) / 10 : null,
           minPrice: prices.length ? Math.min(...prices) : null,
           currency: p.barbers[0]?.barbershop.currency ?? null,

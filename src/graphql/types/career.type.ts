@@ -170,6 +170,12 @@ export class PublicProfessionalType {
   @Field(() => Int, { description: 'Pra denunciar o perfil' })
   id: number;
 
+  @Field({ description: 'Atende a domicílio (só com a identidade verificada)' })
+  homeService: boolean;
+
+  @Field({ description: 'Identidade verificada (documento + selfie)' })
+  identityVerified: boolean;
+
   @Field()
   fullName: string;
 
@@ -329,4 +335,7 @@ export class ProfilePrivacyType {
 
   @Field()
   showContact: boolean;
+
+  @Field({ description: 'Atendo a domicílio (no perfil só com a identidade verificada)' })
+  offersHomeService: boolean;
 }

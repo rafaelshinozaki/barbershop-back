@@ -1447,6 +1447,26 @@ type GiftCardType {
   remainingValue: Float!
 }
 
+type IdentityVerificationStartType {
+  """Página de verificação (Stripe Identity)"""
+  url: String!
+}
+
+type IdentityVerificationStatusType {
+  """Motivo do Stripe ao pedir de novo"""
+  lastErrorCode: String
+
+  """Ligou "Atendo a domicílio" (só quem atende a domicílio verifica)"""
+  offersHomeService: Boolean!
+
+  """
+  Última tentativa: pending | processing | verified | requires_input | canceled | name_mismatch
+  """
+  status: String
+  verified: Boolean!
+  verifiedAt: DateTime
+}
+
 type InventoryItemType {
   barbershopId: Int!
   createdAt: String!
@@ -1685,6 +1705,11 @@ type Mutation {
   clientSignup(input: ClientSignupInput!): ClientAccountType!
   clientVerifyEmail(token: String!): Boolean!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
+  completeFakeIdentityVerification(
+    """verified | requires_input | other_person"""
+    outcome: String!
+    sessionId: String!
+  ): Boolean!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
@@ -1821,6 +1846,7 @@ type Mutation {
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   startDepositPayment(token: String!): DepositPaymentType!
+  startIdentityVerification: IdentityVerificationStartType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
   submitReviewByLink(
@@ -2354,6 +2380,9 @@ type ProfilePrivacyType {
   engagements: [String!]!
   fullName: String!
   hasProfile: Boolean!
+
+  """Atendo a domicílio (no perfil só com a identidade verificada)"""
+  offersHomeService: Boolean!
   openToWork: Boolean!
   owns: [CareerShopLinkType!]!
   phone: String
@@ -2526,6 +2555,9 @@ type PublicProfessionalSearchResultType {
   cities: [String!]!
   currency: String
   distanceKm: Float
+
+  """Atende a domicílio (só com a identidade verificada)"""
+  homeService: Boolean!
   minPrice: Float
   name: String!
 
@@ -2552,8 +2584,14 @@ type PublicProfessionalType {
   email: String
   fullName: String!
 
+  """Atende a domicílio (só com a identidade verificada)"""
+  homeService: Boolean!
+
   """Pra denunciar o perfil"""
   id: Int!
+
+  """Identidade verificada (documento + selfie)"""
+  identityVerified: Boolean!
   owns: [CareerShopLinkType!]!
   phone: String
   photoUrl: String
@@ -2701,6 +2739,7 @@ type Query {
   myClientSubscriptions: [ClientSubscriptionType!]!
   myConduct: CustomerConductType!
   myCoupons: [Coupon!]!
+  myIdentityVerification: IdentityVerificationStatusType!
   myNetwork: Network
   myNetworkTheme: NetworkTheme
   myNewNotifications: [UserNotification!]!
@@ -3436,6 +3475,7 @@ input UpdateProfilePrivacyInput {
   acceptingClients: Boolean
   cities: [String!]
   engagements: [String!]
+  offersHomeService: Boolean
   openToWork: Boolean
   roles: [String!]
   showAppointmentCount: Boolean

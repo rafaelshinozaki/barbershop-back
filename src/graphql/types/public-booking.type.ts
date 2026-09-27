@@ -529,6 +529,9 @@ export class PublicProfessionalSearchResultType {
   @Field()
   acceptingClients: boolean;
 
+  @Field({ description: 'Atende a domicílio (só com a identidade verificada)' })
+  homeService: boolean;
+
   @Field(() => Float, { nullable: true })
   distanceKm?: number;
 

@@ -421,6 +421,14 @@ export class UserService {
     if (userDto.email !== undefined) data.email = userDto.email;
     if (userDto.password !== undefined) data.password = userDto.password;
     if (userDto.fullName !== undefined) data.fullName = userDto.fullName;
+    // Identidade verificada vale pro nome do documento: outro nome, verifica de novo
+    if (
+      userDto.fullName !== undefined &&
+      userDto.fullName.trim() !== user.fullName.trim() &&
+      user.identityVerifiedAt
+    ) {
+      data.identityVerifiedAt = null;
+    }
     if (userDto.phone !== undefined) data.phone = userDto.phone;
     if (userDto.birthdate !== undefined) data.birthdate = userDto.birthdate;
 

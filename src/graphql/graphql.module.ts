@@ -4,6 +4,7 @@ import { CustomerRatingResolver } from './resolvers/customer-rating.resolver';
 import { TipResolver } from './resolvers/tip.resolver';
 import { ModerationResolver } from './resolvers/moderation.resolver';
 import { AccountLinkResolver } from './resolvers/account-link.resolver';
+import { IdentityVerificationResolver } from './resolvers/identity-verification.resolver';
 import { SoloResolver } from './resolvers/solo.resolver';
 import { ImportResolver } from './resolvers/import.resolver';
 import { PublicProfessionalResolver } from './resolvers/public-professional.resolver';
@@ -97,6 +98,7 @@ import { SocialModule } from '../social/social.module';
     TipResolver,
     ModerationResolver,
     AccountLinkResolver,
+    IdentityVerificationResolver,
     SoloResolver,
     ImportResolver,
     PublicProfessionalResolver,

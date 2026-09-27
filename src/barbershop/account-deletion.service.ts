@@ -12,6 +12,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { S3Service } from '../aws/s3.service';
 import { Role } from '../auth/interfaces/roles';
 import { PLANO_STATUS } from '../common/contants';
+import { IdentityVerificationService } from './identity-verification.service';
 import { BarbershopService } from './barbershop.service';
 
 export interface AccountDeletionPreview {
@@ -47,6 +48,7 @@ export class AccountDeletionService {
     private readonly stripeService: StripeService,
     private readonly s3Service: S3Service,
     private readonly barbershopService: BarbershopService,
+    private readonly identity: IdentityVerificationService,
   ) {}
 
   private async loadUser(userId: number) {
@@ -132,6 +134,8 @@ export class AccountDeletionService {
         this.logger.warn(`Foto do usuário ${userId} não foi apagada do S3: ${e}`);
       });
     }
+    // Documento e selfie da verificação de identidade: apagados no Stripe
+    await this.identity.forgetUser(userId);
 
     const now = new Date();
     await this.prisma.$transaction([
@@ -191,6 +195,7 @@ export class AccountDeletionService {
           photoKey: null,
           stripeCustomerId: null,
           twoFactorEnabled: false,
+          identityVerifiedAt: null,
           isActive: false,
           deleted_at: now,
         },

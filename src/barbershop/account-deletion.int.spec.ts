@@ -40,6 +40,7 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     stripe as never,
     s3 as never,
     barbershopService,
+    { forgetUser: async () => undefined } as never,
   );
 
   let ownerRoleId: number;
