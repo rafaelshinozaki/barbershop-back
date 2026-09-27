@@ -22,6 +22,7 @@ import {
   DepositPaymentType,
   ManagedAppointmentType,
   PublicBarbershopSearchResultType,
+  PublicProfessionalSearchResultType,
   ReviewType,
   MyReviewType,
 } from '../types/public-booking.type';
@@ -33,6 +34,7 @@ import {
 import {
   CreatePublicAppointmentInput,
   SearchBarbershopsInput,
+  SearchProfessionalsInput,
   CreateReviewInput,
   SubscribeToPlanInput,
 } from '../dto/public-booking.dto';
@@ -98,6 +100,11 @@ export class PublicBookingResolver {
   @Query(() => [PublicBarbershopSearchResultType])
   async searchBarbershops(@Args('input') input: SearchBarbershopsInput) {
     return this.barbershopService.searchPublicBarbershops(input);
+  }
+
+  @Query(() => [PublicProfessionalSearchResultType])
+  async searchProfessionals(@Args('input') input: SearchProfessionalsInput) {
+    return this.barbershopService.searchPublicProfessionals(input);
   }
 
   @Query(() => [String])

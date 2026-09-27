@@ -1,7 +1,9 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,9 +13,11 @@ import {
   MinLength,
 } from 'class-validator';
 import { TreatmentCategory } from '../types/enums';
+import { SEARCH_SORTS, type SearchSort } from '@/barbershop/search';
 
+/** Filtros da busca pública de profissionais (e a base da de unidades) */
 @InputType()
-export class SearchBarbershopsInput {
+export class SearchProfessionalsInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
@@ -23,12 +27,6 @@ export class SearchBarbershopsInput {
   @IsOptional()
   @IsEnum(TreatmentCategory)
   category?: TreatmentCategory;
-
-  /** Tipo de estabelecimento (salão, esmalteria...) */
-  @Field({ nullable: true })
-  @IsOptional()
-  @IsString()
-  businessType?: string;
 
   @Field({ nullable: true })
   @IsOptional()
@@ -46,12 +44,65 @@ export class SearchBarbershopsInput {
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()
+  @Min(-90)
+  @Max(90)
   lat?: number;
 
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()
+  @Min(-180)
+  @Max(180)
   lng?: number;
+
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Raio em km a partir de lat/lng (padrão 25, até 200)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  radiusKm?: number;
+
+  @Field(() => Float, { nullable: true, description: 'Nota mínima (1 a 5)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(5)
+  minRating?: number;
+
+  @Field(() => Float, { nullable: true, description: 'Serviço mais barato até este valor' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  maxPrice?: number;
+
+  @Field({ nullable: true, description: 'relevance (padrão), distance, rating ou price' })
+  @IsOptional()
+  @IsIn(SEARCH_SORTS)
+  sort?: SearchSort;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
+
+@InputType()
+export class SearchBarbershopsInput extends SearchProfessionalsInput {
+  /** Tipo de estabelecimento (salão, esmalteria...) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  businessType?: string;
+
+  @Field({ nullable: true, description: 'Só as abertas agora (no fuso de cada unidade)' })
+  @IsOptional()
+  @IsBoolean()
+  openNow?: boolean;
 }
 
 @InputType()

@@ -581,6 +581,8 @@ model Barbershop {
   @@index([ownerUserId, practiceKind])
   @@index([isActive])
   @@index([slug])
+  // Busca por distância: o retângulo em volta do ponto corta por aqui
+  @@index([latitude, longitude])
   calendarFeeds   CalendarFeed[]
   closures        BarbershopClosure[]
   photos          BarbershopPhoto[]

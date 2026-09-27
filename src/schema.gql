@@ -2373,12 +2373,19 @@ type PublicBarbershopSearchResultType {
   businessType: String!
   categories: [TreatmentCategory!]!
   city: String!
+  currency: String!
   distanceKm: Float
   id: Int!
   imageUrl: String
   isFeatured: Boolean!
+
+  """Preço do serviço mais barato"""
+  minPrice: Float
   name: String!
   networkName: String!
+
+  """Aberta agora, no fuso da unidade"""
+  openNow: Boolean!
   reviewCount: Int!
   slug: String!
   state: String!
@@ -2469,6 +2476,30 @@ type PublicProfessionalReviewType {
   shopName: String!
 }
 
+type PublicProfessionalSearchResultType {
+  acceptingClients: Boolean!
+
+  """Só se a pessoa mostra a nota"""
+  averageRating: Float
+  cities: [String!]!
+  currency: String
+  distanceKm: Float
+  minPrice: Float
+  name: String!
+
+  """Só se a pessoa mostra a foto"""
+  photoUrl: String
+  reviewCount: Int!
+
+  """Onde atende (vazio se esconde as unidades)"""
+  shops: [PublicShopLinkType!]!
+
+  """Página /p/:slug"""
+  slug: String!
+  specialization: String
+  specialties: [TreatmentCategory!]!
+}
+
 type PublicProfessionalType {
   """Nota média (null: oculta ou sem avaliação)"""
   averageRating: Float
@@ -2501,6 +2532,11 @@ type PublicServiceType {
   id: Int!
   name: String!
   price: Float!
+}
+
+type PublicShopLinkType {
+  name: String!
+  slug: String!
 }
 
 """A agenda da unidade mudou — a página pública recarrega os horários"""
@@ -2659,6 +2695,7 @@ type Query {
   roleDistribution: RoleDistribution!
   searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
+  searchProfessionals(input: SearchProfessionalsInput!): [PublicProfessionalSearchResultType!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   sharedLocation(barbershopId: Int!): SharedLocationOverviewType!
   socialConnection(barbershopId: Int!): SocialConnectionType
@@ -2790,8 +2827,46 @@ input SearchBarbershopsInput {
   city: String
   citySlug: String
   lat: Float
+  limit: Int
   lng: Float
+
+  """Serviço mais barato até este valor"""
+  maxPrice: Float
+
+  """Nota mínima (1 a 5)"""
+  minRating: Float
+
+  """Só as abertas agora (no fuso de cada unidade)"""
+  openNow: Boolean
   query: String
+
+  """Raio em km a partir de lat/lng (padrão 25, até 200)"""
+  radiusKm: Float
+
+  """relevance (padrão), distance, rating ou price"""
+  sort: String
+}
+
+input SearchProfessionalsInput {
+  category: TreatmentCategory
+  city: String
+  citySlug: String
+  lat: Float
+  limit: Int
+  lng: Float
+
+  """Serviço mais barato até este valor"""
+  maxPrice: Float
+
+  """Nota mínima (1 a 5)"""
+  minRating: Float
+  query: String
+
+  """Raio em km a partir de lat/lng (padrão 25, até 200)"""
+  radiusKm: Float
+
+  """relevance (padrão), distance, rating ou price"""
+  sort: String
 }
 
 input SendEmailNotificationInput {

@@ -32,6 +32,31 @@ import { unitBadges } from './badges';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
+  boundingBox,
+  clampRadius,
+  haversineKm,
+  isOpenAt,
+  lngInBox,
+  rankResults,
+  type SearchSort,
+} from './search';
+
+/** Filtros da busca pública (unidades e profissionais) */
+export type PublicSearchInput = {
+  query?: string;
+  category?: TreatmentCategory;
+  city?: string;
+  citySlug?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+  minRating?: number;
+  maxPrice?: number;
+  openNow?: boolean;
+  sort?: SearchSort;
+  limit?: number;
+};
+import {
   addDaysStr,
   dayOfWeekOf,
   monthRangeUtc,
@@ -4280,16 +4305,6 @@ export class BarbershopService {
 
   // ============ BUSCA PÚBLICA (marketplace) ============
 
-  private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLng = ((lng2 - lng1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-
   // Distinct categories vêm direto dos serviços cadastrados (BarbershopService.category
   // é texto livre hoje — sem uma taxonomia própria ainda) para alimentar o filtro
   // de busca sem precisar de uma lista hardcoded no front.
@@ -4327,22 +4342,18 @@ export class BarbershopService {
     return rows.map((r) => r.city).sort();
   }
 
-  async searchPublicBarbershops(input: {
-    query?: string;
-    category?: TreatmentCategory;
-    businessType?: string;
-    city?: string;
-    citySlug?: string;
-    lat?: number;
-    lng?: number;
-    limit?: number;
-  }) {
-    const AND: any[] = [];
+  async searchPublicBarbershops(input: PublicSearchInput & { businessType?: string }) {
+    const AND: Prisma.BarbershopWhereInput[] = [];
     if (input.query) {
       AND.push({
         OR: [
           { name: { contains: input.query, mode: 'insensitive' } },
           { city: { contains: input.query, mode: 'insensitive' } },
+          {
+            services: {
+              some: { isActive: true, name: { contains: input.query, mode: 'insensitive' } },
+            },
+          },
         ],
       });
     }
@@ -4351,69 +4362,232 @@ export class BarbershopService {
     if (input.category) {
       AND.push({ services: { some: { isActive: true, category: input.category } } });
     }
+    // Com um ponto: só o que está no raio (o retângulo corta no banco, pelo
+    // índice de latitude/longitude; a distância exata sai em memória)
+    const point =
+      input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : null;
+    const radiusKm = clampRadius(input.radiusKm);
+    const box = point ? boundingBox(point.lat, point.lng, radiusKm) : null;
+    if (box) {
+      AND.push({ latitude: { gte: box.minLat, lte: box.maxLat } });
+      if (box.minLng >= -180 && box.maxLng <= 180) {
+        AND.push({ longitude: { gte: box.minLng, lte: box.maxLng } });
+      } else {
+        AND.push({ longitude: { not: null } });
+      }
+    }
 
+    const now = new Date();
     const barbershops = await this.prisma.barbershop.findMany({
       where: { isActive: true, ...(AND.length ? { AND } : {}) },
       include: {
-        services: { where: { isActive: true }, select: { category: true } },
+        services: { where: { isActive: true }, select: { category: true, price: true } },
         network: { select: { name: true } },
+        closures: {
+          where: { date: { in: this.nearDateKeys(now) } },
+          select: { date: true, openTime: true, closeTime: true },
+        },
       },
-      // Sem índice geo no banco — a distância é calculada em memória, então
-      // limitamos o conjunto candidato. Suficiente para o volume atual;
-      // precisaria de PostGIS (ou similar) numa base muito maior.
-      take: 200,
+      take: 500,
     });
 
-    const now = new Date();
-    const candidates = input.citySlug
-      ? barbershops.filter((b) => this.slugifyCity(b.city) === input.citySlug)
-      : barbershops;
+    const candidates = barbershops.filter(
+      (b) =>
+        (!input.citySlug || this.slugifyCity(b.city) === input.citySlug) &&
+        (!box || (b.longitude != null && lngInBox(b.longitude, box))),
+    );
+    const ratings = await this.getReviewSummaries(candidates.map((b) => b.id));
 
-    const results = candidates.map((b) => {
-      const categories = [...new Set(b.services.map((s) => s.category))];
-      const distanceKm =
-        input.lat != null && input.lng != null && b.latitude != null && b.longitude != null
-          ? this.haversineKm(input.lat, input.lng, b.latitude, b.longitude)
-          : null;
-      return {
-        id: b.id,
-        name: b.name,
-        slug: b.slug,
-        businessType: b.businessType,
-        city: b.city,
-        state: b.state,
-        address: b.address,
-        photoKey: b.photoKey,
-        networkName: b.network?.name ?? b.name,
-        categories,
-        distanceKm,
-        isFeatured: b.featuredUntil != null && b.featuredUntil > now,
-      };
-    });
+    const results = candidates
+      .map((b) => {
+        const categories = [...new Set(b.services.map((s) => s.category))];
+        const prices = b.services.map((s) => Number(s.price)).filter((n) => n > 0);
+        const distanceKm =
+          point && b.latitude != null && b.longitude != null
+            ? Math.round(haversineKm(point.lat, point.lng, b.latitude, b.longitude) * 10) / 10
+            : null;
+        return {
+          id: b.id,
+          name: b.name,
+          slug: b.slug,
+          businessType: b.businessType,
+          city: b.city,
+          state: b.state,
+          address: b.address,
+          photoKey: b.photoKey,
+          networkName: b.network?.name ?? b.name,
+          categories,
+          distanceKm,
+          minPrice: prices.length ? Math.min(...prices) : null,
+          currency: b.currency,
+          openNow: isOpenAt(b, now),
+          isFeatured: b.featuredUntil != null && b.featuredUntil > now,
+          ...(ratings.get(b.id) ?? { averageRating: null, reviewCount: 0 }),
+        };
+      })
+      .filter(
+        (r) =>
+          (!point || (r.distanceKm != null && r.distanceKm <= radiusKm)) &&
+          (input.minRating == null || (r.averageRating ?? 0) >= input.minRating) &&
+          (input.maxPrice == null || (r.minPrice != null && r.minPrice <= input.maxPrice)) &&
+          (!input.openNow || r.openNow),
+      );
 
-    // Destaque pago (ativado manualmente pelo admin) sempre aparece primeiro;
-    // dentro de cada grupo (destaque / não-destaque) mantém a ordenação normal.
-    const rank = (a: (typeof results)[number], b: (typeof results)[number]) => {
-      if (input.lat != null && input.lng != null) {
-        if (a.distanceKm == null && b.distanceKm == null) return a.name.localeCompare(b.name);
-        if (a.distanceKm == null) return 1;
-        if (b.distanceKm == null) return -1;
-        return a.distanceKm - b.distanceKm;
-      }
-      return a.name.localeCompare(b.name);
-    };
-    results.sort((a, b) => {
-      if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
-      return rank(a, b);
-    });
-
-    const limited = results.slice(0, input.limit ?? 30);
-    const ratings = await this.getReviewSummaries(limited.map((r) => r.id));
+    const limited = rankResults(results, input.sort ?? 'relevance', !!point).slice(
+      0,
+      input.limit ?? 30,
+    );
     return Promise.all(
       limited.map(async ({ photoKey, ...r }) => ({
         ...r,
         imageUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
-        ...(ratings.get(r.id) ?? { averageRating: null, reviewCount: 0 }),
+      })),
+    );
+  }
+
+  /** Hoje e os vizinhos (UTC ±1 dia): cobre o "hoje" de qualquer fuso */
+  private nearDateKeys(now: Date): string[] {
+    return [-1, 0, 1].map((d) =>
+      new Date(now.getTime() + d * 86_400_000).toISOString().slice(0, 10),
+    );
+  }
+
+  /**
+   * Busca de profissionais: só quem deixou o perfil público (/p/:slug).
+   * Nota, foto e unidades seguem as escolhas de privacidade dele; quem
+   * esconde as unidades não entra na busca por distância (não revela onde
+   * atende) e aparece pelas cidades que escolheu mostrar.
+   */
+  async searchPublicProfessionals(input: PublicSearchInput) {
+    const point =
+      input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : null;
+    const radiusKm = clampRadius(input.radiusKm);
+    const now = new Date();
+    const activeBarber: Prisma.BarberWhereInput = {
+      isActive: true,
+      barbershop: { isActive: true },
+      AND: [
+        { OR: [{ accessStartsAt: null }, { accessStartsAt: { lte: now } }] },
+        { OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: now } }] },
+      ],
+    };
+    const AND: Prisma.ProfessionalWhereInput[] = [];
+    if (input.query) {
+      AND.push({
+        OR: [
+          { user: { fullName: { contains: input.query, mode: 'insensitive' } } },
+          { cities: { has: input.query } },
+        ],
+      });
+    }
+    if (input.category) {
+      AND.push({
+        OR: [
+          { specialties: { has: input.category } },
+          {
+            barbers: {
+              some: {
+                ...activeBarber,
+                barbershop: {
+                  isActive: true,
+                  services: { some: { isActive: true, category: input.category } },
+                },
+              },
+            },
+          },
+        ],
+      });
+    }
+    const professionals = await this.prisma.professional.findMany({
+      where: { visibility: 'public', slug: { not: null }, ...(AND.length ? { AND } : {}) },
+      include: {
+        user: { select: { fullName: true, photoKey: true } },
+        barbers: {
+          where: activeBarber,
+          select: {
+            specialization: true,
+            barbershop: {
+              select: {
+                name: true,
+                slug: true,
+                city: true,
+                latitude: true,
+                longitude: true,
+                currency: true,
+                services: { where: { isActive: true }, select: { price: true } },
+              },
+            },
+          },
+        },
+      },
+      take: 500,
+    });
+
+    const ratings = new Map(
+      (
+        await this.prisma.professionalReview.groupBy({
+          by: ['professionalId'],
+          where: { professionalId: { in: professionals.map((p) => p.id) }, hiddenAt: null },
+          _avg: { rating: true },
+          _count: { _all: true },
+        })
+      ).map((g) => [
+        g.professionalId!,
+        {
+          averageRating: g._avg.rating != null ? Math.round(g._avg.rating * 10) / 10 : null,
+          reviewCount: g._count._all,
+        },
+      ]),
+    );
+    const citySlugOf = (c: string) => this.slugifyCity(c);
+    const wantedCity = input.citySlug ?? (input.city ? citySlugOf(input.city) : null);
+
+    const results = professionals
+      .map((p) => {
+        const shops = p.showLocations ? p.barbers.map((b) => b.barbershop) : [];
+        const cities = [...new Set([...p.cities, ...shops.map((s) => s.city)])];
+        const distances = point
+          ? shops
+              .filter((s) => s.latitude != null && s.longitude != null)
+              .map((s) => haversineKm(point.lat, point.lng, s.latitude!, s.longitude!))
+          : [];
+        const prices = p.barbers
+          .flatMap((b) => b.barbershop.services.map((s) => Number(s.price)))
+          .filter((n) => n > 0);
+        const rating = p.showRating
+          ? ratings.get(p.id) ?? { averageRating: null, reviewCount: 0 }
+          : { averageRating: null, reviewCount: 0 };
+        return {
+          slug: p.slug!,
+          name: p.user.fullName,
+          photoKey: p.showPhoto ? p.user.photoKey : null,
+          specialization: p.barbers.find((b) => b.specialization)?.specialization ?? null,
+          specialties: p.specialties,
+          cities,
+          shops: shops.map((s) => ({ name: s.name, slug: s.slug })),
+          acceptingClients: p.acceptingClients,
+          distanceKm: distances.length ? Math.round(Math.min(...distances) * 10) / 10 : null,
+          minPrice: prices.length ? Math.min(...prices) : null,
+          currency: p.barbers[0]?.barbershop.currency ?? null,
+          ...rating,
+        };
+      })
+      .filter(
+        (r) =>
+          (!wantedCity || r.cities.some((c) => citySlugOf(c) === wantedCity)) &&
+          (!point || (r.distanceKm != null && r.distanceKm <= radiusKm)) &&
+          (input.minRating == null || (r.averageRating ?? 0) >= input.minRating) &&
+          (input.maxPrice == null || (r.minPrice != null && r.minPrice <= input.maxPrice)),
+      );
+
+    const limited = rankResults(results, input.sort ?? 'relevance', !!point).slice(
+      0,
+      input.limit ?? 30,
+    );
+    return Promise.all(
+      limited.map(async ({ photoKey, ...r }) => ({
+        ...r,
+        photoUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
       })),
     );
   }
