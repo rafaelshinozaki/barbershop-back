@@ -199,6 +199,8 @@ export function presentPublicProfile<T extends PublicShopLink, R = never>(source
   /** Nota média e quantas avaliações (vazio = ainda não tem) */
   rating?: { averageRating: number | null; reviewCount: number };
   reviews?: R[];
+  /** Selos calculados do histórico (a página só mostra os dos campos visíveis) */
+  badges?: string[];
   choices: Pick<
     ProfileChoices,
     | 'visibility'
@@ -224,5 +226,8 @@ export function presentPublicProfile<T extends PublicShopLink, R = never>(source
     averageRating: choices.showRating !== false ? source.rating?.averageRating ?? null : null,
     reviewCount: choices.showRating !== false ? source.rating?.reviewCount ?? null : null,
     reviews: choices.showReviews !== false ? source.reviews ?? [] : [],
+    badges: (source.badges ?? []).filter((badge) =>
+      badge === 'top_rated' ? choices.showRating !== false : choices.showAppointmentCount,
+    ),
   };
 }

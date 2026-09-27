@@ -28,6 +28,7 @@ import {
   assertSoloSinglePerson,
   productUnits,
 } from './solo';
+import { unitBadges } from './badges';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
@@ -3337,6 +3338,10 @@ export class BarbershopService {
       ? await this.s3Service.getDownloadUrl(barbershop.coverKey)
       : null;
     const { averageRating, reviewCount } = await this.getReviewSummary(barbershop.id);
+    const completed = await this.prisma.appointment.count({
+      where: { barbershopId: barbershop.id, status: 'COMPLETED' },
+    });
+    const badges = unitBadges({ averageRating, reviewCount, completed });
     const isFeatured = barbershop.featuredUntil != null && barbershop.featuredUntil > new Date();
     const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
     const subscriptionPlans = canOfferSubscriptions
@@ -3356,6 +3361,7 @@ export class BarbershopService {
       instagramUsername: socialConnection?.instagramUsername ?? null,
       averageRating,
       reviewCount,
+      badges,
       isFeatured,
       subscriptionPlans: subscriptionPlans.map((p) => ({
         ...p,

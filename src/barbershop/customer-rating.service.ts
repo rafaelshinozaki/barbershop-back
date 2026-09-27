@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
+import { clientBadges } from './badges';
 
 export type RatingSide = 'unit' | 'professional';
 
@@ -152,6 +153,36 @@ export class CustomerRatingService {
       if (!served) throw new ForbiddenException('Só quem atende o cliente vê a nota dele');
     }
     return this.conductOf(customer);
+  }
+
+  /**
+   * Histórico da unidade: em cada atendimento do cliente, a nota que ele deu
+   * ao profissional e a caixinha. Barbeiro vê só os atendimentos dele.
+   */
+  async visitFeedback(userId: number, barbershopId: number, customerId: number) {
+    const level = await this.barbershops.getMyAccessLevel(userId, barbershopId);
+    if (!level) throw new ForbiddenException('Você não tem acesso a esta unidade');
+    const rows = await this.prisma.appointment.findMany({
+      where: {
+        barbershopId,
+        customerId,
+        status: 'COMPLETED',
+        ...(UNIT_LEVELS.includes(level) ? {} : { barber: { userId } }),
+      },
+      select: {
+        id: true,
+        professionalReview: { select: { rating: true, hiddenAt: true } },
+        tips: { select: { amount: true } },
+      },
+      orderBy: { startAt: 'desc' },
+      take: 200,
+    });
+    return rows.map((a) => ({
+      appointmentId: a.id,
+      rating:
+        a.professionalReview && !a.professionalReview.hiddenAt ? a.professionalReview.rating : null,
+      tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
+    }));
   }
 
   /** O cliente vê a própria nota e o que a compõe */
@@ -300,6 +331,7 @@ export class CustomerRatingService {
         completed: 0,
         noShows: 0,
         attendanceRate: null,
+        badges: [],
       };
     }
     const [ratings, completed, noShows] = await Promise.all([
@@ -315,7 +347,7 @@ export class CustomerRatingService {
       }),
     ]);
     const total = completed + noShows;
-    return {
+    const conduct = {
       punctuality: average(ratings.map((r) => r.punctuality)),
       treatment: average(ratings.map((r) => r.treatment)),
       ratingCount: ratings.length,
@@ -323,5 +355,6 @@ export class CustomerRatingService {
       noShows,
       attendanceRate: total ? Math.round((completed / total) * 100) : null,
     };
+    return { ...conduct, badges: clientBadges(conduct) };
   }
 }

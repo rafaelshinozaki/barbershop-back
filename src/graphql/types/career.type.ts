@@ -95,6 +95,11 @@ export class CareerOverviewType {
 
   @Field()
   visibility: string;
+
+  @Field(() => [String], {
+    description: 'Os próprios selos (top_rated, experienced, loyal_clients)',
+  })
+  badges: string[];
 }
 
 /** Atendimento antigo: primeiro nome e data. Sem contato. */
@@ -197,6 +202,37 @@ export class PublicProfessionalType {
 
   @Field(() => [PublicProfessionalReviewType], { description: 'Vazio se o profissional esconde' })
   reviews: PublicProfessionalReviewType[];
+
+  @Field(() => [String], { description: 'Selos: top_rated, experienced, loyal_clients' })
+  badges: string[];
+}
+
+/** Um atendimento no histórico do profissional */
+@ObjectType()
+export class ServiceHistoryItemType {
+  @Field(() => Int)
+  appointmentId: number;
+
+  @Field()
+  startAt: Date;
+
+  @Field()
+  shopName: string;
+
+  @Field()
+  currency: string;
+
+  @Field({ description: 'Só o primeiro nome do cliente' })
+  customerFirstName: string;
+
+  @Field()
+  serviceNames: string;
+
+  @Field(() => Int, { nullable: true, description: 'Nota que o cliente deu' })
+  rating: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'Caixinha que foi pro profissional' })
+  tip: number | null;
 }
 
 @ObjectType()

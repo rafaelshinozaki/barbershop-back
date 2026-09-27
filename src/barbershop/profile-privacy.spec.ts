@@ -98,6 +98,7 @@ describe('privacidade do perfil', () => {
       averageRating: null,
       reviewCount: null,
       reviews: [],
+      badges: [],
     });
   });
 });

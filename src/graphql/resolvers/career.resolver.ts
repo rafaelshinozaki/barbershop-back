@@ -10,6 +10,7 @@ import {
   CareerOverviewType,
   MyProfessionalReviewType,
   ProfilePrivacyType,
+  ServiceHistoryItemType,
 } from '../types/career.type';
 import { ProfessionalReviewService } from '../../barbershop/professional-review.service';
 import { ProfessionalSignupInput, UpdateProfilePrivacyInput } from '../dto/auth.dto';
@@ -24,6 +25,12 @@ export class CareerResolver {
     private readonly s3: S3Service,
     private readonly professionalReviews: ProfessionalReviewService,
   ) {}
+
+  /** Histórico de atendimentos concluídos, em todas as unidades */
+  @Query(() => [ServiceHistoryItemType])
+  myServiceHistory(@CurrentUser() user: UserDTO) {
+    return this.career.serviceHistory(user.id);
+  }
 
   /** Avaliações que a pessoa recebeu como profissional, em todas as unidades */
   @Query(() => [MyProfessionalReviewType])

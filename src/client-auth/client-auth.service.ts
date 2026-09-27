@@ -14,6 +14,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { StripeService } from '@/stripe/stripe.service';
 import { normalizeLang } from '@/email/language';
+import { appointmentReviewUrl } from '../barbershop/appointment-link';
 import { ClientAccountDTO } from './dto/client-account.dto';
 
 export const CLIENT_TOKEN_PURPOSE = {
@@ -41,6 +42,11 @@ export type ClientHistoryEntry = {
   status: string;
   total: number | null;
   currency: string | null;
+  /** Atendimento: com quem, a nota que o cliente deu, a caixinha e o link de avaliar */
+  barberName?: string | null;
+  rating?: number | null;
+  tip?: number | null;
+  reviewUrl?: string | null;
 };
 
 function validatePassword(password: string) {
@@ -608,6 +614,9 @@ export class ClientAuthService {
         include: {
           barbershop: { select: { name: true, slug: true } },
           services: { include: { service: { select: { name: true } } } },
+          barber: { select: { name: true } },
+          professionalReview: { select: { rating: true } },
+          tips: { select: { amount: true } },
         },
         orderBy: { startAt: 'desc' },
         take: 50,
@@ -644,6 +653,10 @@ export class ClientAuthService {
         status: a.status,
         total: null,
         currency: currencyByCustomer.get(a.customerId) ?? null,
+        barberName: a.barber?.name ?? null,
+        rating: a.professionalReview?.rating ?? null,
+        tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
+        reviewUrl: a.status === 'COMPLETED' ? appointmentReviewUrl(a.id) : null,
       });
     });
 
