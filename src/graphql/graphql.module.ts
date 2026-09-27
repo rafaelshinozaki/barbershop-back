@@ -1,6 +1,7 @@
 import { AccountDeletionResolver } from './resolvers/account-deletion.resolver';
 import { CareerResolver } from './resolvers/career.resolver';
 import { CustomerRatingResolver } from './resolvers/customer-rating.resolver';
+import { TipResolver } from './resolvers/tip.resolver';
 import { SoloResolver } from './resolvers/solo.resolver';
 import { ImportResolver } from './resolvers/import.resolver';
 import { PublicProfessionalResolver } from './resolvers/public-professional.resolver';
@@ -91,6 +92,7 @@ import { SocialModule } from '../social/social.module';
     AccountDeletionResolver,
     CareerResolver,
     CustomerRatingResolver,
+    TipResolver,
     SoloResolver,
     ImportResolver,
     PublicProfessionalResolver,

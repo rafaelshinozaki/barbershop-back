@@ -208,6 +208,26 @@ type AppointmentStatusCount {
   status: String!
 }
 
+type AppointmentTipType {
+  amount: Float!
+  barberName: String
+  createdAt: DateTime!
+  currency: String!
+
+  """professional | unit"""
+  destination: String!
+  id: Int!
+
+  """CASH | PIX | CARD"""
+  method: String!
+
+  """Já entrou num pagamento do profissional (não dá mais pra apagar)"""
+  paidOut: Boolean!
+
+  """A unidade recebeu e repassa ao profissional no pagamento"""
+  receivedByUnit: Boolean!
+}
+
 type AuthorizeChairRentResultType {
   clientSecret: String
   link: ChairRentType!
@@ -1555,6 +1575,7 @@ type MonthlyRevenueItem {
 }
 
 type Mutation {
+  addAppointmentTip(amount: Float!, appointmentId: Int!, barbershopId: Int!, destination: String!, method: String!, receivedByUnit: Boolean): AppointmentTipType!
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
   addBarbershopPhoto(barbershopId: Int!, caption: String, key: String!): BarbershopPhotoType!
   addClientFavorite(networkId: Float!): [Network!]!
@@ -1677,6 +1698,7 @@ type Mutation {
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
+  removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
@@ -2462,6 +2484,7 @@ type Query {
   appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
+  appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
