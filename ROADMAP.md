@@ -436,7 +436,7 @@ Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele
     - unidade: nota alta, procurada;
     - cliente, privados: comparece, pontual.
   - A caixinha pelo Stripe segue no H4. A validação jurídica da nota do cliente também, e antes disso ela deve ficar restrita a quem atende.
-- Moderação de galerias, comentários e perfis públicos. O perfil do cliente não entra nessa moderação pública: ele não é público.
+- **Moderação** de galerias, comentários e perfis públicos ✅: qualquer visitante denuncia, sem login, uma foto da galeria, uma avaliação de profissional, o perfil de um profissional ou a página da unidade. O limite é de 10 por hora; a mesma pessoa não duplica, e o IP não é guardado (vira HMAC). O admin decide numa fila por conteúdo. Ocultar tira a foto da galeria e a avaliação da página e da nota, suspende o perfil e tira a unidade da busca e do sitemap; o link direto da unidade continua. Manter no ar descarta as denúncias, e restaurar volta atrás. As avaliações de unidade seguem o fluxo antigo (a unidade denuncia). O perfil do cliente não entra nessa moderação pública: ele não é público. Aviso ao dono quando algo dele é ocultado fica para depois.
 
 Sucesso: agendamentos vindos da busca (e não do link direto da unidade), e taxa de reserva por busca.
 
