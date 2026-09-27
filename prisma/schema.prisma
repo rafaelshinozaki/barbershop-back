@@ -625,6 +625,10 @@ model Customer {
   isActive        Boolean         @default(true)
   loyaltyPoints   Int             @default(0)
   marketingOptOut Boolean         @default(false) // não incluir em campanhas de marketing (Message Blast)
+  // Bloqueado pela unidade (vale pra rede toda): não agenda online nem manda mensagem no chat
+  blockedAt       DateTime?
+  blockedReason   String?
+  blockedByUserId Int?
   network         Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
   clientAccount   ClientAccount?  @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   appointments   Appointment[]
@@ -1937,6 +1941,8 @@ model ChatThread {
   clientNotifiedAt DateTime?
   // Denúncia ou disputa aberta: a guarda segura o texto até esta data
   retainUntil      DateTime?
+  // Encerrada pela moderação (denúncia): continua visível, não recebe mensagem
+  closedAt         DateTime?
   appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   messages         ChatMessage[]
 

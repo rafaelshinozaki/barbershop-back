@@ -360,6 +360,15 @@ export class BarbershopCustomer {
   @Field()
   marketingOptOut: boolean;
 
+  @Field(() => Date, {
+    nullable: true,
+    description: 'Bloqueado pela unidade: não agenda online nem manda mensagem',
+  })
+  blockedAt?: Date | null;
+
+  @Field(() => String, { nullable: true })
+  blockedReason?: string | null;
+
   @Field()
   createdAt: string;
 

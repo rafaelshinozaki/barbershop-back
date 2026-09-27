@@ -11,6 +11,17 @@ export const REPORT_TARGETS = [
   'barbershop',
 ] as const;
 export type ReportTarget = (typeof REPORT_TARGETS)[number];
+/**
+ * Conversa do atendimento: denunciada só por quem participa (pelo chat, não
+ * pelo reportContent público — senão qualquer um faria o admin ler conversa
+ * alheia). Denunciada, a guarda segura o texto até a moderação decidir.
+ */
+export type ModeratedTarget = ReportTarget | 'chat_thread';
+const MODERATED_TARGETS: ModeratedTarget[] = [...REPORT_TARGETS, 'chat_thread'];
+/** Enquanto a denúncia está aberta, a conversa não sai pela guarda */
+const HOLD_UNTIL = new Date('2100-01-01T00:00:00Z');
+/** Mensagens mostradas ao admin (as últimas) */
+const CHAT_EXCERPT = 30;
 
 export const REPORT_REASONS = [
   'offensive',
@@ -134,7 +145,7 @@ export class ModerationService {
     const items = await Promise.all(
       [...groups.values()].map(async (list) => {
         const { targetType, targetId } = list[0];
-        const summary = await this.summary(targetType as ReportTarget, targetId);
+        const summary = await this.summary(targetType as ModeratedTarget, targetId);
         if (!summary) return null;
         const open = list.filter((r) => r.status === 'open');
         if (!open.length && !summary.hidden) return null;
@@ -168,7 +179,7 @@ export class ModerationService {
   }
 
   /** O que o admin vê do conteúdo: título, texto, imagem e o link público */
-  private async summary(type: ReportTarget, id: number) {
+  private async summary(type: ModeratedTarget, id: number) {
     switch (type) {
       case 'photo': {
         const p = await this.prisma.barbershopPhoto.findUnique({
@@ -231,6 +242,35 @@ export class ModerationService {
           hidden: b.searchHiddenAt != null,
         };
       }
+      case 'chat_thread': {
+        const t = await this.prisma.chatThread.findUnique({
+          where: { id },
+          include: {
+            messages: { orderBy: { createdAt: 'desc' }, take: CHAT_EXCERPT },
+            appointment: {
+              select: {
+                barbershop: { select: { name: true } },
+                barber: { select: { name: true } },
+                customer: { select: { name: true } },
+              },
+            },
+          },
+        });
+        if (!t) return null;
+        const staffName =
+          t.kind === 'unit' ? t.appointment.barbershop.name : t.appointment.barber.name;
+        const clientName = t.appointment.customer.name;
+        return {
+          title: `${clientName} ↔ ${staffName}`,
+          text: [...t.messages]
+            .reverse()
+            .map((m) => `[${m.senderSide === 'client' ? clientName : staffName}] ${m.body}`)
+            .join('\n'),
+          imageUrl: null,
+          link: null,
+          hidden: t.closedAt != null,
+        };
+      }
       default:
         return null;
     }
@@ -242,13 +282,13 @@ export class ModerationService {
    * restore: volta a mostrar o que foi ocultado.
    */
   async resolve(adminUserId: number, targetType: string, targetId: number, action: string) {
-    if (!REPORT_TARGETS.includes(targetType as ReportTarget)) {
+    if (!MODERATED_TARGETS.includes(targetType as ModeratedTarget)) {
       throw new BadRequestException('Tipo de conteúdo inválido');
     }
     if (!['hide', 'dismiss', 'restore'].includes(action)) {
       throw new BadRequestException('Ação inválida');
     }
-    const type = targetType as ReportTarget;
+    const type = targetType as ModeratedTarget;
     if (!(await this.summary(type, targetId))) {
       throw new NotFoundException('Conteúdo não encontrado');
     }
@@ -264,11 +304,54 @@ export class ModerationService {
           resolvedByUserId: adminUserId,
         },
       });
+      // Denúncia decidida: a conversa volta a seguir a guarda normal
+      if (type === 'chat_thread') {
+        await this.prisma.chatThread.update({
+          where: { id: targetId },
+          data: { retainUntil: null },
+        });
+      }
     }
     return true;
   }
 
-  private async setHidden(type: ReportTarget, id: number, at: Date | null) {
+  /** Denúncia de conversa, feita por quem participa (o ChatService confere) */
+  async reportChatThread(
+    threadId: number,
+    input: { reason: string; details?: string | null },
+    reporter: string,
+  ) {
+    if (!REPORT_REASONS.includes(input.reason as ReportReason)) {
+      throw new BadRequestException('Motivo inválido');
+    }
+    const details = input.details?.trim() || null;
+    if (details && details.length > MAX_DETAILS) {
+      throw new BadRequestException(`Detalhes com no máximo ${MAX_DETAILS} caracteres`);
+    }
+    const key = reporterKey(reporter);
+    const existing = await this.prisma.contentReport.findFirst({
+      where: { targetType: 'chat_thread', targetId: threadId, reporterKey: key, status: 'open' },
+    });
+    if (!existing) {
+      await this.prisma.contentReport.create({
+        data: {
+          targetType: 'chat_thread',
+          targetId: threadId,
+          reason: input.reason,
+          details,
+          reporterKey: key,
+        },
+      });
+    }
+    // Segura o texto até a moderação decidir (a guarda de 12 meses não apaga)
+    await this.prisma.chatThread.update({
+      where: { id: threadId },
+      data: { retainUntil: HOLD_UNTIL },
+    });
+    return true;
+  }
+
+  private async setHidden(type: ModeratedTarget, id: number, at: Date | null) {
     switch (type) {
       case 'photo':
         await this.prisma.barbershopPhoto.update({ where: { id }, data: { hiddenAt: at } });
@@ -281,6 +364,10 @@ export class ModerationService {
         return;
       case 'barbershop':
         await this.prisma.barbershop.update({ where: { id }, data: { searchHiddenAt: at } });
+        return;
+      case 'chat_thread':
+        // "Ocultar" uma conversa é encerrá-la: fica visível, sem mensagem nova
+        await this.prisma.chatThread.update({ where: { id }, data: { closedAt: at } });
         return;
     }
   }

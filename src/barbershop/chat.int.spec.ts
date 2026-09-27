@@ -4,6 +4,7 @@ import { RetentionService } from '../privacy/retention.service';
 import { createAppointmentToken } from './appointment-link';
 import { BarbershopService } from './barbershop.service';
 import { ChatService } from './chat.service';
+import { ModerationService } from './moderation.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 
@@ -31,7 +32,10 @@ describe('Chat do atendimento (integração)', () => {
   const queue = { email: async (job: any) => void emails.push(job) };
   const pings: number[] = [];
   const realtime = { notifyUsers: (ids: number[]) => void pings.push(...ids) };
-  const chat = new ChatService(prisma, shops, queue as never, realtime as never);
+  const moderation = new ModerationService(prisma, {
+    getDownloadUrl: async (key: string) => key,
+  } as never);
+  const chat = new ChatService(prisma, shops, queue as never, realtime as never, moderation);
 
   let roleId: number;
   const userIds: number[] = [];
@@ -159,7 +163,12 @@ describe('Chat do atendimento (integração)', () => {
     canceledApptId = await appointment(shopId, barber.id, customer.id, 'CANCELLED');
   });
 
+  const reportedThreads: number[] = [];
+
   afterAll(async () => {
+    await prisma.contentReport.deleteMany({
+      where: { targetType: 'chat_thread', targetId: { in: reportedThreads } },
+    });
     await prisma.userNotification.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } });
     await prisma.customer.deleteMany({ where: { networkId } });
@@ -280,6 +289,114 @@ describe('Chat do atendimento (integração)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(chat.send(apptId, 'professional', '   ', staff(proId))).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+  });
+
+  it('denúncia: quem participa denuncia, o texto fica guardado e a moderação encerra', async () => {
+    const link = { ...byLink, manageToken: createAppointmentToken(apptId) };
+    const thread = await prisma.chatThread.findUniqueOrThrow({
+      where: { appointmentId_kind: { appointmentId: apptId, kind: 'professional' } },
+    });
+    reportedThreads.push(thread.id);
+    // Quem não participa não denuncia; motivo inválido não passa
+    await expect(
+      chat.report(apptId, 'professional', { reason: 'spam' }, staff(deskId)),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      chat.report(apptId, 'professional', { reason: 'qualquer' }, link),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await chat.report(apptId, 'professional', { reason: 'offensive', details: 'Grosseiro' }, link);
+    await chat.report(apptId, 'professional', { reason: 'offensive' }, link); // repetida: uma só
+    await chat.report(apptId, 'professional', { reason: 'spam' }, staff(proId));
+    expect(
+      await prisma.contentReport.count({
+        where: { targetType: 'chat_thread', targetId: thread.id, status: 'open' },
+      }),
+    ).toBe(2);
+    const [mine] = await chat
+      .threads(apptId, link)
+      .then((t) => t.filter((x) => x.kind === 'professional'));
+    expect(mine).toMatchObject({ reported: true, closed: false, canSend: true });
+    expect(
+      (
+        await prisma.chatThread.findUniqueOrThrow({ where: { id: thread.id } })
+      ).retainUntil!.getFullYear(),
+    ).toBe(2100);
+
+    const item = (await moderation.queue()).find(
+      (i) => i.targetType === 'chat_thread' && i.targetId === thread.id,
+    );
+    expect(item).toMatchObject({ openReports: 2, hidden: false });
+    expect(`${item!.title} ${item!.text}`).toContain('Carla Cliente');
+
+    // Encerrada: continua visível, sem mensagem nova; a guarda volta ao normal
+    await moderation.resolve(ownerId, 'chat_thread', thread.id, 'hide');
+    const [closed] = await chat
+      .threads(apptId, link)
+      .then((t) => t.filter((x) => x.kind === 'professional'));
+    expect(closed).toMatchObject({ closed: true, canSend: false, reported: false });
+    expect(closed.messages.length).toBeGreaterThan(0);
+    await expect(chat.send(apptId, 'professional', 'Oi', staff(proId))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await moderation.resolve(ownerId, 'chat_thread', thread.id, 'restore');
+    expect((await chat.send(apptId, 'professional', 'Voltou', staff(proId))).body).toBe('Voltou');
+  });
+
+  it('cliente bloqueado pela unidade: não manda mensagem nem agenda online', async () => {
+    const link = { ...byLink, manageToken: createAppointmentToken(apptId) };
+    const customer = await prisma.customer.findFirstOrThrow({ where: { networkId } });
+    // Profissional não bloqueia; dona sim
+    await expect(
+      shops.setCustomerBlocked(proId, shopIds[0], customer.id, true, 'x'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const blocked = await shops.setCustomerBlocked(
+      ownerId,
+      shopIds[0],
+      customer.id,
+      true,
+      '  Faltas e ofensas  ',
+    );
+    expect(blocked).toMatchObject({
+      blockedAt: expect.any(Date),
+      blockedReason: 'Faltas e ofensas',
+    });
+
+    const [thread] = await chat.threads(apptId, link);
+    expect(thread).toMatchObject({ blocked: true, canSend: false });
+    await expect(chat.send(apptId, 'unit', 'Oi', link)).rejects.toBeInstanceOf(ForbiddenException);
+    // A equipe ainda responde
+    expect((await chat.threads(apptId, staff(deskId)))[0].canSend).toBe(true);
+
+    const book = (extra: {
+      customerPhone: string;
+      customerEmail?: string;
+      clientAccountId?: number;
+    }) =>
+      shops.createPublicAppointment({
+        barbershopId: shopIds[0],
+        serviceIds: [],
+        startAt: new Date(Date.now() + 48 * HOUR).toISOString(),
+        customerName: 'Carla',
+        ...extra,
+      });
+    // Pelo telefone, pelo e-mail (outro telefone) ou pela conta
+    await expect(book({ customerPhone: customer.phone })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(
+      book({ customerPhone: '+5511000000000', customerEmail: customer.email!.toUpperCase() }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      book({ customerPhone: '+5511000000001', clientAccountId: accountId }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const unblocked = await shops.setCustomerBlocked(ownerId, shopIds[0], customer.id, false);
+    expect(unblocked).toMatchObject({ blockedAt: null, blockedReason: null });
+    expect((await chat.threads(apptId, link))[0].canSend).toBe(true);
+    await expect(book({ customerPhone: customer.phone })).rejects.not.toBeInstanceOf(
+      ForbiddenException,
     );
   });
 

@@ -367,6 +367,28 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Customer, {
+    description: 'Bloqueia ou desbloqueia o cliente (gerente para cima)',
+  })
+  async setCustomerBlocked(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @Args('blocked') blocked: boolean,
+    @CurrentUser() user: UserDTO,
+    @Args('reason', { nullable: true }) reason?: string,
+  ) {
+    const result = await this.barbershopService.setCustomerBlocked(
+      user.id,
+      barbershopId,
+      customerId,
+      blocked,
+      reason,
+    );
+    this.realtime.notify(barbershopId, 'CUSTOMER', 'UPDATED');
+    return result;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async deleteCustomer(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,

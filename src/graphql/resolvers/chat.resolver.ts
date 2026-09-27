@@ -9,6 +9,7 @@ import { ChatService } from '../../barbershop/chat.service';
 import { ClientAuthService } from '../../client-auth/client-auth.service';
 import { GraphQLClientJwtAuthGuard } from '../../client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '../../client-auth/current-client.decorator';
+import { ThrottleReport } from '../../common/decorators/throttle.decorator';
 
 // Mandar mensagem: 30 por minuto por IP/navegador
 const ThrottleChat = () => Throttle({ default: { limit: 30, ttl: 60000 } });
@@ -47,8 +48,20 @@ export class ChatThreadType {
   @Field()
   startAt: Date;
 
-  @Field({ description: 'Atendimento cancelado não recebe mensagem' })
+  @Field({
+    description:
+      'Atendimento cancelado, conversa encerrada pela moderação ou cliente bloqueado: só leitura',
+  })
   canSend: boolean;
+
+  @Field({ description: 'Denunciada e esperando a moderação (o texto fica guardado)' })
+  reported: boolean;
+
+  @Field({ description: 'Encerrada pela moderação' })
+  closed: boolean;
+
+  @Field({ description: 'Cliente bloqueado pela unidade' })
+  blocked: boolean;
 
   @Field(() => [ChatMessageType])
   messages: ChatMessageType[];
@@ -126,6 +139,25 @@ export class ChatResolver {
     return this.chat.send(appointmentId, kind, body, await this.clientViewer(context, manageToken));
   }
 
+  /** Denunciar a conversa: vai pra fila da moderação */
+  @ThrottleReport()
+  @Mutation(() => Boolean)
+  async clientReportChat(
+    @Args('appointmentId', { type: () => Int }) appointmentId: number,
+    @Args('kind') kind: string,
+    @Args('reason') reason: string,
+    @Context() context: any,
+    @Args('details', { nullable: true }) details?: string,
+    @Args('manageToken', { nullable: true }) manageToken?: string,
+  ) {
+    return this.chat.report(
+      appointmentId,
+      kind,
+      { reason, details },
+      await this.clientViewer(context, manageToken),
+    );
+  }
+
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Query(() => [ChatInboxItemType])
   clientChatInbox(@CurrentClient() client: CurrentClientUser) {
@@ -158,6 +190,26 @@ export class ChatResolver {
       appointmentId,
       kind,
       body,
+      { side: 'staff', userId: user.id },
+      barbershopId,
+    );
+  }
+
+  @ThrottleReport()
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  reportChat(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('appointmentId', { type: () => Int }) appointmentId: number,
+    @Args('kind') kind: string,
+    @Args('reason') reason: string,
+    @CurrentUser() user: UserDTO,
+    @Args('details', { nullable: true }) details?: string,
+  ) {
+    return this.chat.report(
+      appointmentId,
+      kind,
+      { reason, details },
       { side: 'staff', userId: user.id },
       barbershopId,
     );
