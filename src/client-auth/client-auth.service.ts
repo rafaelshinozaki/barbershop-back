@@ -554,7 +554,12 @@ export class ClientAuthService {
     }
 
     const now = new Date();
+    // Conversas dos atendimentos da pessoa (os dois lados saem juntos)
+    const customerIds = (
+      await this.prisma.customer.findMany({ where: { clientAccountId }, select: { id: true } })
+    ).map((c) => c.id);
     await this.prisma.$transaction([
+      this.prisma.chatThread.deleteMany({ where: { customerId: { in: customerIds } } }),
       this.prisma.clientSubscription.updateMany({
         where: { clientAccountId, status: { not: 'CANCELED' } },
         data: { status: 'CANCELED', canceledAt: now, cancelAtPeriodEnd: false },
@@ -600,6 +605,29 @@ export class ClientAuthService {
       }),
     ]);
     this.logger.log(`Conta de cliente ${clientAccountId} excluída pelo titular`);
+  }
+
+  /**
+   * Cliente logado (cookie ClientAuthentication), sem exigir login: quem não
+   * tem conta segue pelo link do e-mail. Cookie de sessão encerrada não vale.
+   */
+  async optionalClientAccountId(req: any): Promise<number | undefined> {
+    const token = req?.cookies?.ClientAuthentication;
+    if (!token) return undefined;
+    try {
+      const decoded = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      }) as { clientAccountId: number; v?: number };
+      const account = await this.prisma.clientAccount.findUnique({
+        where: { id: decoded.clientAccountId },
+        select: { sessionVersion: true, deletedAt: true },
+      });
+      return account && !account.deletedAt && (decoded.v ?? 0) === account.sessionVersion
+        ? decoded.clientAccountId
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   issueCookie(account: { id: number; email: string; sessionVersion: number }, res: Response) {

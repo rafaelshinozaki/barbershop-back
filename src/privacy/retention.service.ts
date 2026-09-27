@@ -11,7 +11,8 @@ const BATCH = 1000;
 /**
  * Uma vez por dia, apaga dado pessoal cujo propósito já acabou. Não toca em
  * pagamento, venda, caixinha nem assinatura: isso fica pelo prazo fiscal.
- * O chat entra aqui quando a tabela existir, com o prazo de RETENTION_DAYS.
+ * O chat sai 12 meses depois da última mensagem da conversa (salvo denúncia
+ * ou disputa aberta, que segura o texto até retainUntil).
  */
 @Injectable()
 export class RetentionService {
@@ -24,6 +25,7 @@ export class RetentionService {
     const loginBefore = cutoffBefore(now, RETENTION_DAYS.loginHistory);
     const notificationBefore = cutoffBefore(now, RETENTION_DAYS.notification);
     const conductBefore = cutoffBefore(now, RETENTION_DAYS.clientConductNote);
+    const chatBefore = cutoffBefore(now, RETENTION_DAYS.chatText);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -116,7 +118,28 @@ export class RetentionService {
       BATCH,
     );
 
+    // Chat: a conversa inteira sai (mensagens junto, em cascata) 12 meses
+    // depois da última mensagem, salvo se estiver segurada
+    const chatThreads = await deleteInBatches(
+      (take) =>
+        this.prisma.chatThread.findMany({
+          where: {
+            lastMessageAt: { lt: chatBefore },
+            OR: [{ retainUntil: null }, { retainUntil: { lt: now } }],
+          },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.chatThread.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
+      chatThreads,
       emailCopies,
       loginHistory,
       notifications,

@@ -1169,6 +1169,7 @@ model Appointment {
   professionalReview ProfessionalReview?
   customerRatings CustomerRating[]
   tips           AppointmentTip[]
+  chatThreads    ChatThread[]
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])
@@ -1912,4 +1913,50 @@ model IdentityVerification {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+// Chat preso ao atendimento (H4, item 11), como o do pedido no iFood: uma
+// conversa do cliente com a unidade (não existe no modo solo) e outra com o
+// profissional que atende. Cada uma só de quem participa; o telefone segue
+// oculto. O texto sai 12 meses depois da última mensagem (tarefa diária).
+model ChatThread {
+  id               Int           @id @default(autoincrement())
+  createdAt        DateTime      @default(now())
+  appointmentId    Int
+  // unit | professional
+  kind             String
+  barbershopId     Int
+  customerId       Int
+  // Profissional do atendimento (conversa "professional")
+  barberId         Int?
+  lastMessageAt    DateTime?
+  // Até quando cada lado leu (não lidas = mensagens do outro lado depois disso)
+  clientReadAt     DateTime?
+  staffReadAt      DateTime?
+  // Último e-mail avisando o cliente (no máximo um a cada 30 minutos)
+  clientNotifiedAt DateTime?
+  // Denúncia ou disputa aberta: a guarda segura o texto até esta data
+  retainUntil      DateTime?
+  appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  messages         ChatMessage[]
+
+  @@unique([appointmentId, kind])
+  @@index([barbershopId, lastMessageAt])
+  @@index([barberId, lastMessageAt])
+  @@index([customerId])
+  @@index([lastMessageAt])
+}
+
+model ChatMessage {
+  id           Int        @id @default(autoincrement())
+  createdAt    DateTime   @default(now())
+  threadId     Int
+  // client | staff
+  senderSide   String
+  // Quem da equipe escreveu (pra auditoria; a tela mostra a unidade ou o profissional)
+  senderUserId Int?
+  body         String
+  thread       ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
 }
