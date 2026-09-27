@@ -108,7 +108,10 @@ export function sheetKey(value: string) {
 }
 
 function parseCsv(text: string): string[][] {
-  const src = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const src = text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
   const header = src.split('\n')[0] ?? '';
   const delim = (header.match(/;/g)?.length ?? 0) > (header.match(/,/g)?.length ?? 0) ? ';' : ',';
   const rows: string[][] = [];
@@ -199,11 +202,16 @@ function minutesOf(value: string): number | null {
   return hour * 60 + minute;
 }
 
-function appointmentStatus(value: string | undefined, start: Date, now: Date): SheetAppointment['status'] | 'SKIP' {
+function appointmentStatus(
+  value: string | undefined,
+  start: Date,
+  now: Date,
+): SheetAppointment['status'] | 'SKIP' {
   const key = sheetKey(value ?? '');
   if (['cancelado', 'cancelled', 'canceled', 'cancelada'].includes(key)) return 'SKIP';
   if (['faltou', 'no_show', 'noshow'].includes(key)) return 'NO_SHOW';
-  if (['concluido', 'completed', 'finalizado', 'feito', 'done', 'atendido'].includes(key)) return 'COMPLETED';
+  if (['concluido', 'completed', 'finalizado', 'feito', 'done', 'atendido'].includes(key))
+    return 'COMPLETED';
   return start.getTime() < now.getTime() ? 'COMPLETED' : 'CONFIRMED';
 }
 
@@ -218,11 +226,21 @@ export function parseSheet(csv: string, timeZone: string, now = new Date()): Par
   const services: SheetService[] = [];
   const appointments: SheetAppointment[] = [];
   if (csv.length > MAX_CHARS) {
-    return { customers, services, appointments, errors: ['A planilha passa do tamanho aceito. Divida em partes menores.'] };
+    return {
+      customers,
+      services,
+      appointments,
+      errors: ['A planilha passa do tamanho aceito. Divida em partes menores.'],
+    };
   }
   const table = parseCsv(csv);
   if (table.length < 2) {
-    return { customers, services, appointments, errors: ['A planilha precisa de um cabeçalho e ao menos uma linha.'] };
+    return {
+      customers,
+      services,
+      appointments,
+      errors: ['A planilha precisa de um cabeçalho e ao menos uma linha.'],
+    };
   }
   const header = table[0].map((cell) => ALIASES[sheetKey(cell)] ?? '');
   const zone = safeTimeZone(timeZone);
@@ -242,7 +260,8 @@ export function parseSheet(csv: string, timeZone: string, now = new Date()): Par
     const name = field(row, 'name') || [first, last].filter(Boolean).join(' ');
     const phone = field(row, 'phone');
     const phoneDigits = digits(phone);
-    const serviceName = field(row, 'service') || (!field(row, 'start') && !field(row, 'date') ? name : '');
+    const serviceName =
+      field(row, 'service') || (!field(row, 'start') && !field(row, 'date') ? name : '');
     const duration = durationOf(field(row, 'duration'));
     const price = money(field(row, 'price'));
     const date = dateParts(field(row, 'start')) ?? dateParts(field(row, 'date'));

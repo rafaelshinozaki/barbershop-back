@@ -14,10 +14,7 @@ import { StartSoloPracticeInput } from '../dto/solo.dto';
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
 export class SoloResolver {
-  constructor(
-    private readonly solo: SoloService,
-    private readonly referrals: ProReferralService,
-  ) {}
+  constructor(private readonly solo: SoloService, private readonly referrals: ProReferralService) {}
 
   @Query(() => ProReferralType)
   myProReferral(@CurrentUser() user: UserDTO) {
@@ -35,10 +32,7 @@ export class SoloResolver {
   }
 
   @Mutation(() => SoloPracticeType)
-  startSoloPractice(
-    @Args('input') input: StartSoloPracticeInput,
-    @CurrentUser() user: UserDTO,
-  ) {
+  startSoloPractice(@Args('input') input: StartSoloPracticeInput, @CurrentUser() user: UserDTO) {
     return this.solo.start(user.id, input);
   }
 }

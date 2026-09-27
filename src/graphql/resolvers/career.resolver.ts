@@ -14,10 +14,7 @@ import { ProfessionalSignupInput, UpdateProfilePrivacyInput } from '../dto/auth.
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
 export class CareerResolver {
-  constructor(
-    private readonly career: CareerService,
-    private readonly s3: S3Service,
-  ) {}
+  constructor(private readonly career: CareerService, private readonly s3: S3Service) {}
 
   @Query(() => CareerOverviewType)
   myCareer(@CurrentUser() user: UserDTO) {

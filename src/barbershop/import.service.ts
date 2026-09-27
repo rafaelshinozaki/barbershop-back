@@ -31,10 +31,7 @@ const EMPTY: ShopImportResult = {
 
 @Injectable()
 export class ImportService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly shops: BarbershopService,
-  ) {}
+  constructor(private readonly prisma: PrismaService, private readonly shops: BarbershopService) {}
 
   preview(userId: number, barbershopId: number, csv: string) {
     return this.run(userId, barbershopId, csv, false);
@@ -44,7 +41,12 @@ export class ImportService {
     return this.run(userId, barbershopId, csv, true);
   }
 
-  private async run(userId: number, barbershopId: number, csv: string, apply: boolean): Promise<ShopImportResult> {
+  private async run(
+    userId: number,
+    barbershopId: number,
+    csv: string,
+    apply: boolean,
+  ): Promise<ShopImportResult> {
     const shop = await this.shops.ensureAccess(userId, barbershopId, 'manager');
     const parsed = parseSheet(csv, shop.timezone);
     const result: ShopImportResult = { ...EMPTY, errors: [...parsed.errors] };
@@ -66,7 +68,9 @@ export class ImportService {
         select: { id: true, name: true, staffType: true, takesAppointments: true },
       }),
     ]);
-    const phones = new Map(customers.map((customer) => [phoneMatchKey(customer.phone), customer.id]));
+    const phones = new Map(
+      customers.map((customer) => [phoneMatchKey(customer.phone), customer.id]),
+    );
     const catalog = new Map(
       services.map((service) => [
         sheetKey(service.name),
@@ -118,7 +122,10 @@ export class ImportService {
       }
     }
 
-    const needed = new Map<string, { line: number; name: string; durationMinutes: number; price: number }>();
+    const needed = new Map<
+      string,
+      { line: number; name: string; durationMinutes: number; price: number }
+    >();
     for (const row of parsed.services) needed.set(sheetKey(row.name), row);
     for (const row of parsed.appointments) {
       const key = sheetKey(row.serviceName);
@@ -149,7 +156,11 @@ export class ImportService {
           price: row.price,
           category: TreatmentCategory.OTHER,
         });
-        catalog.set(key, { id: created.id, durationMinutes: created.durationMinutes, price: Number(created.price) });
+        catalog.set(key, {
+          id: created.id,
+          durationMinutes: created.durationMinutes,
+          price: Number(created.price),
+        });
         result.servicesCreated++;
       } catch (error) {
         pushError(`Linha ${row.line}: ${messageOf(error)}`);
@@ -157,7 +168,15 @@ export class ImportService {
     }
 
     for (const row of parsed.appointments) {
-      const outcome = await this.importAppointment(userId, barbershopId, row, phones, catalog, bookable, apply);
+      const outcome = await this.importAppointment(
+        userId,
+        barbershopId,
+        row,
+        phones,
+        catalog,
+        bookable,
+        apply,
+      );
       if (outcome === 'created') result.appointmentsCreated++;
       else {
         result.appointmentsSkipped++;
@@ -177,7 +196,8 @@ export class ImportService {
     apply: boolean,
   ): Promise<'created' | string> {
     const customerId = phones.get(phoneMatchKey(row.phone));
-    if (!customerId && customerId !== 0) return `Linha ${row.line}: cliente sem telefone conhecido.`;
+    if (!customerId && customerId !== 0)
+      return `Linha ${row.line}: cliente sem telefone conhecido.`;
     const service = catalog.get(sheetKey(row.serviceName));
     if (!service) return `Linha ${row.line}: serviço "${row.serviceName}" não encontrado.`;
     const barber = this.matchBarber(row.barberName, bookable);

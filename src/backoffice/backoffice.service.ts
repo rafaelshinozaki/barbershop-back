@@ -807,7 +807,9 @@ export class BackofficeService {
       .map((barber) => professionalKey(barber));
 
     const weekDates = appointments
-      .filter((appointment) => appointment.startAt >= weeks.start && appointment.startAt < weeks.end)
+      .filter(
+        (appointment) => appointment.startAt >= weeks.start && appointment.startAt < weeks.end,
+      )
       .map((appointment) => toZonedParts(appointment.startAt, timeZone).dateStr);
 
     const priorClients: string[] = [];
@@ -837,10 +839,14 @@ export class BackofficeService {
     }
 
     const firstShopAt = new Map(
-      firstByShop.flatMap((row) => (row._min.startAt ? [[row.barbershopId, row._min.startAt] as const] : [])),
+      firstByShop.flatMap((row) =>
+        row._min.startAt ? [[row.barbershopId, row._min.startAt] as const] : [],
+      ),
     );
     const firstBarberAt = new Map(
-      firstByBarber.flatMap((row) => (row._min.startAt ? [[row.barberId, row._min.startAt] as const] : [])),
+      firstByBarber.flatMap((row) =>
+        row._min.startAt ? [[row.barberId, row._min.startAt] as const] : [],
+      ),
     );
 
     const people = new Map<string, { createdAt: Date; firstAt: Date | null }>();

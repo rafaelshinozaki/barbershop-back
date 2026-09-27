@@ -116,44 +116,46 @@ export class SoloService {
     const slug = await this.freeSlug(slugBase(name, userId));
     const networkId = network.id;
     const currency = network.currency;
-    const shop = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.barbershop.create({
-        data: {
-          name,
-          slug,
-          address,
-          city,
-          state,
-          country,
-          postalCode,
-          phone,
-          email: user.email,
-          practiceKind: 'solo',
-          timezone: 'America/Sao_Paulo',
-          currency,
-          networkId,
-          ownerUserId: userId,
-        },
+    const shop = await this.prisma
+      .$transaction(async (tx) => {
+        const created = await tx.barbershop.create({
+          data: {
+            name,
+            slug,
+            address,
+            city,
+            state,
+            country,
+            postalCode,
+            phone,
+            email: user.email,
+            practiceKind: 'solo',
+            timezone: 'America/Sao_Paulo',
+            currency,
+            networkId,
+            ownerUserId: userId,
+          },
+        });
+        const barber = await tx.barber.create({
+          data: {
+            barbershopId: created.id,
+            userId,
+            name: user.fullName,
+            phone: user.phone ?? phone,
+            email: user.email,
+            staffType: 'barber',
+            takesAppointments: true,
+          },
+        });
+        await linkBarberToProfessional(tx, barber.id, userId);
+        return created;
+      })
+      .catch((error: { code?: string }) => {
+        if (error?.code === 'P2002') {
+          throw new BadRequestException('Já existe uma página com este endereço. Tente de novo.');
+        }
+        throw error;
       });
-      const barber = await tx.barber.create({
-        data: {
-          barbershopId: created.id,
-          userId,
-          name: user.fullName,
-          phone: user.phone ?? phone,
-          email: user.email,
-          staffType: 'barber',
-          takesAppointments: true,
-        },
-      });
-      await linkBarberToProfessional(tx, barber.id, userId);
-      return created;
-    }).catch((error: { code?: string }) => {
-      if (error?.code === 'P2002') {
-        throw new BadRequestException('Já existe uma página com este endereço. Tente de novo.');
-      }
-      throw error;
-    });
 
     return this.statusOf(shop.id, userId);
   }
@@ -165,7 +167,10 @@ export class SoloService {
   }
 
   private async proFields(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { proUntil: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { proUntil: true },
+    });
     const proActive = isProActive(user?.proUntil, new Date());
     return {
       proAvailable: true as const,
@@ -204,7 +209,10 @@ export class SoloService {
   private async freeSlug(base: string) {
     let slug = base;
     for (let n = 2; n < 50; n++) {
-      const taken = await this.prisma.barbershop.findUnique({ where: { slug }, select: { id: true } });
+      const taken = await this.prisma.barbershop.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
       if (!taken) return slug;
       slug = `${base}-${n}`;
     }

@@ -88,10 +88,7 @@ export function medianDays(values: number[]): number | null {
  * menos 7 dias e agendou dentro dessa primeira semana. Quem ainda não chegou
  * aos 7 dias fica de fora dessa fração.
  */
-export function timeToFirst(
-  rows: { createdAt: Date; firstAt: Date | null }[],
-  now: Date,
-) {
+export function timeToFirst(rows: { createdAt: Date; firstAt: Date | null }[], now: Date) {
   const days: number[] = [];
   let withoutAppointment = 0;
   let eligibleFor7Days = 0;
@@ -114,8 +111,7 @@ export function timeToFirst(
     medianDays: medianDays(days),
     withAppointment: days.length,
     withoutAppointment,
-    activatedWithin7DaysRate:
-      eligibleFor7Days > 0 ? activatedWithin7Days / eligibleFor7Days : null,
+    activatedWithin7DaysRate: eligibleFor7Days > 0 ? activatedWithin7Days / eligibleFor7Days : null,
     eligibleFor7Days,
   };
 }

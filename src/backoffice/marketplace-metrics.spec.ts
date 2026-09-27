@@ -47,7 +47,9 @@ describe('marketplace-metrics', () => {
 
   it('junta a mesma pessoa em duas unidades e separa quem não tem usuário', () => {
     expect(professionalKey({ id: 1, userId: 9 })).toBe(professionalKey({ id: 2, userId: 9 }));
-    expect(professionalKey({ id: 3, userId: null })).not.toBe(professionalKey({ id: 4, userId: null }));
+    expect(professionalKey({ id: 3, userId: null })).not.toBe(
+      professionalKey({ id: 4, userId: null }),
+    );
   });
 
   it('retenção é quem voltou sobre quem já tinha agendado; sem base, a taxa é zero', () => {

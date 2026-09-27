@@ -379,8 +379,8 @@ export class AuthResolver {
         input.signupType === 'professional'
           ? Role.BARBERSHOP_EMPLOYEE
           : input.signupType === 'barbershop_owner'
-            ? Role.BARBERSHOP_OWNER
-            : undefined,
+          ? Role.BARBERSHOP_OWNER
+          : undefined,
       address: {
         zipcode: '',
         street: '',
