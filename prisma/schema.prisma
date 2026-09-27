@@ -536,6 +536,8 @@ model Barbershop {
   linkedinUrl    String?
   isActive       Boolean   @default(true)
   featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
+  // Fora da vitrine pela moderação (denúncia): some da busca e do sitemap; o link direto continua
+  searchHiddenAt DateTime?
   networkId      Int
   network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
   ownerUserId    Int?      // denormalized for backward compat / quick access
@@ -928,6 +930,8 @@ model Professional {
   showLocations Boolean @default(true)
   // Contato oculto por padrão: a conversa fica no app.
   showContact Boolean @default(false)
+  // Suspenso pela moderação (denúncia): a página /p/:slug e a busca somem
+  suspendedAt DateTime?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
   reviews   ProfessionalReview[]
@@ -1845,7 +1849,32 @@ model BarbershopPhoto {
   key          String
   caption      String?
   position     Int        @default(0)
+  // Ocultada pela moderação (denúncia): sai da galeria pública
+  hiddenAt     DateTime?
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId, position])
+}
+
+// Denúncia de conteúdo público (qualquer visitante): foto da galeria,
+// avaliação de profissional, perfil de profissional ou página da unidade.
+// O admin da plataforma modera numa fila: ocultar, descartar ou restaurar.
+model ContentReport {
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  // photo | professional_review | professional_profile | barbershop
+  targetType       String
+  targetId         Int
+  // offensive | spam | fake | inappropriate_image | impersonation | other
+  reason           String
+  details          String?
+  // HMAC do IP de quem denunciou: evita a mesma pessoa denunciar o mesmo item várias vezes
+  reporterKey      String
+  // open | dismissed | actioned
+  status           String    @default("open")
+  resolvedAt       DateTime?
+  resolvedByUserId Int?
+
+  @@index([targetType, targetId])
+  @@index([status, createdAt])
 }

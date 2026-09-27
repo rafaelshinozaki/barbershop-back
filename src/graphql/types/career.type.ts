@@ -167,6 +167,9 @@ export class MyProfessionalReviewType extends PublicProfessionalReviewType {
 
 @ObjectType()
 export class PublicProfessionalType {
+  @Field(() => Int, { description: 'Pra denunciar o perfil' })
+  id: number;
+
   @Field()
   fullName: string;
 

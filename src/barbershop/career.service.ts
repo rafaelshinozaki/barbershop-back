@@ -200,7 +200,8 @@ export class CareerService {
   async publicProfile(slug: string, viewerUserId?: number | null) {
     const professional = await this.prisma.professional.findUnique({ where: { slug } });
     const visibility = (professional?.visibility ?? 'hidden') as ProfileVisibility;
-    if (!professional || !canViewProfile(visibility, viewerUserId)) {
+    // Suspenso pela moderação: fica fora do ar como se não existisse
+    if (!professional || professional.suspendedAt || !canViewProfile(visibility, viewerUserId)) {
       throw new NotFoundException('Perfil não encontrado');
     }
     const [user, facts, rating, reviews, clients] = await Promise.all([
@@ -214,21 +215,24 @@ export class CareerService {
       this.clientCounts(professional.userId),
     ]);
     if (!user) throw new NotFoundException('Perfil não encontrado');
-    return presentPublicProfile({
-      fullName: user.fullName,
-      photoKey: user.photoKey,
-      phone: user.phone,
-      email: user.email,
-      ...facts,
-      rating: professional.showRating ? rating : undefined,
-      reviews,
-      badges: professionalBadges({
-        ...rating,
-        completed: facts.completedAppointments,
-        ...clients,
+    return {
+      id: professional.id,
+      ...presentPublicProfile({
+        fullName: user.fullName,
+        photoKey: user.photoKey,
+        phone: user.phone,
+        email: user.email,
+        ...facts,
+        rating: professional.showRating ? rating : undefined,
+        reviews,
+        badges: professionalBadges({
+          ...rating,
+          completed: facts.completedAppointments,
+          ...clients,
+        }),
+        choices: this.choicesOf(professional),
       }),
-      choices: this.choicesOf(professional),
-    });
+    };
   }
 
   private choicesOf(professional: {

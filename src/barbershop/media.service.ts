@@ -63,7 +63,11 @@ export class BarbershopMediaService {
       take,
     });
     return Promise.all(
-      photos.map(async (p) => ({ ...p, url: await this.s3.getDownloadUrl(p.key) })),
+      photos.map(async (p) => ({
+        ...p,
+        hidden: p.hiddenAt != null,
+        url: await this.s3.getDownloadUrl(p.key),
+      })),
     );
   }
 
