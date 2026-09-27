@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
@@ -44,6 +45,9 @@ export type ClientHistoryEntry = {
   currency: string | null;
   /** Atendimento: com quem, a nota que o cliente deu, a caixinha e o link de avaliar */
   barberName?: string | null;
+  /** Pra "agendar de novo": mesmo profissional e mesmos serviços */
+  barberId?: number | null;
+  serviceIds?: number[];
   rating?: number | null;
   tip?: number | null;
   reviewUrl?: string | null;
@@ -503,6 +507,7 @@ export class ClientAuthService {
       // Nota de conduta do cliente sai junto com a conta
       this.prisma.customerRating.deleteMany({ where: { customer: { clientAccountId } } }),
       this.prisma.clientFavorite.deleteMany({ where: { clientAccountId } }),
+      this.prisma.clientFavoriteBarber.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),
       this.prisma.customer.updateMany({
@@ -585,6 +590,58 @@ export class ClientAuthService {
     return this.listFavorites(clientAccountId);
   }
 
+  /**
+   * Profissionais favoritos (na unidade em que atendem). "available" diz se
+   * ainda dá pra agendar com ele ali: ativo, atende clientes e unidade ativa.
+   */
+  async listFavoriteBarbers(clientAccountId: number) {
+    const rows = await this.prisma.clientFavoriteBarber.findMany({
+      where: { clientAccountId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        barber: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            staffType: true,
+            takesAppointments: true,
+            barbershop: { select: { name: true, slug: true, isActive: true } },
+          },
+        },
+      },
+    });
+    return rows.map(({ barber }) => ({
+      barberId: barber.id,
+      name: barber.name,
+      barbershopName: barber.barbershop.name,
+      barbershopSlug: barber.barbershop.slug,
+      available:
+        barber.isActive &&
+        barber.barbershop.isActive &&
+        (barber.takesAppointments ?? barber.staffType !== 'reception'),
+    }));
+  }
+
+  async addFavoriteBarber(clientAccountId: number, barberId: number) {
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, isActive: true, barbershop: { isActive: true } },
+      select: { id: true },
+    });
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
+    await this.prisma.clientFavoriteBarber.upsert({
+      where: { clientAccountId_barberId: { clientAccountId, barberId } },
+      create: { clientAccountId, barberId },
+      update: {},
+    });
+    return this.listFavoriteBarbers(clientAccountId);
+  }
+
+  async removeFavoriteBarber(clientAccountId: number, barberId: number) {
+    await this.prisma.clientFavoriteBarber.deleteMany({ where: { clientAccountId, barberId } });
+    return this.listFavoriteBarbers(clientAccountId);
+  }
+
   async searchNetworks(query: string) {
     const q = query.trim();
     if (q.length < 2) return [];
@@ -654,6 +711,8 @@ export class ClientAuthService {
         total: null,
         currency: currencyByCustomer.get(a.customerId) ?? null,
         barberName: a.barber?.name ?? null,
+        barberId: a.barberId,
+        serviceIds: a.services.map((s) => s.serviceId),
         rating: a.professionalReview?.rating ?? null,
         tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
         reviewUrl: a.status === 'COMPLETED' ? appointmentReviewUrl(a.id) : null,

@@ -728,6 +728,7 @@ model ClientAccount {
   tokens               ClientAccountToken[]
   customers            Customer[]
   favorites            ClientFavorite[]
+  favoriteBarbers      ClientFavoriteBarber[]
   linkedSocialAccounts ClientLinkedSocialAccount[]
   reviews              Review[]
   subscriptions        ClientSubscription[]
@@ -869,6 +870,20 @@ model ClientLinkedSocialAccount {
   @@index([clientAccountId])
 }
 
+// Profissional favorito do cliente, na unidade em que atende: "agendar de
+// novo com ele" leva à página da unidade já com ele escolhido
+model ClientFavoriteBarber {
+  id              Int           @id @default(autoincrement())
+  createdAt       DateTime      @default(now())
+  clientAccountId Int
+  barberId        Int
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  barber          Barber        @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  @@unique([clientAccountId, barberId])
+  @@index([barberId])
+}
+
 model ClientFavorite {
   id              Int           @id @default(autoincrement())
   createdAt       DateTime      @default(now())
@@ -949,6 +964,7 @@ model Barber {
   professional   Professional?    @relation(fields: [professionalId], references: [id], onDelete: SetNull)
   professionalReviews ProfessionalReview[]
   tips           AppointmentTip[]
+  favoritedBy    ClientFavoriteBarber[]
   employeeInvites EmployeeInvite[]
   schedules      BarberSchedule[]
   timeOffs       BarberTimeOff[]

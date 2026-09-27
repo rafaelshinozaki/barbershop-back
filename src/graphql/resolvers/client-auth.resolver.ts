@@ -1,10 +1,11 @@
-import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Context, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { ClientAuthService } from '@/client-auth/client-auth.service';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
 import {
   ClientAccountType,
+  ClientFavoriteBarberType,
   ClientHistoryEntryType,
   ClientLinkedSocialAccountType,
 } from '../types/client-auth.type';
@@ -141,6 +142,30 @@ export class ClientAuthResolver {
   @Query(() => [ClientHistoryEntryType])
   async clientHistory(@CurrentClient() client: CurrentClientUser) {
     return this.clientAuthService.getHistory(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => [ClientFavoriteBarberType])
+  async clientFavoriteBarbers(@CurrentClient() client: CurrentClientUser) {
+    return this.clientAuthService.listFavoriteBarbers(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => [ClientFavoriteBarberType])
+  async addClientFavoriteBarber(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('barberId', { type: () => Int }) barberId: number,
+  ) {
+    return this.clientAuthService.addFavoriteBarber(client.id, barberId);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => [ClientFavoriteBarberType])
+  async removeClientFavoriteBarber(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('barberId', { type: () => Int }) barberId: number,
+  ) {
+    return this.clientAuthService.removeFavoriteBarber(client.id, barberId);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)
