@@ -246,7 +246,7 @@ export class ChatService {
         userId: u.id,
         title: text.title,
         message: text.message(who),
-        type: 'chat',
+        type: 'INFO',
         actionUrl: `/messages?appointment=${appt.id}`,
       };
     });

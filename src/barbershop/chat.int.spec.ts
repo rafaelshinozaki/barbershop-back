@@ -211,7 +211,7 @@ describe('Chat do atendimento (integração)', () => {
     );
 
     const notified = await prisma.userNotification.findMany({
-      where: { userId: { in: userIds }, type: 'chat' },
+      where: { userId: { in: userIds }, actionUrl: { startsWith: '/messages' } },
       select: { userId: true, actionUrl: true },
     });
     expect(notified.filter((n) => n.userId === ownerId)).toHaveLength(1);
@@ -219,6 +219,12 @@ describe('Chat do atendimento (integração)', () => {
     expect(notified.filter((n) => n.userId === proId)).toHaveLength(1);
     expect(notified.some((n) => n.userId === otherId)).toBe(false);
     expect(notified[0].actionUrl).toBe(`/messages?appointment=${apptId}`);
+    // O tipo é o do enum do sininho (outro valor quebra a lista inteira)
+    expect(
+      await prisma.userNotification.count({
+        where: { userId: { in: userIds }, actionUrl: { startsWith: '/messages' }, type: 'INFO' },
+      }),
+    ).toBe(notified.length);
   });
 
   it('equipe responde: e-mail pro cliente sem o texto, no máximo um a cada 30 minutos', async () => {
