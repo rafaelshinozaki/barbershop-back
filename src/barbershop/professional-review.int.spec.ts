@@ -160,6 +160,35 @@ describe('Avaliação do profissional (integração)', () => {
     }
   });
 
+  it('selos: nota alta com 10 avaliações; esconder a nota tira o selo da página; histórico', async () => {
+    for (let i = 0; i < 9; i++) await reviewed(i % 2, 5, null);
+    let page = await career.publicProfile(`bruna-${RUN}`);
+    expect(page.reviewCount).toBe(11);
+    expect(page.badges).toContain('top_rated');
+    // A carreira mostra os próprios selos
+    expect((await career.overview(proUserId)).badges).toContain('top_rated');
+
+    await prisma.professional.update({
+      where: { id: professionalId },
+      data: { showRating: false },
+    });
+    try {
+      page = await career.publicProfile(`bruna-${RUN}`);
+      expect(page.badges).not.toContain('top_rated');
+    } finally {
+      await prisma.professional.update({
+        where: { id: professionalId },
+        data: { showRating: true },
+      });
+    }
+
+    const history = await career.serviceHistory(proUserId);
+    expect(history.length).toBeGreaterThanOrEqual(12);
+    expect(history[0]).toMatchObject({ customerFirstName: 'Carlos', currency: 'BRL' });
+    // A ocultada pela moderação não aparece como nota no histórico
+    expect(history.filter((h) => h.rating === 1)).toHaveLength(0);
+  });
+
   it('o profissional vê as dele e responde; outra pessoa não; vazio apaga a resposta', async () => {
     const mine = await reviews.mine(proUserId);
     expect(mine.length).toBeGreaterThanOrEqual(3);

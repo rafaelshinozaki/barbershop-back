@@ -38,6 +38,22 @@ export class CustomerConductType {
 
   @Field(() => Int, { nullable: true, description: 'Comparecimento em % (concluídos / marcados)' })
   attendanceRate: number | null;
+
+  @Field(() => [String], { description: 'Selos do cliente (privados): reliable, punctual' })
+  badges: string[];
+}
+
+/** Num atendimento do cliente: a nota que ele deu ao profissional e a caixinha */
+@ObjectType()
+export class VisitFeedbackType {
+  @Field(() => Int)
+  appointmentId: number;
+
+  @Field(() => Int, { nullable: true })
+  rating: number | null;
+
+  @Field(() => Float, { nullable: true })
+  tip: number | null;
 }
 
 @ObjectType()
@@ -142,6 +158,16 @@ export class CustomerRatingResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.ratings.conductForStaff(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [VisitFeedbackType])
+  customerVisitFeedback(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.ratings.visitFeedback(user.id, barbershopId, customerId);
   }
 
   /** Cliente logado: a própria nota e o que a compõe */

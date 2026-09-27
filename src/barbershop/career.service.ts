@@ -11,6 +11,7 @@ import {
 } from './career';
 import { ensureProfessional } from './professional';
 import { ProfessionalReviewService } from './professional-review.service';
+import { professionalBadges } from './badges';
 import {
   canViewProfile,
   parseProfessionalSignup,
@@ -84,7 +85,7 @@ export class CareerService {
     const [professional, ownedShops, pastAppointments] = await Promise.all([
       this.prisma.professional.findUnique({
         where: { userId },
-        select: { slug: true, visibility: true, isPublic: true },
+        select: { id: true, slug: true, visibility: true, isPublic: true },
       }),
       this.prisma.barbershop.findMany({
         where: { ownerUserId: userId, isActive: true },
@@ -101,8 +102,18 @@ export class CareerService {
           }),
     ]);
 
+    const rating = professional
+      ? await this.reviews.summary(professional.id)
+      : { averageRating: null, reviewCount: 0 };
     return {
       ...overview,
+      // Os próprios selos, mesmo os de campos que a página pública esconde
+      badges: professionalBadges({
+        ...rating,
+        completed: overview.completedAppointments,
+        uniqueClients: overview.uniqueClients,
+        returningClients: overview.returningClients,
+      }),
       pastVisits: pastAppointments.map((appointment) =>
         visiblePastVisit({
           shopName: shopName.get(appointment.barberId) ?? '',
@@ -192,14 +203,15 @@ export class CareerService {
     if (!professional || !canViewProfile(visibility, viewerUserId)) {
       throw new NotFoundException('Perfil não encontrado');
     }
-    const [user, facts, rating, reviews] = await Promise.all([
+    const [user, facts, rating, reviews, clients] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: professional.userId },
         select: { fullName: true, phone: true, email: true, photoKey: true },
       }),
       this.profileFacts(professional.userId),
-      professional.showRating ? this.reviews.summary(professional.id) : undefined,
+      this.reviews.summary(professional.id),
       professional.showReviews ? this.reviews.publicReviews(professional.id) : [],
+      this.clientCounts(professional.userId),
     ]);
     if (!user) throw new NotFoundException('Perfil não encontrado');
     return presentPublicProfile({
@@ -208,8 +220,13 @@ export class CareerService {
       phone: user.phone,
       email: user.email,
       ...facts,
-      rating,
+      rating: professional.showRating ? rating : undefined,
       reviews,
+      badges: professionalBadges({
+        ...rating,
+        completed: facts.completedAppointments,
+        ...clients,
+      }),
       choices: this.choicesOf(professional),
     });
   }
@@ -248,6 +265,58 @@ export class CareerService {
       showLocations: professional.showLocations,
       showContact: professional.showContact,
     };
+  }
+
+  /** Clientes diferentes e os que voltaram (mais de um atendimento concluído) */
+  private async clientCounts(userId: number) {
+    const rows = await this.prisma.appointment.groupBy({
+      by: ['customerId'],
+      where: { status: 'COMPLETED', barber: { professional: { is: { userId } } } },
+      _count: { _all: true },
+    });
+    return {
+      uniqueClients: rows.length,
+      returningClients: rows.filter((row) => row._count._all > 1).length,
+    };
+  }
+
+  /**
+   * Histórico de atendimentos do profissional, em todas as unidades: quando,
+   * onde, o primeiro nome do cliente, os serviços, a nota que recebeu e a
+   * caixinha que foi pra ele.
+   */
+  async serviceHistory(userId: number) {
+    const rows = await this.prisma.appointment.findMany({
+      where: {
+        status: 'COMPLETED',
+        barber: { OR: [{ userId }, { professional: { is: { userId } } }] },
+      },
+      orderBy: { startAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        startAt: true,
+        customer: { select: { name: true } },
+        barbershop: { select: { name: true, currency: true } },
+        services: { select: { service: { select: { name: true } } } },
+        professionalReview: { select: { rating: true, hiddenAt: true } },
+        tips: { where: { destination: 'professional' }, select: { amount: true } },
+      },
+    });
+    return rows.map((a) => ({
+      appointmentId: a.id,
+      startAt: a.startAt,
+      shopName: a.barbershop.name,
+      currency: a.barbershop.currency,
+      customerFirstName: a.customer.name.trim().split(/\s+/)[0] || 'Cliente',
+      serviceNames: a.services
+        .map((s) => s.service?.name)
+        .filter(Boolean)
+        .join(', '),
+      rating:
+        a.professionalReview && !a.professionalReview.hiddenAt ? a.professionalReview.rating : null,
+      tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
+    }));
   }
 
   private async profileFacts(userId: number) {

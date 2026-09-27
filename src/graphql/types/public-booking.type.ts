@@ -287,6 +287,9 @@ export class PublicBarbershopType {
   @Field(() => Int)
   id: number;
 
+  @Field(() => [String], { description: 'Selos da unidade: top_rated, popular' })
+  badges: string[];
+
   @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
   businessType: string;
 

@@ -514,6 +514,8 @@ type CareerCurrencyType {
 }
 
 type CareerOverviewType {
+  """Os próprios selos (top_rated, experienced, loyal_clients)"""
+  badges: [String!]!
   busiestHour: Int
   byCurrency: [CareerCurrencyType!]!
   completedAppointments: Int!
@@ -670,6 +672,8 @@ input ClientForgotPasswordInput {
 }
 
 type ClientHistoryEntryType {
+  """Profissional do atendimento"""
+  barberName: String
   barbershopName: String!
   barbershopSlug: String
   currency: String
@@ -677,7 +681,16 @@ type ClientHistoryEntryType {
   detail: String
   id: String!
   networkName: String!
+
+  """Nota que o cliente deu ao profissional"""
+  rating: Int
+
+  """Link pra avaliar (atendimento concluído)"""
+  reviewUrl: String
   status: String!
+
+  """Caixinha registrada no atendimento"""
+  tip: Float
   total: Float
   type: String!
 }
@@ -1198,6 +1211,9 @@ type CreatedSeriesType {
 type CustomerConductType {
   """Comparecimento em % (concluídos / marcados)"""
   attendanceRate: Int
+
+  """Selos do cliente (privados): reliable, punctual"""
+  badges: [String!]!
 
   """Atendimentos concluídos"""
   completed: Int!
@@ -2344,6 +2360,9 @@ type PublicBarbershopType {
   accentColor: String
   address: String!
   averageRating: Float
+
+  """Selos da unidade: top_rated, popular"""
+  badges: [String!]!
   barbers: [PublicBarberType!]!
 
   """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
@@ -2423,6 +2442,9 @@ type PublicProfessionalReviewType {
 type PublicProfessionalType {
   """Nota média (null: oculta ou sem avaliação)"""
   averageRating: Float
+
+  """Selos: top_rated, experienced, loyal_clients"""
+  badges: [String!]!
   completedAppointments: Int
   email: String
   fullName: String!
@@ -2532,6 +2554,7 @@ type Query {
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
+  customerVisitFeedback(barbershopId: Int!, customerId: Int!): [VisitFeedbackType!]!
   demographicAnalysis: DemographicAnalysis!
   depositPayoutReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
@@ -2575,6 +2598,7 @@ type Query {
   myProfessionalReviews: [MyProfessionalReviewType!]!
   myProfilePrivacy: ProfilePrivacyType!
   myReview(barbershopId: Int!): MyReviewType
+  myServiceHistory: [ServiceHistoryItemType!]!
   mySoloPractice: SoloPracticeType!
   mySubscriptions: [PlanSubscription!]!
   myUnreadNotifications: [UserNotification!]!
@@ -2779,6 +2803,23 @@ type ServiceHistory {
   priceCharged: Float!
   serviceId: Int!
   walkInId: Int
+}
+
+type ServiceHistoryItemType {
+  appointmentId: Int!
+  currency: String!
+
+  """Só o primeiro nome do cliente"""
+  customerFirstName: String!
+
+  """Nota que o cliente deu"""
+  rating: Int
+  serviceNames: String!
+  shopName: String!
+  startAt: DateTime!
+
+  """Caixinha que foi pro profissional"""
+  tip: Float
 }
 
 type ServicePackageType {
@@ -3449,6 +3490,12 @@ input Verify2FAInput {
 
 input VerifyChangePasswordCodeInput {
   code: String!
+}
+
+type VisitFeedbackType {
+  appointmentId: Int!
+  rating: Int
+  tip: Float
 }
 
 type WaitlistEntryType {

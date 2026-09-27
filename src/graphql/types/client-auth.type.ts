@@ -58,6 +58,18 @@ export class ClientHistoryEntryType {
 
   @Field({ nullable: true })
   currency?: string;
+
+  @Field(() => String, { nullable: true, description: 'Profissional do atendimento' })
+  barberName?: string | null;
+
+  @Field(() => Int, { nullable: true, description: 'Nota que o cliente deu ao profissional' })
+  rating?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'Caixinha registrada no atendimento' })
+  tip?: number | null;
+
+  @Field(() => String, { nullable: true, description: 'Link pra avaliar (atendimento concluído)' })
+  reviewUrl?: string | null;
 }
 
 @ObjectType()

@@ -249,6 +249,44 @@ describe('Nota do cliente (integração)', () => {
     );
   });
 
+  it('selos do cliente e o que ele deu em cada atendimento (a unidade vê tudo, o barbeiro só os dele)', async () => {
+    expect((await ratings.myConduct(accountId)).badges).toEqual([]);
+    const done = await appointment('a', 'pro', customerA, 6);
+    await prisma.appointmentTip.create({
+      data: {
+        appointmentId: done.id,
+        barbershopId: shops.a,
+        barberId: barbers.pro,
+        destination: 'professional',
+        method: 'PIX',
+        amount: 12.5,
+        currency: 'BRL',
+        createdByUserId: users.dono,
+      },
+    });
+    await prisma.professionalReview.create({
+      data: {
+        appointmentId: done.id,
+        barberId: barbers.pro,
+        barbershopId: shops.a,
+        customerId: customerA,
+        rating: 5,
+      },
+    });
+    const byOwner = await ratings.visitFeedback(users.dono, shops.a, customerA);
+    expect(byOwner.find((f) => f.appointmentId === done.id)).toEqual({
+      appointmentId: done.id,
+      rating: 5,
+      tip: 12.5,
+    });
+    expect(
+      (await ratings.visitFeedback(users.outro, shops.a, customerA)).some(
+        (f) => f.appointmentId === done.id,
+      ),
+    ).toBe(false);
+    await prisma.professionalReview.deleteMany({ where: { appointmentId: done.id } });
+  });
+
   it('pendentes e resumo do dia: um e-mail por profissional, uma vez por atendimento', async () => {
     const todo = await appointment('a', 'pro', customerA, 4);
     const pending = await ratings.pendingForMe(users.pro);
