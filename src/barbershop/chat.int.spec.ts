@@ -222,7 +222,7 @@ describe('Chat do atendimento (integração)', () => {
     // O tipo é o do enum do sininho (outro valor quebra a lista inteira)
     expect(
       await prisma.userNotification.count({
-        where: { userId: { in: userIds }, actionUrl: { startsWith: '/messages' }, type: 'INFO' },
+        where: { userId: { in: userIds }, actionUrl: { startsWith: '/messages' }, type: 'info' },
       }),
     ).toBe(notified.length);
   });
