@@ -663,6 +663,47 @@ type ChartData {
   labels: [String!]!
 }
 
+type ChatInboxItemType {
+  appointmentId: Int!
+  barbershopId: Int!
+  kind: String!
+  lastMessage: String
+  lastMessageAt: DateTime
+  startAt: DateTime!
+  subtitle: String!
+  title: String!
+  unread: Int!
+}
+
+type ChatMessageType {
+  body: String!
+  createdAt: DateTime!
+  id: Int!
+
+  """Escrita por quem está vendo"""
+  mine: Boolean!
+
+  """client | staff"""
+  side: String!
+}
+
+type ChatThreadType {
+  appointmentId: Int!
+
+  """Atendimento cancelado não recebe mensagem"""
+  canSend: Boolean!
+
+  """unit (cliente e unidade) | professional (cliente e profissional)"""
+  kind: String!
+  messages: [ChatMessageType!]!
+  startAt: DateTime!
+
+  """
+  O outro lado: a unidade ou o profissional (pro cliente); o cliente (pra equipe)
+  """
+  title: String!
+}
+
 input CheckPasswordInput {
   password: String!
 }
@@ -1702,6 +1743,7 @@ type Mutation {
   clientOpenStaffArea: Boolean!
   clientResendVerificationEmail: Boolean!
   clientResetPassword(input: ClientResetPasswordInput!): Boolean!
+  clientSendChatMessage(appointmentId: Int!, body: String!, kind: String!, manageToken: String): ChatMessageType!
   clientSignup(input: ClientSignupInput!): ClientAccountType!
   clientVerifyEmail(token: String!): Boolean!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
@@ -1826,6 +1868,7 @@ type Mutation {
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
+  sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
@@ -2652,6 +2695,7 @@ type Query {
   allOverduePayments(filters: OverduePaymentsFilters): [OverduePaymentDetail!]!
   allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
   appointment(barbershopId: Int!, id: Int!): Appointment
+  appointmentChats(appointmentId: Int!, barbershopId: Int!): [ChatThreadType!]!
   appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
@@ -2688,6 +2732,8 @@ type Query {
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
   chairRentReceipt(barbershopId: Int!, paymentId: Int!): ChairRentReceiptType!
   clientAccountLink: ClientAccountLinkType!
+  clientAppointmentChats(appointmentId: Int!, manageToken: String): [ChatThreadType!]!
+  clientChatInbox: [ChatInboxItemType!]!
   clientFavoriteBarbers: [ClientFavoriteBarberType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
@@ -2735,6 +2781,7 @@ type Query {
   myBarbershops: [Barbershop!]!
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myCareer: CareerOverviewType!
+  myChatInbox: [ChatInboxItemType!]!
   myClientAccountLink: StaffClientLinkType!
   myClientSubscriptions: [ClientSubscriptionType!]!
   myConduct: CustomerConductType!

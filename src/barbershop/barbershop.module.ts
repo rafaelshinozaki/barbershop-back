@@ -9,6 +9,7 @@ import { CustomerRatingService } from './customer-rating.service';
 import { TipService } from './tip.service';
 import { ModerationService } from './moderation.service';
 import { IdentityVerificationService } from './identity-verification.service';
+import { ChatService } from './chat.service';
 import { SoloService } from './solo.service';
 import { ProReferralService } from './pro-referral.service';
 import { ImportService } from './import.service';
@@ -68,6 +69,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TipService,
     ModerationService,
     IdentityVerificationService,
+    ChatService,
     SoloService,
     ProReferralService,
     ImportService,
@@ -108,6 +110,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TipService,
     ModerationService,
     IdentityVerificationService,
+    ChatService,
     SoloService,
     ProReferralService,
     ImportService,

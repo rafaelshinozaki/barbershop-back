@@ -13,7 +13,7 @@ export const RETENTION_DAYS = {
   loginHistory: 365,
   /** Aviso no sininho. */
   notification: 365,
-  /** Texto do chat, quando a conversa existir. */
+  /** Texto do chat, contado da última mensagem da conversa. */
   chatText: 365,
   /** Nota de conduta do cliente, quando existir, sem novo atendimento. */
   clientConductNote: 365 * 2,
