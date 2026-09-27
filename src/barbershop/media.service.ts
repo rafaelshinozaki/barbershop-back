@@ -104,7 +104,7 @@ export class BarbershopMediaService {
     const photo = await this.prisma.barbershopPhoto.create({
       data: { barbershopId, key, caption: text, position: (last?.position ?? -1) + 1 },
     });
-    return { ...photo, url: await this.s3.getDownloadUrl(photo.key) };
+    return { ...photo, hidden: false, url: await this.s3.getDownloadUrl(photo.key) };
   }
 
   async removePhoto(userId: number, barbershopId: number, photoId: number) {

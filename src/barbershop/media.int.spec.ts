@@ -114,7 +114,12 @@ describe('Fotos da página pública (integração, S3 simulado)', () => {
     const up = await media.galleryUpload(ownerId, shopId, 'image/jpeg');
     expect(up.key).toMatch(new RegExp(`^barbershops/${shopId}/gallery/`));
     const a = await media.addPhoto(ownerId, shopId, up.key, '  Degradê  ');
-    expect(a).toMatchObject({ caption: 'Degradê', position: 0, url: `https://s3.test/${up.key}` });
+    expect(a).toMatchObject({
+      caption: 'Degradê',
+      position: 0,
+      hidden: false,
+      url: `https://s3.test/${up.key}`,
+    });
     const b = await media.addPhoto(
       ownerId,
       shopId,
