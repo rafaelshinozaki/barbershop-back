@@ -414,6 +414,51 @@ describe('Pedido de avaliação (integração)', () => {
     await prisma.professional.delete({ where: { id: professional.id } });
   });
 
+  it('profissional com conta mas ainda sem identidade: a avaliação cria o vínculo', async () => {
+    const proUser = await prisma.user.create({
+      data: {
+        email: `rev-sem-${RUN}@test.local`,
+        password: 'x',
+        fullName: 'Caio Sem Perfil',
+        idDocNumber: `${RUN}sem`.slice(-20),
+        phone: `+5541${RUN}`.slice(0, 20),
+        gender: 'male',
+        birthdate: new Date('1990-01-01'),
+        readTerms: true,
+        roleId: (await prisma.role.findFirstOrThrow({ where: { name: 'BarbershopOwner' } })).id,
+      },
+    });
+    const caio = await prisma.barber.create({
+      data: { barbershopId: shopId, name: 'Caio', phone: '11955555555', userId: proUser.id },
+    });
+    const c = await customer();
+    const appt = await prisma.appointment.create({
+      data: {
+        barbershopId: shopId,
+        customerId: c.id,
+        barberId: caio.id,
+        startAt: new Date(Date.now() - 4 * HOUR),
+        endAt: new Date(Date.now() - 3 * HOUR),
+        status: 'COMPLETED',
+      },
+    });
+    await reviewRequests.submitReview(createReviewToken(appt.id), { professionalRating: 5 });
+    const professional = await prisma.professional.findUniqueOrThrow({
+      where: { userId: proUser.id },
+    });
+    expect(
+      await prisma.professionalReview.findUniqueOrThrow({ where: { appointmentId: appt.id } }),
+    ).toMatchObject({ professionalId: professional.id });
+    expect((await prisma.barber.findUniqueOrThrow({ where: { id: caio.id } })).professionalId).toBe(
+      professional.id,
+    );
+
+    await prisma.professionalReview.deleteMany({ where: { barberId: caio.id } });
+    await prisma.appointment.delete({ where: { id: appt.id } });
+    await prisma.barber.delete({ where: { id: caio.id } });
+    await prisma.professional.delete({ where: { id: professional.id } });
+  });
+
   it('modo solo: a nota do profissional vale também pra página da unidade', async () => {
     await prisma.barbershop.update({ where: { id: shopId }, data: { practiceKind: 'solo' } });
     try {

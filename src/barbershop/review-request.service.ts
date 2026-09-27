@@ -6,6 +6,7 @@ import { langForCountry, LOCALE } from '../email/language';
 import { appointmentReviewUrl, verifyReviewToken } from './appointment-link';
 import { unsubscribeLinks } from './marketing-unsubscribe';
 import { BarbershopService } from './barbershop.service';
+import { linkBarberToProfessional } from './professional';
 
 // O e-mail sai algumas horas depois do fim do atendimento (a pessoa já foi
 // embora, mas ainda lembra de como foi) e só pra atendimentos recentes —
@@ -161,7 +162,7 @@ export class ReviewRequestService {
           include: {
             customer: true,
             barbershop: true,
-            barber: { select: { name: true, professionalId: true } },
+            barber: { select: { name: true, userId: true, professionalId: true } },
             services: { include: { service: { select: { name: true } } } },
             professionalReview: true,
           },
@@ -248,18 +249,25 @@ export class ReviewRequestService {
     const { barbershopId, customerId } = appt;
     const clientAccountId = appt.customer.clientAccountId;
     if (pro) {
+      // Profissional com conta: a avaliação vai pra identidade dele (soma nas
+      // outras unidades e aparece em /p/:slug), criando o vínculo se faltar
+      const professionalId =
+        appt.barber.professionalId ??
+        (appt.barber.userId
+          ? (await linkBarberToProfessional(this.prisma, appt.barberId, appt.barber.userId)).id
+          : null);
       await this.prisma.professionalReview.upsert({
         where: { appointmentId: appt.id },
         create: {
           appointmentId: appt.id,
           barberId: appt.barberId,
           barbershopId,
-          professionalId: appt.barber.professionalId,
+          professionalId,
           customerId,
           rating: pro.rating,
           comment: pro.comment,
         },
-        update: { rating: pro.rating, comment: pro.comment },
+        update: { rating: pro.rating, comment: pro.comment, professionalId },
       });
     }
     if (unit) {
