@@ -31,6 +31,8 @@ export type ProfileChoices = {
   showWorkHistory: boolean;
   showLocations: boolean;
   showContact: boolean;
+  /** Atendo a domicílio: só aparece no perfil com a identidade verificada */
+  offersHomeService: boolean;
 };
 
 export type ProfileChoicePatch = Partial<ProfileChoices>;
@@ -126,6 +128,7 @@ export function parseProfilePatch(input: {
   showWorkHistory?: boolean | null;
   showLocations?: boolean | null;
   showContact?: boolean | null;
+  offersHomeService?: boolean | null;
 }): ProfileChoicePatch {
   const patch: ProfileChoicePatch = {};
   if (input.visibility != null) {
@@ -164,6 +167,7 @@ export function parseProfilePatch(input: {
   if (input.showWorkHistory != null) patch.showWorkHistory = input.showWorkHistory;
   if (input.showLocations != null) patch.showLocations = input.showLocations;
   if (input.showContact != null) patch.showContact = input.showContact;
+  if (input.offersHomeService != null) patch.offersHomeService = input.offersHomeService;
   return patch;
 }
 

@@ -296,6 +296,37 @@ export class StripeService {
     }
   }
 
+  // ---- Stripe Identity (verificação de identidade do profissional) ----
+
+  /** Sessão de documento com foto + selfie ao vivo; a pessoa faz tudo na página do Stripe */
+  createIdentitySession(params: { userId: number; email: string; returnUrl: string }) {
+    return this.stripe.identity.verificationSessions.create({
+      type: 'document',
+      options: {
+        document: {
+          allowed_types: ['driving_license', 'id_card', 'passport'],
+          require_live_capture: true,
+          require_matching_selfie: true,
+        },
+      },
+      metadata: { userId: String(params.userId) },
+      provided_details: { email: params.email },
+      return_url: params.returnUrl,
+    });
+  }
+
+  /** Com o nome lido do documento (pra conferir com o da conta) */
+  retrieveIdentitySession(id: string) {
+    return this.stripe.identity.verificationSessions.retrieve(id, {
+      expand: ['verified_outputs'],
+    });
+  }
+
+  /** Apaga no Stripe as imagens e os dados da sessão (exclusão da conta) */
+  redactIdentitySession(id: string) {
+    return this.stripe.identity.verificationSessions.redact(id);
+  }
+
   async handleWebhookEvent(
     payload: string,
     signature: string,

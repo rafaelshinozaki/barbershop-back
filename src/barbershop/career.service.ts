@@ -38,6 +38,7 @@ function emptyChoices() {
     showWorkHistory: true,
     showLocations: true,
     showContact: false,
+    offersHomeService: false,
   };
 }
 
@@ -207,7 +208,13 @@ export class CareerService {
     const [user, facts, rating, reviews, clients] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: professional.userId },
-        select: { fullName: true, phone: true, email: true, photoKey: true },
+        select: {
+          fullName: true,
+          phone: true,
+          email: true,
+          photoKey: true,
+          identityVerifiedAt: true,
+        },
       }),
       this.profileFacts(professional.userId),
       this.reviews.summary(professional.id),
@@ -217,6 +224,9 @@ export class CareerService {
     if (!user) throw new NotFoundException('Perfil não encontrado');
     return {
       id: professional.id,
+      // Atende a domicílio só aparece com a identidade verificada
+      homeService: professional.offersHomeService && !!user.identityVerifiedAt,
+      identityVerified: !!user.identityVerifiedAt,
       ...presentPublicProfile({
         fullName: user.fullName,
         photoKey: user.photoKey,
@@ -251,6 +261,7 @@ export class CareerService {
     showWorkHistory: boolean;
     showLocations: boolean;
     showContact: boolean;
+    offersHomeService: boolean;
   }) {
     return {
       visibility: professional.visibility as ProfileVisibility,
@@ -268,6 +279,7 @@ export class CareerService {
       showWorkHistory: professional.showWorkHistory,
       showLocations: professional.showLocations,
       showContact: professional.showContact,
+      offersHomeService: professional.offersHomeService,
     };
   }
 
