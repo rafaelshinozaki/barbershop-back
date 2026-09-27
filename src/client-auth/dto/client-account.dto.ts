@@ -7,4 +7,5 @@ export type ClientAccountDTO = {
   emailVerified: boolean;
   /** false = conta só de login social (confirma a exclusão digitando o e-mail) */
   hasPassword: boolean;
+  linkedToStaff: boolean;
 };

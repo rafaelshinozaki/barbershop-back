@@ -165,6 +165,12 @@ export class AccountDeletionService {
         where: { acceptedByUserId: userId },
         data: { acceptedByUserId: null },
       }),
+      // Conta de cliente ligada continua, sem a ligação: sem a senha da
+      // equipe, entra de novo pela "esqueci a senha" (ou login social)
+      this.prisma.clientAccount.updateMany({
+        where: { userId },
+        data: { userId: null, linkedAt: null, sessionVersion: { increment: 1 } },
+      }),
       // Funcionário: perfil de barbeiro fica na empresa, sem a conta
       this.prisma.barber.updateMany({
         where: { userId },

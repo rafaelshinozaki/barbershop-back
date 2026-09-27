@@ -9,6 +9,7 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountLinkService } from './account-link.service';
 import { ClientAuthService } from './client-auth.service';
 import { GraphQLClientJwtAuthGuard } from './guards/graphql-client-jwt-auth.guard';
 
@@ -48,6 +49,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
     config as never,
     email as never,
     stripe as never,
+    new AccountLinkService(prisma, email as never),
   );
   // Contas excluídas mudam de e-mail (não batem mais com RUN na limpeza)
   const deletedIds: number[] = [];

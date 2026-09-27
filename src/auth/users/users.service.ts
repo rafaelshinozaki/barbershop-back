@@ -380,6 +380,8 @@ export class UserService {
         this.logger.warn(`Failed to send welcome email to ${newUser.email}`, error);
       }
 
+      await this.linkClientAccountOnSignup(newUser, userData.password);
+
       this.logger.log(`User created successfully: ${result.id}`);
       this.logger.log(`User ID: ${result.id}`);
       this.logger.log(`User email: ${result.email}`);
@@ -1068,6 +1070,36 @@ export class UserService {
         ...(keepSessionToken ? { sessionToken: { not: keepSessionToken } } : {}),
       },
     });
+    // A senha também é a da área do cliente ligada: as sessões dela caem junto
+    await this.prisma.clientAccount.updateMany({
+      where: { userId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  }
+
+  /**
+   * Cadastro da equipe com o e-mail de uma conta de cliente e a mesma senha:
+   * liga as duas (a senha é a prova de que é a mesma pessoa). Senha
+   * diferente: continuam soltas e a pessoa liga depois, digitando a outra.
+   */
+  private async linkClientAccountOnSignup(user: { id: number; email: string }, password: string) {
+    try {
+      const client = await this.prisma.clientAccount.findFirst({
+        where: { email: user.email.trim().toLowerCase(), deletedAt: null, userId: null },
+      });
+      if (!client?.password || !(await bcrypt.compare(password, client.password))) return;
+      await this.prisma.clientAccount.update({
+        where: { id: client.id },
+        data: {
+          userId: user.id,
+          linkedAt: new Date(),
+          password: null,
+          sessionVersion: { increment: 1 },
+        },
+      });
+    } catch (error) {
+      this.logger.warn(`Falha ao ligar a conta de cliente no cadastro: ${error}`);
+    }
   }
 
   async forgotPassCheck(data: { token: string; email: string }) {

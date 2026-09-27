@@ -3,6 +3,7 @@ import { CareerResolver } from './resolvers/career.resolver';
 import { CustomerRatingResolver } from './resolvers/customer-rating.resolver';
 import { TipResolver } from './resolvers/tip.resolver';
 import { ModerationResolver } from './resolvers/moderation.resolver';
+import { AccountLinkResolver } from './resolvers/account-link.resolver';
 import { SoloResolver } from './resolvers/solo.resolver';
 import { ImportResolver } from './resolvers/import.resolver';
 import { PublicProfessionalResolver } from './resolvers/public-professional.resolver';
@@ -95,6 +96,7 @@ import { SocialModule } from '../social/social.module';
     CustomerRatingResolver,
     TipResolver,
     ModerationResolver,
+    AccountLinkResolver,
     SoloResolver,
     ImportResolver,
     PublicProfessionalResolver,
