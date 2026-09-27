@@ -442,7 +442,7 @@ Sucesso: agendamentos vindos da busca (e não do link direto da unidade), e taxa
 
 #### H4. Confiança e dinheiro
 Objetivo: dar condições de a plataforma intermediar estranhos com segurança.
-- **Verificação de identidade** (documento + selfie) e selo de verificado. Checagem de antecedentes (terceiro) para quem quiser atender a domicílio.
+- **Verificação de identidade** (documento + selfie) e selo de verificado ✅, só para quem atende a domicílio. Usa o Stripe Identity: documento com foto e selfie ao vivo, na página do Stripe. O profissional liga "Atendo a domicílio" no perfil, e o domicílio só aparece no perfil e na busca depois de verificado. Só vale com o nome do documento batendo com o da conta, e trocar o nome tira o selo. Guardamos só o resultado; as imagens ficam no Stripe e são apagadas na exclusão da conta. Fora de produção roda com um fornecedor falso de teste. Falta a checagem de antecedentes (terceiro), que fica para quando o domicílio (H5) entrar de verdade.
 - **Chat do atendimento** (item 11): cliente–unidade, quando houver unidade, e cliente–profissional. Sem expor telefone. Notificações no celular (PWA primeiro, app nativo depois).
 - **Caixinha pelo Stripe** (item 11), no mesmo fluxo do pagamento no app.
 - **Pagamento no app**: reavaliar a decisão de não usar Stripe Connect. Alternativas: Connect opcional só para quem quer receber pelo app, ou split via Pix. Mais reembolso, disputas e nota fiscal das taxas, da assinatura e da caixinha que passar pelo Stripe.
