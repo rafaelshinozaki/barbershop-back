@@ -494,6 +494,8 @@ export class ClientAuthService {
         where: { customer: { clientAccountId } },
         data: { comment: null, customerId: null },
       }),
+      // Nota de conduta do cliente sai junto com a conta
+      this.prisma.customerRating.deleteMany({ where: { customer: { clientAccountId } } }),
       this.prisma.clientFavorite.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),

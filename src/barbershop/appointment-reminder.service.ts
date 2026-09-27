@@ -10,6 +10,7 @@ import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import { appointmentManageUrl } from './appointment-link';
 import { ReviewRequestService } from './review-request.service';
+import { CustomerRatingService } from './customer-rating.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import type { Job } from 'bullmq';
 
@@ -160,6 +161,8 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'enqueue-due-reminders', repeat: { every: 5 * 60 * 1000 } },
       // "Como foi?" depois do atendimento (ver ReviewRequestService)
       { id: 'enqueue-review-requests', repeat: { every: 15 * 60 * 1000 } },
+      // Resumo do dia pro profissional avaliar os clientes (CustomerRatingService)
+      { id: 'client-rating-digest', repeat: { pattern: '0 0 21 * * *', tz: 'America/Sao_Paulo' } },
       // Sinal online: lembra quem não pagou e libera o que passou do prazo
       { id: 'expire-deposit-holds', repeat: { every: 60 * 1000 } },
     ]);
@@ -172,11 +175,13 @@ export class AppointmentReminderProcessor extends WorkerHost {
     private readonly reminders: AppointmentReminderService,
     private readonly reviewRequests: ReviewRequestService,
     private readonly deposits: DepositPaymentService,
+    private readonly customerRatings: CustomerRatingService,
   ) {
     super();
   }
 
   async process(job: Job) {
+    if (job.name === 'client-rating-digest') return this.customerRatings.sendDailyDigest();
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
     if (job.name === 'expire-deposit-holds') {
       await this.deposits.remindPendingHolds();
