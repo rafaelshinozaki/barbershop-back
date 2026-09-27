@@ -22,7 +22,12 @@ import { Prisma, TreatmentCategory } from '@prisma/client';
 import { isStaffType, StaffType, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional, shiftsOverlap } from './professional';
 import { acceptsNewClient } from './profile-privacy';
-import { assertSoloBookingAllowed, assertSoloProductSaleAllowed, assertSoloSinglePerson, productUnits } from './solo';
+import {
+  assertSoloBookingAllowed,
+  assertSoloProductSaleAllowed,
+  assertSoloSinglePerson,
+  productUnits,
+} from './solo';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
 import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
 import {
@@ -675,13 +680,17 @@ export class BarbershopService {
   ) {
     const customerName = a.customer?.name ?? '-';
     const barberName = a.barber?.name ?? '-';
-    const serviceNames = (a.services ?? []).map((s) => s.service?.name).filter((n): n is string => !!n);
+    const serviceNames = (a.services ?? [])
+      .map((s) => s.service?.name)
+      .filter((n): n is string => !!n);
     return {
       id: `${idPrefix}-${a.id}`,
       type: 'appointment',
       date: a.startAt,
       title: idPrefix === 'next' ? customerName : `Agendamento: ${customerName}`,
-      subtitle: [a.barbershop.name, barberName, serviceNames.join(', ')].filter(Boolean).join(' • '),
+      subtitle: [a.barbershop.name, barberName, serviceNames.join(', ')]
+        .filter(Boolean)
+        .join(' • '),
       customerName,
       appointmentId: a.id,
       barbershopId: a.barbershopId,
@@ -772,9 +781,7 @@ export class BarbershopService {
               barbershopId: { in: shopIds },
               paymentStatus: 'PAID',
               createdAt: { gte: start, lt: end },
-              ...(opts.revenueBarberIds
-                ? { barberId: { in: opts.revenueBarberIds } }
-                : {}),
+              ...(opts.revenueBarberIds ? { barberId: { in: opts.revenueBarberIds } } : {}),
             },
             _sum: { total: true },
           }),
@@ -839,7 +846,9 @@ export class BarbershopService {
           barbershop: { select: { name: true } },
           customer: { select: { name: true } },
           barber: { select: { name: true } },
-          items: { include: { product: { select: { name: true } }, service: { select: { name: true } } } },
+          items: {
+            include: { product: { select: { name: true } }, service: { select: { name: true } } },
+          },
         },
       }),
     ]);
@@ -1050,7 +1059,9 @@ export class BarbershopService {
           barbershop: { select: { name: true } },
           customer: { select: { name: true } },
           barber: { select: { name: true } },
-          items: { include: { product: { select: { name: true } }, service: { select: { name: true } } } },
+          items: {
+            include: { product: { select: { name: true } }, service: { select: { name: true } } },
+          },
         },
       }),
     ]);
@@ -1141,10 +1152,13 @@ export class BarbershopService {
     }
     // O check de slug lá em cima não é atômico: dois cadastros simultâneos
     // com o mesmo slug passam juntos por ele e um estoura a unique aqui.
+    // ownerTakesAppointments é do cadastro do dono (vai pro Barber dele), não
+    // é coluna da unidade
+    const { ownerTakesAppointments: _ownerTakesAppointments, ...shopData } = data;
     const barbershop = await this.prisma.barbershop
       .create({
         data: {
-          ...data,
+          ...shopData,
           businessType,
           timezone: data.timezone ?? 'America/Sao_Paulo',
           currency: data.currency ?? network.currency,
@@ -2042,7 +2056,12 @@ export class BarbershopService {
     const endTime = data.endTime ?? schedule.endTime;
     const active = data.isActive ?? schedule.isActive;
     if (active) {
-      await this.ensureShiftFreeAcrossShops(schedule.barberId, schedule.dayOfWeek, startTime, endTime);
+      await this.ensureShiftFreeAcrossShops(
+        schedule.barberId,
+        schedule.dayOfWeek,
+        startTime,
+        endTime,
+      );
     }
     return this.prisma.barberSchedule.update({ where: { id }, data });
   }
@@ -5220,7 +5239,12 @@ export class BarbershopService {
       data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
       data.items.filter((i) => i.productId).map((i) => i.productId as number),
     );
-    await assertSoloProductSaleAllowed(this.prisma, barbershopId, new Date(), productUnits(data.items));
+    await assertSoloProductSaleAllowed(
+      this.prisma,
+      barbershopId,
+      new Date(),
+      productUnits(data.items),
+    );
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
 
@@ -6228,60 +6252,60 @@ export class BarbershopService {
 
     const [appointments, saleItems, customersInPeriod, paidSales, statusGroups, walkIns] =
       await Promise.all([
-      // Taxa de não-comparecimento: só entre agendamentos que de fato
-      // chegaram no horário marcado (COMPLETED ou NO_SHOW) — CANCELLED e
-      // outros status não representam "cliente não apareceu".
-      this.prisma.appointment.findMany({
-        where: {
-          barbershopId,
-          startAt: { gte: from, lte: to },
-          status: { in: ['COMPLETED', 'NO_SHOW'] },
-        },
-        include: {
-          barber: { select: { id: true, name: true } },
-          services: { include: { service: { select: { id: true, name: true } } } },
-        },
-      }),
-      this.prisma.saleItem.findMany({
-        where: {
-          sale: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
-        },
-        include: {
-          service: { select: { id: true, name: true } },
-          product: { select: { id: true, name: true } },
-        },
-      }),
-      this.prisma.sale.findMany({
-        where: {
-          barbershopId,
-          paymentStatus: 'PAID',
-          createdAt: { gte: from, lte: to },
-          customerId: { not: null },
-        },
-        select: { customerId: true },
-        distinct: ['customerId'],
-      }),
-      this.prisma.sale.findMany({
-        where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
-        select: {
-          total: true,
-          barberId: true,
-          barber: { select: { id: true, name: true } },
-        },
-      }),
-      this.prisma.appointment.groupBy({
-        by: ['status'],
-        where: { barbershopId, startAt: { gte: from, lte: to } },
-        _count: { _all: true },
-      }),
-      this.prisma.walkIn.count({
-        where: {
-          barbershopId,
-          createdAt: { gte: from, lte: to },
-          status: { not: 'CANCELLED' },
-        },
-      }),
-    ]);
+        // Taxa de não-comparecimento: só entre agendamentos que de fato
+        // chegaram no horário marcado (COMPLETED ou NO_SHOW) — CANCELLED e
+        // outros status não representam "cliente não apareceu".
+        this.prisma.appointment.findMany({
+          where: {
+            barbershopId,
+            startAt: { gte: from, lte: to },
+            status: { in: ['COMPLETED', 'NO_SHOW'] },
+          },
+          include: {
+            barber: { select: { id: true, name: true } },
+            services: { include: { service: { select: { id: true, name: true } } } },
+          },
+        }),
+        this.prisma.saleItem.findMany({
+          where: {
+            sale: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+          },
+          include: {
+            service: { select: { id: true, name: true } },
+            product: { select: { id: true, name: true } },
+          },
+        }),
+        this.prisma.sale.findMany({
+          where: {
+            barbershopId,
+            paymentStatus: 'PAID',
+            createdAt: { gte: from, lte: to },
+            customerId: { not: null },
+          },
+          select: { customerId: true },
+          distinct: ['customerId'],
+        }),
+        this.prisma.sale.findMany({
+          where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+          select: {
+            total: true,
+            barberId: true,
+            barber: { select: { id: true, name: true } },
+          },
+        }),
+        this.prisma.appointment.groupBy({
+          by: ['status'],
+          where: { barbershopId, startAt: { gte: from, lte: to } },
+          _count: { _all: true },
+        }),
+        this.prisma.walkIn.count({
+          where: {
+            barbershopId,
+            createdAt: { gte: from, lte: to },
+            status: { not: 'CANCELLED' },
+          },
+        }),
+      ]);
 
     // --- Taxa de não-comparecimento geral, por barbeiro e por serviço ---
     let totalNoShow = 0;
@@ -6400,7 +6424,10 @@ export class BarbershopService {
     const productRevenue = Array.from(productSales.values()).reduce((sum, p) => sum + p.revenue, 0);
     const salesCount = paidSales.length;
     const salesTotal = paidSales.reduce((sum, s) => sum + Number(s.total), 0);
-    const byBarberRevenue = new Map<number, { name: string; revenue: number; salesCount: number }>();
+    const byBarberRevenue = new Map<
+      number,
+      { name: string; revenue: number; salesCount: number }
+    >();
     for (const sale of paidSales) {
       const barberId = sale.barberId ?? 0;
       if (!byBarberRevenue.has(barberId)) {

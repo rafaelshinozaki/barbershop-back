@@ -33,7 +33,10 @@ export class RetentionService {
           orderBy: { id: 'asc' },
           take,
         }),
-      async (ids) => (await this.prisma.emailLogger.deleteMany({ where: { id: { in: ids } } })).count,
+      async (ids) =>
+        (
+          await this.prisma.emailLogger.deleteMany({ where: { id: { in: ids } } })
+        ).count,
       BATCH,
     );
     const loginHistory = await deleteInBatches(
@@ -45,7 +48,9 @@ export class RetentionService {
           take,
         }),
       async (ids) =>
-        (await this.prisma.loginHistory.deleteMany({ where: { id: { in: ids } } })).count,
+        (
+          await this.prisma.loginHistory.deleteMany({ where: { id: { in: ids } } })
+        ).count,
       BATCH,
     );
     const notifications = await deleteInBatches(
@@ -57,19 +62,23 @@ export class RetentionService {
           take,
         }),
       async (ids) =>
-        (await this.prisma.userNotification.deleteMany({ where: { id: { in: ids } } })).count,
+        (
+          await this.prisma.userNotification.deleteMany({ where: { id: { in: ids } } })
+        ).count,
       BATCH,
     );
     const verificationCodes = await deleteInBatches(
       (take) =>
         this.prisma.verificationCode.findMany({
-              where: { OR: [{ expiresAt: { lt: now } }, { used: true }] },
+          where: { OR: [{ expiresAt: { lt: now } }, { used: true }] },
           select: { id: true },
           orderBy: { id: 'asc' },
           take,
         }),
       async (ids) =>
-        (await this.prisma.verificationCode.deleteMany({ where: { id: { in: ids } } })).count,
+        (
+          await this.prisma.verificationCode.deleteMany({ where: { id: { in: ids } } })
+        ).count,
       BATCH,
     );
     const passwordResetTokens = await deleteInBatches(
@@ -81,7 +90,9 @@ export class RetentionService {
           take,
         }),
       async (ids) =>
-        (await this.prisma.passwordResetToken.deleteMany({ where: { id: { in: ids } } })).count,
+        (
+          await this.prisma.passwordResetToken.deleteMany({ where: { id: { in: ids } } })
+        ).count,
       BATCH,
     );
 

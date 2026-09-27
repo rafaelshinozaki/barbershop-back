@@ -46,7 +46,11 @@ type SignupInput = {
 
 export type PublicShopLink = { name: string; slug: string };
 
-function unique<T extends string>(values: readonly string[] | null | undefined, allowed: readonly T[], label: string): T[] {
+function unique<T extends string>(
+  values: readonly string[] | null | undefined,
+  allowed: readonly T[],
+  label: string,
+): T[] {
   const out: T[] = [];
   for (const value of values ?? []) {
     if (!(allowed as readonly string[]).includes(value)) {
@@ -85,7 +89,9 @@ export function parseProfessionalSignup(input: SignupInput | null | undefined) {
   const roles = unique(input?.roles, PROFILE_ROLES, 'Papel');
   if (roles.length === 0) throw new ProfilePrivacyError('Escolha pelo menos um papel');
   const openToWork = input?.openToWork === true;
-  const engagements = openToWork ? unique(input?.engagements, WORK_ENGAGEMENTS, 'Tipo de vínculo') : [];
+  const engagements = openToWork
+    ? unique(input?.engagements, WORK_ENGAGEMENTS, 'Tipo de vínculo')
+    : [];
   const acceptedRoles = openToWork ? unique(input?.acceptedRoles, PROFILE_ROLES, 'Cargo') : [];
   if (openToWork && engagements.length === 0) {
     throw new ProfilePrivacyError('Escolha o tipo de vínculo');
@@ -136,8 +142,10 @@ export function parseProfilePatch(input: {
   if (input.specialties != null) patch.specialties = parseSpecialties(input.specialties);
   if (input.cities != null) patch.cities = parseCities(input.cities);
   if (input.openToWork != null) patch.openToWork = input.openToWork;
-  if (input.engagements != null) patch.engagements = unique(input.engagements, WORK_ENGAGEMENTS, 'Tipo de vínculo');
-  if (input.acceptedRoles != null) patch.acceptedRoles = unique(input.acceptedRoles, PROFILE_ROLES, 'Cargo');
+  if (input.engagements != null)
+    patch.engagements = unique(input.engagements, WORK_ENGAGEMENTS, 'Tipo de vínculo');
+  if (input.acceptedRoles != null)
+    patch.acceptedRoles = unique(input.acceptedRoles, PROFILE_ROLES, 'Cargo');
   if (patch.openToWork === false) {
     patch.engagements = [];
     patch.acceptedRoles = [];
@@ -160,7 +168,10 @@ export function parseProfilePatch(input: {
 }
 
 /** Conta de cliente ainda é outro login: "na plataforma" vale para quem entrou como equipe. */
-export function canViewProfile(visibility: ProfileVisibility, viewerUserId?: number | null): boolean {
+export function canViewProfile(
+  visibility: ProfileVisibility,
+  viewerUserId?: number | null,
+): boolean {
   if (visibility === 'public') return true;
   if (visibility === 'platform') return viewerUserId != null;
   return false;
@@ -187,7 +198,12 @@ export function presentPublicProfile<T extends PublicShopLink>(source: {
   owns: T[];
   choices: Pick<
     ProfileChoices,
-    'visibility' | 'showPhoto' | 'showAppointmentCount' | 'showWorkHistory' | 'showLocations' | 'showContact'
+    | 'visibility'
+    | 'showPhoto'
+    | 'showAppointmentCount'
+    | 'showWorkHistory'
+    | 'showLocations'
+    | 'showContact'
   >;
 }) {
   const { choices } = source;

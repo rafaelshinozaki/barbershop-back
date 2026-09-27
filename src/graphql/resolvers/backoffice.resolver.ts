@@ -130,15 +130,21 @@ export class BackofficeResolver {
     this.logger.log('backofficeDashboard called');
 
     try {
-      const [stats, userGrowth, roleDistribution, statusDistribution, planDistribution, marketplaceMetrics] =
-        await Promise.all([
-          this.backofficeService.getStats(),
-          this.backofficeService.getUserGrowth(),
-          this.backofficeService.getRoleDistribution(),
-          this.backofficeService.getStatusDistribution(),
-          this.backofficeService.getPlanDistribution(),
-          this.backofficeService.getMarketplaceMetrics(),
-        ]);
+      const [
+        stats,
+        userGrowth,
+        roleDistribution,
+        statusDistribution,
+        planDistribution,
+        marketplaceMetrics,
+      ] = await Promise.all([
+        this.backofficeService.getStats(),
+        this.backofficeService.getUserGrowth(),
+        this.backofficeService.getRoleDistribution(),
+        this.backofficeService.getStatusDistribution(),
+        this.backofficeService.getPlanDistribution(),
+        this.backofficeService.getMarketplaceMetrics(),
+      ]);
 
       this.logger.log('All dashboard data retrieved successfully');
       this.logger.logEssential('Stats', stats, ['totalUsers', 'activeUsers', 'newUsersThisMonth']);

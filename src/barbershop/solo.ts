@@ -109,7 +109,12 @@ export type SoloUsage = {
 };
 
 /** Uso das duas cotas no mês de calendário de `when`, no fuso da agenda. */
-export async function soloUsage(db: Db, ownerUserId: number, timeZone: string, when: Date): Promise<SoloUsage> {
+export async function soloUsage(
+  db: Db,
+  ownerUserId: number,
+  timeZone: string,
+  when: Date,
+): Promise<SoloUsage> {
   const zone = safeTimeZone(timeZone);
   const [year, month] = toZonedParts(when, zone).dateStr.split('-').map(Number);
   const previous = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
@@ -149,7 +154,12 @@ export async function assertSoloBookingAllowed(db: Db, barbershopId: number, whe
 }
 
 /** Estabelecimento comum não entra. No solo, venda nova de produto para quando a cota do mês fechou. */
-export async function assertSoloProductSaleAllowed(db: Db, barbershopId: number, when: Date, units: number) {
+export async function assertSoloProductSaleAllowed(
+  db: Db,
+  barbershopId: number,
+  when: Date,
+  units: number,
+) {
   if (units <= 0) return;
   const shop = await db.barbershop.findUnique({
     where: { id: barbershopId },

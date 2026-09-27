@@ -3,7 +3,13 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureProfessional } from './professional';
-import { PRO_PRICE_CENTS, PRO_REFERRAL_MONTHS, extendProUntil, isProActive, proPriceLabel } from './pro';
+import {
+  PRO_PRICE_CENTS,
+  PRO_REFERRAL_MONTHS,
+  extendProUntil,
+  isProActive,
+  proPriceLabel,
+} from './pro';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -37,7 +43,12 @@ export class ProReferralService {
         proReferralReceived: { select: { id: true } },
       },
     });
-    return this.toStatus(code, user.proUntil, user._count.proReferralsSent, user.proReferralReceived != null);
+    return this.toStatus(
+      code,
+      user.proUntil,
+      user._count.proReferralsSent,
+      user.proReferralReceived != null,
+    );
   }
 
   async claim(userId: number, rawCode: string) {
@@ -48,7 +59,8 @@ export class ProReferralService {
       select: { id: true, professional: { select: { id: true } } },
     });
     if (!inviter) throw new BadRequestException('Código de indicação não encontrado.');
-    if (inviter.id === userId) throw new BadRequestException('Você não pode usar o próprio código.');
+    if (inviter.id === userId)
+      throw new BadRequestException('Você não pode usar o próprio código.');
     if (!inviter.professional) {
       throw new BadRequestException('Esse código ainda não é de um profissional.');
     }
@@ -71,7 +83,12 @@ export class ProReferralService {
     return this.status(userId);
   }
 
-  private toStatus(code: string, proUntil: Date | null, invitedCount: number, claimed: boolean): ProReferralStatus {
+  private toStatus(
+    code: string,
+    proUntil: Date | null,
+    invitedCount: number,
+    claimed: boolean,
+  ): ProReferralStatus {
     return {
       code,
       priceCents: PRO_PRICE_CENTS,
@@ -107,7 +124,8 @@ export class ProReferralService {
         });
         if (updated.proReferralCode) return updated.proReferralCode;
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') continue;
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+          continue;
         throw error;
       }
     }

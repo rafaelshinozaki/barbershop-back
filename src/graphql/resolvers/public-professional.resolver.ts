@@ -12,10 +12,7 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 @Resolver(() => PublicProfessionalType)
 @UseFilters(GqlHttpExceptionFilter)
 export class PublicProfessionalResolver {
-  constructor(
-    private readonly career: CareerService,
-    private readonly s3: S3Service,
-  ) {}
+  constructor(private readonly career: CareerService, private readonly s3: S3Service) {}
 
   @Query(() => PublicProfessionalType)
   @OptionalAuth()

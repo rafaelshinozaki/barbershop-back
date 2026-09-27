@@ -272,7 +272,8 @@ export class CareerService {
     const seenFormer = new Set<string>();
     for (const barber of barbers) {
       const shop = barber.barbershop;
-      if (barber.isActive || !shop.isActive || seen.has(shop.slug) || seenFormer.has(shop.slug)) continue;
+      if (barber.isActive || !shop.isActive || seen.has(shop.slug) || seenFormer.has(shop.slug))
+        continue;
       seenFormer.add(shop.slug);
       workedAt.push({ name: shop.name, slug: shop.slug });
     }

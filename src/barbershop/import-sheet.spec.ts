@@ -11,7 +11,11 @@ describe('parseSheet', () => {
     );
     expect(parsed.errors).toEqual([]);
     expect(parsed.customers).toEqual([
-      expect.objectContaining({ name: 'Ana Silva', phoneDigits: '11988887777', email: 'ana@x.com' }),
+      expect.objectContaining({
+        name: 'Ana Silva',
+        phoneDigits: '11988887777',
+        email: 'ana@x.com',
+      }),
     ]);
   });
 
@@ -49,7 +53,13 @@ describe('parseSheet', () => {
   });
 
   it('lê serviços pela duração e o preço', () => {
-    const parsed = parseSheet('nome,duracao_minutos,preco\nCorte,30,45\n', 'America/Sao_Paulo', NOW);
-    expect(parsed.services).toEqual([expect.objectContaining({ name: 'Corte', durationMinutes: 30, price: 45 })]);
+    const parsed = parseSheet(
+      'nome,duracao_minutos,preco\nCorte,30,45\n',
+      'America/Sao_Paulo',
+      NOW,
+    );
+    expect(parsed.services).toEqual([
+      expect.objectContaining({ name: 'Corte', durationMinutes: 30, price: 45 }),
+    ]);
   });
 });

@@ -364,8 +364,9 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
         startSubDate: new Date(),
       },
     });
-    const create = (label: string) =>
+    const create = (label: string, ownerTakesAppointments?: boolean) =>
       service.createBarbershop(owner.id, {
+        ownerTakesAppointments,
         name: `MU ${label}`,
         slug: `mu-${label}-${RUN}`,
         address: 'Rua 2',
@@ -377,7 +378,9 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
         email: `mu-${label}-${RUN}@test.local`,
       });
     const first = await create('d1');
-    const second = await create('d2');
+    // Cadastro do dono sem "eu também atendo" nesta unidade (antes ia pro
+    // create da unidade e quebrava: não é coluna dela)
+    const second = await create('d2', false);
     const network = await prisma.network.findFirstOrThrow({ where: { ownerUserId: owner.id } });
     for (const shop of [first, second]) {
       shops.push({
@@ -390,6 +393,8 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     }
     const links = await prisma.barber.findMany({ where: { userId: owner.id } });
     expect(links.map((b) => b.barbershopId).sort()).toEqual([first.id, second.id].sort());
+    expect(links.find((b) => b.barbershopId === first.id)?.takesAppointments).toBeNull();
+    expect(links.find((b) => b.barbershopId === second.id)?.takesAppointments).toBe(false);
     await prisma.subscription.deleteMany({ where: { userId: owner.id } });
   });
 });
