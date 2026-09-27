@@ -3292,7 +3292,16 @@ export class BarbershopService {
           },
           orderBy: { name: 'asc' },
         },
-        network: { select: { accentColor: true, grayColor: true } },
+        network: {
+          select: {
+            accentColor: true,
+            grayColor: true,
+            lateCancellationWindowHours: true,
+            noShowFeeEnabled: true,
+            noShowFeeType: true,
+            noShowFeeValue: true,
+          },
+        },
         socialConnection: { select: { instagramUsername: true } },
         photos: {
           orderBy: [{ position: 'asc' }, { id: 'asc' }],
@@ -3367,6 +3376,13 @@ export class BarbershopService {
         ...p,
         serviceName: p.service?.name ?? null,
       })),
+      // Política de cancelamento, visível antes de agendar
+      cancellationPolicy: {
+        windowHours: barbershop.network.lateCancellationWindowHours,
+        feeEnabled: barbershop.network.noShowFeeEnabled && !!barbershop.network.noShowFeeValue,
+        feeType: barbershop.network.noShowFeeType,
+        feeValue: barbershop.network.noShowFeeValue,
+      },
       // Cores definidas pelo dono da franquia — a página pública usa as mesmas
       accentColor: barbershop.network.accentColor,
       grayColor: barbershop.network.grayColor,

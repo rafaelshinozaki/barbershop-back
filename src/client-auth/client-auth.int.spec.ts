@@ -287,6 +287,36 @@ describe('Conta do cliente final (integração com o banco)', () => {
     expect(await guardAccepts(squatted)).toBe(false);
   });
 
+  it('profissionais favoritos: favorita, lista com a unidade, desfavorita; inativo não entra', async () => {
+    const account = await service.signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', null);
+    const active = await prisma.barber.create({
+      data: { barbershopId: shopId, name: 'Ana Tesoura', phone: '11966666666' },
+    });
+    const gone = await prisma.barber.create({
+      data: { barbershopId: shopId, name: 'Saiu', phone: '11977777777', isActive: false },
+    });
+    const listed = await service.addFavoriteBarber(account.id, active.id);
+    expect(listed).toEqual([
+      {
+        barberId: active.id,
+        name: 'Ana Tesoura',
+        barbershopName: `Unidade ${RUN}`,
+        barbershopSlug: `cli-${RUN}`,
+        available: true,
+      },
+    ]);
+    // Favoritar de novo não duplica
+    expect(await service.addFavoriteBarber(account.id, active.id)).toHaveLength(1);
+    await expect(service.addFavoriteBarber(account.id, gone.id)).rejects.toThrow(
+      'Profissional não encontrado',
+    );
+    // Parou de atender: continua na lista, mas sem agendar
+    await prisma.barber.update({ where: { id: active.id }, data: { isActive: false } });
+    expect((await service.listFavoriteBarbers(account.id))[0].available).toBe(false);
+    expect(await service.removeFavoriteBarber(account.id, active.id)).toEqual([]);
+    await prisma.barber.deleteMany({ where: { id: { in: [active.id, gone.id] } } });
+  });
+
   describe('exclusão da conta (LGPD)', () => {
     it('senha errada não apaga; certa cancela cobranças, apaga dados pessoais e libera o e-mail', async () => {
       const mail = `apagar-${RUN}@test.local`;

@@ -498,6 +498,18 @@ type CalendarFeedType {
   scope: String!
 }
 
+type CancellationPolicyType {
+  """Cobra taxa por cancelamento tardio ou falta"""
+  feeEnabled: Boolean!
+
+  """PERCENT (do serviço) ou FIXED"""
+  feeType: String
+  feeValue: Float
+
+  """Cancelar ou remarcar grátis até X horas antes"""
+  windowHours: Int!
+}
+
 type Card {
   brand: String!
   expMonth: Int!
@@ -667,11 +679,23 @@ input ClientDeleteAccountInput {
   password: String
 }
 
+type ClientFavoriteBarberType {
+  """Ainda dá pra agendar com ele nessa unidade"""
+  available: Boolean!
+  barberId: Int!
+  barbershopName: String!
+  barbershopSlug: String!
+  name: String!
+}
+
 input ClientForgotPasswordInput {
   email: String!
 }
 
 type ClientHistoryEntryType {
+  """Pra agendar de novo com o mesmo profissional"""
+  barberId: Int
+
   """Profissional do atendimento"""
   barberName: String
   barbershopName: String!
@@ -687,6 +711,9 @@ type ClientHistoryEntryType {
 
   """Link pra avaliar (atendimento concluído)"""
   reviewUrl: String
+
+  """Serviços do atendimento (agendar de novo)"""
+  serviceIds: [Int!]
   status: String!
 
   """Caixinha registrada no atendimento"""
@@ -1595,6 +1622,7 @@ type Mutation {
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
   addBarbershopPhoto(barbershopId: Int!, caption: String, key: String!): BarbershopPhotoType!
   addClientFavorite(networkId: Float!): [Network!]!
+  addClientFavoriteBarber(barberId: Int!): [ClientFavoriteBarberType!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
@@ -1718,6 +1746,7 @@ type Mutation {
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
   removeClientFavorite(networkId: Float!): [Network!]!
+  removeClientFavoriteBarber(barberId: Int!): [ClientFavoriteBarberType!]!
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removeUser(userId: Int!): Boolean!
@@ -2367,6 +2396,7 @@ type PublicBarbershopType {
 
   """Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)"""
   businessType: String!
+  cancellationPolicy: CancellationPolicyType!
   city: String!
   closures: [ClosureType!]!
   complement1: String
@@ -2538,6 +2568,7 @@ type Query {
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
   chairRentReceipt(barbershopId: Int!, paymentId: Int!): ChairRentReceiptType!
+  clientFavoriteBarbers: [ClientFavoriteBarberType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!

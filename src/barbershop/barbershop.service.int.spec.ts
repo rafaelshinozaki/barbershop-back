@@ -750,6 +750,11 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.barbershop.delete({ where: { id: shopId } });
     });
 
+    it('página pública mostra a política de cancelamento da rede', async () => {
+      const page = await service.getPublicBarbershopByslug(slug);
+      expect(page.cancellationPolicy).toMatchObject({ windowHours: 24, feeEnabled: false });
+    });
+
     it('unidade nova é barbearia; muda pra salão, aparece na página e filtra a busca', async () => {
       expect(
         (await prisma.barbershop.findUniqueOrThrow({ where: { id: shopId } })).businessType,

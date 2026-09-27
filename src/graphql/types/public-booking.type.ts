@@ -282,6 +282,22 @@ export class PublicPortfolioPhotoType {
   caption?: string;
 }
 
+/** Política de cancelamento da unidade, mostrada antes de agendar */
+@ObjectType()
+export class CancellationPolicyType {
+  @Field(() => Int, { description: 'Cancelar ou remarcar grátis até X horas antes' })
+  windowHours: number;
+
+  @Field({ description: 'Cobra taxa por cancelamento tardio ou falta' })
+  feeEnabled: boolean;
+
+  @Field(() => String, { nullable: true, description: 'PERCENT (do serviço) ou FIXED' })
+  feeType: string | null;
+
+  @Field(() => Float, { nullable: true })
+  feeValue: number | null;
+}
+
 @ObjectType()
 export class PublicBarbershopType {
   @Field(() => Int)
@@ -289,6 +305,9 @@ export class PublicBarbershopType {
 
   @Field(() => [String], { description: 'Selos da unidade: top_rated, popular' })
   badges: string[];
+
+  @Field(() => CancellationPolicyType)
+  cancellationPolicy: CancellationPolicyType;
 
   @Field({ description: 'Tipo de estabelecimento (barbershop, beauty_salon, nail_salon...)' })
   businessType: string;

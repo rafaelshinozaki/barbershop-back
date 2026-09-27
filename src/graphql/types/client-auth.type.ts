@@ -62,6 +62,12 @@ export class ClientHistoryEntryType {
   @Field(() => String, { nullable: true, description: 'Profissional do atendimento' })
   barberName?: string | null;
 
+  @Field(() => Int, { nullable: true, description: 'Pra agendar de novo com o mesmo profissional' })
+  barberId?: number | null;
+
+  @Field(() => [Int], { nullable: true, description: 'Serviços do atendimento (agendar de novo)' })
+  serviceIds?: number[];
+
   @Field(() => Int, { nullable: true, description: 'Nota que o cliente deu ao profissional' })
   rating?: number | null;
 
@@ -70,6 +76,25 @@ export class ClientHistoryEntryType {
 
   @Field(() => String, { nullable: true, description: 'Link pra avaliar (atendimento concluído)' })
   reviewUrl?: string | null;
+}
+
+/** Profissional favorito do cliente, na unidade em que atende */
+@ObjectType()
+export class ClientFavoriteBarberType {
+  @Field(() => Int)
+  barberId: number;
+
+  @Field()
+  name: string;
+
+  @Field()
+  barbershopName: string;
+
+  @Field()
+  barbershopSlug: string;
+
+  @Field({ description: 'Ainda dá pra agendar com ele nessa unidade' })
+  available: boolean;
 }
 
 @ObjectType()
