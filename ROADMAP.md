@@ -417,11 +417,25 @@ Pré-requisitos: H1 (métricas). O preço provisório do Pro é R$ 49/mês. A co
 
 #### H3. Vitrine: ser encontrado
 Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.
-- **Página pública do profissional** + avaliação por profissional (item 2), com link compartilhável.
+- **Página pública do profissional** + avaliação por profissional (item 2), com link compartilhável ✅: `ProfessionalReview`, uma por atendimento, somando as unidades pela conta. Em `/p/:slug` aparecem a nota média, os comentários e a resposta do profissional, respeitando "mostrar nota" e "mostrar avaliações". O profissional responde pela carreira. Na exclusão da conta do cliente, o texto sai e a nota fica na média.
 - **Busca por localização de verdade** (distância, raio, filtros), com PostGIS ou similar, por profissional e por categoria (item 4).
 - **Favoritos e "agendar de novo com o mesmo profissional"**, e política de cancelamento visível antes de agendar.
 - **Unificar `User` e `ClientAccount`** (item 6, segunda etapa): o cliente passa a ter o mesmo login e o perfil privado (item 11), com o histórico de serviços.
-- **Fechamento do atendimento** (item 11, a parte que não depende de chat nem de Stripe): e-mail a cada atendimento concluído para o cliente avaliar profissional e unidade e deixar caixinha; e-mail para a unidade e o profissional avaliarem o cliente; histórico dos três com os serviços feitos; caixinha registrada na mão (dinheiro, Pix, a mais no cartão); selos calculados desse histórico.
+- **Fechamento do atendimento** (item 11, a parte que não depende de chat nem de Stripe) ✅:
+  - E-mail a cada atendimento concluído (sem a trava de 60 dias). As estrelas são do profissional e a mesma página avalia a unidade; no modo solo a nota é uma só.
+  - Nota do cliente (item 3):
+    - pontualidade e trato de 1 a 5, sem texto, dados pela unidade (recepção para cima) e pelo profissional que atendeu, até 30 dias depois;
+    - o comparecimento vem do histórico;
+    - a média soma as fichas da mesma conta. Quem vê: quem atende ou vai atender, a unidade do atendimento e o próprio cliente. Nunca é pública;
+    - o profissional recebe um resumo do dia às 21h para avaliar (`/rate-clients`). A unidade avalia pelo detalhe do agendamento;
+    - sai na exclusão da conta e depois de 2 anos sem atendimento novo.
+  - Caixinha registrada na mão (dinheiro, Pix, a mais no cartão), com destino profissional ou unidade. A do profissional recebida pela unidade vira lançamento TIP no pagamento dele.
+  - Histórico dos três com serviços, nota e caixinha: carreira, ficha do cliente e conta do cliente.
+  - Selos calculados do histórico:
+    - profissional: nota alta, experiente, clientes fiéis;
+    - unidade: nota alta, procurada;
+    - cliente, privados: comparece, pontual.
+  - A caixinha pelo Stripe segue no H4. A validação jurídica da nota do cliente também, e antes disso ela deve ficar restrita a quem atende.
 - Moderação de galerias, comentários e perfis públicos. O perfil do cliente não entra nessa moderação pública: ele não é público.
 
 Sucesso: agendamentos vindos da busca (e não do link direto da unidade), e taxa de reserva por busca.
