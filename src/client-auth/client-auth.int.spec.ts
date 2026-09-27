@@ -328,6 +328,18 @@ describe('Conta do cliente final (integração com o banco)', () => {
           comment: 'Atrasou um pouco',
         },
       });
+      // Nota de conduta que o profissional deu a ela
+      await prisma.customerRating.create({
+        data: {
+          appointmentId: appt.id,
+          side: 'professional',
+          barbershopId: shopId,
+          customerId: customer.id,
+          raterUserId: ownerId,
+          punctuality: 3,
+          treatment: 5,
+        },
+      });
       const svc = await prisma.barbershopService.create({
         data: { barbershopId: shopId, name: 'Corte', durationMinutes: 30, price: 50 },
       });
@@ -383,6 +395,8 @@ describe('Conta do cliente final (integração com o banco)', () => {
       expect(
         await prisma.professionalReview.findUniqueOrThrow({ where: { id: proReview.id } }),
       ).toMatchObject({ rating: 4, comment: null, customerId: null });
+      // A nota de conduta dela sai junto com a conta
+      expect(await prisma.customerRating.count({ where: { customerId: customer.id } })).toBe(0);
       // A ficha continua na barbearia (é registro dela), só desligada
       expect(
         (await prisma.customer.findUnique({ where: { id: customer.id } }))!.clientAccountId,

@@ -11,8 +11,7 @@ const BATCH = 1000;
 /**
  * Uma vez por dia, apaga dado pessoal cujo propósito já acabou. Não toca em
  * pagamento, venda, caixinha nem assinatura: isso fica pelo prazo fiscal.
- * Chat e nota de conduta entram aqui quando essas tabelas existirem, com os
- * prazos de RETENTION_DAYS.
+ * O chat entra aqui quando a tabela existir, com o prazo de RETENTION_DAYS.
  */
 @Injectable()
 export class RetentionService {
@@ -24,6 +23,7 @@ export class RetentionService {
     const emailBefore = cutoffBefore(now, RETENTION_DAYS.emailCopy);
     const loginBefore = cutoffBefore(now, RETENTION_DAYS.loginHistory);
     const notificationBefore = cutoffBefore(now, RETENTION_DAYS.notification);
+    const conductBefore = cutoffBefore(now, RETENTION_DAYS.clientConductNote);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -96,12 +96,33 @@ export class RetentionService {
       BATCH,
     );
 
+    // Nota de conduta do cliente: sai quando a relação acaba (2 anos sem
+    // atendimento novo daquela ficha)
+    const clientConductNotes = await deleteInBatches(
+      (take) =>
+        this.prisma.customerRating.findMany({
+          where: {
+            createdAt: { lt: conductBefore },
+            customer: { appointments: { none: { startAt: { gte: conductBefore } } } },
+          },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.customerRating.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
       emailCopies,
       loginHistory,
       notifications,
       verificationCodes,
       passwordResetTokens,
+      clientConductNotes,
     };
     this.logger.log(`Guarda cumprida: ${JSON.stringify(result)}`);
     return result;

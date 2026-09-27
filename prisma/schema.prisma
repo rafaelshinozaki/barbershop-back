@@ -562,6 +562,7 @@ model Barbershop {
   payouts         BarberPayout[]
   reviews         Review[]
   professionalReviews ProfessionalReview[]
+  customerRatings CustomerRating[]
   // Espaço compartilhado (cadeira alugada, como o "Shared Location" do
   // Booksy): profissionais independentes, cada um com o seu negócio
   sharedLocationMembers SharedLocationMember[] @relation("SharedLocationHost")
@@ -628,6 +629,7 @@ model Customer {
   noShowFees       NoShowFee[]
   reviews          Review[]
   professionalReviews ProfessionalReview[]
+  customerRatings CustomerRating[]
 
   @@index([networkId])
   @@index([networkId, phone])
@@ -794,6 +796,31 @@ model ProfessionalReview {
 
   @@index([professionalId, createdAt])
   @@index([barberId])
+}
+
+// Nota do cliente (item 3 do roadmap) num atendimento concluído, dada pela
+// unidade ou pelo profissional que atendeu: pontualidade e trato, de 1 a 5.
+// Sem texto livre sobre a pessoa; só a média aparece, pra quem atende ou vai
+// atender e pro próprio cliente. Nunca é pública. Comparecimento não é nota:
+// sai do histórico (concluídos x faltas).
+model CustomerRating {
+  id            Int         @id @default(autoincrement())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  appointmentId Int
+  // unit | professional
+  side          String
+  barbershopId  Int
+  customerId    Int
+  raterUserId   Int
+  punctuality   Int
+  treatment     Int
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  barbershop    Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, side])
+  @@index([customerId])
 }
 
 model ClientLinkedSocialAccount {
@@ -1048,6 +1075,7 @@ model Appointment {
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN, IMPORT, HISTORY
   reminderSentAt DateTime?
   reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
+  clientRatingRequestSentAt DateTime? // aviso ao profissional pra avaliar o cliente (resumo do dia)
   // Agendamento recorrente (a cada N semanas): mesmo seriesId, ordem na série
   seriesId     String?
   seriesIndex  Int?
@@ -1070,6 +1098,7 @@ model Appointment {
   sale         Sale?
   noShowFee    NoShowFee?
   professionalReview ProfessionalReview?
+  customerRatings CustomerRating[]
 
   @@index([barbershopId])
   @@index([barbershopId, startAt])

@@ -162,6 +162,14 @@ type Appointment {
   updatedAt: String!
 }
 
+type AppointmentCustomerRatingType {
+  customerId: Int!
+  ratings: [CustomerRatingValueType!]!
+
+  """Lados que ela ainda pode avaliar agora (unit, professional)"""
+  sides: [String!]!
+}
+
 input AppointmentSeriesInput {
   barberId: Int!
   customerId: Int!
@@ -1167,11 +1175,39 @@ type CreatedSeriesType {
   skipped: [SeriesSlotType!]!
 }
 
+type CustomerConductType {
+  """Comparecimento em % (concluídos / marcados)"""
+  attendanceRate: Int
+
+  """Atendimentos concluídos"""
+  completed: Int!
+
+  """Faltas"""
+  noShows: Int!
+
+  """Média de pontualidade (1 a 5)"""
+  punctuality: Float
+
+  """Quantas avaliações compõem a média"""
+  ratingCount: Int!
+
+  """Média de trato (1 a 5)"""
+  treatment: Float
+}
+
 type CustomerLoyaltyType {
   enabled: Boolean!
   pointValue: Float!
   points: Int!
   redeemableValue: Float!
+}
+
+type CustomerRatingValueType {
+  punctuality: Int!
+
+  """unit | professional"""
+  side: String!
+  treatment: Int!
 }
 
 type CustomerReferralInfoType {
@@ -1636,6 +1672,7 @@ type Mutation {
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
   purchaseClientPackage(barbershopId: Int!, input: PurchaseClientPackageInput!): ClientPackageType!
+  rateCustomer(appointmentId: Int!, barbershopId: Int!, punctuality: Int!, side: String!, treatment: Int!): Boolean!
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
@@ -2104,6 +2141,15 @@ type PayrollRowType {
   tips: Float!
 }
 
+type PendingCustomerRatingType {
+  appointmentId: Int!
+  barbershopId: Int!
+  barbershopName: String!
+  customerName: String!
+  serviceNames: String!
+  startAt: DateTime!
+}
+
 type Plan {
   billingCycle: String!
   createdAt: String!
@@ -2413,6 +2459,7 @@ type Query {
   allOverduePayments(filters: OverduePaymentsFilters): [OverduePaymentDetail!]!
   allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
   appointment(barbershopId: Int!, id: Int!): Appointment
+  appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   backofficeDashboard: BackofficeDashboard!
@@ -2458,6 +2505,7 @@ type Query {
   couponStats(id: Int!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
+  customerConduct(barbershopId: Int!, customerId: Int!): CustomerConductType!
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
@@ -2490,6 +2538,7 @@ type Query {
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myCareer: CareerOverviewType!
   myClientSubscriptions: [ClientSubscriptionType!]!
+  myConduct: CustomerConductType!
   myCoupons: [Coupon!]!
   myNetwork: Network
   myNetworkTheme: NetworkTheme
@@ -2498,6 +2547,7 @@ type Query {
   myNotificationsCount: NotificationCount!
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
+  myPendingCustomerRatings: [PendingCustomerRatingType!]!
   myProReferral: ProReferralType!
   myProfessionalReviews: [MyProfessionalReviewType!]!
   myProfilePrivacy: ProfilePrivacyType!
