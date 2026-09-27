@@ -419,7 +419,7 @@ Pré-requisitos: H1 (métricas). O preço provisório do Pro é R$ 49/mês. A co
 Objetivo: cliente acha profissional e estabelecimento por categoria e perto dele.
 - **Página pública do profissional** + avaliação por profissional (item 2), com link compartilhável ✅: `ProfessionalReview`, uma por atendimento, somando as unidades pela conta. Em `/p/:slug` aparecem a nota média, os comentários e a resposta do profissional, respeitando "mostrar nota" e "mostrar avaliações". O profissional responde pela carreira. Na exclusão da conta do cliente, o texto sai e a nota fica na média.
 - **Busca por localização de verdade** (distância, raio, filtros), com PostGIS ou similar, por profissional e por categoria (item 4).
-- **Favoritos e "agendar de novo com o mesmo profissional"**, e política de cancelamento visível antes de agendar.
+- **Favoritos e "agendar de novo com o mesmo profissional"**, e política de cancelamento visível antes de agendar ✅: o cliente logado favorita o profissional pelo coração na equipe da página e agenda com ele pela conta. "Agendar de novo" no histórico abre a janela com o mesmo profissional e os mesmos serviços. A política (janela grátis e taxa) aparece na página e no resumo antes de confirmar.
 - **Unificar `User` e `ClientAccount`** (item 6, segunda etapa): o cliente passa a ter o mesmo login e o perfil privado (item 11), com o histórico de serviços.
 - **Fechamento do atendimento** (item 11, a parte que não depende de chat nem de Stripe) ✅:
   - E-mail a cada atendimento concluído (sem a trava de 60 dias). As estrelas são do profissional e a mesma página avalia a unidade; no modo solo a nota é uma só.
