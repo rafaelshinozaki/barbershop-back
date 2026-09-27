@@ -408,6 +408,9 @@ type BarbershopCustomer {
 
 type BarbershopPhotoType {
   caption: String
+
+  """Ocultada pela moderação (fora da galeria pública)"""
+  hidden: Boolean!
   id: Int!
   position: Int!
   url: String!
@@ -1605,6 +1608,26 @@ enum MembershipStatus {
   PREMIUM
 }
 
+type ModerationItemType {
+  details: [String!]!
+
+  """Oculto pela moderação"""
+  hidden: Boolean!
+  imageUrl: String
+  lastReportedAt: DateTime!
+
+  """Página pública do conteúdo"""
+  link: String
+  openReports: Int!
+  reasons: [ReportReasonCountType!]!
+  targetId: Int!
+
+  """photo | professional_review | professional_profile | barbershop"""
+  targetType: String!
+  text: String
+  title: String!
+}
+
 type MonthTotalType {
   month: String!
   total: Float!
@@ -1754,6 +1777,7 @@ type Mutation {
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
   replyToProfessionalReview(reply: String, reviewId: Int!): Boolean!
   replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
+  reportContent(details: String, reason: String!, targetId: Int!, targetType: String!): Boolean!
   reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
@@ -1761,6 +1785,7 @@ type Mutation {
   rescheduleManagedAppointment(startAt: String!, token: String!): ManagedAppointmentType!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
+  resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
@@ -2456,6 +2481,9 @@ type PublicOpeningHoursType {
 
 type PublicPortfolioPhotoType {
   caption: String
+
+  """Foto da galeria (pra denunciar); null nos posts"""
+  photoId: Int
   url: String!
 }
 
@@ -2509,6 +2537,9 @@ type PublicProfessionalType {
   completedAppointments: Int
   email: String
   fullName: String!
+
+  """Pra denunciar o perfil"""
+  id: Int!
   owns: [CareerShopLinkType!]!
   phone: String
   photoUrl: String
@@ -2647,6 +2678,7 @@ type Query {
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   marketplaceMetrics: MarketplaceMetrics!
   me: User!
+  moderationQueue: [ModerationItemType!]!
   myBarbershops: [Barbershop!]!
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myCareer: CareerOverviewType!
@@ -2709,6 +2741,11 @@ type Query {
   userSystemConfig: UserSystemConfig!
   usersDetailed(filters: UsersDetailedFilters!): DetailedUsersResponse!
   waitlistEntries(barbershopId: Int!, status: String): [WaitlistEntryType!]!
+}
+
+type ReportReasonCountType {
+  count: Int!
+  reason: String!
 }
 
 input RequestChangePasswordCodeInput {

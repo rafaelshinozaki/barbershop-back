@@ -278,6 +278,12 @@ export class PublicPortfolioPhotoType {
   @Field()
   url: string;
 
+  @Field(() => Int, {
+    nullable: true,
+    description: 'Foto da galeria (pra denunciar); null nos posts',
+  })
+  photoId?: number;
+
   @Field({ nullable: true })
   caption?: string;
 }

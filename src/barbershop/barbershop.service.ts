@@ -3329,9 +3329,11 @@ export class BarbershopService {
         },
         socialConnection: { select: { instagramUsername: true } },
         photos: {
+          // A ocultada pela moderação sai da galeria
+          where: { hiddenAt: null },
           orderBy: [{ position: 'asc' }, { id: 'asc' }],
           take: PORTFOLIO_PHOTOS,
-          select: { key: true, caption: true },
+          select: { id: true, key: true, caption: true },
         },
         socialPosts: {
           where: { status: 'PUBLISHED' },
@@ -3359,13 +3361,18 @@ export class BarbershopService {
     // Galeria enviada pela unidade primeiro; completa com os posts publicados
     const portfolio = await Promise.all(
       [
-        ...barbershop.photos.map((p) => ({ key: p.key, caption: p.caption })),
-        ...barbershop.socialPosts.map((p) => ({ key: p.imageKey, caption: p.caption })),
+        ...barbershop.photos.map((p) => ({ key: p.key, caption: p.caption, photoId: p.id })),
+        ...barbershop.socialPosts.map((p) => ({
+          key: p.imageKey,
+          caption: p.caption,
+          photoId: null,
+        })),
       ]
         .slice(0, PORTFOLIO_PHOTOS)
         .map(async (p) => ({
           url: await this.s3Service.getDownloadUrl(p.key),
           caption: p.caption,
+          photoId: p.photoId,
         })),
     );
     const coverUrl = barbershop.coverKey
@@ -4379,7 +4386,8 @@ export class BarbershopService {
 
     const now = new Date();
     const barbershops = await this.prisma.barbershop.findMany({
-      where: { isActive: true, ...(AND.length ? { AND } : {}) },
+      // Fora da vitrine pela moderação: não aparece na busca
+      where: { isActive: true, searchHiddenAt: null, ...(AND.length ? { AND } : {}) },
       include: {
         services: { where: { isActive: true }, select: { category: true, price: true } },
         network: { select: { name: true } },
@@ -4499,7 +4507,12 @@ export class BarbershopService {
       });
     }
     const professionals = await this.prisma.professional.findMany({
-      where: { visibility: 'public', slug: { not: null }, ...(AND.length ? { AND } : {}) },
+      where: {
+        visibility: 'public',
+        slug: { not: null },
+        suspendedAt: null,
+        ...(AND.length ? { AND } : {}),
+      },
       include: {
         user: { select: { fullName: true, photoKey: true } },
         barbers: {

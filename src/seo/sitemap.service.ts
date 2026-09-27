@@ -51,7 +51,8 @@ export class SitemapService {
   private async build() {
     const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const shops = await this.prisma.barbershop.findMany({
-      where: { isActive: true },
+      // Fora da vitrine pela moderação: fica de fora
+      where: { isActive: true, searchHiddenAt: null },
       select: {
         slug: true,
         city: true,
@@ -62,7 +63,7 @@ export class SitemapService {
     });
 
     const profiles = await this.prisma.professional.findMany({
-      where: { visibility: 'public', slug: { not: null } },
+      where: { visibility: 'public', slug: { not: null }, suspendedAt: null },
       select: { slug: true, updatedAt: true },
       orderBy: { id: 'asc' },
     });

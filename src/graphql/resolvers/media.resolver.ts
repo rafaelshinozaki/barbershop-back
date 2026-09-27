@@ -33,6 +33,9 @@ export class BarbershopPhotoType {
 
   @Field(() => Int)
   position: number;
+
+  @Field({ description: 'Ocultada pela moderação (fora da galeria pública)' })
+  hidden: boolean;
 }
 
 /**
