@@ -24,6 +24,10 @@ export class ClientAccountType {
   /** false = conta só de login social (confirma a exclusão digitando o e-mail) */
   @Field()
   hasPassword: boolean;
+
+  /** Ligada à conta da equipe (mesma pessoa): entra com a senha dela */
+  @Field({ nullable: true })
+  linkedToStaff?: boolean;
 }
 
 @ObjectType()

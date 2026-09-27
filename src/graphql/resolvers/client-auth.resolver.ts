@@ -32,6 +32,7 @@ function toClientAccountType(account: {
   avatarUrl: string | null;
   emailVerifiedAt: Date | null;
   password: string | null;
+  userId?: number | null;
 }): ClientAccountType {
   return {
     id: account.id,
@@ -40,7 +41,8 @@ function toClientAccountType(account: {
     phone: account.phone ?? undefined,
     avatarUrl: account.avatarUrl ?? undefined,
     emailVerified: !!account.emailVerifiedAt,
-    hasPassword: !!account.password,
+    hasPassword: !!account.password || !!account.userId,
+    linkedToStaff: !!account.userId,
   };
 }
 

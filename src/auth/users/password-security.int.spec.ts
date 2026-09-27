@@ -82,6 +82,7 @@ describe('Senha: sessões e link de redefinição (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.clientAccount.deleteMany({ where: { email: `pw-cliente-${RUN}@test.local` } });
     await prisma.activeSession.deleteMany({ where: { userId } });
     await prisma.passwordResetToken.deleteMany({ where: { userId } });
     await prisma.verificationCode.deleteMany({ where: { userId } });
@@ -114,6 +115,10 @@ describe('Senha: sessões e link de redefinição (integração)', () => {
   it('trocar a senha (logado) derruba as outras sessões e mantém a atual', async () => {
     await openSession('atual');
     await openSession('outra');
+    // Área do cliente ligada: a senha é a mesma, as sessões dela caem junto
+    const client = await prisma.clientAccount.create({
+      data: { email: `pw-cliente-${RUN}@test.local`, name: 'Cliente', userId },
+    });
     await prisma.verificationCode.create({
       data: { userId, code: `c${RUN}`.slice(0, 12), expiresAt: new Date(Date.now() + 600_000) },
     });
@@ -126,6 +131,37 @@ describe('Senha: sessões e link de redefinição (integração)', () => {
       `atual-${RUN}`,
     );
     expect(await sessions()).toEqual([`atual-${RUN}`]);
+    const after = await prisma.clientAccount.findUniqueOrThrow({ where: { id: client.id } });
+    expect(after.sessionVersion).toBe(client.sessionVersion + 1);
+  });
+
+  it('cadastro da equipe com o e-mail e a senha de uma conta de cliente liga as duas', async () => {
+    // O teste anterior ligou este usuário a outra conta de cliente (a ligação é única)
+    await prisma.clientAccount.updateMany({ where: { userId }, data: { userId: null } });
+    const same = await prisma.clientAccount.create({
+      data: {
+        email: `pw-cliente-igual-${RUN}@test.local`,
+        name: 'Cliente',
+        password: await bcrypt.hash('Mesma#Senha1', 10),
+      },
+    });
+    const other = await prisma.clientAccount.create({
+      data: {
+        email: `pw-cliente-outra-${RUN}@test.local`,
+        name: 'Cliente',
+        password: await bcrypt.hash('Outra#Senha1', 10),
+      },
+    });
+    const link = (service as any).linkClientAccountOnSignup.bind(service);
+    // O cadastro da equipe guarda o e-mail como digitado
+    await link({ id: userId, email: same.email.toUpperCase() }, 'Mesma#Senha1');
+    await link({ id: userId, email: other.email }, 'Mesma#Senha1');
+    expect(await prisma.clientAccount.findUnique({ where: { id: same.id } })).toMatchObject({
+      userId,
+      password: null,
+    });
+    expect((await prisma.clientAccount.findUnique({ where: { id: other.id } }))!.userId).toBeNull();
+    await prisma.clientAccount.deleteMany({ where: { id: { in: [same.id, other.id] } } });
   });
 
   it('esqueci a senha pra e-mail sem conta responde igual e não manda nada', async () => {

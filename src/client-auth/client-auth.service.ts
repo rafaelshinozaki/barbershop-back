@@ -17,6 +17,7 @@ import { StripeService } from '@/stripe/stripe.service';
 import { normalizeLang } from '@/email/language';
 import { appointmentReviewUrl } from '../barbershop/appointment-link';
 import { ClientAccountDTO } from './dto/client-account.dto';
+import { AccountLinkService } from './account-link.service';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -75,6 +76,7 @@ function toDTO(account: {
   avatarUrl: string | null;
   emailVerifiedAt: Date | null;
   password: string | null;
+  userId?: number | null;
 }): ClientAccountDTO {
   return {
     id: account.id,
@@ -83,7 +85,9 @@ function toDTO(account: {
     phone: account.phone,
     avatarUrl: account.avatarUrl,
     emailVerified: !!account.emailVerifiedAt,
-    hasPassword: !!account.password,
+    // Ligada à conta da equipe: entra com a senha dela
+    hasPassword: !!account.password || !!account.userId,
+    linkedToStaff: !!account.userId,
   };
 }
 
@@ -97,6 +101,7 @@ export class ClientAuthService {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly stripeService: StripeService,
+    private readonly accountLink: AccountLinkService,
   ) {}
 
   // Liga as fichas (Customer) órfãs de qualquer negócio da plataforma com
@@ -275,10 +280,22 @@ export class ClientAuthService {
   async resetPassword(token: string, newPassword: string) {
     validatePassword(newPassword);
     const account = await this.consumeToken(token, CLIENT_TOKEN_PURPOSE.RESET_PASSWORD);
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    // Ligada à conta da equipe: a senha nova é a dela (vale nas duas telas),
+    // e as sessões da equipe também caem
+    const staff = await this.accountLink.linkedStaff(account.userId);
+    if (staff) {
+      await this.prisma.user.update({ where: { id: staff.id }, data: { password: passwordHash } });
+      await this.prisma.activeSession.deleteMany({ where: { userId: staff.id } });
+      await this.prisma.passwordResetToken.updateMany({
+        where: { userId: staff.id, used: false },
+        data: { used: true },
+      });
+    }
     const updated = await this.prisma.clientAccount.update({
       where: { id: account.id },
       data: {
-        password: await bcrypt.hash(newPassword, 10),
+        password: staff ? null : passwordHash,
         emailVerifiedAt: account.emailVerifiedAt ?? new Date(),
         sessionVersion: { increment: 1 },
       },
@@ -302,14 +319,18 @@ export class ClientAuthService {
       throw new ConflictException('Já existe uma conta com este email.');
     }
 
+    // Quem já é da equipe e cadastra a mesma senha: nasce ligada (a senha é a prova)
+    const staff = await this.accountLink.staffByEmail(normalizedEmail);
+    const sameAsStaff = !!staff && (await this.accountLink.staffPasswordMatches(staff, password));
     const passwordHash = await bcrypt.hash(password, 10);
     const account = await this.prisma.clientAccount.create({
       data: {
         email: normalizedEmail,
-        password: passwordHash,
+        password: sameAsStaff ? null : passwordHash,
         name: name.trim(),
         phone: phone?.trim() || null,
         language: language ? normalizeLang(language) : null,
+        ...(sameAsStaff && staff ? { userId: staff.id, linkedAt: new Date() } : {}),
       },
     });
 
@@ -319,25 +340,65 @@ export class ClientAuthService {
     return account;
   }
 
+  /**
+   * Login na área do cliente. Ligada à conta da equipe: vale a senha dela.
+   * Sem conta de cliente mas com conta da equipe (mesma senha): cria a de
+   * cliente já ligada. Com as duas soltas e a mesma senha nas duas: liga.
+   */
   async validateCredentials(email: string, password: string) {
     const normalizedEmail = email.trim().toLowerCase();
-    const account = await this.prisma.clientAccount.findUnique({
+    const found = await this.prisma.clientAccount.findUnique({
       where: { email: normalizedEmail },
     });
+    const invalid = () => new UnauthorizedException('Email ou senha inválidos.');
+    let account = found;
+
     if (!account) {
-      // Mesmo custo de uma senha errada: a resposta rápida denunciaria que o
-      // e-mail não tem conta
-      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
-      throw new UnauthorizedException('Email ou senha inválidos.');
+      const staff = await this.accountLink.staffByEmail(normalizedEmail);
+      if (!staff || !(await this.accountLink.staffPasswordMatches(staff, password))) {
+        // Mesmo custo de uma senha errada: a resposta rápida denunciaria que o
+        // e-mail não tem conta
+        if (!staff) await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+        throw invalid();
+      }
+      // O e-mail da equipe nunca foi confirmado: o histórico das barbearias
+      // só aparece depois de confirmar (mesma regra do cadastro)
+      account = await this.prisma.clientAccount.create({
+        data: {
+          email: normalizedEmail,
+          name: staff.fullName,
+          phone: staff.phone || null,
+          userId: staff.id,
+          linkedAt: new Date(),
+        },
+      });
+      await this.sendVerificationEmail(account);
+      return account;
     }
-    if (!account.password) {
-      throw new UnauthorizedException(
-        'Esta conta usa login social. Entre com Google, Facebook ou Apple.',
-      );
-    }
-    const matches = await bcrypt.compare(password, account.password);
-    if (!matches) {
-      throw new UnauthorizedException('Email ou senha inválidos.');
+
+    if (account.userId) {
+      const staff = await this.accountLink.linkedStaff(account.userId);
+      if (!staff || !(await this.accountLink.staffPasswordMatches(staff, password))) {
+        if (!staff) await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+        throw invalid();
+      }
+    } else {
+      if (!account.password) {
+        throw new UnauthorizedException(
+          'Esta conta usa login social. Entre com Google, Facebook ou Apple.',
+        );
+      }
+      const matches = await bcrypt.compare(password, account.password);
+      if (!matches) throw invalid();
+      // A mesma senha na conta da equipe com este e-mail: prova que é a mesma pessoa
+      const staff = await this.accountLink.staffByEmail(normalizedEmail);
+      if (staff && (await this.accountLink.staffPasswordMatches(staff, password))) {
+        const taken = await this.prisma.clientAccount.findFirst({
+          where: { userId: staff.id },
+          select: { id: true },
+        });
+        if (!taken) account = await this.accountLink.link(account.id, staff);
+      }
     }
 
     // Fichas criadas desde o último login (se o e-mail já está confirmado)
@@ -465,8 +526,11 @@ export class ClientAuthService {
     });
     if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
 
-    if (account.password) {
-      const ok = !!confirm.password && (await bcrypt.compare(confirm.password, account.password));
+    // Ligada à conta da equipe: confirma com a senha dela (a conta da equipe fica)
+    const staff = await this.accountLink.linkedStaff(account.userId);
+    const passwordHash = staff?.password ?? account.password;
+    if (passwordHash) {
+      const ok = !!confirm.password && (await bcrypt.compare(confirm.password, passwordHash));
       // 400, não 401: o front trata 401 como sessão vencida e desloga
       if (!ok) throw new BadRequestException('Senha incorreta.');
     } else if ((confirm.email ?? '').trim().toLowerCase() !== account.email) {
@@ -528,6 +592,9 @@ export class ClientAuthService {
           language: null,
           emailVerifiedAt: null,
           deletedAt: now,
+          // A conta da equipe continua; só a ligação sai
+          userId: null,
+          linkedAt: null,
           sessionVersion: { increment: 1 },
         },
       }),

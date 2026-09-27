@@ -62,6 +62,8 @@ model User {
   cashSessionsClosed     CashSession[]    @relation("CashSessionClosedBy")
   expensesCreated        Expense[]        @relation("ExpenseCreatedBy")
   linkedSocialAccounts   LinkedSocialAccount[]
+  // Conta de cliente da mesma pessoa (área do cliente)
+  clientAccount          ClientAccount?
 
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
@@ -729,6 +731,12 @@ model ClientAccount {
   // Conta excluída pelo próprio cliente (LGPD): dados pessoais apagados, a
   // linha fica só pra não levar junto os pagamentos que a barbearia recebeu
   deletedAt            DateTime?
+  // Conta da equipe da mesma pessoa (mesmo e-mail, ligada com prova: a
+  // senha dos dois lados). Ligada, a senha que vale nas duas telas é a da
+  // equipe (User.password) e esta fica vazia.
+  userId               Int?                        @unique
+  linkedAt             DateTime?
+  user                 User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
   tokens               ClientAccountToken[]
   customers            Customer[]
   favorites            ClientFavorite[]

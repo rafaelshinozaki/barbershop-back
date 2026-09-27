@@ -667,12 +667,22 @@ input CheckPasswordInput {
   password: String!
 }
 
+type ClientAccountLinkType {
+  """Há uma conta da equipe com o mesmo e-mail pra ligar"""
+  canLink: Boolean!
+
+  """Dá pra abrir a área da equipe sem digitar a senha (sem 2FA)"""
+  canOpenOtherArea: Boolean!
+  linked: Boolean!
+}
+
 type ClientAccountType {
   avatarUrl: String
   email: String!
   emailVerified: Boolean!
   hasPassword: Boolean!
   id: Int!
+  linkedToStaff: Boolean
   name: String!
   phone: String
 }
@@ -1666,8 +1676,10 @@ type Mutation {
   claimProReferral(code: String!): ProReferralType!
   clientDeleteAccount(input: ClientDeleteAccountInput!): Boolean!
   clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
+  clientLinkStaffAccount(password: String!): Boolean!
   clientLogin(input: ClientLoginInput!): ClientAccountType!
   clientLogout: Boolean!
+  clientOpenStaffArea: Boolean!
   clientResendVerificationEmail: Boolean!
   clientResetPassword(input: ClientResetPasswordInput!): Boolean!
   clientSignup(input: ClientSignupInput!): ClientAccountType!
@@ -1746,6 +1758,7 @@ type Mutation {
   getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
   importShopData(barbershopId: Int!, csv: String!): ShopImportResultType!
   inviteToSharedLocation(barbershopId: Int!, memberPageLink: String!): SharedLocationLinkType!
+  linkMyClientAccount(password: String!): Boolean!
   login(input: LoginInput!): User!
   logout: Boolean!
   logoutOtherSessions: Boolean!
@@ -1754,6 +1767,7 @@ type Mutation {
   markNotificationAsRead(id: Int!): CommonResponse!
   moderateReview(hide: Boolean!, reviewId: Int!): Boolean!
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
+  openClientArea: Boolean!
   payBarber(barbershopId: Int!, input: PayBarberInput!): BarberPayoutType!
   processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
@@ -2635,6 +2649,7 @@ type Query {
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!
   chairRentReceipt(barbershopId: Int!, paymentId: Int!): ChairRentReceiptType!
+  clientAccountLink: ClientAccountLinkType!
   clientFavoriteBarbers: [ClientFavoriteBarberType!]!
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
@@ -2682,6 +2697,7 @@ type Query {
   myBarbershops: [Barbershop!]!
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myCareer: CareerOverviewType!
+  myClientAccountLink: StaffClientLinkType!
   myClientSubscriptions: [ClientSubscriptionType!]!
   myConduct: CustomerConductType!
   myCoupons: [Coupon!]!
@@ -3098,6 +3114,15 @@ type SoloPracticeType {
   productsThisMonth: Int!
   remaining: Int!
   slug: String
+}
+
+type StaffClientLinkType {
+  """Há uma conta de cliente com o mesmo e-mail pra ligar"""
+  canLink: Boolean!
+
+  """A conta de cliente tem senha (sem ela, liga pela área do cliente)"""
+  clientHasPassword: Boolean!
+  linked: Boolean!
 }
 
 input StartSoloPracticeInput {
