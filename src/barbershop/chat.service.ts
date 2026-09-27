@@ -11,6 +11,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { langForCountry, LOCALE, normalizeLang } from '../email/language';
 import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
+import { NotificationType } from '../notifications/dto/create-notification.dto';
 
 export type ChatKind = 'unit' | 'professional';
 export const CHAT_KINDS: ChatKind[] = ['unit', 'professional'];
@@ -246,7 +247,8 @@ export class ChatService {
         userId: u.id,
         title: text.title,
         message: text.message(who),
-        type: 'INFO',
+        // Valor do enum do sininho (outro valor quebra a lista inteira)
+        type: NotificationType.INFO,
         actionUrl: `/messages?appointment=${appt.id}`,
       };
     });
