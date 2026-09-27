@@ -156,7 +156,7 @@ describe('Chat do atendimento (integração)', () => {
     });
     apptId = await appointment(shopId, barber.id, customer.id);
     soloApptId = await appointment(soloId, soloBarber.id, customer.id);
-    canceledApptId = await appointment(shopId, barber.id, customer.id, 'CANCELED');
+    canceledApptId = await appointment(shopId, barber.id, customer.id, 'CANCELLED');
   });
 
   afterAll(async () => {

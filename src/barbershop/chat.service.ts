@@ -147,7 +147,7 @@ export class ChatService {
         kind,
         title: this.titleFor(appt, kind, viewer),
         startAt: appt.startAt,
-        canSend: appt.status !== 'CANCELED',
+        canSend: appt.status !== 'CANCELLED',
         messages: (thread?.messages ?? []).map((m) => ({
           id: m.id,
           createdAt: m.createdAt,
@@ -174,7 +174,7 @@ export class ChatService {
     }
     const { appt, kinds } = await this.appointmentFor(appointmentId, viewer, barbershopId);
     if (!kinds.includes(kind as ChatKind)) throw new ForbiddenException('Conversa indisponível');
-    if (appt.status === 'CANCELED') {
+    if (appt.status === 'CANCELLED') {
       throw new BadRequestException('Atendimento cancelado: a conversa não recebe mensagens.');
     }
     const now = new Date();
