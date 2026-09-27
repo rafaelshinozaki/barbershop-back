@@ -477,6 +477,66 @@ export class PublicBarbershopSearchResultType {
 
   @Field()
   isFeatured: boolean;
+
+  @Field(() => Float, { nullable: true, description: 'Preço do serviço mais barato' })
+  minPrice?: number;
+
+  @Field()
+  currency: string;
+
+  @Field({ description: 'Aberta agora, no fuso da unidade' })
+  openNow: boolean;
+}
+
+@ObjectType()
+export class PublicShopLinkType {
+  @Field()
+  name: string;
+
+  @Field()
+  slug: string;
+}
+
+@ObjectType()
+export class PublicProfessionalSearchResultType {
+  @Field({ description: 'Página /p/:slug' })
+  slug: string;
+
+  @Field()
+  name: string;
+
+  @Field({ nullable: true, description: 'Só se a pessoa mostra a foto' })
+  photoUrl?: string;
+
+  @Field({ nullable: true })
+  specialization?: string;
+
+  @Field(() => [TreatmentCategory])
+  specialties: TreatmentCategory[];
+
+  @Field(() => [String])
+  cities: string[];
+
+  @Field(() => [PublicShopLinkType], { description: 'Onde atende (vazio se esconde as unidades)' })
+  shops: PublicShopLinkType[];
+
+  @Field()
+  acceptingClients: boolean;
+
+  @Field(() => Float, { nullable: true })
+  distanceKm?: number;
+
+  @Field(() => Float, { nullable: true })
+  minPrice?: number;
+
+  @Field({ nullable: true })
+  currency?: string;
+
+  @Field(() => Float, { nullable: true, description: 'Só se a pessoa mostra a nota' })
+  averageRating?: number;
+
+  @Field(() => Int)
+  reviewCount: number;
 }
 
 @ObjectType()
