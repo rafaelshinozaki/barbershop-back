@@ -95,6 +95,9 @@ describe('privacidade do perfil', () => {
       worksAt: [shop],
       workedAt: [],
       owns: [shop],
+      averageRating: null,
+      reviewCount: null,
+      reviews: [],
     });
   });
 });

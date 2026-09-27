@@ -531,11 +531,20 @@ export class ReviewRequestType {
   @Field({ nullable: true })
   timezone?: string;
 
-  @Field(() => Int, { nullable: true, description: 'Nota que o cliente já deu (editar)' })
+  @Field({ description: 'Modo solo: não há unidade, a nota é só do profissional' })
+  solo: boolean;
+
+  @Field(() => Int, { nullable: true, description: 'Nota que o cliente já deu à unidade (editar)' })
   rating?: number | null;
 
   @Field({ nullable: true })
   comment?: string | null;
+
+  @Field(() => Int, { nullable: true, description: 'Nota que já deu ao profissional (editar)' })
+  professionalRating?: number | null;
+
+  @Field({ nullable: true })
+  professionalComment?: string | null;
 }
 
 /** Próximo horário livre na página pública */

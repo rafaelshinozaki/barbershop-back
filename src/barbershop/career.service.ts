@@ -10,6 +10,7 @@ import {
   visiblePastVisit,
 } from './career';
 import { ensureProfessional } from './professional';
+import { ProfessionalReviewService } from './professional-review.service';
 import {
   canViewProfile,
   parseProfessionalSignup,
@@ -51,7 +52,10 @@ function amount(value: { toString(): string } | number | null | undefined): numb
  */
 @Injectable()
 export class CareerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reviews: ProfessionalReviewService,
+  ) {}
 
   async overview(userId: number) {
     const barbers = await this.prisma.barber.findMany({
@@ -188,12 +192,14 @@ export class CareerService {
     if (!professional || !canViewProfile(visibility, viewerUserId)) {
       throw new NotFoundException('Perfil não encontrado');
     }
-    const [user, facts] = await Promise.all([
+    const [user, facts, rating, reviews] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: professional.userId },
         select: { fullName: true, phone: true, email: true, photoKey: true },
       }),
       this.profileFacts(professional.userId),
+      professional.showRating ? this.reviews.summary(professional.id) : undefined,
+      professional.showReviews ? this.reviews.publicReviews(professional.id) : [],
     ]);
     if (!user) throw new NotFoundException('Perfil não encontrado');
     return presentPublicProfile({
@@ -202,6 +208,8 @@ export class CareerService {
       phone: user.phone,
       email: user.email,
       ...facts,
+      rating,
+      reviews,
       choices: this.choicesOf(professional),
     });
   }
