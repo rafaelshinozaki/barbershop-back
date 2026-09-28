@@ -44,7 +44,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentsService } from '../../payments/payments.service';
 import { PAGAMENTO_STATUS } from '../../common/contants';
 
+// Tudo aqui é do backoffice: sem login de admin/gerente do sistema, nada
+// responde. A trava fica na classe para operação nova não nascer aberta
+// (as de pagamentos recorrentes estavam sem guard nenhum)
 @Resolver()
+@UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+@Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
 export class BackofficeResolver {
   private readonly logger = new SmartLogger('BackofficeResolver');
 
