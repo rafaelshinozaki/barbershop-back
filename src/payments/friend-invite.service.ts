@@ -38,6 +38,9 @@ export class FriendInviteService {
       where: { id: userId },
       select: { email: true },
     });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
 
     if (user.email.toLowerCase() === friendEmail.toLowerCase()) {
       throw new BadRequestException('Você não pode convidar a si mesmo');
@@ -161,6 +164,9 @@ export class FriendInviteService {
       where: { id: acceptedByUserId },
       select: { email: true, createdAt: true },
     });
+    if (!acceptingUser) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
 
     if (acceptingUser.email.toLowerCase() !== invite.friendEmail.toLowerCase()) {
       throw new BadRequestException('Este convite não é para você');

@@ -55,10 +55,10 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
 
-      # Sem --fix (o script "lint" do package.json corrige sozinho); falha só
-      # em erro, avisos não travam
+      # Sem --fix (o script "lint" do package.json corrige sozinho); falha em
+      # erro e em aviso, pra não voltar a acumular
       - name: Lint
-        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+        run: npx eslint "{src,apps,libs,test,prisma}/**/*.ts" --max-warnings 0
 
       - name: Build
         run: pnpm build

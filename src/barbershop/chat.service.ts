@@ -267,7 +267,7 @@ export class ChatService {
       });
       userIds = [
         ...(appt.barbershop.ownerUserId ? [appt.barbershop.ownerUserId] : []),
-        ...desk.map((b) => b.userId!),
+        ...desk.flatMap((b) => (b.userId != null ? [b.userId] : [])),
       ];
     }
     userIds = [...new Set(userIds)];

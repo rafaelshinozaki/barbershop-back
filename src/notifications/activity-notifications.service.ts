@@ -54,7 +54,7 @@ const ACTION_TEXT: Record<string, Record<Lang, string>> = {
 const escapeHtml = (s: string) =>
   s.replace(
     /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!),
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c),
   );
 
 /**
@@ -764,9 +764,12 @@ export class ActivityNotificationsService {
     const path = `/barbershops/${barbershopId}/${opts.path}`;
     const textsByLang = new Map<Lang, Text>();
     const textFor = (lang: Lang) => {
-      if (!textsByLang.has(lang))
-        textsByLang.set(lang, opts.build(this.formatter(lang, shop), shop)[lang]);
-      return textsByLang.get(lang)!;
+      let text = textsByLang.get(lang);
+      if (!text) {
+        text = opts.build(this.formatter(lang, shop), shop)[lang];
+        textsByLang.set(lang, text);
+      }
+      return text;
     };
 
     const inApp: Array<{

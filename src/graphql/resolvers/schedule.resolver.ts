@@ -23,10 +23,10 @@ export class BusinessDayType {
   @Field()
   open: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   start?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   end?: string | null;
 
   @Field({ description: 'A unidade ainda usa o horário padrão (nunca configurou)' })
@@ -56,16 +56,16 @@ export class WeeklyScheduleDayType {
   @Field({ description: 'SHOP (horário da unidade) | CUSTOM (próprio) | OFF (folga fixa)' })
   mode: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   startTime?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   endTime?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   breakStart?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   breakEnd?: string | null;
 
   @Field({ description: 'Atende nesse dia' })

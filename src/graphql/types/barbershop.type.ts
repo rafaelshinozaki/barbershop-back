@@ -408,7 +408,7 @@ export class Barber {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [TreatmentCategory!]!)
+  @Field(() => [TreatmentCategory])
   specialties: TreatmentCategory[];
 
   @Field()
@@ -713,10 +713,10 @@ export class Appointment {
 
   // Só na agenda da franquia (networkAppointments): o nome — sem telefone,
   // que segue as regras de contato de cada cargo
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   customerName?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   barberName?: string | null;
 
   @Field(() => Int)

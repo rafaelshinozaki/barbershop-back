@@ -130,7 +130,7 @@ export class DepositPaymentService {
       intent = created;
     }
     return {
-      clientSecret: intent.client_secret!,
+      clientSecret: intent.client_secret,
       amount: amount / 100,
       currency: appt.barbershop.currency,
       holdExpiresAt: appt.holdExpiresAt,
@@ -255,7 +255,7 @@ export class DepositPaymentService {
               BarberName: appt.barber.name,
               AppointmentDate: appt.startAt.toLocaleDateString(LOCALE[lang], { timeZone }),
               AppointmentTime: time(appt.startAt),
-              HoldUntil: time(appt.holdExpiresAt!),
+              HoldUntil: appt.holdExpiresAt ? time(appt.holdExpiresAt) : '',
               DepositAmount: Number(appt.depositAmount ?? 0).toLocaleString(LOCALE[lang], {
                 style: 'currency',
                 currency: shop.currency,

@@ -9,8 +9,8 @@ export class Plan {
   @Field()
   name: string;
 
-  @Field({ nullable: true })
-  description?: string;
+  @Field(() => String, { nullable: true })
+  description?: string | null;
 
   @Field()
   price: number;
@@ -18,11 +18,11 @@ export class Plan {
   @Field()
   billingCycle: string;
 
-  @Field({ nullable: true })
-  features?: string;
+  @Field(() => String, { nullable: true })
+  features?: string | null;
 
-  @Field({ nullable: true })
-  stripePriceId?: string;
+  @Field(() => String, { nullable: true })
+  stripePriceId?: string | null;
 
   @Field()
   createdAt: string;
@@ -30,8 +30,8 @@ export class Plan {
   @Field()
   updatedAt: string;
 
-  @Field({ nullable: true })
-  deleted_at?: string;
+  @Field(() => String, { nullable: true })
+  deleted_at?: string | null;
 }
 
 // Nome GraphQL "PlanSubscription": "Subscription" é o tipo raiz das
@@ -56,11 +56,11 @@ export class Subscription {
   @Field()
   status: string;
 
-  @Field({ nullable: true })
-  stripeCustomerId?: string;
+  @Field(() => String, { nullable: true })
+  stripeCustomerId?: string | null;
 
-  @Field({ nullable: true })
-  stripeSubscriptionId?: string;
+  @Field(() => String, { nullable: true })
+  stripeSubscriptionId?: string | null;
 
   @Field()
   createdAt: string;

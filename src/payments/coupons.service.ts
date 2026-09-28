@@ -216,6 +216,9 @@ export class CouponsService {
     const coupon = await this.prisma.coupon.findUnique({
       where: { id: couponId },
     });
+    if (!coupon) {
+      throw new NotFoundException('Cupom não encontrado');
+    }
 
     let discountAmount = 0;
     let finalAmount = Number(payment.amount);

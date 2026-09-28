@@ -27,6 +27,10 @@ export interface PresignedUpload {
   key: string;
 }
 
+function credentials(accessKeyId?: string, secretAccessKey?: string) {
+  return accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+}
+
 @Injectable()
 export class S3Service {
   private client: S3Client;
@@ -41,12 +45,13 @@ export class S3Service {
       endpoint,
       forcePathStyle: !!endpoint,
       region: this.config.get<string>('AWS_REGION'),
-      credentials: {
-        accessKeyId: this.config.get<string>('AWS_ACCESS_KEY_ID')!,
-        secretAccessKey: this.config.get<string>('AWS_SECRET_ACCESS_KEY')!,
-      },
+      // Sem as chaves, o SDK usa a cadeia padrão (perfil, papel da instância/IAM)
+      credentials: credentials(
+        this.config.get<string>('AWS_ACCESS_KEY_ID'),
+        this.config.get<string>('AWS_SECRET_ACCESS_KEY'),
+      ),
     });
-    this.bucket = this.config.get<string>('S3_BUCKET');
+    this.bucket = this.config.get<string>('S3_BUCKET') ?? '';
     this.smartLogger.log(`S3Service initialized with bucket: ${this.bucket}`);
   }
 

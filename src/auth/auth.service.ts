@@ -47,7 +47,7 @@ export class AuthService {
 
     const forwarded = req.headers['x-forwarded-for'];
     const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
-    const { location, latitude, longitude } = await this.ipLocationService.lookup(ip);
+    const { location, latitude, longitude } = await this.ipLocationService.lookup(ip ?? '');
     const existing = await (this.prisma as any).loginHistory?.findFirst({
       where: { userId: user.id, ip },
     });

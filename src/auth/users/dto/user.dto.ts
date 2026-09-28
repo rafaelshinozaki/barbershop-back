@@ -18,13 +18,13 @@ export class UserDTO {
   plan?: string;
   subscriptionStatus?: string;
   birthdate: Date;
-  address: AddressSchema;
-  userSystemConfig: UserSystemConfigDTO;
-  notificationPreference: NotificationPreferenceSchema;
+  address: AddressSchema | null;
+  userSystemConfig: UserSystemConfigDTO | null;
+  notificationPreference: NotificationPreferenceSchema | null;
   twoFactorEnabled: boolean;
-  photoKey?: string;
+  photoKey?: string | null;
   role?: { id: number; name: string };
-  stripeCustomerId?: string;
+  stripeCustomerId?: string | null;
   /** Identificador da sessão atual (do JWT) — usado para distinguir "esta sessão" das demais, nunca o IP */
   sessionToken?: string;
 }

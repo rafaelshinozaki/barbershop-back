@@ -290,7 +290,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
   });
 
   it('profissionais favoritos: favorita, lista com a unidade, desfavorita; inativo não entra', async () => {
-    const account = await service.signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', null);
+    const account = await service.signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', undefined);
     const active = await prisma.barber.create({
       data: { barbershopId: shopId, name: 'Ana Tesoura', phone: '11966666666' },
     });

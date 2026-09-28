@@ -218,7 +218,9 @@ export class CareerService {
       }),
       this.profileFacts(professional.userId),
       this.reviews.summary(professional.id),
-      professional.showReviews ? this.reviews.publicReviews(professional.id) : [],
+      professional.showReviews
+        ? this.reviews.publicReviews(professional.id)
+        : ([] as Awaited<ReturnType<ProfessionalReviewService['publicReviews']>>),
       this.clientCounts(professional.userId),
     ]);
     if (!user) throw new NotFoundException('Perfil não encontrado');

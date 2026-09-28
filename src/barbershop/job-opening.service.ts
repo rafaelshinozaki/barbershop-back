@@ -1,3 +1,4 @@
+import { must } from '../common/must';
 import {
   BadRequestException,
   ForbiddenException,
@@ -281,7 +282,7 @@ export class JobOpeningService {
       }
       if (existing.status !== 'canceled' && existing.amount === fee.feeCents) {
         return {
-          clientSecret: existing.client_secret!,
+          clientSecret: existing.client_secret,
           feeCents: fee.feeCents,
           currency: fee.currency,
         };
@@ -303,7 +304,7 @@ export class JobOpeningService {
       where: { id: applicationId },
       data: { feePaymentIntentId: intent.id, feeCents: fee.feeCents, feePayerUserId: userId },
     });
-    return { clientSecret: intent.client_secret!, feeCents: fee.feeCents, currency: fee.currency };
+    return { clientSecret: intent.client_secret, feeCents: fee.feeCents, currency: fee.currency };
   }
 
   /** A tela voltou do cartão: confere no Stripe; pago, aceita */
@@ -321,7 +322,11 @@ export class JobOpeningService {
     );
     return {
       paid: ok,
-      opening: await this.forShop(userId, barbershopId, (await this.openingOf(applicationId))!),
+      opening: await this.forShop(
+        userId,
+        barbershopId,
+        must(await this.openingOf(applicationId), 'vaga da candidatura'),
+      ),
     };
   }
 
@@ -361,7 +366,7 @@ export class JobOpeningService {
     if (claimed.count === 0) return true;
     try {
       await this.acceptNow(
-        application.feePayerUserId!,
+        must(application.feePayerUserId, 'quem pagou a taxa'),
         application.jobOpening.barbershopId,
         applicationId,
       );

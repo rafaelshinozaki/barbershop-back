@@ -253,7 +253,7 @@ export class CreateBarberInput {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [TreatmentCategory!], { nullable: true })
+  @Field(() => [TreatmentCategory], { nullable: true })
   specialties?: TreatmentCategory[];
 
   @Field({ nullable: true })
@@ -284,7 +284,7 @@ export class UpdateBarberInput {
   @Field({ nullable: true })
   specialization?: string;
 
-  @Field(() => [TreatmentCategory!], { nullable: true })
+  @Field(() => [TreatmentCategory], { nullable: true })
   specialties?: TreatmentCategory[];
 
   @Field({ nullable: true })

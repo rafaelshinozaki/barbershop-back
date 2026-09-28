@@ -6,6 +6,6 @@ export class AddressSchema {
   neighborhood: string;
   state: string;
   country: string;
-  complement1?: string;
-  complement2?: string;
+  complement1?: string | null;
+  complement2?: string | null;
 }

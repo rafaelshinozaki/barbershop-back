@@ -10,6 +10,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
+import { PlanDTO } from '../../plan/dto/plan.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { PLANO_STATUS } from '../../common/contants';
@@ -77,7 +78,7 @@ export class PlanResolver {
     @Args('input') input: UpdatePlanInput,
   ) {
     // Convert UpdatePlanInput to PlanDTO format expected by service
-    const planData = {
+    const planData: Partial<PlanDTO> = {
       id: id,
       name: input.name,
       description: input.description,

@@ -52,7 +52,7 @@ export class SocialService {
       secret: this.config.get<string>('JWT_SECRET'),
       expiresIn: '10m',
     });
-    const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI');
+    const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI') ?? '';
     const scope = [
       'pages_show_list',
       'pages_read_engagement',
@@ -62,7 +62,7 @@ export class SocialService {
       'business_management',
     ].join(',');
     const params = new URLSearchParams({
-      client_id: this.config.get<string>('META_APP_ID'),
+      client_id: this.config.get<string>('META_APP_ID') ?? '',
       redirect_uri: redirectUri,
       state,
       scope,
@@ -92,9 +92,9 @@ export class SocialService {
     const { barbershopId } = payload;
 
     try {
-      const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI');
-      const appId = this.config.get<string>('META_APP_ID');
-      const appSecret = this.config.get<string>('META_APP_SECRET');
+      const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI') ?? '';
+      const appId = this.config.get<string>('META_APP_ID') ?? '';
+      const appSecret = this.config.get<string>('META_APP_SECRET') ?? '';
 
       const shortLivedRes = await fetch(
         this.graphUrl('/oauth/access_token') +

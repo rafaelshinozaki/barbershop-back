@@ -225,8 +225,8 @@ describe('FriendInviteService', () => {
       // Assert
       expect(result.valid).toBe(true);
       expect(result.invite).toBeDefined();
-      expect(result.invite.friendEmail).toBe(mockInvite.friendEmail);
-      expect(result.invite.inviterName).toBe(mockUser.fullName);
+      expect(result.invite?.friendEmail).toBe(mockInvite.friendEmail);
+      expect(result.invite?.inviterName).toBe(mockUser.fullName);
     });
 
     it('should return invalid for non-existent invite', async () => {

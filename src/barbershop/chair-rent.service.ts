@@ -1,3 +1,4 @@
+import { must } from '../common/must';
 import {
   BadRequestException,
   Injectable,
@@ -262,10 +263,11 @@ export class ChairRentService {
       where: { id: userId },
       select: { stripeCustomerId: true },
     });
-    if (!user?.stripeCustomerId) throw new BadRequestException('Salve um cartão antes');
+    const stripeCustomerId = user?.stripeCustomerId;
+    if (!stripeCustomerId) throw new BadRequestException('Salve um cartão antes');
     const pm = await this.stripe.retrievePaymentMethod(paymentMethodId).catch(() => null);
     const pmCustomer = typeof pm?.customer === 'string' ? pm.customer : pm?.customer?.id;
-    if (!pm || pmCustomer !== user.stripeCustomerId) {
+    if (!pm || pmCustomer !== stripeCustomerId) {
       throw new BadRequestException('Cartão não encontrado na sua conta');
     }
 
@@ -323,7 +325,7 @@ export class ChairRentService {
           });
         }
         const sub = await this.stripe.createSubscription(
-          user.stripeCustomerId!,
+          stripeCustomerId,
           priceId,
           {
             kind: 'chair-rent',
@@ -361,7 +363,7 @@ export class ChairRentService {
       void this.activity.chairRentEvent(
         result.link.hostBarbershopId,
         'started',
-        (await this.loadLink(linkId))!.member.name,
+        must(await this.loadLink(linkId), 'vínculo do aluguel').member.name,
         this.money(result.link.rentAmount ?? 0, result.link.rentCurrency ?? 'BRL'),
         userId,
         `rent:${linkId}:started:${Date.now()}`,
@@ -406,17 +408,18 @@ export class ChairRentService {
       d = addMonth(d, dueDay);
     }
     if (dates.length === 0) return 0;
+    const amount = link.rentAmount;
     const existing = await this.prisma.chairRentPayment.findMany({
       where: { sharedLocationMemberId: link.id, dueDate: { in: dates } },
       select: { dueDate: true },
     });
-    const have = new Set(existing.map((e) => e.dueDate!.getTime()));
+    const have = new Set(existing.map((e) => e.dueDate?.getTime()));
     const missing = dates.filter((x) => !have.has(x.getTime()));
     if (missing.length === 0) return 0;
     const created = await this.prisma.chairRentPayment.createMany({
       data: missing.map((dueDate) => ({
         sharedLocationMemberId: link.id,
-        amount: link.rentAmount!,
+        amount,
         currency: link.rentCurrency ?? 'BRL',
         status: 'DUE',
         method: 'OTHER',

@@ -216,12 +216,13 @@ export class CustomerRatingService {
     });
     const byUser = new Map<number, typeof due>();
     for (const appt of due) {
+      const userId = appt.barber.userId;
+      if (userId == null) continue;
       const claimed = await this.prisma.appointment.updateMany({
         where: { id: appt.id, clientRatingRequestSentAt: null },
         data: { clientRatingRequestSentAt: now },
       });
       if (!claimed.count) continue;
-      const userId = appt.barber.userId!;
       byUser.set(userId, [...(byUser.get(userId) ?? []), appt]);
     }
     const front = process.env.FRONTEND_URL || 'http://localhost:5173';

@@ -11,11 +11,11 @@ export class ClientAccountType {
   @Field()
   name: string;
 
-  @Field({ nullable: true })
-  phone?: string;
+  @Field(() => String, { nullable: true })
+  phone?: string | null;
 
-  @Field({ nullable: true })
-  avatarUrl?: string;
+  @Field(() => String, { nullable: true })
+  avatarUrl?: string | null;
 
   /** Sem e-mail confirmado o histórico das barbearias não aparece */
   @Field()

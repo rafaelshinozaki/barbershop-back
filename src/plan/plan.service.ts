@@ -55,7 +55,7 @@ export class PlanService {
     });
   }
 
-  async updatePlan(planId: number, planData: PlanDTO) {
+  async updatePlan(planId: number, planData: Partial<PlanDTO>) {
     this.logger.log(`Updating plan with ID: ${planId}`);
 
     const plan = await this.prisma.plan.findUnique({

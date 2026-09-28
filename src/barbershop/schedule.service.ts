@@ -1,3 +1,4 @@
+import { must } from '../common/must';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
@@ -45,10 +46,11 @@ function checkRange(
   start: string | null | undefined,
   end: string | null | undefined,
   label: string,
-) {
+): { start: string; end: string } {
   if (!start || !end || !TIME.test(start) || !TIME.test(end) || start >= end) {
     throw new BadRequestException(`${label}: horário inválido (use HH:MM, início antes do fim)`);
   }
+  return { start, end };
 }
 
 /**
@@ -95,8 +97,9 @@ export class ScheduleService {
     if (days.length !== 7) throw new BadRequestException('Informe os 7 dias da semana');
     const json: Record<string, DayHours> = {};
     for (const d of days) {
-      if (d.open) checkRange(d.start, d.end, WEEKDAY_KEYS[d.dayOfWeek]);
-      json[WEEKDAY_KEYS[d.dayOfWeek]] = d.open ? { start: d.start!, end: d.end! } : null;
+      json[WEEKDAY_KEYS[d.dayOfWeek]] = d.open
+        ? checkRange(d.start, d.end, WEEKDAY_KEYS[d.dayOfWeek])
+        : null;
     }
     // Horário ampliado pode abrir vaga para quem está na lista de espera
     await this.barbershopService.withWaitlistOpening(barbershopId, {}, () =>
@@ -167,13 +170,13 @@ export class ScheduleService {
       if (!MODES.includes(d.mode)) throw new BadRequestException('Tipo de dia inválido');
       if (d.mode !== 'CUSTOM') continue;
       const label = WEEKDAY_KEYS[d.dayOfWeek];
-      checkRange(d.startTime, d.endTime, label);
+      const work = checkRange(d.startTime, d.endTime, label);
       if (!!d.breakStart !== !!d.breakEnd) {
         throw new BadRequestException(`${label}: informe o início e o fim do intervalo`);
       }
       if (d.breakStart) {
-        checkRange(d.breakStart, d.breakEnd, `${label} (intervalo)`);
-        if (d.breakStart <= d.startTime! || d.breakEnd! >= d.endTime!) {
+        const pause = checkRange(d.breakStart, d.breakEnd, `${label} (intervalo)`);
+        if (pause.start <= work.start || pause.end >= work.end) {
           throw new BadRequestException(`${label}: o intervalo precisa ficar dentro do expediente`);
         }
       }
@@ -199,8 +202,8 @@ export class ScheduleService {
                   isActive: false,
                 }
               : {
-                  startTime: d.startTime!,
-                  endTime: d.endTime!,
+                  startTime: must(d.startTime, 'início do expediente'),
+                  endTime: must(d.endTime, 'fim do expediente'),
                   breakStart: d.breakStart || null,
                   breakEnd: d.breakEnd || null,
                   isActive: true,
