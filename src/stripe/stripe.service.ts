@@ -24,6 +24,8 @@ export class StripeService {
       setupFutureUsage?: 'off_session';
       metadata?: Record<string, string>;
       description?: string;
+      // Stripe Connect: o valor vai pra conta conectada, menos a taxa da plataforma
+      destination?: { accountId: string; applicationFeeAmount: number };
     } = {},
   ) {
     this.logger.log(
@@ -44,6 +46,10 @@ export class StripeService {
     }
     if (options.metadata) params.metadata = options.metadata;
     if (options.description) params.description = options.description;
+    if (options.destination) {
+      params.transfer_data = { destination: options.destination.accountId };
+      params.application_fee_amount = options.destination.applicationFeeAmount;
+    }
 
     this.logger.log(`PaymentIntent params:`, JSON.stringify(params, null, 2));
 
@@ -263,10 +269,17 @@ export class StripeService {
     amount?: number,
     reason?: Stripe.RefundCreateParams.Reason,
     idempotencyKey?: string,
+    // Pagamento que foi pra uma conta conectada: desfaz a transferência e
+    // devolve a taxa da plataforma (estornado não paga taxa)
+    connected = false,
   ) {
     const params: Stripe.RefundCreateParams = {
       payment_intent: paymentIntentId,
     };
+    if (connected) {
+      params.reverse_transfer = true;
+      params.refund_application_fee = true;
+    }
 
     if (amount) {
       params.amount = amount;
@@ -356,5 +369,41 @@ export class StripeService {
       this.logger.error('Error confirming PaymentIntent:', error);
       throw error;
     }
+  }
+
+  // ---- Stripe Connect (conta de recebimento Express) ----
+
+  async createConnectAccount(params: {
+    country: string;
+    email?: string | null;
+    businessName: string;
+    url?: string;
+    metadata: Record<string, string>;
+  }) {
+    return this.stripe.accounts.create({
+      type: 'express',
+      country: params.country,
+      email: params.email ?? undefined,
+      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+      business_profile: { name: params.businessName, url: params.url },
+      metadata: params.metadata,
+    });
+  }
+
+  async retrieveConnectAccount(accountId: string) {
+    return this.stripe.accounts.retrieve(accountId);
+  }
+
+  async createAccountOnboardingLink(accountId: string, returnUrl: string, refreshUrl: string) {
+    return this.stripe.accountLinks.create({
+      account: accountId,
+      return_url: returnUrl,
+      refresh_url: refreshUrl,
+      type: 'account_onboarding',
+    });
+  }
+
+  async createConnectLoginLink(accountId: string) {
+    return this.stripe.accounts.createLoginLink(accountId);
   }
 }

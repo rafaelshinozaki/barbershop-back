@@ -7,6 +7,8 @@ import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { langForCountry, LOCALE } from '../email/language';
 import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { ConnectService, platformFeeCents } from './connect.service';
+import { stripeConfigured } from './stripe-configured';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
 
 const KIND = 'appointment_deposit';
@@ -15,11 +17,7 @@ const REMIND_AFTER_MS = 5 * 60_000;
 /** ...se ainda der tempo de pagar */
 const REMIND_MIN_LEFT_MS = 2 * 60_000;
 
-/** Chave do Stripe configurada de verdade (não o exemplo do .env.example) */
-export function stripeConfigured() {
-  const key = process.env.STRIPE_SECRET_KEY ?? '';
-  return key.startsWith('sk_') && !key.includes('sua_chave');
-}
+export { stripeConfigured } from './stripe-configured';
 
 /**
  * Sinal pago online (cartão, Stripe) ao agendar pela página pública, como o
@@ -31,6 +29,8 @@ export function stripeConfigured() {
  *
  * O dinheiro entra na conta da plataforma; a taxa da plataforma incide só
  * aqui (pagamento que passa pelo Stripe) e o repasse aparece no relatório.
+ * Com a conta de recebimento da unidade ativa (Stripe Connect), o sinal cai
+ * direto nela, já sem a taxa, e o estorno desfaz a transferência.
  */
 @Injectable()
 export class DepositPaymentService {
@@ -41,6 +41,7 @@ export class DepositPaymentService {
     private readonly stripe: StripeService,
     private readonly barbershopService: BarbershopService,
     private readonly notificationQueue: NotificationQueueService,
+    private readonly connect: ConnectService,
   ) {}
 
   /** Liga/desliga o sinal online da unidade (gerente e dono). */
@@ -98,6 +99,8 @@ export class DepositPaymentService {
       if (intent.status === 'canceled') intent = null;
     }
     if (!intent) {
+      // Unidade com conta de recebimento ativa: o sinal cai direto nela
+      const destination = await this.connect.barbershopDestination(appt.barbershopId);
       const created = await this.stripe.createPaymentIntent(
         amount,
         appt.barbershop.currency.toLowerCase(),
@@ -105,12 +108,20 @@ export class DepositPaymentService {
         {
           metadata: { kind: KIND, appointmentId: String(appt.id) },
           description: `Sinal — ${appt.barbershop.name}`,
+          ...(destination
+            ? {
+                destination: {
+                  accountId: destination,
+                  applicationFeeAmount: platformFeeCents(amount),
+                },
+              }
+            : {}),
         },
       );
       // Outra aba criou junto: fica o primeiro gravado, este é cancelado
       const saved = await this.prisma.appointment.updateMany({
         where: { id: appt.id, depositPaymentIntentId: appt.depositPaymentIntentId },
-        data: { depositPaymentIntentId: created.id },
+        data: { depositPaymentIntentId: created.id, depositStripeAccountId: destination },
       });
       if (saved.count === 0) {
         await this.stripe.cancelPaymentIntent(created.id).catch(() => undefined);
@@ -189,6 +200,7 @@ export class DepositPaymentService {
             undefined,
             'requested_by_customer',
             `deposit-refund-${intent.id}`,
+            !!intent.transfer_data?.destination,
           )
           .catch((err) => this.logger.error(`Erro ao estornar o sinal ${intent.id}:`, err));
       }
@@ -337,16 +349,21 @@ export class DepositPaymentService {
         depositPaymentIntentId: { not: null },
         depositPaidAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
       },
-      select: { depositAmount: true },
+      select: { depositAmount: true, depositStripeAccountId: true },
     });
     const grossAmount = paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
     const platformFeeAmount = Math.round(grossAmount * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    // Os que caíram direto na conta da unidade (Connect) já foram repassados
+    const direct = paid.filter((a) => a.depositStripeAccountId);
+    const directGross = direct.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
+    const directFee = Math.round(directGross * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
     return {
       paymentsCount: paid.length,
       grossAmount,
       platformFeePercentage: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
       platformFeeAmount,
-      netOwedToBarbershop: grossAmount - platformFeeAmount,
+      netOwedToBarbershop: grossAmount - platformFeeAmount - (directGross - directFee),
+      paidOutAutomatically: directGross - directFee,
     };
   }
 

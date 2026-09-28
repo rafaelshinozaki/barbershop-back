@@ -2927,7 +2927,7 @@ export class BarbershopService {
   async refundOnlineDeposit(appointmentId: number) {
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
-      select: { depositPaymentIntentId: true, depositPaidAt: true },
+      select: { depositPaymentIntentId: true, depositPaidAt: true, depositStripeAccountId: true },
     });
     const intentId = appt?.depositPaymentIntentId;
     if (!intentId || !appt.depositPaidAt) return false;
@@ -2948,6 +2948,8 @@ export class BarbershopService {
         undefined,
         'requested_by_customer',
         `deposit-refund-${intentId}`,
+        // Foi pra conta da unidade: desfaz a transferência e devolve a taxa
+        !!appt.depositStripeAccountId,
       );
     } catch (err) {
       // Já estornado direto no painel do Stripe: vale como estornado
