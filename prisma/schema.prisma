@@ -1181,6 +1181,8 @@ model Appointment {
   prepaidPaymentIntentId String?   @unique
   prepaidStripeAccountId String?
   prepaidRefundedAt      DateTime?
+  // Quanto já foi devolvido (estorno parcial); prepaidRefundedAt = devolvido inteiro
+  prepaidRefundedAmount  Decimal?
   depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
   // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
   holdExpiresAt  DateTime?

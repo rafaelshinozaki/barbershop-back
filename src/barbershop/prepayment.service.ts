@@ -61,6 +61,7 @@ export class PrepaymentService {
   async status(token: string) {
     const appt = await this.byToken(token);
     const paid = !!appt.prepaidAt && !appt.prepaidRefundedAt;
+    const refundedAmount = Number(appt.prepaidRefundedAmount ?? 0);
     const amount = this.due(appt);
     const open = PAYABLE.includes(appt.status) && !appt.sale && !appt.prepaidAt;
     const available =
@@ -73,8 +74,10 @@ export class PrepaymentService {
       amount,
       currency: appt.barbershop.currency,
       paid,
-      paidAmount: paid ? Number(appt.prepaidAmount) : null,
+      // Já descontado o que foi devolvido em estorno parcial
+      paidAmount: paid ? Number(appt.prepaidAmount) - refundedAmount : null,
       refunded: !!appt.prepaidRefundedAt,
+      refundedAmount,
     };
   }
 

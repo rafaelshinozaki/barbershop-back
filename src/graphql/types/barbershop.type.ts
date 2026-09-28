@@ -766,6 +766,10 @@ export class Appointment {
   @Field({ nullable: true })
   prepaidRefundedAt?: Date;
 
+  /** Quanto já foi devolvido (estorno parcial) */
+  @Field(() => Float, { nullable: true })
+  prepaidRefundedAmount?: number;
+
   @Field(() => [AppointmentServiceType], { nullable: true })
   services?: AppointmentServiceType[];
 

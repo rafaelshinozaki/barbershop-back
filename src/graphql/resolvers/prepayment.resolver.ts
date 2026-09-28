@@ -23,6 +23,9 @@ export class AppointmentPrepaymentType {
 
   @Field()
   refunded: boolean;
+
+  @Field(() => Float, { description: 'Já devolvido (estorno parcial ou inteiro)' })
+  refundedAmount: number;
 }
 
 @ObjectType()
