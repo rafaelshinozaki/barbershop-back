@@ -1,7 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../aws/s3.service';
+import { PushService } from '../push/push.service';
+import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { reviewerLabel } from './professional-review.service';
 
 export const REPORT_TARGETS = [
@@ -54,7 +62,13 @@ export function reporterKey(ip: string, secret = process.env.JWT_SECRET || 'cont
  */
 @Injectable()
 export class ModerationService {
-  constructor(private readonly prisma: PrismaService, private readonly s3: S3Service) {}
+  private readonly logger = new Logger(ModerationService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3: S3Service,
+    @Optional() private readonly push?: PushService,
+  ) {}
 
   async report(
     input: { targetType: string; targetId: number; reason: string; details?: string | null },
@@ -294,6 +308,7 @@ export class ModerationService {
     }
     if (action === 'hide' || action === 'restore') {
       await this.setHidden(type, targetId, action === 'hide' ? new Date() : null);
+      await this.notifyOwner(type, targetId, action);
     }
     if (action !== 'restore') {
       await this.prisma.contentReport.updateMany({
@@ -349,6 +364,97 @@ export class ModerationService {
       data: { retainUntil: HOLD_UNTIL },
     });
     return true;
+  }
+
+  /**
+   * Avisa o dono (sininho e celular) quando a moderação oculta ou devolve
+   * algo dele: foto da galeria e página da unidade vão para o dono e os
+   * gerentes; o perfil, para o próprio profissional. Avaliação e conversa
+   * não têm um "dono" a avisar (a avaliação é do cliente).
+   */
+  private async notifyOwner(type: ModeratedTarget, id: number, action: 'hide' | 'restore') {
+    const hide = action === 'hide';
+    let userIds: number[] = [];
+    let title = '';
+    let message = '';
+    let actionUrl = '';
+    if (type === 'photo' || type === 'barbershop') {
+      const barbershopId =
+        type === 'photo'
+          ? (
+              await this.prisma.barbershopPhoto.findUnique({
+                where: { id },
+                select: { barbershopId: true },
+              })
+            )?.barbershopId
+          : id;
+      if (!barbershopId) return;
+      const shop = await this.prisma.barbershop.findUnique({
+        where: { id: barbershopId },
+        select: {
+          name: true,
+          ownerUserId: true,
+          network: { select: { ownerUserId: true } },
+          barbers: {
+            where: { isActive: true, staffType: 'manager', userId: { not: null } },
+            select: { userId: true },
+          },
+        },
+      });
+      if (!shop) return;
+      userIds = [
+        shop.ownerUserId,
+        shop.network?.ownerUserId,
+        ...shop.barbers.map((b) => b.userId),
+      ].filter((u): u is number => typeof u === 'number');
+      actionUrl = `/barbershops/${barbershopId}/public-page`;
+      if (type === 'photo') {
+        title = hide ? 'Foto ocultada pela moderação' : 'Foto de volta na galeria';
+        message = hide
+          ? `Uma foto da galeria de ${shop.name} foi ocultada após denúncia. Se achar que foi engano, fale com o suporte.`
+          : `A foto da galeria de ${shop.name} voltou a aparecer.`;
+      } else {
+        title = hide ? 'Unidade fora da busca' : 'Unidade de volta na busca';
+        message = hide
+          ? `${shop.name} saiu da busca e do sitemap após denúncia; o link direto continua. Se achar que foi engano, fale com o suporte.`
+          : `${shop.name} voltou a aparecer na busca.`;
+      }
+    } else if (type === 'professional_profile') {
+      const professional = await this.prisma.professional.findUnique({
+        where: { id },
+        select: { userId: true },
+      });
+      if (!professional) return;
+      userIds = [professional.userId];
+      actionUrl = '/profile-privacy';
+      title = hide ? 'Perfil público suspenso' : 'Perfil público de volta';
+      message = hide
+        ? 'Sua página pública saiu do ar após denúncia. Se achar que foi engano, fale com o suporte.'
+        : 'Sua página pública voltou ao ar.';
+    } else {
+      return;
+    }
+    userIds = [...new Set(userIds)];
+    if (!userIds.length) return;
+    try {
+      await this.prisma.userNotification.createMany({
+        data: userIds.map((userId) => ({
+          userId,
+          title,
+          message,
+          type: NotificationType.INFO,
+          actionUrl,
+        })),
+      });
+      await this.push?.sendToUsers(userIds, () => ({
+        title,
+        body: message,
+        url: actionUrl,
+        tag: 'moderation',
+      }));
+    } catch (err) {
+      this.logger.warn(`Aviso de moderação não enviado: ${err}`);
+    }
   }
 
   private async setHidden(type: ModeratedTarget, id: number, at: Date | null) {

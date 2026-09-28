@@ -16,7 +16,12 @@ const RUN = `${Date.now()}`.slice(-9);
 describe('Moderação de conteúdo público (integração)', () => {
   const prisma = new PrismaService();
   const s3 = { getDownloadUrl: async (key: string) => `https://cdn.test/${key}` } as never;
-  const moderation = new ModerationService(prisma, s3);
+  const pushed: number[][] = [];
+  const moderation = new ModerationService(prisma, s3, {
+    sendToUsers: async (ids: number[]) => void pushed.push(ids),
+  } as never);
+  const titles = async (userId: number) =>
+    (await prisma.userNotification.findMany({ where: { userId } })).map((n) => n.title);
   const stub = {} as never;
   const shops = new BarbershopService(
     prisma,
@@ -148,6 +153,7 @@ describe('Moderação de conteúdo público (integração)', () => {
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });
     await prisma.professional.delete({ where: { id: professionalId } });
+    await prisma.userNotification.deleteMany({ where: { userId: { in: [ownerId, adminId] } } });
     await prisma.user.deleteMany({ where: { id: { in: [ownerId, adminId] } } });
     await prisma.$disconnect();
   });
@@ -193,6 +199,9 @@ describe('Moderação de conteúdo público (integração)', () => {
 
     await moderation.resolve(adminId, 'photo', photoId, 'hide');
     expect(await photos()).not.toContain(photoId);
+    // O dono é avisado no sininho e no celular
+    expect(await titles(ownerId)).toContain('Foto ocultada pela moderação');
+    expect(pushed.some((ids) => ids.includes(ownerId))).toBe(true);
     expect(await item('photo', photoId)).toMatchObject({ hidden: true, openReports: 0 });
     // Oculta não recebe denúncia nova
     await expect(
@@ -201,6 +210,7 @@ describe('Moderação de conteúdo público (integração)', () => {
 
     await moderation.resolve(adminId, 'photo', photoId, 'restore');
     expect(await photos()).toContain(photoId);
+    expect(await titles(ownerId)).toContain('Foto de volta na galeria');
     // Sem denúncia em aberto e no ar: sai da fila
     expect(await item('photo', photoId)).toBeUndefined();
   });
@@ -215,7 +225,10 @@ describe('Moderação de conteúdo público (integração)', () => {
       link: `/p/${proSlug}`,
       openReports: 1,
     });
+    const before = (await titles(ownerId)).length;
     await moderation.resolve(adminId, 'professional_review', reviewId, 'dismiss');
+    // Descartar não avisa ninguém
+    expect(await titles(ownerId)).toHaveLength(before);
     expect(await item('professional_review', reviewId)).toBeUndefined();
     expect((await career.publicProfile(proSlug)).reviews.map((r) => r.id)).toContain(reviewId);
   });
@@ -227,6 +240,7 @@ describe('Moderação de conteúdo público (integração)', () => {
     );
     await moderation.resolve(adminId, 'professional_profile', professionalId, 'hide');
     await expect(career.publicProfile(proSlug)).rejects.toBeInstanceOf(NotFoundException);
+    expect(await titles(ownerId)).toContain('Perfil público suspenso');
     const found = await shops.searchPublicProfessionals({ city: `Cidade Mod ${RUN}` });
     expect(found.map((p) => p.slug)).not.toContain(proSlug);
 
@@ -237,6 +251,7 @@ describe('Moderação de conteúdo público (integração)', () => {
   it('unidade fora da vitrine: some da busca, o link direto continua', async () => {
     await moderation.report({ targetType: 'barbershop', targetId: shopId, reason: 'fake' }, ipA);
     await moderation.resolve(adminId, 'barbershop', shopId, 'hide');
+    expect(await titles(ownerId)).toContain('Unidade fora da busca');
     const search = await shops.searchPublicBarbershops({ city: `Cidade Mod ${RUN}` });
     expect(search).toHaveLength(0);
     expect((await shops.getPublicBarbershopByslug(slug)).id).toBe(shopId);
