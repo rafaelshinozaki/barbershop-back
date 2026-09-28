@@ -68,6 +68,7 @@ model User {
   identityVerifiedAt     DateTime?
   identityVerifications  IdentityVerification[]
   supportTickets         SupportTicket[]
+  pushSubscriptions      PushSubscription[]
 
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
@@ -750,6 +751,7 @@ model ClientAccount {
   suspendedReason      String?
   suspendedByUserId    Int?
   supportTickets       SupportTicket[]
+  pushSubscriptions    PushSubscription[]
   user                 User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
   tokens               ClientAccountToken[]
   customers            Customer[]
@@ -2012,4 +2014,26 @@ model SupportMessage {
   ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId, createdAt])
+}
+
+// Notificação no celular/navegador (Web Push, PWA): uma inscrição por
+// aparelho, da equipe (userId) ou da área do cliente (clientAccountId).
+// Sai quando o serviço de push diz que ela expirou (404/410) ou quando
+// ninguém a usa há 6 meses.
+model PushSubscription {
+  id              Int            @id @default(autoincrement())
+  createdAt       DateTime       @default(now())
+  lastUsedAt      DateTime       @default(now())
+  endpoint        String         @unique
+  p256dh          String
+  auth            String
+  userAgent       String?
+  language        String?
+  userId          Int?
+  clientAccountId Int?
+  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientAccountId])
 }

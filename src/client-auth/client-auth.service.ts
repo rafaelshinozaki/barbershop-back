@@ -584,6 +584,7 @@ export class ClientAuthService {
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),
       this.prisma.supportTicket.deleteMany({ where: { clientAccountId } }),
+      this.prisma.pushSubscription.deleteMany({ where: { clientAccountId } }),
       this.prisma.customer.updateMany({
         where: { clientAccountId },
         data: { clientAccountId: null },

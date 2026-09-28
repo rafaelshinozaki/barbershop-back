@@ -19,6 +19,8 @@ export const RETENTION_DAYS = {
   clientConductNote: 365 * 2,
   /** Pedido de suporte, contado da última atividade. */
   supportTicket: 365 * 2,
+  /** Inscrição de notificação no celular sem uso. */
+  pushSubscription: 180,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

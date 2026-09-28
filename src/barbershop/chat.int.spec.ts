@@ -35,7 +35,25 @@ describe('Chat do atendimento (integração)', () => {
   const moderation = new ModerationService(prisma, {
     getDownloadUrl: async (key: string) => key,
   } as never);
-  const chat = new ChatService(prisma, shops, queue as never, realtime as never, moderation);
+  const pushes: Array<{ to: string; title: string; body: string; url: string }> = [];
+  const push = {
+    sendToUsers: async (
+      ids: number[],
+      build: (l: 'pt') => { title: string; body: string; url: string },
+    ) => void ids.forEach((id) => pushes.push({ to: `user:${id}`, ...build('pt') })),
+    sendToClient: async (
+      id: number,
+      build: (l: 'pt') => { title: string; body: string; url: string },
+    ) => void pushes.push({ to: `client:${id}`, ...build('pt') }),
+  };
+  const chat = new ChatService(
+    prisma,
+    shops,
+    queue as never,
+    realtime as never,
+    moderation,
+    push as never,
+  );
 
   let roleId: number;
   const userIds: number[] = [];
@@ -234,6 +252,10 @@ describe('Chat do atendimento (integração)', () => {
         where: { userId: { in: userIds }, actionUrl: { startsWith: '/messages' }, type: 'info' },
       }),
     ).toBe(notified.length);
+    // Celular da equipe: sem o texto da mensagem
+    const staffPush = pushes.filter((p) => p.to === `user:${proId}`);
+    expect(staffPush[0]).toMatchObject({ url: `/messages?appointment=${apptId}` });
+    expect(JSON.stringify(pushes)).not.toContain('degradê');
   });
 
   it('equipe responde: e-mail pro cliente sem o texto, no máximo um a cada 30 minutos', async () => {
@@ -249,6 +271,12 @@ describe('Chat do atendimento (integração)', () => {
       context: { From: 'Pro do Chat' },
     });
     expect(JSON.stringify(sent[0].context)).not.toContain('Pode sim!');
+    // Celular do cliente: a cada mensagem (a tag substitui), sem o texto, abrindo a conversa
+    const clientPush = pushes.filter((p) => p.to === `client:${accountId}`);
+    expect(clientPush).toHaveLength(2);
+    expect(clientPush[0].body).toContain('Pro do Chat');
+    expect(clientPush[0].url).toMatch(/\/booking\/manage\?t=.*#chat$/);
+    expect(JSON.stringify(clientPush)).not.toContain('Pode sim!');
 
     // Caixa de entrada do cliente: 2 não lidas na conversa com o profissional
     let inbox = await chat.clientInbox(accountId);

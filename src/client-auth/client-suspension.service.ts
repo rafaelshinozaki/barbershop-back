@@ -81,6 +81,7 @@ export class ClientSuspensionService {
         sessionVersion: { increment: 1 },
       },
     });
+    await this.prisma.pushSubscription.deleteMany({ where: { clientAccountId } });
     this.logger.log(`Conta de cliente ${clientAccountId} suspensa pelo admin ${adminUserId}`);
     if (first) {
       const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');

@@ -44,6 +44,7 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
     {
       notifyUsers: (ids: number[]) => void pings.push(...ids),
     } as never,
+    { sendToUsers: async () => 0 } as never,
   );
   const suspension = new ClientSuspensionService(prisma, email as never);
   const jwt = new JwtService({ secret: 'segredo-de-teste' });

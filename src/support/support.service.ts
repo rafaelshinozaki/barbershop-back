@@ -3,6 +3,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
 import { RealtimeService } from '@/realtime/realtime.service';
+import { PushService } from '@/push/push.service';
 import { NotificationType } from '@/notifications/dto/create-notification.dto';
 import { Role } from '@/auth/interfaces/roles';
 import { supportTicketUrl, verifySupportToken } from '@/barbershop/appointment-link';
@@ -38,6 +39,7 @@ export class SupportService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly realtime: RealtimeService,
+    private readonly push: PushService,
   ) {}
 
   private text(value: string | null | undefined, max: number, label: string) {
@@ -268,5 +270,16 @@ export class SupportService {
     });
     await this.prisma.userNotification.createMany({ data });
     for (const n of data) this.realtime.notifyUsers([n.userId], 'CREATED', n.title);
+    await this.push
+      .sendToUsers(
+        admins.map((u) => u.id),
+        (lang) => ({
+          title: ADMIN_TEXT[lang].title,
+          body: ADMIN_TEXT[lang].message(subject.slice(0, 80)),
+          url: '/backoffice/support',
+          tag: 'support',
+        }),
+      )
+      .catch((error) => this.logger.warn(`Push do suporte não enviado: ${error}`));
   }
 }

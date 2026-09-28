@@ -1784,6 +1784,7 @@ type Mutation {
   clientReportChat(appointmentId: Int!, details: String, kind: String!, manageToken: String, reason: String!): Boolean!
   clientResendVerificationEmail: Boolean!
   clientResetPassword(input: ClientResetPasswordInput!): Boolean!
+  clientSavePushSubscription(input: PushSubscriptionInput!): Boolean!
   clientSendChatMessage(appointmentId: Int!, body: String!, kind: String!, manageToken: String): ChatMessageType!
   clientSignup(input: ClientSignupInput!): ClientAccountType!
   clientVerifyEmail(token: String!): Boolean!
@@ -1895,6 +1896,7 @@ type Mutation {
   removeClientFavoriteBarber(barberId: Int!): [ClientFavoriteBarberType!]!
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
+  removePushSubscription(endpoint: String!): Boolean!
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
@@ -1912,6 +1914,7 @@ type Mutation {
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
+  savePushSubscription(input: PushSubscriptionInput!): Boolean!
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
@@ -2734,6 +2737,15 @@ input PurchaseClientPackageInput {
   servicePackageId: Int!
 }
 
+input PushSubscriptionInput {
+  auth: String!
+  endpoint: String!
+
+  """Idioma do aparelho (pt/en/es) pro texto da notificação"""
+  language: String
+  p256dh: String!
+}
+
 type Query {
   accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
@@ -2873,6 +2885,7 @@ type Query {
   publicNextAvailableSlot(barberId: Int, barbershopId: Int!, fromDate: String, serviceIds: [Int!]!): PublicNextSlotType
   publicProfessional(slug: String!): PublicProfessionalType!
   publicServiceCategories: [TreatmentCategory!]!
+  pushPublicKey: String
   recurringPaymentsStats: UserRecurringPaymentsStats!
   reportedReviews: [ManagedReviewType!]!
   resources(barbershopId: Int!): [ResourceType!]!
