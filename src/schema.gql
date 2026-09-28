@@ -112,6 +112,18 @@ type AdminProcessRecurringPaymentResponse {
   success: Boolean!
 }
 
+type AdminProfessionalType {
+  cities: [String!]!
+
+  """ISO"""
+  featuredUntil: String
+  id: Int!
+  isFeatured: Boolean!
+  name: String!
+  slug: String
+  visibility: String!
+}
+
 type AdminRecurringPaymentsStats {
   lastCheck: String!
   nextScheduledRun: String!
@@ -2016,6 +2028,7 @@ type Mutation {
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
+  setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
   setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -2773,6 +2786,9 @@ type PublicProfessionalSearchResultType {
 
   """Atende a domicílio (só com a identidade verificada)"""
   homeService: Boolean!
+
+  """Destaque pago, ligado pelo admin"""
+  isFeatured: Boolean!
   minPrice: Float
   name: String!
 
@@ -2870,6 +2886,7 @@ type Query {
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   adminBarbershops(query: String): [Barbershop!]!
   adminClientAccounts(search: String): [AdminClientAccountType!]!
+  adminProfessionals(query: String): [AdminProfessionalType!]!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!

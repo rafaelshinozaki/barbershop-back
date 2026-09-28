@@ -188,7 +188,10 @@ describe('Lista de espera online (integração)', () => {
     });
     emails.length = 0;
     await barbershops.updateAppointment(ownerId, shopId, appt!.id, { status: 'CANCELLED' });
-    await settle();
+    // O aviso do cancelamento sai em segundo plano
+    expect(
+      await waitFor(async () => emails.some((e) => e.template === 'waitlist_slot_available')),
+    ).toBe(true);
     const slot = emails.find((e) => e.template === 'waitlist_slot_available');
     expect(slot.to).toBe(`nina-${RUN}@test.local`);
     expect(slot.context.BookUrl).toContain(`/u/wl-${RUN}?date=${monday}`);
@@ -277,7 +280,9 @@ describe('Lista de espera online (integração)', () => {
 
     await barbershops.deleteBarberTimeOff(ownerId, off.id);
     expect(await waitFor(async () => (await statusOf(waiting.entryId)) === 'NOTIFIED')).toBe(true);
-    await settle();
+    expect(
+      await waitFor(async () => emails.some((e) => e.template === 'waitlist_slot_available')),
+    ).toBe(true);
     const notice = emails.find((e) => e.template === 'waitlist_slot_available');
     expect(notice.to).toBe(`abre-${RUN}@test.local`);
     expect(notice.context.BookUrl).toContain(`date=${offDay}`);

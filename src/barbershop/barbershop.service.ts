@@ -5090,6 +5090,7 @@ export class BarbershopService {
           distanceKm: distances.length ? Math.round(Math.min(...distances) * 10) / 10 : null,
           minPrice: prices.length ? Math.min(...prices) : null,
           currency: p.barbers[0]?.barbershop.currency ?? null,
+          isFeatured: p.featuredUntil != null && p.featuredUntil > now,
           ...rating,
         };
       })
@@ -5128,6 +5129,64 @@ export class BarbershopService {
       orderBy: { name: 'asc' },
       take: 100,
     });
+  }
+
+  /** Profissionais com página (pública ou só na plataforma), destacados primeiro */
+  async getAdminProfessionals(query?: string) {
+    const q = query?.trim();
+    const rows = await this.prisma.professional.findMany({
+      where: {
+        slug: { not: null },
+        ...(q
+          ? {
+              OR: [
+                { user: { fullName: { contains: q, mode: 'insensitive' } } },
+                { slug: { contains: q, mode: 'insensitive' } },
+                { cities: { has: q } },
+              ],
+            }
+          : {}),
+      },
+      include: { user: { select: { fullName: true } } },
+      orderBy: [{ featuredUntil: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+      take: 100,
+    });
+    return rows.map((p) => this.adminProfessional(p));
+  }
+
+  async setProfessionalFeatured(professionalId: number, featuredUntil: string | null) {
+    const until = featuredUntil ? new Date(featuredUntil) : null;
+    if (until && isNaN(until.getTime())) throw new BadRequestException('Data inválida');
+    const exists = await this.prisma.professional.findUnique({
+      where: { id: professionalId },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException('Profissional não encontrado');
+    const updated = await this.prisma.professional.update({
+      where: { id: professionalId },
+      data: { featuredUntil: until },
+      include: { user: { select: { fullName: true } } },
+    });
+    return this.adminProfessional(updated);
+  }
+
+  private adminProfessional(p: {
+    id: number;
+    slug: string | null;
+    visibility: string;
+    cities: string[];
+    featuredUntil: Date | null;
+    user: { fullName: string };
+  }) {
+    return {
+      id: p.id,
+      name: p.user.fullName,
+      slug: p.slug,
+      visibility: p.visibility,
+      cities: p.cities,
+      featuredUntil: p.featuredUntil?.toISOString() ?? null,
+      isFeatured: p.featuredUntil != null && p.featuredUntil > new Date(),
+    };
   }
 
   async setBarbershopFeatured(barbershopId: number, featuredUntil: string | null) {

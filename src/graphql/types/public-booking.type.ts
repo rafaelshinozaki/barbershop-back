@@ -544,6 +544,9 @@ export class PublicProfessionalSearchResultType {
   @Field(() => Float, { nullable: true, description: 'Só se a pessoa mostra a nota' })
   averageRating?: number;
 
+  @Field({ description: 'Destaque pago, ligado pelo admin' })
+  isFeatured: boolean;
+
   @Field(() => Int)
   reviewCount: number;
 }
@@ -779,4 +782,29 @@ export class JoinWaitlistResultType {
   /** Já estava na lista para esse dia: não duplica */
   @Field()
   alreadyWaiting: boolean;
+}
+
+/** Profissional com página pública, para o admin ligar o Destaque */
+@ObjectType()
+export class AdminProfessionalType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field({ nullable: true })
+  slug?: string;
+
+  @Field()
+  visibility: string;
+
+  @Field(() => [String])
+  cities: string[];
+
+  @Field({ nullable: true, description: 'ISO' })
+  featuredUntil?: string;
+
+  @Field()
+  isFeatured: boolean;
 }

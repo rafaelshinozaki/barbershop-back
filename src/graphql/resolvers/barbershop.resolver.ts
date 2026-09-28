@@ -1,5 +1,6 @@
 import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
+import { AdminProfessionalType } from '../types/public-booking.type';
 import { Resolver, Query, Mutation, Args, Int, Float, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
@@ -1644,5 +1645,22 @@ export class BarbershopResolver {
     @Args('featuredUntil', { nullable: true }) featuredUntil?: string,
   ) {
     return this.barbershopService.setBarbershopFeatured(barbershopId, featuredUntil ?? null);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Query(() => [AdminProfessionalType])
+  async adminProfessionals(@Args('query', { nullable: true }) query?: string) {
+    return this.barbershopService.getAdminProfessionals(query);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Mutation(() => AdminProfessionalType)
+  async setProfessionalFeatured(
+    @Args('professionalId', { type: () => Int }) professionalId: number,
+    @Args('featuredUntil', { nullable: true }) featuredUntil?: string,
+  ) {
+    return this.barbershopService.setProfessionalFeatured(professionalId, featuredUntil ?? null);
   }
 }
