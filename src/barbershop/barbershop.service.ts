@@ -79,7 +79,7 @@ import { S3Service } from '../aws/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164 } from '../common/phone.util';
 import { StripeService } from '../stripe/stripe.service';
-import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { currentPricing } from '../pricing/pricing';
 import { appointmentCalendarLinks } from '../calendar/calendar-links';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
@@ -5674,11 +5674,11 @@ export class BarbershopService {
       },
     });
     const grossAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const platformFeeAmount = grossAmount * (PLATFORM_SUBSCRIPTION_FEE_PERCENT / 100);
+    const platformFeeAmount = grossAmount * (currentPricing().platformFeePercent / 100);
     return {
       paymentsCount: payments.length,
       grossAmount,
-      platformFeePercentage: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
+      platformFeePercentage: currentPricing().platformFeePercent,
       platformFeeAmount,
       netOwedToBarbershop: grossAmount - platformFeeAmount,
     };

@@ -16,7 +16,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { BarbershopService } from './barbershop.service';
-import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { currentPricing } from '../pricing/pricing';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 
 const MIN_RENT = 1;
@@ -732,7 +732,7 @@ export class ChairRentService {
     const total = byMethod.reduce((sum, m) => sum + Number(m._sum.amount ?? 0), 0);
     // Taxa da plataforma só no que passou pelo Stripe; o manual já é do espaço
     const card = Number(byMethod.find((m) => m.method === 'CARD')?._sum.amount ?? 0);
-    const fee = Math.round(card * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    const fee = Math.round(card * currentPricing().platformFeePercent) / 100;
     const openAmount = open.reduce((sum, d) => sum + Number(d.amount), 0);
     const overdue = open.some((d) => d.dueDate && d.dueDate.getTime() + DAY_MS < Date.now());
     const manual = link.rentBillingMode === 'MANUAL';
@@ -763,7 +763,7 @@ export class ChairRentService {
       nextDueDate,
       openAmount,
       totalReceived: total,
-      platformFeePercent: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
+      platformFeePercent: currentPricing().platformFeePercent,
       // Só quem é o espaço vê o repasse (do que entrou pelo cartão)
       payoutDue: isHost ? card - fee : null,
     };

@@ -6,7 +6,7 @@ import { BarbershopService } from './barbershop.service';
 import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { langForCountry, LOCALE } from '../email/language';
-import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { currentPricing } from '../pricing/pricing';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { stripeConfigured } from './stripe-configured';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
@@ -352,15 +352,15 @@ export class DepositPaymentService {
       select: { depositAmount: true, depositStripeAccountId: true },
     });
     const grossAmount = paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
-    const platformFeeAmount = Math.round(grossAmount * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    const platformFeeAmount = Math.round(grossAmount * currentPricing().platformFeePercent) / 100;
     // Os que caíram direto na conta da unidade (Connect) já foram repassados
     const direct = paid.filter((a) => a.depositStripeAccountId);
     const directGross = direct.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
-    const directFee = Math.round(directGross * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100;
+    const directFee = Math.round(directGross * currentPricing().platformFeePercent) / 100;
     return {
       paymentsCount: paid.length,
       grossAmount,
-      platformFeePercentage: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
+      platformFeePercentage: currentPricing().platformFeePercent,
       platformFeeAmount,
       netOwedToBarbershop: grossAmount - platformFeeAmount - (directGross - directFee),
       paidOutAutomatically: directGross - directFee,

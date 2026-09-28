@@ -1,10 +1,14 @@
-/** Preço provisório do Pro, no meio da faixa R$ 39–59 do roadmap. Trocar aqui quando o mercado fechar. */
-export const PRO_PRICE_CENTS = 4900;
+import { currentPricing } from '../pricing/pricing';
+
+/** Preço do Pro: vem de "Preços e taxas" (padrão provisório R$ 49,00, ver src/pricing/pricing.ts) */
+export function proPriceCents() {
+  return currentPricing().proPriceCents;
+}
 
 /** Meses de Pro que cada lado ganha quando a indicação é aceita. */
 export const PRO_REFERRAL_MONTHS = 1;
 
-export function proPriceLabel(cents = PRO_PRICE_CENTS) {
+export function proPriceLabel(cents = proPriceCents()) {
   const amount = (cents / 100).toFixed(2).replace('.', ',');
   return `R$ ${amount}`;
 }

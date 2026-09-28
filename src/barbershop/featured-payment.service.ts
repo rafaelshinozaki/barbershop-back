@@ -18,14 +18,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
 import { stripeConfigured } from './stripe-configured';
+import { PLATFORM_CURRENCY, currentPricing } from '../pricing/pricing';
 
 /**
- * Preço provisório do Destaque: R$ 29,00 por 30 dias, igual para unidade e
- * profissional. Trocar aqui quando o produto fechar o número (como o Pro).
+ * Preço e dias do Destaque: vêm de "Preços e taxas" (src/pricing/pricing.ts),
+ * um para a unidade e outro para o profissional. O admin muda sem deploy.
  */
-export const FEATURED_PRICE_CENTS = 2900;
-export const FEATURED_DAYS = 30;
-export const FEATURED_CURRENCY = 'BRL';
+export function featuredOffer(ownerType: string) {
+  const p = currentPricing();
+  return {
+    priceCents: ownerType === 'barbershop' ? p.featuredShopPriceCents : p.featuredProPriceCents,
+    days: p.featuredDays,
+  };
+}
+export const FEATURED_CURRENCY = PLATFORM_CURRENCY;
 /** Quantos dias antes de vencer o aviso sai */
 export const FEATURED_REMIND_DAYS = 3;
 const KIND = 'featured_purchase';
@@ -94,12 +100,13 @@ export class FeaturedPaymentService {
     const t = await this.target(userId, ownerType, ownerId);
     const now = new Date();
     const needsPublicProfile = 'publicProfile' in t && !t.publicProfile;
+    const offer = featuredOffer(t.ownerType);
     return {
       available: stripeConfigured() && !needsPublicProfile,
       needsPublicProfile,
-      priceCents: FEATURED_PRICE_CENTS,
+      priceCents: offer.priceCents,
       currency: FEATURED_CURRENCY,
-      days: FEATURED_DAYS,
+      days: offer.days,
       featuredUntil: t.featuredUntil?.toISOString() ?? null,
       isFeatured: !!t.featuredUntil && t.featuredUntil > now,
     };
@@ -112,6 +119,7 @@ export class FeaturedPaymentService {
       throw new BadRequestException('Deixe sua página pública para aparecer na busca antes');
     }
     if (!stripeConfigured()) throw new BadRequestException('Pagamento online indisponível');
+    const offer = featuredOffer(t.ownerType);
 
     // Compra em aberto da mesma pessoa para o mesmo alvo: reaproveita
     const pending = await this.prisma.featuredPurchase.findFirst({
@@ -124,8 +132,13 @@ export class FeaturedPaymentService {
         // Já pago (o aviso do Stripe ainda não tinha chegado): não cobra de novo
         await this.finalize(existing);
         throw new BadRequestException('A compra anterior acabou de ser confirmada');
-      } else if (existing.status !== 'canceled' && existing.amount === FEATURED_PRICE_CENTS) {
-        return this.startResult(pending.id, existing.client_secret!);
+      } else if (
+        existing.status !== 'canceled' &&
+        existing.amount === offer.priceCents &&
+        pending.days === offer.days
+      ) {
+        // Mesmo preço e dias de agora: retoma; se o admin mudou, começa outra
+        return this.startResult(pending, existing.client_secret!);
       } else {
         if (existing.status !== 'canceled') {
           await this.stripe.cancelPaymentIntent(existing.id).catch(() => undefined);
@@ -142,34 +155,37 @@ export class FeaturedPaymentService {
         ownerType: t.ownerType,
         ownerId: t.ownerId,
         userId,
-        amountCents: FEATURED_PRICE_CENTS,
+        amountCents: offer.priceCents,
         currency: FEATURED_CURRENCY,
-        days: FEATURED_DAYS,
+        days: offer.days,
       },
     });
     const intent = await this.stripe.createPaymentIntent(
-      FEATURED_PRICE_CENTS,
+      offer.priceCents,
       FEATURED_CURRENCY.toLowerCase(),
       undefined,
       {
         metadata: { kind: KIND, purchaseId: String(purchase.id) },
-        description: `Destaque por ${FEATURED_DAYS} dias — ${t.name}`,
+        description: `Destaque por ${offer.days} dias — ${t.name}`,
       },
     );
     await this.prisma.featuredPurchase.update({
       where: { id: purchase.id },
       data: { stripePaymentIntentId: intent.id },
     });
-    return this.startResult(purchase.id, intent.client_secret!);
+    return this.startResult(purchase, intent.client_secret!);
   }
 
-  private startResult(purchaseId: number, clientSecret: string) {
+  private startResult(
+    purchase: { id: number; amountCents: number; currency: string; days: number },
+    clientSecret: string,
+  ) {
     return {
-      purchaseId,
+      purchaseId: purchase.id,
       clientSecret,
-      priceCents: FEATURED_PRICE_CENTS,
-      currency: FEATURED_CURRENCY,
-      days: FEATURED_DAYS,
+      priceCents: purchase.amountCents,
+      currency: purchase.currency,
+      days: purchase.days,
     };
   }
 

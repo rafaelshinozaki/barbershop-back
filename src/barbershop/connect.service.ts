@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
 import { stripeConfigured } from './stripe-configured';
-import { PLATFORM_SUBSCRIPTION_FEE_PERCENT } from './subscription.constants';
+import { currentPricing } from '../pricing/pricing';
 
 export type ConnectProvider = 'stripe' | 'fake';
 export type PaymentOwnerType = 'barbershop' | 'professional';
@@ -18,10 +18,8 @@ type AccountState = {
   requirements?: { disabled_reason?: string | null } | null;
 };
 
-/** Taxa da plataforma (em centavos) sobre o que passa pelo Stripe */
-export function platformFeeCents(amountCents: number) {
-  return Math.round((amountCents * PLATFORM_SUBSCRIPTION_FEE_PERCENT) / 100);
-}
+// Parte da plataforma: a taxa vem de "Preços e taxas" (src/pricing/pricing.ts)
+export { platformFeeCents } from '../pricing/pricing';
 
 /**
  * "Receber pelo app" (Stripe Connect Express), opcional: a unidade abre a
@@ -70,7 +68,7 @@ export class ConnectService {
       payoutsEnabled: !!acc?.payoutsEnabled,
       detailsSubmitted: !!acc?.detailsSubmitted,
       disabledReason: acc?.disabledReason ?? null,
-      feePercentage: PLATFORM_SUBSCRIPTION_FEE_PERCENT,
+      feePercentage: currentPricing().platformFeePercent,
     };
   }
 

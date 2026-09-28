@@ -34,6 +34,7 @@ import { QueueModule } from './queue/queue.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PushModule } from './push/push.module';
+import { PricingModule } from './pricing/pricing.module';
 import { LocationsModule } from './locations/locations.module';
 import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
@@ -206,6 +207,7 @@ import { isAllowedOrigin } from './common/cors-origins';
     PrivacyModule,
     RealtimeModule,
     PushModule,
+    PricingModule,
     LocationsModule,
     AuthModule,
     PrismaModule,
