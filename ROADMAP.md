@@ -494,3 +494,36 @@ Mudar vale para as próximas cobranças; o que já foi pago fica como estava.
 - **Cobrar por cliente novo do marketplace?** Se sim, taxa pequena com teto baixo, nunca os 30% do Booksy (H5).
 - **Cidade e categorias do piloto** (H5).
 - **Validação jurídica**: nota do cliente, ficha técnica, domicílio, contrato do autônomo e os prazos da tabela de guarda, inclusive o piso fiscal no Brasil e em cada país europeu em que houver cliente (H4).
+
+## O que falta (mapa em 2026-09-28)
+O código de H1 a H5 está pronto, com exceção do que depende das decisões abaixo. O seed de demonstração (`SEED_DEMO=true`) cobre as telas novas: vagas, Destaque pago, compras no backoffice e lista de espera online.
+
+**1. Decisões do produto** (destravam o que está em "Decisões em aberto")
+- Preços finais: taxa da plataforma, Pro, Destaque e taxa por vaga (hoje genéricos; mudam no backoffice sem deploy).
+- Marca para beleza em geral (troca nome, logo, ícones do PWA e textos).
+- Cobrar ou não por cliente novo vindo do marketplace, e quanto (taxa pequena com teto).
+- Cidade e categorias do piloto (define onde encher a oferta antes de abrir a busca).
+
+**2. Jurídico**
+- Textos finais dos Termos de uso e da Política de privacidade (as páginas `/terms` e `/privacy` existem com texto provisório).
+- Nota do cliente dada pelo profissional, ficha técnica, contrato do autônomo/freelancer e prazos da tabela de guarda (o job de retenção já roda com os números propostos).
+- Fiscal: nota fiscal das cobranças da plataforma (planos, Destaque, taxa da vaga) e da caixinha.
+
+**3. Configuração de produção** (ninguém precisa programar)
+- Stripe: chaves live, webhook da plataforma e do Connect (`STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`), Identity ligado na conta.
+- Web Push: `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`.
+- E-mail (Mailgun e domínio com SPF/DKIM) e WhatsApp Cloud API com os templates aprovados pela Meta.
+- S3 (`S3_BUCKET`), domínio/DNS e HTTPS do front e da API, `FRONTEND_URL`/`PUBLIC_API_URL`.
+- Segredos próprios dos links por e-mail (`APPOINTMENT_LINK_SECRET`, `UNSUBSCRIBE_SECRET`) e o primeiro admin (`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`).
+- Geocodificação: o Nominatim público tem limite de uso; em produção, um serviço próprio ou pago em `GEOCODING_URL`.
+- Operação: backup do Postgres, monitoramento de erros e alertas (hoje só logs).
+
+**4. Código que espera as decisões**
+- Atendimento a domicílio (item 9): área, taxa de deslocamento, deslocamento na agenda, endereço só para quem atende, botão de ajuda. Espera o jurídico (domicílio) e o piloto.
+- Nota do cliente visível para outros profissionais (item 3), depois do jurídico.
+- Taxa por cliente novo do marketplace, se for decidida.
+- Troca de marca, quando houver.
+
+**5. Técnico, sem depender de ninguém**
+- Warnings de lint no back (~265, a maioria `no-non-null-assertion` e `any`; zero erros).
+- Teste de carga da busca e da agenda antes do piloto.
