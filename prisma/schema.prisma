@@ -962,6 +962,8 @@ model Professional {
   offersHomeService Boolean @default(false)
   // Suspenso pela moderação (denúncia): a página /p/:slug e a busca somem
   suspendedAt DateTime?
+  // "Destaque" na busca de profissionais, ligado pelo admin (como o da unidade)
+  featuredUntil DateTime?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
   reviews   ProfessionalReview[]

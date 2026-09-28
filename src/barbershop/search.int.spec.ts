@@ -246,4 +246,37 @@ describe('Busca por localização (integração)', () => {
     });
     expect(slugs(list)).not.toContain(pro('oculta'));
   });
+
+  it('Destaque do profissional: sobe no topo da relevância, com selo; vencido não conta', async () => {
+    const bia = await prisma.professional.findFirstOrThrow({ where: { slug: pro('bia') } });
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const set = await service.setProfessionalFeatured(bia.id, nextWeek);
+    expect(set).toMatchObject({ id: bia.id, isFeatured: true, featuredUntil: nextWeek });
+
+    const relevance = await service.searchPublicProfessionals({ ...near, radiusKm: 50 });
+    expect(slugs(relevance)).toEqual([pro('bia'), pro('ana')]);
+    expect(relevance[0].isFeatured).toBe(true);
+    expect(relevance[1].isFeatured).toBe(false);
+    // Ordem escolhida (distância) continua valendo
+    const byDistance = await service.searchPublicProfessionals({
+      ...near,
+      radiusKm: 50,
+      sort: 'distance',
+    });
+    expect(slugs(byDistance)).toEqual([pro('ana'), pro('bia')]);
+
+    const admin = await service.getAdminProfessionals('Pro bia Busca');
+    expect(admin[0]).toMatchObject({ slug: pro('bia'), isFeatured: true });
+
+    // Vencido ou removido: volta ao normal
+    await service.setProfessionalFeatured(bia.id, new Date(Date.now() - 1000).toISOString());
+    expect(slugs(await service.searchPublicProfessionals({ ...near, radiusKm: 50 }))).toEqual([
+      pro('ana'),
+      pro('bia'),
+    ]);
+    expect((await service.setProfessionalFeatured(bia.id, null)).featuredUntil).toBeNull();
+    await expect(service.setProfessionalFeatured(bia.id, 'amanhã')).rejects.toThrow(
+      'Data inválida',
+    );
+  });
 });
