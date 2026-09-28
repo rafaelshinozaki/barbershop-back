@@ -222,6 +222,7 @@ type Appointment {
   barberId: Int!
   barberName: String
   barbershopId: Int!
+  bookingChannel: String
   createdAt: String!
   customerId: Int!
   customerName: String
@@ -230,6 +231,7 @@ type Appointment {
   depositPaidAt: DateTime
   depositRefundedAt: DateTime
   endAt: String!
+  firstVisit: Boolean
   id: Int!
   notes: String
   prepaidAmount: Float
@@ -1289,6 +1291,7 @@ input CreateProductCategoryInput {
 input CreatePublicAppointmentInput {
   barberId: Int
   barbershopId: Int!
+  channel: String
   customerEmail: String
   customerName: String!
   customerPhone: String!

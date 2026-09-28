@@ -336,6 +336,29 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(own!.clientAccountId).toBe(account.id);
     });
 
+    it('guarda por onde o cliente chegou e se é a primeira vez no negócio', async () => {
+      const phone = `11${RUN}66`;
+      const booking = (time: string, channel?: string) =>
+        service.createPublicAppointment({
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          serviceIds: [A.serviceId],
+          startAt: at(day, time).toISOString(),
+          customerName: 'Veio da vitrine',
+          customerPhone: phone,
+          channel,
+        });
+      const first = await booking('13:00', 'marketplace');
+      expect(first).toMatchObject({ bookingChannel: 'marketplace', firstVisit: true });
+      // Segunda vez (mesmo telefone): não é mais cliente novo; sem canal = link do negócio
+      const second = await booking('13:30');
+      expect(second).toMatchObject({ bookingChannel: 'direct', firstVisit: false });
+      // Canal desconhecido vira direct (nunca conta como vitrine por engano)
+      await service.updateAppointment(A.ownerId, A.shopId, second!.id, { status: 'CANCELLED' });
+      const third = await booking('14:00', 'qualquer-coisa');
+      expect(third).toMatchObject({ bookingChannel: 'direct', firstVisit: false });
+    });
+
     it('duas pessoas reservando o mesmo horário ao mesmo tempo: só uma consegue', async () => {
       const startAt = at(day, '15:00').toISOString();
       const attempt = (n: number) =>
