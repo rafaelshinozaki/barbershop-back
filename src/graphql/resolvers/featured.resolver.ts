@@ -1,6 +1,9 @@
 import { Args, Field, Int, Mutation, ObjectType, Query, Resolver } from '@nestjs/graphql';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/roles.decorator';
+import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
@@ -50,6 +53,54 @@ export class FeaturedCheckoutType {
   days: number;
 }
 
+@ObjectType()
+export class AdminFeaturedPurchaseType {
+  @Field(() => Int)
+  id: number;
+
+  @Field({ description: 'barbershop | professional' })
+  ownerType: string;
+
+  @Field()
+  ownerName: string;
+
+  @Field()
+  buyerName: string;
+
+  @Field(() => Int)
+  amountCents: number;
+
+  @Field(() => Int)
+  days: number;
+
+  @Field({ nullable: true })
+  paidAt?: string;
+
+  @Field({ nullable: true })
+  featuredUntil?: string;
+}
+
+@ObjectType()
+export class AdminFeaturedPurchasesType {
+  @Field(() => Int)
+  totalCount: number;
+
+  @Field(() => Int)
+  totalCents: number;
+
+  @Field(() => Int, { description: 'Últimos 30 dias' })
+  last30Count: number;
+
+  @Field(() => Int)
+  last30Cents: number;
+
+  @Field()
+  currency: string;
+
+  @Field(() => [AdminFeaturedPurchaseType])
+  purchases: AdminFeaturedPurchaseType[];
+}
+
 /** Comprar 30 dias de Destaque na busca: unidade (dono/gerente) ou o próprio profissional */
 @Resolver()
 @UseFilters(GqlHttpExceptionFilter)
@@ -73,6 +124,14 @@ export class FeaturedResolver {
     @Args('ownerId', { type: () => Int, nullable: true }) ownerId?: number,
   ) {
     return this.featured.start(user.id, ownerType, ownerId);
+  }
+
+  /** Backoffice: compras pagas de Destaque e a receita */
+  @UseGuards(RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @Query(() => AdminFeaturedPurchasesType)
+  adminFeaturedPurchases(@Args('limit', { type: () => Int, nullable: true }) limit?: number) {
+    return this.featured.adminPurchases(limit ?? 100);
   }
 
   @Mutation(() => Boolean)

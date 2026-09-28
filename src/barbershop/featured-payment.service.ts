@@ -4,7 +4,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
+  Optional,
 } from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { PushService } from '../push/push.service';
+import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { FEATURED_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -18,6 +26,8 @@ import { stripeConfigured } from './stripe-configured';
 export const FEATURED_PRICE_CENTS = 2900;
 export const FEATURED_DAYS = 30;
 export const FEATURED_CURRENCY = 'BRL';
+/** Quantos dias antes de vencer o aviso sai */
+export const FEATURED_REMIND_DAYS = 3;
 const KIND = 'featured_purchase';
 
 export type FeaturedOwnerType = 'barbershop' | 'professional';
@@ -36,6 +46,7 @@ export class FeaturedPaymentService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly barbershops: BarbershopService,
+    @Optional() private readonly push?: PushService,
   ) {}
 
   /** Confere quem pode comprar e devolve o alvo (id, nome, Destaque atual) */
@@ -217,5 +228,185 @@ export class FeaturedPaymentService {
       data: { featuredUntil: rows[0]?.featuredUntil ?? null },
     });
     return true;
+  }
+
+  /**
+   * Avisa (sininho e celular) quem tem o Destaque vencendo nos próximos
+   * dias, uma vez por vencimento: comprar mais dias muda a data e o aviso
+   * do novo vencimento sai de novo. Roda de hora em hora.
+   */
+  async remindExpiring(now = new Date()) {
+    const limit = new Date(now.getTime() + FEATURED_REMIND_DAYS * 86_400_000);
+    const window = { gt: now, lte: limit };
+    const pending = (until: Date, reminded: Date | null) =>
+      !reminded || reminded.getTime() !== until.getTime();
+    let sent = 0;
+
+    const shops = await this.prisma.barbershop.findMany({
+      where: { featuredUntil: window, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        featuredUntil: true,
+        featuredRemindedUntil: true,
+        ownerUserId: true,
+        network: { select: { ownerUserId: true } },
+        barbers: {
+          where: { isActive: true, staffType: 'manager', userId: { not: null } },
+          select: { userId: true },
+        },
+      },
+    });
+    for (const shop of shops) {
+      if (!pending(shop.featuredUntil!, shop.featuredRemindedUntil)) continue;
+      const claimed = await this.prisma.barbershop.updateMany({
+        where: { id: shop.id, featuredUntil: shop.featuredUntil },
+        data: { featuredRemindedUntil: shop.featuredUntil },
+      });
+      if (claimed.count === 0) continue;
+      const users = [
+        shop.ownerUserId,
+        shop.network?.ownerUserId,
+        ...shop.barbers.map((b) => b.userId),
+      ].filter((u): u is number => typeof u === 'number');
+      await this.notifyExpiring(
+        users,
+        shop.name,
+        shop.featuredUntil!,
+        `/barbershops/${shop.id}/public-page`,
+      );
+      sent++;
+    }
+
+    const pros = await this.prisma.professional.findMany({
+      where: { featuredUntil: window },
+      select: { id: true, userId: true, featuredUntil: true, featuredRemindedUntil: true },
+    });
+    for (const pro of pros) {
+      if (!pending(pro.featuredUntil!, pro.featuredRemindedUntil)) continue;
+      const claimed = await this.prisma.professional.updateMany({
+        where: { id: pro.id, featuredUntil: pro.featuredUntil },
+        data: { featuredRemindedUntil: pro.featuredUntil },
+      });
+      if (claimed.count === 0) continue;
+      await this.notifyExpiring([pro.userId], null, pro.featuredUntil!, '/profile-privacy');
+      sent++;
+    }
+    return sent;
+  }
+
+  private async notifyExpiring(
+    userIds: number[],
+    shopName: string | null,
+    until: Date,
+    actionUrl: string,
+  ) {
+    const ids = [...new Set(userIds)];
+    if (!ids.length) return;
+    const date = until.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const title = 'Destaque vence em breve';
+    const message = shopName
+      ? `O Destaque de ${shopName} na busca vence em ${date}. Estenda para continuar no topo.`
+      : `Seu Destaque na busca vence em ${date}. Estenda para continuar no topo.`;
+    try {
+      await this.prisma.userNotification.createMany({
+        data: ids.map((userId) => ({
+          userId,
+          title,
+          message,
+          type: NotificationType.INFO,
+          actionUrl,
+        })),
+      });
+      await this.push?.sendToUsers(ids, () => ({
+        title,
+        body: message,
+        url: actionUrl,
+        tag: 'featured',
+      }));
+    } catch (err) {
+      this.logger.warn(`Aviso de Destaque vencendo não enviado: ${err}`);
+    }
+  }
+
+  /** Backoffice: compras pagas (as mais recentes) e os totais */
+  async adminPurchases(limit = 100) {
+    const [rows, all, last30] = await Promise.all([
+      this.prisma.featuredPurchase.findMany({
+        where: { status: 'paid' },
+        orderBy: { paidAt: 'desc' },
+        take: Math.min(Math.max(limit, 1), 200),
+      }),
+      this.prisma.featuredPurchase.aggregate({
+        where: { status: 'paid' },
+        _sum: { amountCents: true },
+        _count: { _all: true },
+      }),
+      this.prisma.featuredPurchase.aggregate({
+        where: { status: 'paid', paidAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+        _sum: { amountCents: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const shopIds = rows.filter((r) => r.ownerType === 'barbershop').map((r) => r.ownerId);
+    const proIds = rows.filter((r) => r.ownerType === 'professional').map((r) => r.ownerId);
+    const [shops, pros, buyers] = await Promise.all([
+      this.prisma.barbershop.findMany({
+        where: { id: { in: shopIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.professional.findMany({
+        where: { id: { in: proIds } },
+        select: { id: true, user: { select: { fullName: true } } },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: [...new Set(rows.map((r) => r.userId))] } },
+        select: { id: true, fullName: true },
+      }),
+    ]);
+    const shopName = new Map(shops.map((s) => [s.id, s.name]));
+    const proName = new Map(pros.map((p) => [p.id, p.user.fullName]));
+    const buyerName = new Map(buyers.map((u) => [u.id, u.fullName]));
+    return {
+      totalCount: all._count._all,
+      totalCents: all._sum.amountCents ?? 0,
+      last30Count: last30._count._all,
+      last30Cents: last30._sum.amountCents ?? 0,
+      currency: FEATURED_CURRENCY,
+      purchases: rows.map((r) => ({
+        id: r.id,
+        ownerType: r.ownerType,
+        ownerName:
+          (r.ownerType === 'barbershop' ? shopName.get(r.ownerId) : proName.get(r.ownerId)) ?? '—',
+        buyerName: buyerName.get(r.userId) ?? '—',
+        amountCents: r.amountCents,
+        days: r.days,
+        paidAt: r.paidAt?.toISOString() ?? null,
+        featuredUntil: r.featuredUntil?.toISOString() ?? null,
+      })),
+    };
+  }
+}
+
+/** Aviso de Destaque vencendo: uma execução por hora, uma só no cluster */
+@Injectable()
+export class FeaturedScheduler implements OnModuleInit {
+  constructor(@InjectQueue(FEATURED_QUEUE) private readonly queue: Queue) {}
+
+  onModuleInit() {
+    registerSchedulers(this.queue, [
+      { id: 'remind-expiring-featured', repeat: { every: 60 * 60 * 1000 } },
+    ]);
+  }
+}
+
+@Processor(FEATURED_QUEUE)
+export class FeaturedProcessor extends WorkerHost {
+  constructor(private readonly featured: FeaturedPaymentService) {
+    super();
+  }
+
+  async process() {
+    return this.featured.remindExpiring();
   }
 }
