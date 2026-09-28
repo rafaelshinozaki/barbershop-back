@@ -252,6 +252,9 @@ function waitlistBookUrl(
   return `${front}/u/${encodeURIComponent(slug)}?${params.toString()}`;
 }
 
+// Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
+const SEARCH_CANDIDATE_LIMIT = 5000;
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -4916,31 +4919,47 @@ export class BarbershopService {
     }
 
     const now = new Date();
-    const barbershops = await this.prisma.barbershop.findMany({
+    // Fase 1: só o que filtra e ordena, de todos os candidatos (sem cortar
+    // antes de ordenar: com um teto alto, a mais perto ou a mais bem avaliada
+    // não fica de fora numa cidade com muitas unidades)
+    const closureWhere = { date: { in: this.nearDateKeys(now) } };
+    const closureSelect = { date: true, openTime: true, closeTime: true } as const;
+    const candidatesAll = await this.prisma.barbershop.findMany({
       // Fora da vitrine pela moderação: não aparece na busca
       where: { isActive: true, searchHiddenAt: null, ...(AND.length ? { AND } : {}) },
-      include: {
-        services: { where: { isActive: true }, select: { category: true, price: true } },
-        network: { select: { name: true } },
-        closures: {
-          where: { date: { in: this.nearDateKeys(now) } },
-          select: { date: true, openTime: true, closeTime: true },
-        },
+      select: {
+        id: true,
+        name: true,
+        city: true,
+        latitude: true,
+        longitude: true,
+        featuredUntil: true,
+        ...(input.openNow
+          ? {
+              businessHours: true,
+              timezone: true,
+              closures: { where: closureWhere, select: closureSelect },
+            }
+          : {}),
       },
-      take: 500,
+      orderBy: { id: 'asc' },
+      take: SEARCH_CANDIDATE_LIMIT,
     });
 
-    const candidates = barbershops.filter(
+    const candidates = candidatesAll.filter(
       (b) =>
         (!input.citySlug || this.slugifyCity(b.city) === input.citySlug) &&
         (!box || (b.longitude != null && lngInBox(b.longitude, box))),
     );
-    const ratings = await this.getReviewSummaries(candidates.map((b) => b.id));
+    const candidateIds = candidates.map((b) => b.id);
+    const [ratings, offers] = await Promise.all([
+      this.getReviewSummaries(candidateIds),
+      this.getServiceOffers(candidateIds),
+    ]);
 
-    const results = candidates
+    const ranked = candidates
       .map((b) => {
-        const categories = [...new Set(b.services.map((s) => s.category))];
-        const prices = b.services.map((s) => Number(s.price)).filter((n) => n > 0);
+        const offer = offers.get(b.id);
         const distanceKm =
           point && b.latitude != null && b.longitude != null
             ? Math.round(haversineKm(point.lat, point.lng, b.latitude, b.longitude) * 10) / 10
@@ -4948,19 +4967,11 @@ export class BarbershopService {
         return {
           id: b.id,
           name: b.name,
-          slug: b.slug,
-          businessType: b.businessType,
-          city: b.city,
-          state: b.state,
-          address: b.address,
-          photoKey: b.photoKey,
-          networkName: b.network?.name ?? b.name,
-          categories,
+          categories: offer?.categories ?? [],
           distanceKm,
-          minPrice: prices.length ? Math.min(...prices) : null,
-          currency: b.currency,
-          openNow: isOpenAt(b, now),
+          minPrice: offer?.minPrice ?? null,
           isFeatured: b.featuredUntil != null && b.featuredUntil > now,
+          openNow: input.openNow ? isOpenAt(b as Parameters<typeof isOpenAt>[0], now) : false,
           ...(ratings.get(b.id) ?? { averageRating: null, reviewCount: 0 }),
         };
       })
@@ -4971,16 +4982,49 @@ export class BarbershopService {
           (input.maxPrice == null || (r.minPrice != null && r.minPrice <= input.maxPrice)) &&
           (!input.openNow || r.openNow),
       );
-
-    const limited = rankResults(results, input.sort ?? 'relevance', !!point).slice(
+    const limited = rankResults(ranked, input.sort ?? 'relevance', !!point).slice(
       0,
       input.limit ?? 30,
     );
+
+    // Fase 2: o que aparece no card, só das que vão ser mostradas
+    const details = new Map(
+      (
+        await this.prisma.barbershop.findMany({
+          where: { id: { in: limited.map((r) => r.id) } },
+          select: {
+            id: true,
+            slug: true,
+            businessType: true,
+            city: true,
+            state: true,
+            address: true,
+            photoKey: true,
+            currency: true,
+            businessHours: true,
+            timezone: true,
+            network: { select: { name: true } },
+            closures: { where: closureWhere, select: closureSelect },
+          },
+        })
+      ).map((d) => [d.id, d]),
+    );
     return Promise.all(
-      limited.map(async ({ photoKey, ...r }) => ({
-        ...r,
-        imageUrl: photoKey ? await this.s3Service.getDownloadUrl(photoKey) : null,
-      })),
+      limited.map(async (r) => {
+        const d = must(details.get(r.id), `unidade ${r.id}`);
+        return {
+          ...r,
+          slug: d.slug,
+          businessType: d.businessType,
+          city: d.city,
+          state: d.state,
+          address: d.address,
+          networkName: d.network?.name ?? r.name,
+          currency: d.currency,
+          openNow: isOpenAt(d, now),
+          imageUrl: d.photoKey ? await this.s3Service.getDownloadUrl(d.photoKey) : null,
+        };
+      }),
     );
   }
 
@@ -5037,6 +5081,26 @@ export class BarbershopService {
         ],
       });
     }
+    // Com um ponto: só quem mostra as unidades e tem uma no retângulo do
+    // raio (a distância exata sai em memória, como na busca de unidades)
+    if (point) {
+      const box = boundingBox(point.lat, point.lng, radiusKm);
+      AND.push({
+        showLocations: true,
+        barbers: {
+          some: {
+            ...activeBarber,
+            barbershop: {
+              isActive: true,
+              latitude: { gte: box.minLat, lte: box.maxLat },
+              ...(box.minLng >= -180 && box.maxLng <= 180
+                ? { longitude: { gte: box.minLng, lte: box.maxLng } }
+                : { longitude: { not: null } }),
+            },
+          },
+        },
+      });
+    }
     const professionals = await this.prisma.professional.findMany({
       where: {
         visibility: 'public',
@@ -5057,8 +5121,8 @@ export class BarbershopService {
                 city: true,
                 latitude: true,
                 longitude: true,
+                id: true,
                 currency: true,
-                services: { where: { isActive: true }, select: { price: true } },
               },
             },
           },
@@ -5083,6 +5147,9 @@ export class BarbershopService {
         },
       ]),
     );
+    const offers = await this.getServiceOffers([
+      ...new Set(professionals.flatMap((p) => p.barbers.map((b) => b.barbershop.id))),
+    ]);
     const citySlugOf = (c: string) => this.slugifyCity(c);
     const wantedCity = input.citySlug ?? (input.city ? citySlugOf(input.city) : null);
 
@@ -5097,9 +5164,10 @@ export class BarbershopService {
                 : [],
             )
           : [];
-        const prices = p.barbers
-          .flatMap((b) => b.barbershop.services.map((s) => Number(s.price)))
-          .filter((n) => n > 0);
+        const prices = p.barbers.flatMap((b) => {
+          const min = offers.get(b.barbershop.id)?.minPrice;
+          return min != null ? [min] : [];
+        });
         const rating = p.showRating
           ? ratings.get(p.id) ?? { averageRating: null, reviewCount: 0 }
           : { averageRating: null, reviewCount: 0 };
@@ -5300,6 +5368,35 @@ export class BarbershopService {
       reply: r.reply,
       repliedAt: r.repliedAt?.toISOString() ?? null,
     }));
+  }
+
+  /**
+   * Categorias e menor preço dos serviços ativos de cada unidade, agregados
+   * no banco: uma linha por unidade em vez de uma por serviço (na busca sem
+   * filtro são todas as unidades)
+   */
+  private async getServiceOffers(
+    barbershopIds: number[],
+  ): Promise<Map<number, { categories: TreatmentCategory[]; minPrice: number | null }>> {
+    if (barbershopIds.length === 0) return new Map();
+    const rows = await this.prisma.$queryRaw<
+      { barbershopId: number; categories: TreatmentCategory[]; minPrice: Prisma.Decimal | null }[]
+    >`
+      SELECT "barbershopId",
+             array_agg(DISTINCT category::text) AS categories,
+             MIN(price) FILTER (WHERE price > 0) AS "minPrice"
+      FROM "BarbershopService"
+      WHERE "isActive" AND "barbershopId" = ANY(${barbershopIds})
+      GROUP BY "barbershopId"`;
+    return new Map(
+      rows.map((r) => [
+        r.barbershopId,
+        {
+          categories: r.categories,
+          minPrice: r.minPrice != null ? Number(r.minPrice) : null,
+        },
+      ]),
+    );
   }
 
   private async getReviewSummaries(
