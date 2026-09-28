@@ -73,18 +73,27 @@ export class ReviewRequestService {
           lte: new Date(now.getTime() - SEND_AFTER_MS),
         },
       },
-      include: {
-        customer: true,
-        barbershop: true,
-        barber: { select: { name: true } },
-        services: { include: { service: { select: { name: true } } } },
-      },
+      select: { id: true },
       orderBy: { endAt: 'asc' },
       take: BATCH_SIZE,
     });
 
     let enqueued = 0;
-    for (const appt of due) {
+    for (const { id } of due) {
+      // Um por vez: unidade apagada entre a busca e aqui (o agendamento vai
+      // junto) só pula este, em vez de derrubar o lote inteiro
+      const appt = await this.prisma.appointment
+        .findUnique({
+          where: { id },
+          include: {
+            customer: true,
+            barbershop: true,
+            barber: { select: { name: true } },
+            services: { include: { service: { select: { name: true } } } },
+          },
+        })
+        .catch(() => null);
+      if (!appt) continue;
       // Reserva (update condicional): duas execuções não mandam duas vezes.
       // Quem é pulado também fica marcado — não volta a ser avaliado
       const claimed = await this.prisma.appointment.updateMany({
