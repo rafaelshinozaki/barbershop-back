@@ -544,6 +544,8 @@ model Barbershop {
   linkedinUrl    String?
   isActive       Boolean   @default(true)
   featuredUntil  DateTime? // posicionamento pago "Destaque" na busca: comprado com cartão (30 dias por compra) ou ligado pelo admin
+  // Fim do Destaque para o qual o aviso de "vai vencer" já saiu (um aviso por vencimento)
+  featuredRemindedUntil DateTime?
   // Fora da vitrine pela moderação (denúncia): some da busca e do sitemap; o link direto continua
   searchHiddenAt DateTime?
   networkId      Int
@@ -966,6 +968,8 @@ model Professional {
   suspendedAt DateTime?
   // "Destaque" na busca de profissionais, ligado pelo admin (como o da unidade)
   featuredUntil DateTime?
+  // Fim do Destaque para o qual o aviso de "vai vencer" já saiu
+  featuredRemindedUntil DateTime?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   barbers   Barber[]
   reviews   ProfessionalReview[]

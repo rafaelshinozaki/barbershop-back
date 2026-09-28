@@ -55,7 +55,16 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const featured = new FeaturedPaymentService(prisma, stripe as never, barbershops);
+  const pushed: number[][] = [];
+  const featured = new FeaturedPaymentService(prisma, stripe as never, barbershops, {
+    sendToUsers: async (ids: number[]) => void pushed.push(ids),
+  } as never);
+  const reminders = async (userId: number) =>
+    (
+      await prisma.userNotification.findMany({
+        where: { userId, title: 'Destaque vence em breve' },
+      })
+    ).length;
 
   let roleId: number;
   let ownerId: number;
@@ -127,6 +136,9 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
     if (keyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
     else process.env.STRIPE_SECRET_KEY = keyBefore;
     await prisma.featuredPurchase.deleteMany({ where: { userId: { in: [ownerId, proUserId] } } });
+    await prisma.userNotification.deleteMany({
+      where: { userId: { in: [ownerId, staffId, proUserId] } },
+    });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
@@ -200,6 +212,32 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
         await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: second.purchaseId } })
       ).featuredUntil!.getTime(),
     ).toBe(until2);
+    // Backoffice: a compra aparece com a unidade e quem comprou
+    const admin = await featured.adminPurchases();
+    expect(admin.totalCount).toBeGreaterThanOrEqual(2);
+    expect(admin.purchases.find((p) => p.id === second.purchaseId)).toMatchObject({
+      ownerType: 'barbershop',
+      ownerName: `Destaque ${RUN}`,
+      buyerName: 'Destaque owner',
+      amountCents: FEATURED_PRICE_CENTS,
+    });
+
+    // Aviso de vencimento: só perto do fim, uma vez por vencimento
+    await featured.remindExpiring(new Date(until2 - 10 * DAY));
+    expect(await reminders(ownerId)).toBe(0);
+    await featured.remindExpiring(new Date(until2 - 2 * DAY));
+    expect(await reminders(ownerId)).toBe(1);
+    expect(pushed.some((ids) => ids.includes(ownerId))).toBe(true);
+    await featured.remindExpiring(new Date(until2 - 1 * DAY));
+    expect(await reminders(ownerId)).toBe(1);
+    // Comprou mais: o novo vencimento terá o seu aviso
+    const third = await featured.start(ownerId, 'barbershop', shopId);
+    const p3 = await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: third.purchaseId } });
+    pay(p3.stripePaymentIntentId!);
+    await featured.finalize(intents.get(p3.stripePaymentIntentId!) as never);
+    await featured.remindExpiring(new Date(until2 + FEATURED_DAYS * DAY - 2 * DAY));
+    expect(await reminders(ownerId)).toBe(2);
+
     // Compra de outra pessoa não se confirma por aqui
     await expect(featured.confirm(proUserId, second.purchaseId)).rejects.toThrow(
       'Compra não encontrada',

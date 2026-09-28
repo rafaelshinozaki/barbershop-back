@@ -78,6 +78,30 @@ type AdminClientAccountType {
   suspendedReason: String
 }
 
+type AdminFeaturedPurchaseType {
+  amountCents: Int!
+  buyerName: String!
+  days: Int!
+  featuredUntil: String
+  id: Int!
+  ownerName: String!
+
+  """barbershop | professional"""
+  ownerType: String!
+  paidAt: String
+}
+
+type AdminFeaturedPurchasesType {
+  currency: String!
+  last30Cents: Int!
+
+  """Últimos 30 dias"""
+  last30Count: Int!
+  purchases: [AdminFeaturedPurchaseType!]!
+  totalCents: Int!
+  totalCount: Int!
+}
+
 input AdminNotificationPreferenceInput {
   appointmentsEmail: Boolean
   appointmentsInApp: Boolean
@@ -2994,6 +3018,7 @@ type Query {
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   adminBarbershops(query: String): [Barbershop!]!
   adminClientAccounts(search: String): [AdminClientAccountType!]!
+  adminFeaturedPurchases(limit: Int): AdminFeaturedPurchasesType!
   adminProfessionals(query: String): [AdminProfessionalType!]!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!

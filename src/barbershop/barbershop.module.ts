@@ -29,7 +29,11 @@ import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 import { JobOpeningService } from './job-opening.service';
-import { FeaturedPaymentService } from './featured-payment.service';
+import {
+  FeaturedPaymentService,
+  FeaturedProcessor,
+  FeaturedScheduler,
+} from './featured-payment.service';
 import { EmployeeInviteController } from './employee-invite.controller';
 import { BullModule } from '@nestjs/bullmq';
 import {
@@ -37,7 +41,11 @@ import {
   AppointmentReminderScheduler,
   AppointmentReminderProcessor,
 } from './appointment-reminder.service';
-import { APPOINTMENT_REMINDERS_QUEUE, CHAIR_RENT_QUEUE } from '../queue/queue.constants';
+import {
+  APPOINTMENT_REMINDERS_QUEUE,
+  CHAIR_RENT_QUEUE,
+  FEATURED_QUEUE,
+} from '../queue/queue.constants';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -59,6 +67,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
     BullModule.registerQueue({ name: APPOINTMENT_REMINDERS_QUEUE }),
     BullModule.registerQueue({ name: CHAIR_RENT_QUEUE }),
+    BullModule.registerQueue({ name: FEATURED_QUEUE }),
   ],
   providers: [
     BarbershopService,
@@ -95,6 +104,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     GeocodingService,
     JobOpeningService,
     FeaturedPaymentService,
+    FeaturedScheduler,
+    FeaturedProcessor,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
