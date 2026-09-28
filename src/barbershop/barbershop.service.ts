@@ -259,6 +259,41 @@ const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
 // Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
 const SEARCH_CANDIDATE_LIMIT = 5000;
 
+// Valores de dinheiro que vêm da tela: número de verdade, sem negativo e com
+// teto. Um total negativo com cartão-presente "debitava" um valor negativo
+// (o saldo subia) e pontos negativos "resgatados" viravam pontos ganhos
+const MAX_MONEY = 1_000_000;
+function checkMoney(label: string, value: number | null | undefined) {
+  if (value == null) return;
+  if (!Number.isFinite(value) || value < 0 || value > MAX_MONEY) {
+    throw new BadRequestException(`${label} inválido`);
+  }
+}
+function checkSaleAmounts(data: {
+  subtotal?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  total?: number;
+  loyaltyPointsRedeemed?: number;
+  items?: Array<{ quantity: number; unitPrice: number; totalPrice: number }>;
+}) {
+  checkMoney('Subtotal', data.subtotal);
+  checkMoney('Desconto', data.discountAmount);
+  checkMoney('Imposto', data.taxAmount);
+  checkMoney('Total', data.total);
+  const points = data.loyaltyPointsRedeemed;
+  if (points != null && (!Number.isInteger(points) || points < 0)) {
+    throw new BadRequestException('Pontos inválidos');
+  }
+  for (const item of data.items ?? []) {
+    if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1000) {
+      throw new BadRequestException('Quantidade inválida');
+    }
+    checkMoney('Preço', item.unitPrice);
+    checkMoney('Preço', item.totalPrice);
+  }
+}
+
 const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
 @Injectable()
@@ -6139,6 +6174,7 @@ export class BarbershopService {
       loyaltyPointsRedeemed?: number;
     },
   ) {
+    checkSaleAmounts(data);
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
@@ -6484,6 +6520,7 @@ export class BarbershopService {
       paymentMethod?: string;
     },
   ) {
+    checkSaleAmounts(data);
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     // Como na criação: cliente, profissional e itens têm de ser desta
     // unidade/rede (senão a venda aponta pra dado de outra empresa)
@@ -6591,6 +6628,7 @@ export class BarbershopService {
 
   async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    checkMoney('Troco inicial', openingBalance);
     const existing = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -6619,6 +6657,7 @@ export class BarbershopService {
     data: { countedBalance: number; notes?: string },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    checkMoney('Valor contado', data.countedBalance);
     const session = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -6687,6 +6726,8 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    if (!(data.amount > 0)) throw new BadRequestException('Valor da despesa inválido');
+    checkMoney('Valor da despesa', data.amount);
     const openSession = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
