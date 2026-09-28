@@ -2,6 +2,10 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { TipService } from './tip.service';
+import { ConnectService } from './connect.service';
+import { createReviewToken } from './appointment-link';
+
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 
 const RUN = `${Date.now()}`.slice(-9);
 const HOUR = 3_600_000;
@@ -23,7 +27,31 @@ describe('Caixinha do atendimento (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const tips = new TipService(prisma, barbershops);
+  // Stripe simulado: pagamento da caixinha pelo app
+  const intents = new Map<string, any>();
+  let seq = 0;
+  const stripe = {
+    createPaymentIntent: async (amount: number, currency: string, _c: unknown, opts: any) => {
+      const pi = {
+        id: `pi_tip_${RUN}_${++seq}`,
+        client_secret: `secret_${seq}`,
+        status: 'requires_payment_method',
+        amount,
+        currency,
+        metadata: opts.metadata,
+        transfer_data: opts.destination ? { destination: opts.destination.accountId } : null,
+        application_fee_amount: opts.destination?.applicationFeeAmount ?? null,
+      };
+      intents.set(pi.id, pi);
+      return pi;
+    },
+    retrievePaymentIntent: async (id: string) => intents.get(id),
+  };
+  // Sem Stripe configurado: o cadastro da conta é o do fornecedor falso
+  const connect = new ConnectService(prisma, stripe as never, barbershops, {
+    get: (k: string) => ({ FRONTEND_URL: 'https://app.test', NODE_ENV: 'test' }[k]),
+  } as never);
+  const tips = new TipService(prisma, barbershops, stripe as never, connect);
 
   const users: Record<string, number> = {};
   let networkId: number;
@@ -112,7 +140,18 @@ describe('Caixinha do atendimento (integração)', () => {
     ).id;
   });
 
+  const stripeKeyBefore = process.env.STRIPE_SECRET_KEY;
+
   afterAll(async () => {
+    if (stripeKeyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = stripeKeyBefore;
+    await prisma.paymentAccount.deleteMany({
+      where: {
+        stripeAccountId: { startsWith: 'acct_fake_' },
+        createdByUserId: { in: Object.values(users) },
+      },
+    });
+    await prisma.professional.deleteMany({ where: { userId: users.pro } });
     await prisma.barberPayEntry.deleteMany({
       where: { barbershopId: { in: [shopId, soloShopId] } },
     });
@@ -243,5 +282,91 @@ describe('Caixinha do atendimento (integração)', () => {
     await expect(tips.remove(users.dono, shopId, second.id)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('pelo app: só pra quem tem conta de recebimento ativa; cai direto na conta, com a taxa', async () => {
+    process.env.STRIPE_SECRET_KEY = '';
+    const appt = await appointment(shopId, proBarber);
+    const token = createReviewToken(appt.id);
+    // Ninguém recebe pelo app ainda
+    expect(await tips.appTipOptions(token)).toMatchObject({
+      professional: false,
+      unit: false,
+      currency: 'BRL',
+      professionalName: 'Pro',
+    });
+    await expect(tips.startAppTip(token, 'professional', 10)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    // O profissional cria a conta dele (perfil de profissional primeiro)
+    await expect(connect.startProfessionalOnboarding(users.pro)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    const professional = await prisma.professional.create({
+      data: { userId: users.pro, slug: `tip-pro-${RUN}` },
+    });
+    await prisma.barber.update({
+      where: { id: proBarber },
+      data: { professionalId: professional.id },
+    });
+    const { url } = await connect.startProfessionalOnboarding(users.pro);
+    const accountId = new URL(url).searchParams.get('account')!;
+    expect(new URL(url).searchParams.get('back')).toBe('https://app.test/profile-privacy');
+    // Outra pessoa não conclui o cadastro de outra
+    await expect(connect.completeFake(users.outro, accountId)).rejects.toThrow();
+    await connect.completeFake(users.pro, accountId);
+    expect(await connect.professionalStatus(users.pro)).toMatchObject({ chargesEnabled: true });
+    expect(await tips.appTipOptions(token)).toMatchObject({ professional: true, unit: false });
+
+    // Valor fora do limite não passa
+    await expect(tips.startAppTip(token, 'professional', 0.5)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(tips.startAppTip(token, 'unit', 10)).rejects.toBeInstanceOf(BadRequestException);
+
+    const started = await tips.startAppTip(token, 'professional', 20);
+    const pi = intents.get(started.paymentIntentId);
+    expect(pi).toMatchObject({
+      amount: 2000,
+      transfer_data: { destination: accountId },
+      application_fee_amount: 300,
+      metadata: {
+        kind: 'appointment_tip',
+        appointmentId: String(appt.id),
+        destination: 'professional',
+      },
+    });
+
+    // Não pago ainda: nada registrado
+    expect(await tips.confirmAppTip(token, started.paymentIntentId)).toBe(false);
+    pi.status = 'succeeded';
+    expect(await tips.confirmAppTip(token, started.paymentIntentId)).toBe(true);
+    // Webhook depois: não duplica
+    await tips.finalizeAppTip(pi);
+    const list = await tips.list(users.dono, shopId, appt.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      destination: 'professional',
+      method: 'STRIPE',
+      amount: 20,
+      receivedByUnit: false,
+      barberName: 'Pro',
+    });
+    expect((await tips.appTipOptions(token)).given).toEqual([
+      { destination: 'professional', amount: 20 },
+    ]);
+    // Pagamento de outro atendimento não vale neste link
+    const other = await appointment(shopId, proBarber);
+    await expect(
+      tips.confirmAppTip(createReviewToken(other.id), started.paymentIntentId),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // A equipe não apaga caixinha paga pelo app (o estorno é pelo Stripe)
+    await expect(tips.remove(users.dono, shopId, list[0].id)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    // Atendimento não concluído não recebe caixinha pelo link
+    const open = await appointment(shopId, proBarber, 'CONFIRMED');
+    await expect(tips.appTipOptions(createReviewToken(open.id))).rejects.toThrow();
   });
 });

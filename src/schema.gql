@@ -144,6 +144,37 @@ type AdvancedReportsType {
   walkIns: Int!
 }
 
+type AppTipGivenType {
+  amount: Float!
+
+  """professional | unit"""
+  destination: String!
+}
+
+type AppTipOptionsType {
+  barbershopName: String!
+  currency: String!
+
+  """Caixinhas que o cliente já deu pelo app"""
+  given: [AppTipGivenType!]!
+  maxAmount: Float!
+  minAmount: Float!
+
+  """O profissional recebe caixinha pelo app (conta ativa)"""
+  professional: Boolean!
+  professionalName: String!
+
+  """A unidade recebe caixinha pelo app (conta ativa)"""
+  unit: Boolean!
+}
+
+type AppTipPaymentType {
+  amount: Float!
+  clientSecret: String!
+  currency: String!
+  paymentIntentId: String!
+}
+
 type ApplyCouponResult {
   coupon: Coupon
   discountAmount: Float!
@@ -232,7 +263,7 @@ type AppointmentTipType {
   destination: String!
   id: Int!
 
-  """CASH | PIX | CARD"""
+  """CASH | PIX | CARD | STRIPE (pelo app)"""
   method: String!
 
   """Já entrou num pagamento do profissional (não dá mais pra apagar)"""
@@ -1797,6 +1828,7 @@ type Mutation {
   ): Boolean!
   completeFakePaymentAccount(accountId: String!): Boolean!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
+  confirmAppTip(paymentIntentId: String!, token: String!): Boolean!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   contactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
@@ -1878,6 +1910,7 @@ type Mutation {
   markNoShowFeeCollected(barbershopId: Int!, id: Int!): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
   moderateReview(hide: Boolean!, reviewId: Int!): Boolean!
+  myPaymentDashboardLink: PaymentAccountLinkType!
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
   openClientArea: Boolean!
   payBarber(barbershopId: Int!, input: PayBarberInput!): BarberPayoutType!
@@ -1891,6 +1924,7 @@ type Mutation {
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
   refreshBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
+  refreshMyPaymentAccount: PaymentAccountStatusType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
@@ -1944,9 +1978,17 @@ type Mutation {
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   staffContactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
+  startAppTip(
+    amount: Float!
+
+    """professional | unit"""
+    destination: String!
+    token: String!
+  ): AppTipPaymentType!
   startBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountLinkType!
   startDepositPayment(token: String!): DepositPaymentType!
   startIdentityVerification: IdentityVerificationStartType!
+  startMyPaymentAccount: PaymentAccountLinkType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
   submitReviewByLink(
@@ -2784,6 +2826,7 @@ type Query {
   allNotificationsWithUser(limit: Int! = 100): [NotificationWithUser!]!
   allOverduePayments(filters: OverduePaymentsFilters): [OverduePaymentDetail!]!
   allRecurringPaymentsStats: [AdminRecurringPaymentsStats!]!
+  appTipOptions(token: String!): AppTipOptionsType!
   appointment(barbershopId: Int!, id: Int!): Appointment
   appointmentChats(appointmentId: Int!, barbershopId: Int!): [ChatThreadType!]!
   appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
@@ -2883,6 +2926,7 @@ type Query {
   myNewNotifications: [UserNotification!]!
   myNotifications(limit: Int! = 10): [UserNotification!]!
   myNotificationsCount: NotificationCount!
+  myPaymentAccount: PaymentAccountStatusType!
   myPaymentMethods: [PaymentMethod!]!
   myPayments: [Payment!]!
   myPendingCustomerRatings: [PendingCustomerRatingType!]!

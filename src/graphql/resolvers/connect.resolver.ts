@@ -77,6 +77,29 @@ export class ConnectResolver {
     return this.connect.barbershopDashboardLink(user.id, barbershopId);
   }
 
+  // ---- profissional: caixinha pelo app ----
+
+  @Query(() => PaymentAccountStatusType)
+  myPaymentAccount(@CurrentUser() user: UserDTO) {
+    return this.connect.professionalStatus(user.id);
+  }
+
+  @ThrottleAuth()
+  @Mutation(() => PaymentAccountLinkType)
+  startMyPaymentAccount(@CurrentUser() user: UserDTO) {
+    return this.connect.startProfessionalOnboarding(user.id);
+  }
+
+  @Mutation(() => PaymentAccountStatusType)
+  refreshMyPaymentAccount(@CurrentUser() user: UserDTO) {
+    return this.connect.refreshProfessional(user.id);
+  }
+
+  @Mutation(() => PaymentAccountLinkType)
+  myPaymentDashboardLink(@CurrentUser() user: UserDTO) {
+    return this.connect.professionalDashboardLink(user.id);
+  }
+
   /** Só fora de produção, com o fornecedor falso (desenvolvimento e E2E) */
   @Mutation(() => Boolean)
   completeFakePaymentAccount(@Args('accountId') accountId: string, @CurrentUser() user: UserDTO) {
