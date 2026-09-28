@@ -7,6 +7,7 @@ import { AccountLinkResolver } from './resolvers/account-link.resolver';
 import { IdentityVerificationResolver } from './resolvers/identity-verification.resolver';
 import { ChatResolver } from './resolvers/chat.resolver';
 import { SupportResolver } from './resolvers/support.resolver';
+import { JobOpeningResolver } from './resolvers/job-opening.resolver';
 import { PushResolver } from './resolvers/push.resolver';
 import { ConnectResolver } from './resolvers/connect.resolver';
 import { PrepaymentResolver } from './resolvers/prepayment.resolver';
@@ -109,6 +110,7 @@ import { SocialModule } from '../social/social.module';
     IdentityVerificationResolver,
     ChatResolver,
     SupportResolver,
+    JobOpeningResolver,
     PushResolver,
     ConnectResolver,
     PrepaymentResolver,

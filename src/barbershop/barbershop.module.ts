@@ -28,6 +28,7 @@ import { GeocodingService } from './geocoding.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
+import { JobOpeningService } from './job-opening.service';
 import { EmployeeInviteController } from './employee-invite.controller';
 import { BullModule } from '@nestjs/bullmq';
 import {
@@ -91,10 +92,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PrepaymentService,
     BarbershopMediaService,
     GeocodingService,
+    JobOpeningService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
+    JobOpeningService,
     BarbershopMediaService,
     GeocodingService,
     ReviewRequestService,

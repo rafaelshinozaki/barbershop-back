@@ -1636,6 +1636,73 @@ type InventoryMovementType {
   referenceType: String
 }
 
+type JobApplicantType {
+  cities: [String!]!
+  createdAt: String!
+  id: Int!
+  identityVerified: Boolean!
+  message: String
+  name: String!
+
+  """Página /p/:slug, se visível"""
+  professionalSlug: String
+
+  """pending | accepted | rejected | withdrawn"""
+  status: String!
+}
+
+type JobApplyResultType {
+  id: Int!
+  status: String!
+}
+
+input JobOpeningInput {
+  barbershopId: Int!
+
+  """Especialidade; vazio = qualquer"""
+  category: TreatmentCategory
+  description: String
+
+  """AAAA-MM-DD, no fuso da unidade"""
+  endDate: String!
+
+  """Combinado de pagamento, em texto"""
+  payInfo: String
+
+  """Quantas pessoas (1 a 10)"""
+  slots: Int
+
+  """AAAA-MM-DD, no fuso da unidade"""
+  startDate: String!
+  title: String!
+}
+
+type JobOpeningType {
+  """Só na visão da unidade"""
+  applications: [JobApplicantType!]
+  barbershopId: Int!
+  barbershopName: String!
+  barbershopSlug: String!
+  category: TreatmentCategory
+  city: String!
+  createdAt: String!
+  description: String
+  endDate: String!
+  id: Int!
+
+  """Minha candidatura (visão do profissional)"""
+  myApplicationId: Int
+  myApplicationStatus: String
+  payInfo: String
+  slots: Int!
+  startDate: String!
+  state: String!
+
+  """open | filled | closed"""
+  status: String!
+  title: String!
+}
+
 input JoinPublicWaitlistInput {
   barberId: Int
   barbershopId: Int!
@@ -1828,6 +1895,7 @@ type MonthlyRevenueItem {
 }
 
 type Mutation {
+  acceptJobApplication(applicationId: Int!, barbershopId: Int!): JobOpeningType!
   addAppointmentTip(amount: Float!, appointmentId: Int!, barbershopId: Int!, destination: String!, method: String!, receivedByUnit: Boolean): AppointmentTipType!
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
   addBarbershopPhoto(barbershopId: Int!, caption: String, key: String!): BarbershopPhotoType!
@@ -1836,6 +1904,7 @@ type Mutation {
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
+  applyToJobOpening(message: String, openingId: Int!): JobApplyResultType!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
   barberAvatarUpload(barberId: Int!, contentType: String): PresignedUploadType!
   barbershopCoverUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
@@ -1867,6 +1936,7 @@ type Mutation {
   clientSignup(input: ClientSignupInput!): ClientAccountType!
   clientVerifyEmail(token: String!): Boolean!
   closeCashSession(barbershopId: Int!, input: CloseCashSessionInput!): CashSessionType!
+  closeJobOpening(barbershopId: Int!, id: Int!): JobOpeningType!
   completeFakeIdentityVerification(
     """verified | requires_input | other_person"""
     outcome: String!
@@ -1895,6 +1965,7 @@ type Mutation {
   createCustomer(barbershopId: Int!, input: CreateCustomerInput!): BarbershopCustomer!
   createExpense(barbershopId: Int!, input: CreateExpenseInput!): ExpenseType!
   createGiftCard(input: CreateGiftCardInput!): GiftCardType!
+  createJobOpening(input: JobOpeningInput!): JobOpeningType!
   createNotification(actionText: String, actionUrl: String, message: String!, title: String!, type: NotificationType! = INFO, userId: Int): UserNotification!
   createOrUpdateReview(input: CreateReviewInput!): Boolean!
   createPaymentIntent(couponCode: String, planId: Int!): PaymentIntentResponse!
@@ -1981,6 +2052,7 @@ type Mutation {
     barbershopId: Int!
     id: Int!
   ): Appointment!
+  rejectJobApplication(applicationId: Int!, barbershopId: Int!): JobOpeningType!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
@@ -2095,6 +2167,15 @@ type Mutation {
   verify2FA(input: Verify2FAInput!): User!
   verifyChangePasswordCode(input: VerifyChangePasswordCodeInput!): Boolean!
   waiveNoShowFee(barbershopId: Int!, id: Int!): Boolean!
+  withdrawJobApplication(applicationId: Int!): Boolean!
+}
+
+type MyJobApplicationType {
+  createdAt: String!
+  id: Int!
+  message: String
+  opening: JobOpeningType!
+  status: String!
 }
 
 type MyProfessionalReviewType {
@@ -2913,6 +2994,7 @@ type Query {
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopJobOpenings(barbershopId: Int!): [JobOpeningType!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
   barbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
   barbershopPhotos(barbershopId: Int!): [BarbershopPhotoType!]!
@@ -2989,6 +3071,7 @@ type Query {
   myConduct: CustomerConductType!
   myCoupons: [Coupon!]!
   myIdentityVerification: IdentityVerificationStatusType!
+  myJobApplications: [MyJobApplicationType!]!
   myNetwork: Network
   myNetworkTheme: NetworkTheme
   myNewNotifications: [UserNotification!]!
@@ -3013,6 +3096,7 @@ type Query {
   networkAppointments(barbershopId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   networkDashboardStats(barbershopId: Int): NetworkDashboardStats!
   onlinePaymentsAvailable: Boolean!
+  openJobOpenings(category: TreatmentCategory, city: String): [JobOpeningType!]!
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!
