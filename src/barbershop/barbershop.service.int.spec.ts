@@ -278,6 +278,72 @@ describe('BarbershopService (integração com o banco)', () => {
       const b = await prisma.customer.findUnique({ where: { id: B.customerId } });
       expect(b?.loyaltyPoints).toBe(1000);
     });
+
+    it('editar venda não troca cliente/profissional por um de outra franquia', async () => {
+      const own = await service.createSale(A.ownerId, A.shopId, {
+        customerId: A.customerId,
+        saleType: 'SERVICE',
+        items: [],
+        subtotal: 10,
+        total: 10,
+      });
+      for (const change of [{ customerId: B.customerId }, { barberId: B.barberId }]) {
+        await expect(
+          service.updateSale(A.ownerId, A.shopId, own.id, change),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      }
+      const after = await prisma.sale.findUniqueOrThrow({ where: { id: own.id } });
+      expect(after.customerId).toBe(A.customerId);
+      await prisma.sale.delete({ where: { id: own.id } });
+    });
+
+    it('fila de espera: não põe cliente de outra franquia nem mexe na fila de outra unidade', async () => {
+      const walkIn = (customerId: number, barberId?: number) =>
+        service.createWalkIn(A.ownerId, A.shopId, {
+          customerId,
+          barberId,
+          customerName: 'Fila',
+          services: [{ serviceId: A.serviceId }],
+        });
+      // A resposta traria a ficha (telefone, e-mail) do cliente da outra empresa
+      await expect(walkIn(B.customerId)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(walkIn(A.customerId, B.barberId)).rejects.toBeInstanceOf(NotFoundException);
+      const own = await walkIn(A.customerId);
+      await expect(
+        service.updateWalkInStatus(B.ownerId, B.shopId, own.id, 'CANCELLED'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.updateWalkInStatus(A.ownerId, A.shopId, own.id, 'QUALQUER'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect((await prisma.walkIn.findUniqueOrThrow({ where: { id: own.id } })).status).toBe(
+        'WAITING',
+      );
+      await expect(
+        service.updateWalkInStatus(A.ownerId, A.shopId, own.id, 'IN_PROGRESS'),
+      ).resolves.toMatchObject({ status: 'IN_PROGRESS' });
+      await prisma.walkInService.deleteMany({ where: { walkInId: own.id } });
+      await prisma.walkIn.delete({ where: { id: own.id } });
+    });
+
+    it('pacote não é vendido pra cliente de outra franquia', async () => {
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote X',
+          totalSessions: 3,
+          price: new Decimal(90),
+        },
+      });
+      await expect(
+        service.purchaseClientPackage(A.ownerId, A.shopId, {
+          customerId: B.customerId,
+          servicePackageId: offer.id,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(await prisma.clientPackage.count({ where: { servicePackageId: offer.id } })).toBe(0);
+      await prisma.servicePackage.delete({ where: { id: offer.id } });
+    });
   });
 
   // ============ Conflito de horário ============

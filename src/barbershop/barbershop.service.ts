@@ -259,6 +259,8 @@ const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
 // Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
 const SEARCH_CANDIDATE_LIMIT = 5000;
 
+const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -6012,7 +6014,15 @@ export class BarbershopService {
       services: Array<{ serviceId: number; quantity?: number; notes?: string }>;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    // Cliente, profissional e serviços têm de ser desta unidade/rede (a
+    // resposta traz a ficha do cliente: sem isso vazava a de outra empresa)
+    if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
+    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    await this.ensureItemsOfBarbershop(
+      barbershopId,
+      data.services.map((s) => s.serviceId),
+    );
     await assertSoloBookingAllowed(this.prisma, barbershopId, new Date());
     const maxPos = await this.prisma.walkIn.aggregate({
       where: { barbershopId, status: 'WAITING' },
@@ -6067,6 +6077,13 @@ export class BarbershopService {
 
   async updateWalkInStatus(userId: number, barbershopId: number, walkInId: number, status: string) {
     await this.ensureBarbershopAccess(userId, barbershopId);
+    if (!WALK_IN_STATUSES.includes(status)) throw new BadRequestException('Status inválido');
+    // Só a fila desta unidade (o id sozinho mexia na fila de qualquer uma)
+    const walkIn = await this.prisma.walkIn.findFirst({
+      where: { id: walkInId, barbershopId },
+      select: { id: true },
+    });
+    if (!walkIn) throw new NotFoundException('Cliente da fila não encontrado');
     const data: any = { status };
     if (status === 'IN_PROGRESS') data.servedAt = new Date();
     return this.prisma.walkIn.update({
@@ -6467,8 +6484,17 @@ export class BarbershopService {
       paymentMethod?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    // Como na criação: cliente, profissional e itens têm de ser desta
+    // unidade/rede (senão a venda aponta pra dado de outra empresa)
+    if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
+    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
     if (data.items) {
+      await this.ensureItemsOfBarbershop(
+        barbershopId,
+        data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
+        data.items.filter((i) => i.productId).map((i) => i.productId as number),
+      );
       const existingItems = await this.prisma.saleItem.findMany({
         where: { saleId, sale: { barbershopId } },
         select: { itemType: true, productId: true, quantity: true },
@@ -6908,7 +6934,8 @@ export class BarbershopService {
     barbershopId: number,
     data: { customerId: number; servicePackageId: number },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     await this.ensureModuleAccess(barbershopId, 'packages');
     const pkg = await this.prisma.servicePackage.findFirst({
       where: { id: data.servicePackageId, barbershopId, isActive: true },
