@@ -253,6 +253,9 @@ function waitlistBookUrl(
   return `${front}/u/${encodeURIComponent(slug)}?${params.toString()}`;
 }
 
+// Fichas com dado de saúde (sensível na LGPD): só com consentimento do cliente
+const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
+
 // Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
 const SEARCH_CANDIDATE_LIMIT = 5000;
 
@@ -6971,10 +6974,24 @@ export class BarbershopService {
       category?: string;
       answers?: string;
       expiresAt?: string;
+      healthConsent?: boolean;
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
     await this.ensureModuleAccess(barbershopId, 'packages');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: data.customerId, network: { barbershops: { some: { id: barbershopId } } } },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    // Dado de saúde é sensível (LGPD, art. 11): só com o consentimento do
+    // cliente, específico para esta ficha
+    const health = HEALTH_FORM_TYPES.includes(data.formType) && !!data.answers?.trim();
+    if (health && !data.healthConsent) {
+      throw new BadRequestException(
+        'Para registrar dados de saúde (alergias, condições), confirme que o cliente autorizou',
+      );
+    }
     return this.prisma.consentForm.create({
       data: {
         barbershopId,
@@ -6983,7 +7000,23 @@ export class BarbershopService {
         category: data.category,
         answers: data.answers,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+        ...(health ? { healthConsentAt: new Date(), healthConsentByUserId: userId } : {}),
       },
+    });
+  }
+
+  /**
+   * O cliente revogou o consentimento: as respostas de saúde são apagadas.
+   * Fica só o registro de que houve consentimento e de quando foi revogado.
+   */
+  async revokeHealthConsent(userId: number, barbershopId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId);
+    const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
+    if (!form) throw new NotFoundException('Ficha não encontrada');
+    if (!form.healthConsentAt || form.healthConsentRevokedAt) return form;
+    return this.prisma.consentForm.update({
+      where: { id },
+      data: { answers: null, healthConsentRevokedAt: new Date() },
     });
   }
 

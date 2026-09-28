@@ -1686,6 +1686,12 @@ model ConsentForm {
   signedAt      DateTime?
   expiresAt     DateTime? // ex.: teste de alergia válido por 48h antes do serviço
   status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED
+  // Dado de saúde (anamnese, teste de alergia) é sensível na LGPD: as
+  // respostas só entram com o consentimento do cliente, registrado aqui
+  // (quando e quem da equipe registrou). Revogar apaga as respostas.
+  healthConsentAt         DateTime?
+  healthConsentByUserId   Int?
+  healthConsentRevokedAt  DateTime?
   barbershop    Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer      Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
 

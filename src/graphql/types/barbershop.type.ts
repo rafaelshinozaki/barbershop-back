@@ -1364,6 +1364,14 @@ export class ConsentFormType {
   @Field()
   status: string;
 
+  /** Quando o cliente consentiu com o registro de dados de saúde nesta ficha */
+  @Field({ nullable: true })
+  healthConsentAt?: string;
+
+  /** Consentimento revogado: as respostas de saúde foram apagadas */
+  @Field({ nullable: true })
+  healthConsentRevokedAt?: string;
+
   @Field()
   createdAt: string;
 }

@@ -22,6 +22,16 @@ const addDays = (date: string, n: number) =>
 const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00-03:00`);
 // Os e-mails saem em segundo plano: espera assentar antes de conferir/limpar
 const settle = () => new Promise((r) => setTimeout(r, 50));
+// Espera até a condição valer (e-mail em segundo plano pode passar dos 50 ms
+// num CI carregado; limpar a lista antes dele chegar deixava um e-mail
+// atrasado cair no teste seguinte)
+async function until(check: () => boolean, timeoutMs = 5000) {
+  const end = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > end) throw new Error('Tempo esgotado esperando o e-mail');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 describe('Agendamento recorrente (integração)', () => {
   const prisma = new PrismaService();
@@ -170,6 +180,8 @@ describe('Agendamento recorrente (integração)', () => {
     await prisma.barbershopClosure.create({
       data: { barbershopId: shopId, date: addDays(monday, 42), reason: 'Feriado' },
     });
+    // A confirmação do horário avulso sai em segundo plano: espera chegar
+    await until(() => emails.length >= 1);
     await settle();
     emails.length = 0;
 
@@ -192,6 +204,7 @@ describe('Agendamento recorrente (integração)', () => {
     expect(appts.map((a) => a.seriesIndex)).toEqual([0, 4]);
 
     // Um e-mail só, com as duas datas
+    await until(() => emails.length >= 1);
     await settle();
     expect(emails).toHaveLength(1);
     expect(emails[0]).toMatchObject({
@@ -221,6 +234,7 @@ describe('Agendamento recorrente (integração)', () => {
       where: { seriesId },
       orderBy: { startAt: 'asc' },
     });
+    await until(() => emails.length >= 1);
     await settle();
     emails.length = 0;
     // Alguém esperando vaga num dos dias que vão ser liberados
@@ -243,6 +257,7 @@ describe('Agendamento recorrente (integração)', () => {
       'CANCELLED',
       'CANCELLED',
     ]);
+    await until(() => emails.some((e) => e.template === 'appointment_cancelled'));
     await settle();
     const cancelledEmails = emails.filter((e) => e.template === 'appointment_cancelled');
     expect(cancelledEmails).toHaveLength(1);
