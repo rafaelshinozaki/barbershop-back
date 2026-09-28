@@ -13,6 +13,7 @@ import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ModerationService } from './moderation.service';
+import { PushService } from '../push/push.service';
 
 export type ChatKind = 'unit' | 'professional';
 export const CHAT_KINDS: ChatKind[] = ['unit', 'professional'];
@@ -28,6 +29,18 @@ export type ChatViewer =
   | { side: 'staff'; userId: number };
 
 type Appt = NonNullable<Awaited<ReturnType<ChatService['loadAppointment']>>>;
+
+const CLIENT_PUSH_TEXT = {
+  pt: {
+    title: 'Nova mensagem',
+    message: (from: string) => `${from} respondeu sobre o seu atendimento.`,
+  },
+  en: {
+    title: 'New message',
+    message: (from: string) => `${from} replied about your appointment.`,
+  },
+  es: { title: 'Nuevo mensaje', message: (from: string) => `${from} respondió sobre tu cita.` },
+};
 
 const INBOX_TEXT = {
   pt: { title: 'Nova mensagem', message: (who: string) => `${who} mandou uma mensagem.` },
@@ -52,6 +65,7 @@ export class ChatService {
     private readonly queue: NotificationQueueService,
     private readonly realtime: RealtimeService,
     private readonly moderation: ModerationService,
+    private readonly push: PushService,
   ) {}
 
   private loadAppointment(appointmentId: number) {
@@ -79,7 +93,9 @@ export class ChatService {
             email: true,
             clientAccountId: true,
             blockedAt: true,
-            clientAccount: { select: { email: true, name: true, language: true, deletedAt: true } },
+            clientAccount: {
+              select: { id: true, email: true, name: true, language: true, deletedAt: true },
+            },
           },
         },
       },
@@ -274,6 +290,18 @@ export class ChatService {
     });
     await this.prisma.userNotification.createMany({ data });
     for (const n of data) this.realtime.notifyUsers([n.userId], 'CREATED', n.title);
+    // No celular também (sem o texto da mensagem, como no e-mail)
+    await this.push
+      .sendToUsers(
+        users.map((u) => u.id),
+        (lang) => ({
+          title: INBOX_TEXT[lang].title,
+          body: INBOX_TEXT[lang].message(who),
+          url: `/messages?appointment=${appt.id}`,
+          tag: `chat-${appt.id}`,
+        }),
+      )
+      .catch((error) => this.logger.warn(`Push do chat não enviado: ${error}`));
   }
 
   /** Equipe escreveu: e-mail pro cliente (sem o texto), no máximo um a cada 30 minutos */
@@ -283,6 +311,18 @@ export class ChatService {
     thread: { id: number; clientNotifiedAt: Date | null },
   ) {
     const account = appt.customer.clientAccount?.deletedAt ? null : appt.customer.clientAccount;
+    const from = kind === 'unit' ? appt.barbershop.name : appt.barber.name;
+    // Celular: a cada mensagem (a mesma tag substitui a anterior), sem o texto
+    if (account) {
+      await this.push
+        .sendToClient(account.id, (lang) => ({
+          title: CLIENT_PUSH_TEXT[lang].title,
+          body: CLIENT_PUSH_TEXT[lang].message(from),
+          url: `${appointmentManageUrl(appt.id)}#chat`,
+          tag: `chat-${appt.id}-${kind}`,
+        }))
+        .catch((error) => this.logger.warn(`Push do chat não enviado: ${error}`));
+    }
     const to = account?.email ?? appt.customer.email;
     if (!to) return;
     const now = Date.now();

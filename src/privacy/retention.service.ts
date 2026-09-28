@@ -27,6 +27,7 @@ export class RetentionService {
     const conductBefore = cutoffBefore(now, RETENTION_DAYS.clientConductNote);
     const chatBefore = cutoffBefore(now, RETENTION_DAYS.chatText);
     const supportBefore = cutoffBefore(now, RETENTION_DAYS.supportTicket);
+    const pushBefore = cutoffBefore(now, RETENTION_DAYS.pushSubscription);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -155,9 +156,15 @@ export class RetentionService {
       BATCH,
     );
 
+    // Aparelho que ninguém usa há 6 meses (trocou de celular, desinstalou)
+    const pushSubscriptions = (
+      await this.prisma.pushSubscription.deleteMany({ where: { lastUsedAt: { lt: pushBefore } } })
+    ).count;
+
     const result = {
       chatThreads,
       supportTickets,
+      pushSubscriptions,
       emailCopies,
       loginHistory,
       notifications,
