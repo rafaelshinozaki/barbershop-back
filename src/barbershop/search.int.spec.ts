@@ -170,6 +170,7 @@ describe('Busca por localização (integração)', () => {
 
   afterAll(async () => {
     await prisma.barbershop.deleteMany({ where: { id: { in: Object.values(shops) } } });
+    await prisma.barbershop.deleteMany({ where: { slug: { startsWith: `busca-denso-${RUN}-` } } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });
     await prisma.professional.deleteMany({ where: { id: { in: professionalIds } } });
@@ -278,5 +279,43 @@ describe('Busca por localização (integração)', () => {
     await expect(service.setProfessionalFeatured(bia.id, 'amanhã')).rejects.toThrow(
       'Data inválida',
     );
+  });
+
+  it('cidade densa: com mais de 500 unidades no raio, a mais perto não fica de fora', async () => {
+    // Outro ponto, só deste caso: 510 unidades a ~15 km e, criada por último, uma a ~0,5 km
+    const origin = { lat: ORIGIN.lat + 1, lng: ORIGIN.lng };
+    const base = {
+      address: 'Rua A, 1',
+      city: `Cidade Densa ${RUN}`,
+      state: 'SP',
+      country: 'BR',
+      postalCode: '01000000',
+      phone: '11999999999',
+      networkId,
+      ownerUserId: ownerId,
+      latitude: origin.lat,
+      timezone: 'UTC',
+    };
+    await prisma.barbershop.createMany({
+      data: Array.from({ length: 510 }, (_, i) => ({
+        ...base,
+        name: `Densa ${i} ${RUN}`,
+        slug: `busca-denso-${RUN}-${i}`,
+        email: `denso-${i}-${RUN}@test.local`,
+        longitude: origin.lng + 15 / 111.3,
+      })),
+    });
+    await prisma.barbershop.create({
+      data: {
+        ...base,
+        name: `Densa perto ${RUN}`,
+        slug: `busca-denso-${RUN}-perto`,
+        email: `denso-perto-${RUN}@test.local`,
+        longitude: origin.lng + 0.5 / 111.3,
+      },
+    });
+    const r = await service.searchPublicBarbershops({ ...origin, radiusKm: 25, limit: 1 });
+    expect(r.map((x) => x.slug)).toEqual([`busca-denso-${RUN}-perto`]);
+    expect(r[0].distanceKm).toBeCloseTo(0.5, 1);
   });
 });

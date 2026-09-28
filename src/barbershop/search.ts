@@ -94,6 +94,9 @@ type Rankable = {
   minPrice?: number | null;
 };
 
+// Um só comparador: localeCompare a cada par recria as regras do idioma
+const NAME_ORDER = new Intl.Collator('pt-BR');
+
 const nullsLast = (a: number | null | undefined, b: number | null | undefined, dir: 1 | -1) => {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -114,7 +117,7 @@ export function rankResults<T extends Rankable>(
 ): T[] {
   const score = (r: T) =>
     r.averageRating == null ? 0 : r.averageRating * (1 - 1 / Math.sqrt(r.reviewCount + 1));
-  const byName = (a: T, b: T) => a.name.localeCompare(b.name);
+  const byName = (a: T, b: T) => NAME_ORDER.compare(a.name, b.name);
   const compare: Record<SearchSort, (a: T, b: T) => number> = {
     distance: (a, b) => nullsLast(a.distanceKm, b.distanceKm, 1) || byName(a, b),
     rating: (a, b) =>

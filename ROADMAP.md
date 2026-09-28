@@ -524,6 +524,6 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Taxa por cliente novo do marketplace, se for decidida.
 - Troca de marca, quando houver.
 
-**5. Técnico, sem depender de ninguém**
-- Warnings de lint no back (~265, a maioria `no-non-null-assertion` e `any`; zero erros).
-- Teste de carga da busca e da agenda antes do piloto.
+**5. Técnico, sem depender de ninguém** ✅
+- Lint e tipos ✅: `strictNullChecks` ligado no back (98 erros corrigidos, alguns eram bugs: agenda .ics de quem saiu dava 500, `updateCoupon` com null quebrava, cupom/usuário inexistente virava TypeError) e lint com zero avisos, travado no CI (`--max-warnings 0`).
+- Teste de carga ✅ ([docs/LOAD_TEST.md](docs/LOAD_TEST.md)): 3.000 unidades, 9.000 profissionais e 360 mil agendamentos. Achou e corrigiu a busca que, numa cidade com mais de 500 unidades no raio, deixava as mais próximas de fora; a busca por localização ficou ~3× mais rápida (São Paulo: 31 → 99 req/s, p95 861 → 252 ms). Agenda, página da unidade e horários livres já aguentavam 100–200 req/s por instância.
