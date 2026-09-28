@@ -353,6 +353,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       { finalize: async () => false } as never,
       // Nem de compra de Destaque
       { finalize: async () => false } as never,
+      // Nem de taxa de vaga
+      { finalizeFee: async () => false } as never,
     );
     const deliver = (event: unknown) =>
       controller.handleWebhook('sig', { rawBody: Buffer.from(JSON.stringify(event)) } as never);

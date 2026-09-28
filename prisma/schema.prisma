@@ -2135,6 +2135,13 @@ model JobApplication {
   decidedAt    DateTime?
   // Convite criado ao aceitar
   inviteId     Int?
+  // Taxa por vaga preenchida (a unidade paga ao aceitar; valor de "Preços e taxas")
+  feeCents           Int?
+  feePaymentIntentId String?   @unique
+  feePayerUserId     Int?
+  feePaidAt          DateTime?
+  // Pagou, mas o aceite não deu certo: a taxa volta
+  feeRefundedAt      DateTime?
   jobOpening   JobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
