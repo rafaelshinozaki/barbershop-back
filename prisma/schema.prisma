@@ -70,6 +70,7 @@ model User {
   supportTickets         SupportTicket[]
   pushSubscriptions      PushSubscription[]
 
+  jobApplications JobApplication[]
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
 }
@@ -585,6 +586,7 @@ model Barbershop {
   socialConnection        SocialConnection?
   socialPosts             SocialPost[]
 
+  jobOpenings JobOpening[]
   @@index([networkId])
   @@index([ownerUserId])
   @@index([ownerUserId, practiceKind])
@@ -2084,4 +2086,54 @@ model PaymentAccount {
   createdByUserId  Int?
 
   @@unique([ownerType, ownerId])
+}
+
+// Vaga para freelancer: a unidade pede alguém por um período ("preciso de
+// barbeiro sábado"). Aceitar uma candidatura cria o convite com vínculo
+// temporário, pelo fluxo de convite de sempre.
+model JobOpening {
+  id              Int                @id @default(autoincrement())
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  barbershopId    Int
+  createdByUserId Int
+  title           String
+  description     String?
+  // Especialidade procurada (para filtrar); vazio = qualquer
+  category        TreatmentCategory?
+  // Período do vínculo, AAAA-MM-DD no fuso da unidade
+  startDate       String
+  endDate         String
+  // Combinado de pagamento em texto livre ("R$ 200 a diária", "40% dos atendimentos")
+  payInfo         String?
+  // Quantas pessoas a unidade procura
+  slots           Int                @default(1)
+  // open | filled | closed
+  status          String             @default("open")
+  closedAt        DateTime?
+  barbershop      Barbershop         @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  applications    JobApplication[]
+
+  @@index([status, startDate])
+  @@index([barbershopId])
+}
+
+model JobApplication {
+  id           Int        @id @default(autoincrement())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  jobOpeningId Int
+  // Quem se candidata (conta da equipe, com o perfil de profissional)
+  userId       Int
+  message      String?
+  // pending | accepted | rejected | withdrawn
+  status       String     @default("pending")
+  decidedAt    DateTime?
+  // Convite criado ao aceitar
+  inviteId     Int?
+  jobOpening   JobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jobOpeningId, userId])
+  @@index([userId])
 }
