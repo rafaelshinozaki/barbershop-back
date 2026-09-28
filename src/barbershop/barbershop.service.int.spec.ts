@@ -691,6 +691,55 @@ describe('BarbershopService (integração com o banco)', () => {
       await expect(sale({ giftCardCode: card.code })).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('valor negativo não recarrega cartão-presente nem dá pontos', async () => {
+      const card = await prisma.giftCard.create({
+        data: {
+          networkId: A.networkId,
+          code: `INT${RUN}N`,
+          initialValue: new Decimal(30),
+          remainingValue: new Decimal(30),
+        },
+      });
+      // Antes: "debitava" -50 do cartão (saldo ia a 80) e -500 pontos (virava +500)
+      for (const extra of [
+        { giftCardCode: card.code, subtotal: -50, total: -50 },
+        { loyaltyPointsRedeemed: -500 },
+        { discountAmount: Number.NaN },
+        {
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: -1,
+              unitPrice: 100,
+              totalPrice: -100,
+            },
+          ],
+        },
+      ]) {
+        await expect(sale(extra)).rejects.toBeInstanceOf(BadRequestException);
+      }
+      const own = await sale({ paymentStatus: 'PENDING' });
+      await expect(
+        service.updateSale(A.ownerId, A.shopId, own.id, { total: -10 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(
+        Number(
+          (await prisma.giftCard.findUniqueOrThrow({ where: { id: card.id } })).remainingValue,
+        ),
+      ).toBe(30);
+      expect(
+        (await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } })).loyaltyPoints,
+      ).toBe(100);
+      await expect(
+        service.createExpense(A.ownerId, A.shopId, {
+          category: 'OTHER',
+          description: 'x',
+          amount: -20,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('resgate de pontos: 50 pontos × R$0,10 = R$5 de desconto, e ganha pontos do valor pago', async () => {
       const s = await sale({ loyaltyPointsRedeemed: 50 });
       expect(Number(s.total)).toBe(95);
