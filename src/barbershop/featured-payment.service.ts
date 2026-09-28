@@ -185,6 +185,17 @@ export class FeaturedPaymentService {
       return false;
     }
     if (purchase.status === 'paid') return true;
+    // O pagamento tem de ser desta compra e do valor dela
+    if (
+      intent.metadata?.kind !== KIND ||
+      intent.amount < purchase.amountCents ||
+      (purchase.stripePaymentIntentId && purchase.stripePaymentIntentId !== intent.id)
+    ) {
+      this.logger.warn(
+        `Pagamento ${intent.id} não confere com a compra de Destaque #${purchase.id}`,
+      );
+      return false;
+    }
     const claimed = await this.prisma.featuredPurchase.updateMany({
       where: { id: purchase.id, status: { not: 'paid' } },
       data: { status: 'paid', paidAt: new Date(), stripePaymentIntentId: intent.id },
