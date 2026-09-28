@@ -21,6 +21,8 @@ export const RETENTION_DAYS = {
   supportTicket: 365 * 2,
   /** Inscrição de notificação no celular sem uso. */
   pushSubscription: 180,
+  /** Busca registrada para a métrica do piloto (sem dado pessoal). */
+  searchEvent: 365,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

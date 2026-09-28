@@ -11,6 +11,7 @@ import { SharedLocationService } from '@/barbershop/shared-location.service';
 import { ReviewRequestService } from '@/barbershop/review-request.service';
 import { ClosureService } from '@/barbershop/closure.service';
 import { DepositPaymentService } from '@/barbershop/deposit-payment.service';
+import { PilotMetricsService } from '@/barbershop/pilot-metrics.service';
 import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
@@ -69,6 +70,7 @@ export class PublicBookingResolver {
     private readonly reviewRequests: ReviewRequestService,
     private readonly closures: ClosureService,
     private readonly deposits: DepositPaymentService,
+    private readonly pilot: PilotMetricsService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -101,7 +103,10 @@ export class PublicBookingResolver {
 
   @Query(() => [PublicBarbershopSearchResultType])
   async searchBarbershops(@Args('input') input: SearchBarbershopsInput) {
-    return this.barbershopService.searchPublicBarbershops(input);
+    const results = await this.barbershopService.searchPublicBarbershops(input);
+    // Métrica do piloto: a busca achou horário em até 48 h?
+    void this.pilot.recordSearch(input, results);
+    return results;
   }
 
   @Query(() => [PublicProfessionalSearchResultType])

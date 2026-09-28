@@ -2189,3 +2189,24 @@ model PlatformSetting {
   updatedAt       DateTime @updatedAt
   updatedByUserId Int?
 }
+
+// Busca pública de unidades, para a métrica do piloto: a busca achou horário
+// livre em até 48 h? Sem dado pessoal: só cidade, categoria e as unidades do
+// topo. Um job avalia cada busca pouco depois (evaluatedAt/foundWithin48h).
+model SearchEvent {
+  id               Int                @id @default(autoincrement())
+  createdAt        DateTime           @default(now())
+  // Cidade pedida, ou a da primeira unidade quando a busca foi por localização
+  city             String?
+  category         TreatmentCategory?
+  hasPoint         Boolean            @default(false)
+  resultCount      Int
+  // As primeiras unidades mostradas (até 5)
+  topBarbershopIds Int[]
+  evaluatedAt      DateTime?
+  // Alguma das primeiras tinha horário livre em até 48 h da busca
+  foundWithin48h   Boolean?
+
+  @@index([evaluatedAt])
+  @@index([createdAt])
+}
