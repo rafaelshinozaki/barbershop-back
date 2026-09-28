@@ -1,7 +1,7 @@
 /**
- * Preços e taxas da plataforma. Os valores abaixo são genéricos, provisórios
- * até o produto decidir: o admin muda em "Preços e taxas" no backoffice, sem
- * deploy (fica na tabela PlatformSetting). O código lê daqui, de um cache em
+ * Preços e taxas da plataforma. Os padrões abaixo são os decididos para o
+ * piloto (ver "Decisões tomadas" no ROADMAP); o admin muda em "Preços e
+ * taxas" no backoffice, sem deploy (fica na tabela PlatformSetting). O código lê daqui, de um cache em
  * memória que o PricingService carrega ao subir, atualiza a cada minuto e
  * troca na hora quando o admin salva.
  */
@@ -20,11 +20,11 @@ export type Pricing = {
 
 export const DEFAULT_PRICING: Pricing = {
   platformFeePercent: 15,
-  proPriceCents: 4900,
-  featuredShopPriceCents: 2900,
-  featuredProPriceCents: 1900,
+  proPriceCents: 3990,
+  featuredShopPriceCents: 4990,
+  featuredProPriceCents: 2490,
   featuredDays: 30,
-  jobFillFeeCents: 1500,
+  jobFillFeeCents: 1490,
 };
 
 /** Limites do que o admin pode salvar (evita erro de digitação virar cobrança absurda) */

@@ -411,7 +411,7 @@ Objetivo: o profissional passa a ter vida própria na plataforma, e o modo solo 
 - **Cadastro com escolha de tipo + "Perfis e privacidade"** ✅ (itens 5 e 6), começando pelo profissional dentro do `User`. O primeiro passo é "quero agendar" (segue no login de cliente), "sou profissional" ou "tenho um estabelecimento", com "eu também atendo". A página ao lado de Segurança guarda visibilidade (público, só na plataforma, oculto), disponível para contratação, aceitando clientes novos e o que cada campo mostra. Unificar com o `ClientAccount` fica para o H3. Domicílio continua no H5.
 - **Panorama de carreira** ✅, sempre grátis (item 8): `myCareer` junta as unidades em que a pessoa ainda está ligada. De uma unidade da qual ela saiu, cada atendimento antigo mostra só o primeiro nome e a data. O perfil público (`/p/:slug`) nasce oculto; quando ela liga, a página é de profissional e, se for dona, aponta para o estabelecimento. A nota pessoal veio no H3 (avaliação por profissional).
 - **Modo solo** ✅ com cota de **30** atendimentos concluídos e **30** produtos vendidos por mês (item 8). A agenda, os clientes, os serviços e o link `/u/:slug` nascem como uma unidade de uma pessoa só, fora da cota de unidades do plano. O primeiro mês acima de cada teto segue aberto; no segundo mês seguido, o que é novo para e o que já estava marcado ou vendido continua. O limite de sessões e a cota por CPF continuam em aberto.
-- **Preço do Pro** ✅ provisório: **R$ 49,00 por mês** (`PRO_PRICE_CENTS` em `src/barbershop/pro.ts`), no meio da faixa R$ 39–59. Enquanto o Pro vale, a cota do solo não trava. A cobrança no cartão continua na mesma trilha Stripe dos planos e será ajustada quando o mercado fechar o número.
+- **Preço do Pro** ✅ **R$ 39,90 por mês** (padrão em `src/pricing/pricing.ts`, editável em Preços e taxas; ver "Decisões tomadas"). Enquanto o Pro vale, a cota do solo não trava. A cobrança no cartão segue a mesma trilha Stripe dos planos.
 - **Importação de dados** ✅ de outros sistemas (Booksy, Trinks, planilha): clientes, serviços e agenda, com prévia antes de gravar. Horário passado entra como histórico e não consome a cota do solo; horário futuro entra na agenda.
 - **Indicação entre profissionais** ✅: cada um tem um código. Quem entra com o código de outro profissional ganha **1 mês de Pro**, e quem indicou também. Uma conta só aceita uma indicação. Não dá para usar o próprio código.
 
@@ -468,46 +468,68 @@ Objetivo: abrir de verdade, começando pequeno.
 - **Cidade piloto + 1–2 categorias** (ex.: barbeiro e manicure em uma cidade). Enche a oferta primeiro (com o modo solo do H2) e só depois abre a busca ao público.
 - **Atendimento a domicílio** (item 9): área, taxa, deslocamento na agenda, sinal obrigatório/recomendado, endereço só para quem atende, botão de ajuda.
 - **Nota do cliente** dada pelo profissional (item 3), só depois do jurídico no H4.
-- **"Destaque" do profissional** ✅, no mesmo modelo do destaque da unidade: o admin liga até uma data na aba Profissionais da página de Destaque do backoffice; o profissional destacado sobe no topo da busca por relevância (a ordem escolhida pela pessoa continua valendo) e ganha o selo. Compra com cartão ✅ (unidade e profissional): 30 dias por compra, somando ao que já vale, pelo card "Destaque na busca" (página pública da unidade, para dono e gerente; Perfis e privacidade, para o profissional com a página pública). É receita da plataforma, sem Connect. Preço e dias vêm de Preços e taxas (padrão R$ 29,00 a unidade e R$ 19,00 o profissional, por 30 dias). Três dias antes de vencer, quem tem o Destaque recebe um aviso no sininho e no celular (uma vez por vencimento), e o backoffice tem a aba Compras com a receita (últimos 30 dias e total) e a lista das compras pagas.
+- **"Destaque" do profissional** ✅, no mesmo modelo do destaque da unidade: o admin liga até uma data na aba Profissionais da página de Destaque do backoffice; o profissional destacado sobe no topo da busca por relevância (a ordem escolhida pela pessoa continua valendo) e ganha o selo. Compra com cartão ✅ (unidade e profissional): 30 dias por compra, somando ao que já vale, pelo card "Destaque na busca" (página pública da unidade, para dono e gerente; Perfis e privacidade, para o profissional com a página pública). É receita da plataforma, sem Connect. Preço e dias vêm de Preços e taxas (padrão R$ 49,90 a unidade e R$ 24,90 o profissional, por 30 dias). Três dias antes de vencer, quem tem o Destaque recebe um aviso no sininho e no celular (uma vez por vencimento), e o backoffice tem a aba Compras com a receita (últimos 30 dias e total) e a lista das compras pagas.
 - **Vagas para freelancer** ✅: a unidade (gerente e dono) abre uma vaga por período (até 90 dias, com especialidade, número de pessoas e o combinado de pagamento em texto). Os profissionais da plataforma veem as vagas abertas em Vagas, com filtro por cidade e especialidade, e se candidatam com uma mensagem. A unidade aceita, e isso vira o convite com vínculo temporário no período da vaga (o mesmo fluxo de convite), ou recusa. Cada resposta e o encerramento avisam no sininho e no celular. A taxa por vínculo fechado ✅ sai de Preços e taxas: com Stripe, aceitar o freelancer pede o pagamento com cartão e o convite sai quando confirma; se o aceite não der mais certo, a taxa volta.
 - Lista de espera no marketplace ✅ (primeira parte): na janela de agendamento, dia aberto e cheio, o cliente pede "me avise se abrir vaga" com o profissional escolhido ou qualquer um. Entra no fim da mesma fila da equipe (marcada como online), recebe um e-mail com o link para sair, e o aviso de vaga chega no e-mail informado com o botão "Agendar agora" já no dia. Até 60 dias à frente, no máximo 5 dias aguardando por pessoa e 5 entradas por e-mail a cada 24 horas (a confirmação não vira disparador contra o e-mail de outra pessoa), e cliente bloqueado não entra. Também avisa quando a agenda abre horário novo ✅ (folga desfeita, fechamento removido, escala ou horário de funcionamento ampliados): compara os horários livres de antes e de depois e avisa, na ordem de entrada, quem ganhou um horário que não havia.
 
 Sucesso: liquidez na cidade piloto (a maioria das buscas encontra horário em até 48h), retenção dos dois lados; só então replicar para outras cidades.
 
-#### Preços e taxas (genéricos, editáveis sem deploy) ✅
-Todos os valores cobrados pela plataforma ficam num lugar só (`src/pricing/pricing.ts`) e o admin muda em Backoffice → Preços e taxas, sem deploy (tabela `PlatformSetting`). Os padrões são genéricos, para refinar com números reais:
+#### Preços e taxas (editáveis sem deploy) ✅
+Todos os valores cobrados pela plataforma ficam num lugar só (`src/pricing/pricing.ts`) e o admin muda em Backoffice → Preços e taxas, sem deploy (tabela `PlatformSetting`). Padrões decididos para o piloto (ver "Decisões tomadas"):
 
 | Item | Padrão |
 |---|---|
 | Taxa da plataforma sobre o que passa pelo Stripe (sinal, pagamento pelo app, caixinha, repasses) | 15% |
-| Pro (por mês) | R$ 49,00 |
-| Destaque da unidade (por período) | R$ 29,00 |
-| Destaque do profissional (por período) | R$ 19,00 |
+| Pro (por mês) | R$ 39,90 |
+| Destaque da unidade (por período) | R$ 49,90 |
+| Destaque do profissional (por período) | R$ 24,90 |
 | Dias de Destaque por compra | 30 |
-| Taxa por vaga preenchida (a unidade paga ao aceitar o freelancer; 0 desliga) | R$ 15,00 |
+| Taxa por vaga preenchida (a unidade paga ao aceitar o freelancer; 0 desliga) | R$ 14,90 |
 
 Mudar vale para as próximas cobranças; o que já foi pago fica como estava.
 
-#### Decisões em aberto (definir antes do horizonte indicado)
-- **Preço do Pro** (H2). A cota grátis já está definida: **30 atendimentos concluídos** e **30 produtos vendidos** por conta própria por mês, não por faturamento.
-- **Marca** que sirva para beleza em geral (H1/H3).
-- **Cobrar por cliente novo do marketplace?** Se sim, taxa pequena com teto baixo, nunca os 30% do Booksy (H5).
-- **Cidade e categorias do piloto** (H5).
-- **Validação jurídica**: nota do cliente, ficha técnica, domicílio, contrato do autônomo e os prazos da tabela de guarda, inclusive o piso fiscal no Brasil e em cada país europeu em que houver cliente (H4).
+#### Decisões tomadas (2026-09-28)
+Fechadas pelo que faz mais sentido para um app de agendamento de beleza no Brasil. Todas podem ser revistas; os preços mudam no backoffice sem deploy.
+
+**Preços** (já são os padrões do código)
+- **Pro: R$ 39,90/mês.** Abaixo dos concorrentes para o profissional sozinho (em geral R$ 50–100/mês). Quem passa da cota grátis de 30 atendimentos/mês fatura bem acima de R$ 1.000 no mês, então o plano pesa menos de 4%. O final ",90" é o padrão do varejo no Brasil. A cota grátis continua em 30 atendimentos e 30 produtos por mês.
+- **Destaque da unidade: R$ 49,90 por 30 dias; do profissional: R$ 24,90.** A conta é "um cliente novo paga o mês": um corte custa em média R$ 40–60. O profissional paga metade porque ocupa menos espaço na vitrine e ganha menos que uma unidade.
+- **Taxa por vaga preenchida: R$ 14,90**, cerca de 6–7% de uma diária de freelancer (R$ 200–250). É barata o bastante para não empurrar a contratação para fora do app.
+- **Taxa sobre pagamentos pelo app: 15%**, mantida (decidida antes). Vale só para o que passa pelo Stripe; dinheiro e Pix registrados na mão não pagam.
+
+**Cliente novo do marketplace**
+- **No piloto: não cobra.** Primeiro enche a oferta e prova que funciona; cobrar cedo afasta justo quem queremos atrair.
+- **Depois do piloto:** 10% do primeiro atendimento concluído, com teto de R$ 10, só quando: o cliente nunca foi àquele negócio, chegou pela busca/vitrine da plataforma (não pelo link, QR ou site do próprio negócio) e o atendimento foi concluído (sem cobrança em falta ou cancelamento). Nunca em cliente recorrente. Entra como mais um item em Preços e taxas (padrão 0 até ligar).
+
+**Cidade e categorias do piloto**
+- **São José dos Campos (SP).** É onde está a base do time (a Green e os dados de exemplo são de lá). Com ~700 mil habitantes, é grande o bastante para ter demanda e pequena o bastante para encher a oferta indo de porta em porta. Próximas: Jacareí, Taubaté e Caçapava (Vale do Paraíba), depois a capital.
+- **Categorias: barbearia e unhas (manicure/pedicure).** São os serviços de maior frequência (a cada 2–4 semanas), o que gera recorrência e liquidez rápido. Uma categoria masculina e uma feminina dobram o público sem dobrar o esforço de venda.
+- **Abrir a busca ao público** só quando cada categoria tiver pelo menos 30 negócios ou profissionais com agenda online ativa na cidade. Meta: a maioria das buscas acha horário em até 48 h.
+
+**Marca**
+- **Nome de trabalho: "Marcaí"** (de "marca aí"). É curto, brasileiro, fala de agendar e serve para qualquer serviço de beleza, não só barbearia. **Antes de adotar:** busca no INPI (classes 35, 42 e 44) e checar `marcai.com.br` e os @ nas redes. Se estiver tomado, na ordem: "Horaí", "Cadeira Livre". Até lá o app segue como "Barbershop"; a troca (nome, logo, ícones do PWA, textos, e-mails) é uma tarefa só, depois da checagem.
+
+**Jurídico: o caminho conservador até o advogado confirmar**
+- **Nota do cliente:** fica só dentro do negócio que avaliou. Não é compartilhada com outros negócios nem mostrada ao público. Compartilhar entre negócios só depois do parecer (LGPD: finalidade e transparência).
+- **Ficha técnica** (fórmula de coloração, alergias): dado do negócio, visível só à equipe da unidade; sai junto quando a ficha do cliente é apagada. Alergia é dado de saúde (sensível na LGPD): só com consentimento do cliente.
+- **Atendimento a domicílio: fora do piloto.** Entra depois dos termos específicos (responsabilidade, segurança, botão de ajuda).
+- **Freelancer e autônomo:** a plataforma só aproxima. O combinado e o pagamento são entre a unidade e o profissional, e os termos dizem isso claramente (sem subordinação à plataforma).
+- **Prazos de guarda:** vale a tabela proposta (o job de retenção já roda). Registros financeiros e fiscais ficam 5 anos (prazo do Código Tributário).
+- **Nota fiscal:** a plataforma emite NFS-e só da **própria receita** (Pro, Destaque, taxa da vaga, taxa sobre pagamentos), de forma automática, por um emissor integrado (Focus NFe, NFE.io ou eNotas). O atendimento e a caixinha são receita do negócio/profissional, e a plataforma não emite por eles.
+- **Só Brasil no piloto.** GDPR e os prazos europeus ficam para quando houver cliente na União Europeia.
+- **Termos de uso e Política de privacidade:** reescrever com base nas decisões acima e passar por um advogado antes de abrir ao público.
 
 ## O que falta (mapa em 2026-09-28)
 O código de H1 a H5 está pronto, com exceção do que depende das decisões abaixo. O seed de demonstração (`SEED_DEMO=true`) cobre as telas novas: vagas, Destaque pago, compras no backoffice e lista de espera online.
 
-**1. Decisões do produto** (destravam o que está em "Decisões em aberto")
-- Preços finais: taxa da plataforma, Pro, Destaque e taxa por vaga (hoje genéricos; mudam no backoffice sem deploy).
-- Marca para beleza em geral (troca nome, logo, ícones do PWA e textos).
-- Cobrar ou não por cliente novo vindo do marketplace, e quanto (taxa pequena com teto).
-- Cidade e categorias do piloto (define onde encher a oferta antes de abrir a busca).
+**1. Decisões do produto** ✅ (ver "Decisões tomadas")
+- Preços do piloto já são os padrões do código; cidade e categorias do piloto definidas; cliente novo do marketplace sem cobrança no piloto.
+- Falta só checar a marca no INPI e o domínio antes de trocar o nome.
 
-**2. Jurídico**
-- Textos finais dos Termos de uso e da Política de privacidade (as páginas `/terms` e `/privacy` existem com texto provisório).
-- Nota do cliente dada pelo profissional, ficha técnica, contrato do autônomo/freelancer e prazos da tabela de guarda (o job de retenção já roda com os números propostos).
-- Fiscal: nota fiscal das cobranças da plataforma (planos, Destaque, taxa da vaga) e da caixinha.
+**2. Jurídico** (caminho decidido; falta o advogado revisar)
+- Reescrever Termos de uso e Política de privacidade com as decisões tomadas (as páginas `/terms` e `/privacy` existem com texto provisório) e passar por advogado.
+- Confirmar os prazos da tabela de guarda e o consentimento para dado de saúde na ficha técnica.
+- Contratar o emissor de NFS-e (Focus NFe, NFE.io ou eNotas) e o cadastro municipal da empresa.
 
 **3. Configuração de produção** (ninguém precisa programar)
 - Stripe: chaves live, webhook da plataforma e do Connect (`STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`), Identity ligado na conta.
@@ -518,11 +540,13 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Geocodificação: o Nominatim público tem limite de uso; em produção, um serviço próprio ou pago em `GEOCODING_URL`.
 - Operação: backup do Postgres, monitoramento de erros e alertas (hoje só logs).
 
-**4. Código que espera as decisões**
-- Atendimento a domicílio (item 9): área, taxa de deslocamento, deslocamento na agenda, endereço só para quem atende, botão de ajuda. Espera o jurídico (domicílio) e o piloto.
-- Nota do cliente visível para outros profissionais (item 3), depois do jurídico.
-- Taxa por cliente novo do marketplace, se for decidida.
-- Troca de marca, quando houver.
+**4. Código que as decisões destravam**
+- Emissão automática de NFS-e da receita da plataforma (integração com o emissor escolhido).
+- Consentimento do cliente para alergias/dados de saúde na ficha técnica.
+- Origem do agendamento (vitrine da plataforma × link do próprio negócio), para medir o piloto agora e cobrar o cliente novo depois do piloto.
+- Métrica do piloto no backoffice: buscas na cidade que acharam horário em até 48 h, por categoria.
+- Troca de marca, depois da checagem no INPI.
+- Atendimento a domicílio (item 9) e nota do cliente entre negócios: só depois do piloto e do parecer jurídico.
 
 **5. Técnico, sem depender de ninguém** ✅
 - Lint e tipos ✅: `strictNullChecks` ligado no back (98 erros corrigidos, alguns eram bugs: agenda .ics de quem saiu dava 500, `updateCoupon` com null quebrava, cupom/usuário inexistente virava TypeError) e lint com zero avisos, travado no CI (`--max-warnings 0`).

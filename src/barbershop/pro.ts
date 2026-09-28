@@ -1,6 +1,6 @@
 import { currentPricing } from '../pricing/pricing';
 
-/** Preço do Pro: vem de "Preços e taxas" (padrão provisório R$ 49,00, ver src/pricing/pricing.ts) */
+/** Preço do Pro: vem de "Preços e taxas" (padrão R$ 39,90, ver src/pricing/pricing.ts) */
 export function proPriceCents() {
   return currentPricing().proPriceCents;
 }

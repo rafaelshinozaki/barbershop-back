@@ -4,7 +4,7 @@ describe('pro', () => {
   const now = new Date('2026-09-26T15:00:00.000Z');
 
   it('mostra o preço provisório', () => {
-    expect(proPriceLabel()).toBe('R$ 49,00');
+    expect(proPriceLabel()).toBe('R$ 39,90');
   });
 
   it('começa o mês a partir de agora quando não há Pro', () => {
