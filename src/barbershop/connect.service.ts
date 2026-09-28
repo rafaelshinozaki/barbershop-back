@@ -31,6 +31,9 @@ export function platformFeeCents(amountCents: number) {
  * disputa seguem pelo Stripe. Quem não liga continua como antes: o
  * dinheiro entra na plataforma e o repasse é manual, pelo relatório.
  *
+ * O profissional também pode ter a própria conta, pra receber a caixinha
+ * que o cliente dá pelo app.
+ *
  * Fora de produção, sem Stripe configurado, um fornecedor falso faz o papel
  * do Stripe (desenvolvimento e testes).
  */
@@ -83,72 +86,135 @@ export class ConnectService {
    */
   async startBarbershopOnboarding(userId: number, barbershopId: number) {
     const shop = await this.barbershops.ensureAccess(userId, barbershopId, 'owner');
-    // Volta pra página Serviços, onde fica o card "Receber pelo app"
-    const back = `${this.frontendUrl()}/barbershops/${barbershopId}/services`;
-    let acc = await this.account('barbershop', barbershopId);
+    return this.startOnboarding('barbershop', barbershopId, userId, {
+      country: shop.country,
+      businessName: shop.name,
+      url: `${this.frontendUrl()}/u/${shop.slug}`,
+      // Volta pra página Serviços, onde fica o card "Receber pelo app"
+      back: `${this.frontendUrl()}/barbershops/${barbershopId}/services`,
+    });
+  }
+
+  /** Voltou da página do Stripe: busca a situação lá (sem esperar o webhook) */
+  async refreshBarbershop(userId: number, barbershopId: number) {
+    await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    return this.refresh('barbershop', barbershopId);
+  }
+
+  /** Painel do Stripe da conta (extrato, repasses, dados bancários). Só o dono. */
+  async barbershopDashboardLink(userId: number, barbershopId: number) {
+    await this.barbershops.ensureAccess(userId, barbershopId, 'owner');
+    return this.dashboardLink('barbershop', barbershopId);
+  }
+
+  // ---- profissional (caixinha pelo app) ----
+
+  private async professionalOf(userId: number) {
+    const professional = await this.prisma.professional.findUnique({
+      where: { userId },
+      include: { user: { select: { fullName: true } } },
+    });
+    if (!professional) {
+      throw new BadRequestException('Crie o seu perfil de profissional antes.');
+    }
+    return professional;
+  }
+
+  async professionalStatus(userId: number) {
+    const professional = await this.professionalOf(userId);
+    return this.view(await this.account('professional', professional.id));
+  }
+
+  /** Conta de recebimento do próprio profissional (caixinha pelo app) */
+  async startProfessionalOnboarding(userId: number) {
+    const professional = await this.professionalOf(userId);
+    // País: o da unidade onde atende (a conta do Stripe é por país)
+    const link = await this.prisma.barber.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { barbershop: { select: { country: true } } },
+    });
+    return this.startOnboarding('professional', professional.id, userId, {
+      country: link?.barbershop.country ?? 'BR',
+      businessName: professional.user.fullName,
+      url: professional.slug ? `${this.frontendUrl()}/p/${professional.slug}` : undefined,
+      back: `${this.frontendUrl()}/profile-privacy`,
+    });
+  }
+
+  async refreshProfessional(userId: number) {
+    const professional = await this.professionalOf(userId);
+    return this.refresh('professional', professional.id);
+  }
+
+  async professionalDashboardLink(userId: number) {
+    const professional = await this.professionalOf(userId);
+    return this.dashboardLink('professional', professional.id);
+  }
+
+  // ---- comum ----
+
+  private async startOnboarding(
+    ownerType: PaymentOwnerType,
+    ownerId: number,
+    userId: number,
+    ctx: { country: string; businessName: string; url?: string; back: string },
+  ) {
+    let acc = await this.account(ownerType, ownerId);
     const provider = this.provider();
     if (!acc) {
       let stripeAccountId: string;
       if (provider === 'stripe') {
-        const owner = await this.prisma.user.findUnique({
+        const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: { email: true },
         });
         const created = await this.stripe.createConnectAccount({
-          country: (shop.country || 'BR').toUpperCase(),
-          email: owner?.email,
-          businessName: shop.name,
-          url: `${this.frontendUrl()}/u/${shop.slug}`,
-          metadata: { ownerType: 'barbershop', ownerId: String(barbershopId) },
+          country: (ctx.country || 'BR').toUpperCase(),
+          email: user?.email,
+          businessName: ctx.businessName,
+          url: ctx.url,
+          metadata: { ownerType, ownerId: String(ownerId) },
         });
         stripeAccountId = created.id;
       } else {
         stripeAccountId = `acct_fake_${randomBytes(8).toString('hex')}`;
       }
       acc = await this.prisma.paymentAccount.create({
-        data: {
-          ownerType: 'barbershop',
-          ownerId: barbershopId,
-          provider,
-          stripeAccountId,
-          createdByUserId: userId,
-        },
+        data: { ownerType, ownerId, provider, stripeAccountId, createdByUserId: userId },
       });
     }
     if (acc.provider === 'stripe') {
       const link = await this.stripe.createAccountOnboardingLink(
         acc.stripeAccountId,
-        `${back}?connect=return`,
-        `${back}?connect=refresh`,
+        `${ctx.back}?connect=return`,
+        `${ctx.back}?connect=refresh`,
       );
       return { url: link.url };
     }
     return {
       url: `${this.frontendUrl()}/connect/fake?account=${
         acc.stripeAccountId
-      }&back=${encodeURIComponent(back)}`,
+      }&back=${encodeURIComponent(ctx.back)}`,
     };
   }
 
-  /** Voltou da página do Stripe: busca a situação lá (sem esperar o webhook) */
-  async refreshBarbershop(userId: number, barbershopId: number) {
-    await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
-    const acc = await this.account('barbershop', barbershopId);
+  private async refresh(ownerType: PaymentOwnerType, ownerId: number) {
+    const acc = await this.account(ownerType, ownerId);
     if (acc?.provider === 'stripe') {
       await this.apply(
         await this.stripe.retrieveConnectAccount(acc.stripeAccountId),
         acc.stripeAccountId,
       );
     }
-    return this.view(await this.account('barbershop', barbershopId));
+    return this.view(await this.account(ownerType, ownerId));
   }
 
-  /** Painel do Stripe da conta (extrato, repasses, dados bancários). Só o dono. */
-  async barbershopDashboardLink(userId: number, barbershopId: number) {
-    await this.barbershops.ensureAccess(userId, barbershopId, 'owner');
-    const acc = await this.account('barbershop', barbershopId);
-    if (!acc?.detailsSubmitted)
+  private async dashboardLink(ownerType: PaymentOwnerType, ownerId: number) {
+    const acc = await this.account(ownerType, ownerId);
+    if (!acc?.detailsSubmitted) {
       throw new BadRequestException('Conclua o cadastro no Stripe antes.');
+    }
     if (acc.provider !== 'stripe') return { url: `${this.frontendUrl()}/connect/fake?dashboard=1` };
     const link = await this.stripe.createConnectLoginLink(acc.stripeAccountId);
     return { url: link.url };
@@ -175,6 +241,9 @@ export class ConnectService {
     if (!acc || acc.provider !== 'fake') throw new NotFoundException('Conta não encontrada');
     if (acc.ownerType === 'barbershop') {
       await this.barbershops.ensureAccess(userId, acc.ownerId, 'owner');
+    } else {
+      const professional = await this.prisma.professional.findUnique({ where: { userId } });
+      if (professional?.id !== acc.ownerId) throw new NotFoundException('Conta não encontrada');
     }
     await this.apply(
       { charges_enabled: true, payouts_enabled: true, details_submitted: true },
@@ -183,9 +252,13 @@ export class ConnectService {
     return true;
   }
 
-  /** Pra onde vai o pagamento da unidade: a conta conectada, se já recebe */
-  async barbershopDestination(barbershopId: number): Promise<string | null> {
-    const acc = await this.account('barbershop', barbershopId);
+  /** Pra onde vai o pagamento: a conta conectada, se já recebe */
+  async destination(ownerType: PaymentOwnerType, ownerId: number): Promise<string | null> {
+    const acc = await this.account(ownerType, ownerId);
     return acc?.chargesEnabled && acc.provider === this.provider() ? acc.stripeAccountId : null;
+  }
+
+  barbershopDestination(barbershopId: number) {
+    return this.destination('barbershop', barbershopId);
   }
 }

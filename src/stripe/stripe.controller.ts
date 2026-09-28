@@ -24,6 +24,7 @@ import { ChairRentService } from '../barbershop/chair-rent.service';
 import { DepositPaymentService } from '../barbershop/deposit-payment.service';
 import { IdentityVerificationService } from '../barbershop/identity-verification.service';
 import { ConnectService } from '../barbershop/connect.service';
+import { TipService } from '../barbershop/tip.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -40,6 +41,7 @@ export class StripeController {
     private deposits: DepositPaymentService,
     private identity: IdentityVerificationService,
     private connect: ConnectService,
+    private tips: TipService,
   ) {}
 
   @Post('webhook')
@@ -429,6 +431,11 @@ export class StripeController {
     // Sinal de agendamento pago online (a tela também confirma; idempotente)
     if (meta.kind === 'appointment_deposit') {
       await this.deposits.finalize(paymentIntent);
+      return;
+    }
+    // Caixinha pelo app (a tela também registra; idempotente)
+    if (meta.kind === 'appointment_tip') {
+      await this.tips.finalizeAppTip(paymentIntent);
       return;
     }
     if (meta.renewalKey) {
