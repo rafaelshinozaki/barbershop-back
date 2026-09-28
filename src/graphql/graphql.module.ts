@@ -9,6 +9,7 @@ import { ChatResolver } from './resolvers/chat.resolver';
 import { SupportResolver } from './resolvers/support.resolver';
 import { JobOpeningResolver } from './resolvers/job-opening.resolver';
 import { FeaturedResolver } from './resolvers/featured.resolver';
+import { PricingResolver } from './resolvers/pricing.resolver';
 import { PushResolver } from './resolvers/push.resolver';
 import { ConnectResolver } from './resolvers/connect.resolver';
 import { PrepaymentResolver } from './resolvers/prepayment.resolver';
@@ -113,6 +114,7 @@ import { SocialModule } from '../social/social.module';
     SupportResolver,
     JobOpeningResolver,
     FeaturedResolver,
+    PricingResolver,
     PushResolver,
     ConnectResolver,
     PrepaymentResolver,

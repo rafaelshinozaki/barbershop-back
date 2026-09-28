@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureProfessional } from './professional';
 import {
-  PRO_PRICE_CENTS,
+  proPriceCents,
   PRO_REFERRAL_MONTHS,
   extendProUntil,
   isProActive,
@@ -91,7 +91,7 @@ export class ProReferralService {
   ): ProReferralStatus {
     return {
       code,
-      priceCents: PRO_PRICE_CENTS,
+      priceCents: proPriceCents(),
       priceLabel: proPriceLabel(),
       months: PRO_REFERRAL_MONTHS,
       proUntil: proUntil?.toISOString() ?? null,

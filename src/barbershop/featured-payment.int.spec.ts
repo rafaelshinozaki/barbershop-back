@@ -6,14 +6,13 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
-import {
-  FEATURED_DAYS,
-  FEATURED_PRICE_CENTS,
-  FeaturedPaymentService,
-} from './featured-payment.service';
+import { DEFAULT_PRICING, setCurrentPricing } from '../pricing/pricing';
+import { featuredOffer, FeaturedPaymentService } from './featured-payment.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const DAY = 86_400_000;
+const FEATURED_DAYS = DEFAULT_PRICING.featuredDays;
+const SHOP_PRICE = DEFAULT_PRICING.featuredShopPriceCents;
 
 type Intent = {
   id: string;
@@ -150,7 +149,7 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
   it('unidade: dono compra; retoma a compra aberta; tela e webhook registram uma vez; a segunda soma 30 dias', async () => {
     expect(await featured.status(ownerId, 'barbershop', shopId)).toMatchObject({
       available: true,
-      priceCents: FEATURED_PRICE_CENTS,
+      priceCents: SHOP_PRICE,
       days: FEATURED_DAYS,
       isFeatured: false,
     });
@@ -219,7 +218,7 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
       ownerType: 'barbershop',
       ownerName: `Destaque ${RUN}`,
       buyerName: 'Destaque owner',
-      amountCents: FEATURED_PRICE_CENTS,
+      amountCents: SHOP_PRICE,
     });
 
     // Aviso de vencimento: só perto do fim, uma vez por vencimento
@@ -258,11 +257,27 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
       where: { id: professionalId },
       data: { visibility: 'public', isPublic: true },
     });
+    // Profissional paga o preço dele (diferente do da unidade)
+    const first = await featured.start(proUserId, 'professional');
+    expect(first.priceCents).toBe(featuredOffer('professional').priceCents);
+    expect(first.priceCents).toBe(DEFAULT_PRICING.featuredProPriceCents);
+    // O admin mudou o preço com a compra aberta: não retoma a antiga
+    setCurrentPricing({ featuredProPriceCents: 2500 });
     const checkout = await featured.start(proUserId, 'professional');
+    expect(checkout.purchaseId).not.toBe(first.purchaseId);
+    expect(checkout.priceCents).toBe(2500);
+    expect(
+      (await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: first.purchaseId } })).status,
+    ).toBe('canceled');
+    setCurrentPricing({});
     const p = await prisma.featuredPurchase.findUniqueOrThrow({
       where: { id: checkout.purchaseId },
     });
-    expect(p).toMatchObject({ ownerType: 'professional', ownerId: professionalId });
+    expect(p).toMatchObject({
+      ownerType: 'professional',
+      ownerId: professionalId,
+      amountCents: 2500,
+    });
     pay(p.stripePaymentIntentId!);
     await featured.confirm(proUserId, checkout.purchaseId);
     expect((await featured.status(proUserId, 'professional')).isFeatured).toBe(true);

@@ -38,7 +38,8 @@ export type SoloStatus = {
   proPriceLabel: string;
 };
 
-const EMPTY: SoloStatus = {
+/** Sem modo solo (o preço do Pro vem de "Preços e taxas", lido na hora) */
+const empty = (): SoloStatus => ({
   active: false,
   barbershopId: null,
   slug: null,
@@ -59,7 +60,7 @@ const EMPTY: SoloStatus = {
   proActive: false,
   proUntil: null,
   proPriceLabel: proPriceLabel(),
-};
+});
 
 function required(value: string, label: string) {
   const trimmed = value.trim();
@@ -87,7 +88,7 @@ export class SoloService {
       where: { ownerUserId: userId, practiceKind: 'solo' },
       orderBy: { id: 'asc' },
     });
-    if (!shop) return { ...EMPTY, ...(await this.proFields(userId)) };
+    if (!shop) return { ...empty(), ...(await this.proFields(userId)) };
     const usage = await soloUsage(this.prisma, userId, shop.timezone, new Date());
     return this.toStatus(shop, usage, await this.proFields(userId));
   }

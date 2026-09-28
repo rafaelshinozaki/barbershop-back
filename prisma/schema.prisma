@@ -2166,3 +2166,12 @@ model FeaturedPurchase {
   @@index([ownerType, ownerId, status])
   @@index([userId])
 }
+
+// Configurações da plataforma editáveis pelo admin, sem deploy. Hoje:
+// "pricing" (preços e taxas, ver src/pricing/pricing.ts).
+model PlatformSetting {
+  key             String   @id
+  value           Json
+  updatedAt       DateTime @updatedAt
+  updatedByUserId Int?
+}
