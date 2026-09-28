@@ -22,6 +22,15 @@ function mondayAhead(): string {
 }
 const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00-03:00`);
 const settle = () => new Promise((r) => setTimeout(r, 50));
+// Espera até a condição valer: avisos e e-mails saem em segundo plano e num
+// CI carregado passam dos 50 ms do settle
+async function until(check: () => boolean | Promise<boolean>, timeoutMs = 5000) {
+  const end = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > end) throw new Error('Tempo esgotado esperando o efeito em segundo plano');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 type Intent = {
   id: string;
@@ -265,6 +274,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect(await deposits.confirm(token)).toBe('CONFIRMED');
     // Webhook chegando depois não confirma de novo
     expect(await deposits.finalize(intents.get(`pi_${RUN}_1`) as never)).toBe('CONFIRMED');
+    await until(() => emails.some((e) => e.template === 'appointment_confirmation'));
     await settle();
     expect(emails.filter((e) => e.template === 'appointment_confirmation')).toHaveLength(1);
 
@@ -429,11 +439,13 @@ describe('Sinal online (integração, Stripe simulado)', () => {
       data: { holdExpiresAt: new Date(Date.now() - 1000) },
     });
     await deposits.expireHolds();
-    await settle();
-    expect((await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } })).status).toBe(
-      'NOTIFIED',
+    // O aviso da lista de espera sai em segundo plano
+    await until(
+      async () =>
+        emails.some((e) => e.template === 'waitlist_slot_available') &&
+        (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } })).status ===
+          'NOTIFIED',
     );
-    expect(emails.map((e) => e.template)).toContain('waitlist_slot_available');
 
     // Horário que já passou não é vaga pra ninguém
     await prisma.waitlistEntry.update({ where: { id: entry.id }, data: { status: 'WAITING' } });
@@ -453,7 +465,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect(await deposits.remindPendingHolds()).toBe(0);
     const later = new Date(Date.now() + 6 * 60_000);
     expect(await deposits.remindPendingHolds(later)).toBeGreaterThanOrEqual(1);
-    await settle();
+    await until(() => emails.some((e) => e.template === 'deposit_pending'));
     const to = (
       await prisma.appointment.findUniqueOrThrow({
         where: { id: appt!.id },
