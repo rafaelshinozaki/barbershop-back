@@ -552,7 +552,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     );
     const { url } = await connect.startBarbershopOnboarding(ownerId, shopId);
     expect(url).toContain(`acct_${RUN}`);
-    expect(url).toContain(encodeURIComponent(`/barbershops/${shopId}/settings?connect=return`));
+    expect(url).toContain(encodeURIComponent(`/barbershops/${shopId}/services?connect=return`));
     expect(connectCalls).toEqual([`create:BR:${shopId}`]);
     // De novo: continua a mesma conta
     await connect.startBarbershopOnboarding(ownerId, shopId);
