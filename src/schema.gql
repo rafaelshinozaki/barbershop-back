@@ -198,6 +198,7 @@ type Appointment {
   notes: String
   prepaidAmount: Float
   prepaidAt: DateTime
+  prepaidRefundedAmount: Float
   prepaidRefundedAt: DateTime
   resourceId: Int
   saleId: Int
@@ -228,6 +229,9 @@ type AppointmentPrepaymentType {
   paid: Boolean!
   paidAmount: Float
   refunded: Boolean!
+
+  """Já devolvido (estorno parcial ou inteiro)"""
+  refundedAmount: Float!
 }
 
 input AppointmentSeriesInput {
@@ -1942,7 +1946,12 @@ type Mutation {
   refreshBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
   refreshMyPaymentAccount: PaymentAccountStatusType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
-  refundAppointmentPrepayment(barbershopId: Int!, id: Int!): Appointment!
+  refundAppointmentPrepayment(
+    """Parte a devolver; sem valor, devolve o que resta"""
+    amount: Float
+    barbershopId: Int!
+    id: Int!
+  ): Appointment!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!

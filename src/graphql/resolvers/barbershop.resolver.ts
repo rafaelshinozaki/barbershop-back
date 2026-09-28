@@ -1,6 +1,6 @@
 import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
-import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, Float, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
@@ -1070,11 +1070,18 @@ export class BarbershopResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('id', { type: () => Int }) id: number,
     @CurrentUser() user: UserDTO,
+    @Args('amount', {
+      type: () => Float,
+      nullable: true,
+      description: 'Parte a devolver; sem valor, devolve o que resta',
+    })
+    amount?: number,
   ) {
     const result = await this.barbershopService.refundAppointmentPrepayment(
       user.id,
       barbershopId,
       id,
+      amount,
     );
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     return result;

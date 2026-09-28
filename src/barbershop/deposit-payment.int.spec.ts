@@ -38,6 +38,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
   const emails: any[] = [];
   const intents = new Map<string, Intent>();
   const refunds: string[] = [];
+  const refundAmounts: string[] = [];
   let seq = 0;
   const stripe = {
     createPaymentIntent: async (amount: number, currency: string, _c: unknown, opts: any) => {
@@ -57,12 +58,13 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     cancelPaymentIntent: async (id: string) => {
       intents.get(id)!.status = 'canceled';
     },
-    createRefund: async (id: string, _a?: number, _r?: string, _k?: string, connected = false) => {
+    createRefund: async (id: string, a?: number, _r?: string, _k?: string, connected = false) => {
       if (failNextRefund) {
         failNextRefund = false;
         throw new Error('Stripe fora do ar');
       }
       refunds.push(id);
+      refundAmounts.push(`${id}:${a ?? 'all'}`);
       if (connected) connectedRefunds.push(id);
     },
     // Stripe Connect (conta de recebimento da unidade)
@@ -727,5 +729,43 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     await prepayments.finalize(intents.get(piD) as never);
     expect(connectedRefunds).toContain(piD);
     expect((await load(d.id)).prepaidRefundedAt).toBeInstanceOf(Date);
+
+    // Estorno parcial (ex.: trocou por um serviço mais barato): devolve só parte
+    const e = await bookTue('14:00');
+    const piE = await prepay(e.token, e.id);
+    await barbershops.refundAppointmentPrepayment(ownerId, shopId, e.id, 25);
+    expect(refundAmounts).toContain(`${piE}:2500`);
+    expect((await load(e.id)).prepaidRefundedAt).toBeNull();
+    expect(await prepayments.status(e.token)).toMatchObject({
+      paid: true,
+      paidAmount: 35,
+      refundedAmount: 25,
+    });
+    // Não passa do que resta
+    await expect(
+      barbershops.refundAppointmentPrepayment(ownerId, shopId, e.id, 40),
+    ).rejects.toThrow('35.00');
+    // Cancelado: devolve o que restou
+    await barbershops.updateAppointment(ownerId, shopId, e.id, { status: 'CANCELLED' });
+    expect(refundAmounts).toContain(`${piE}:3500`);
+    expect((await load(e.id)).prepaidRefundedAt).toBeInstanceOf(Date);
+    expect(Number((await load(e.id)).prepaidRefundedAmount)).toBe(60);
+
+    // Estorno parcial e depois a conta: desconta só o que ficou pago
+    const f = await bookTue('15:00');
+    await prepay(f.token, f.id);
+    await barbershops.refundAppointmentPrepayment(ownerId, shopId, f.id, 20);
+    const saleF = await barbershops.createSale(ownerId, shopId, {
+      appointmentId: f.id,
+      barberId,
+      saleType: 'SERVICE',
+      items: [{ itemType: 'SERVICE', serviceId, quantity: 1, unitPrice: 60, totalPrice: 60 }],
+      subtotal: 60,
+      total: 60,
+      paymentStatus: 'PAID',
+      paymentMethod: 'CASH',
+    });
+    expect(Number(saleF!.prepaidApplied)).toBe(40);
+    expect(Number(saleF!.total)).toBe(0);
   });
 });

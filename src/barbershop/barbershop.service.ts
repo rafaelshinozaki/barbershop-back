@@ -2980,36 +2980,61 @@ export class BarbershopService {
   }
 
   /**
-   * Devolve o atendimento pago antes pelo app (cancelado pela unidade ou
-   * pelo cliente). Desfaz a transferência pra unidade e devolve a taxa da
-   * plataforma. Uma vez só; sem pagamento (ou já devolvido): false.
+   * Devolve o atendimento pago antes pelo app, inteiro (cancelamento: o que
+   * restar) ou parte (amount, ex.: trocou por um serviço mais barato).
+   * Desfaz a transferência pra unidade e devolve a taxa da plataforma na
+   * mesma proporção. Sem pagamento (ou já devolvido inteiro): false.
    */
-  async refundPrepayment(appointmentId: number) {
+  async refundPrepayment(appointmentId: number, amount?: number) {
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
-      select: { prepaidAt: true, prepaidPaymentIntentId: true, prepaidRefundedAt: true },
+      select: {
+        prepaidAt: true,
+        prepaidAmount: true,
+        prepaidPaymentIntentId: true,
+        prepaidRefundedAt: true,
+        prepaidRefundedAmount: true,
+      },
     });
     const intentId = appt?.prepaidPaymentIntentId;
     if (!intentId || !appt.prepaidAt || appt.prepaidRefundedAt) return false;
+    const paid = Number(appt.prepaidAmount ?? 0);
+    const before = Number(appt.prepaidRefundedAmount ?? 0);
+    const remaining = Math.round((paid - before) * 100) / 100;
+    if (remaining <= 0) return false;
+    const value = amount == null ? remaining : Math.round(amount * 100) / 100;
+    if (!(value > 0) || value > remaining) {
+      throw new BadRequestException(`O estorno vai de 0,01 até ${remaining.toFixed(2)}`);
+    }
+    const after = Math.round((before + value) * 100) / 100;
+    const full = after >= paid;
     const now = new Date();
+    // Condicional: dois estornos ao mesmo tempo não passam do que foi pago
     const claimed = await this.prisma.appointment.updateMany({
-      where: { id: appointmentId, prepaidRefundedAt: null, prepaidAt: { not: null } },
-      data: { prepaidRefundedAt: now },
+      where: {
+        id: appointmentId,
+        prepaidRefundedAt: null,
+        prepaidRefundedAmount: appt.prepaidRefundedAmount ?? null,
+      },
+      data: { prepaidRefundedAmount: after, prepaidRefundedAt: full ? now : null },
     });
     if (claimed.count === 0) return false;
     try {
       await this.stripeService.createRefund(
         intentId,
-        undefined,
+        Math.round(value * 100),
         'requested_by_customer',
-        `prepayment-refund-${intentId}`,
+        `prepayment-refund-${intentId}-${Math.round(after * 100)}`,
         true,
       );
     } catch (err) {
       if ((err as { code?: string })?.code === 'charge_already_refunded') return true;
       await this.prisma.appointment.updateMany({
-        where: { id: appointmentId, prepaidRefundedAt: now },
-        data: { prepaidRefundedAt: null },
+        where: { id: appointmentId, prepaidRefundedAmount: after },
+        data: {
+          prepaidRefundedAmount: appt.prepaidRefundedAmount ?? null,
+          prepaidRefundedAt: null,
+        },
       });
       throw err;
     }
@@ -3017,7 +3042,12 @@ export class BarbershopService {
   }
 
   /** Estorno manual do atendimento pago pelo app (gerente e dono), ex.: falta */
-  async refundAppointmentPrepayment(userId: number, barbershopId: number, appointmentId: number) {
+  async refundAppointmentPrepayment(
+    userId: number,
+    barbershopId: number,
+    appointmentId: number,
+    amount?: number | null,
+  ) {
     const barbershop = await this.ensureAccess(userId, barbershopId, 'manager');
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
@@ -3034,8 +3064,9 @@ export class BarbershopService {
     }
     let refunded: boolean;
     try {
-      refunded = await this.refundPrepayment(appointmentId);
+      refunded = await this.refundPrepayment(appointmentId, amount ?? undefined);
     } catch (err) {
+      if (err instanceof BadRequestException) throw err;
       this.logger.error(`Erro ao estornar o pagamento do agendamento #${appointmentId}:`, err);
       throw new BadRequestException('Não foi possível estornar agora. Tente de novo.');
     }
@@ -5577,6 +5608,7 @@ export class BarbershopService {
           prepaidAt: true,
           prepaidAmount: true,
           prepaidRefundedAt: true,
+          prepaidRefundedAmount: true,
           sale: { select: { id: true } },
         },
       });
@@ -5589,7 +5621,9 @@ export class BarbershopService {
       }
       if (appt.depositPaid) depositPaidOnAppointment = Number(appt.depositAmount ?? 0);
       if (appt.prepaidAt && !appt.prepaidRefundedAt) {
-        prepaidOnAppointment = Number(appt.prepaidAmount ?? 0);
+        // Menos o que já foi devolvido em estorno parcial
+        prepaidOnAppointment =
+          Number(appt.prepaidAmount ?? 0) - Number(appt.prepaidRefundedAmount ?? 0);
       }
     }
     await this.ensureItemsOfBarbershop(
