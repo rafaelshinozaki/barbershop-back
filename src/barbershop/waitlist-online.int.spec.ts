@@ -229,11 +229,32 @@ describe('Lista de espera online (integração)', () => {
 
     const phone = `5${RUN.slice(-9)}8`;
     for (let i = 2; i <= 6; i++) {
-      await join({ customerPhone: phone, date: addDays(monday, i) });
+      await join({
+        customerPhone: phone,
+        customerEmail: `cota-${i}-${RUN}@test.local`,
+        date: addDays(monday, i),
+      });
     }
-    await expect(join({ customerPhone: phone, date: addDays(monday, 7) })).rejects.toThrow(
-      'lista de espera de 5 dias',
-    );
+    await expect(
+      join({
+        customerPhone: phone,
+        customerEmail: `cota-7-${RUN}@test.local`,
+        date: addDays(monday, 7),
+      }),
+    ).rejects.toThrow('lista de espera de 5 dias');
+
+    // O mesmo e-mail em 24 horas, trocando o telefone: no máximo 5 entradas
+    const target = `alvo-${RUN}@test.local`;
+    for (let i = 0; i < 5; i++) {
+      await join({
+        customerPhone: `5${RUN.slice(-8)}6${i}`,
+        customerEmail: target,
+        barberId: null,
+      });
+    }
+    await expect(
+      join({ customerPhone: `5${RUN.slice(-8)}69`, customerEmail: target, barberId: null }),
+    ).rejects.toThrow('várias listas de espera hoje');
 
     await prisma.customer.updateMany({
       where: { networkId, phone },

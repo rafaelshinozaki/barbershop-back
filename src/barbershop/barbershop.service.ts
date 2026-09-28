@@ -230,6 +230,8 @@ function socialUrl(value: string | null | undefined, host: string, label: string
 const WAITLIST_MAX_DAYS_AHEAD = 60;
 /** Quantas entradas online aguardando uma mesma pessoa pode ter na rede */
 const WAITLIST_MAX_ONLINE_PER_CUSTOMER = 5;
+/** Entradas online (e e-mails de confirmação) por endereço de e-mail em 24 horas */
+const WAITLIST_MAX_ONLINE_PER_EMAIL_DAY = 5;
 /** Quantas entradas conferir a cada mudança de agenda (as mais antigas primeiro) */
 const WAITLIST_OPENING_MAX_ENTRIES = 200;
 
@@ -3311,6 +3313,20 @@ export class BarbershopService {
     if (waiting >= WAITLIST_MAX_ONLINE_PER_CUSTOMER) {
       throw new BadRequestException(
         `Você já está na lista de espera de ${WAITLIST_MAX_ONLINE_PER_CUSTOMER} dias. Saia de algum pelo link do e-mail.`,
+      );
+    }
+    // Cada entrada manda um e-mail ao endereço informado: sem virar
+    // disparador contra o e-mail de outra pessoa (trocando telefone e IP)
+    const sameEmailToday = await this.prisma.waitlistEntry.count({
+      where: {
+        contactEmail: email,
+        source: 'online',
+        createdAt: { gte: new Date(Date.now() - 86_400_000) },
+      },
+    });
+    if (sameEmailToday >= WAITLIST_MAX_ONLINE_PER_EMAIL_DAY) {
+      throw new BadRequestException(
+        'Este e-mail já entrou em várias listas de espera hoje. Tente de novo amanhã.',
       );
     }
 

@@ -159,6 +159,18 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
       where: { id: first.purchaseId },
     });
     pay(purchase.stripePaymentIntentId!);
+    // Pagamento que não confere (outro valor ou de outro tipo) não registra
+    const intent = intents.get(purchase.stripePaymentIntentId!)!;
+    expect(await featured.finalize({ ...intent, amount: 100 } as never)).toBe(false);
+    expect(
+      await featured.finalize({
+        ...intent,
+        metadata: { ...intent.metadata, kind: 'outro' },
+      } as never),
+    ).toBe(false);
+    expect(
+      (await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: first.purchaseId } })).status,
+    ).toBe('pending');
     const before = Date.now();
     expect(await featured.confirm(ownerId, first.purchaseId)).toBe(true);
     // Webhook depois: não soma de novo
