@@ -83,7 +83,8 @@ export class ConnectService {
    */
   async startBarbershopOnboarding(userId: number, barbershopId: number) {
     const shop = await this.barbershops.ensureAccess(userId, barbershopId, 'owner');
-    const back = `${this.frontendUrl()}/barbershops/${barbershopId}/settings`;
+    // Volta pra página Serviços, onde fica o card "Receber pelo app"
+    const back = `${this.frontendUrl()}/barbershops/${barbershopId}/services`;
     let acc = await this.account('barbershop', barbershopId);
     const provider = this.provider();
     if (!acc) {
