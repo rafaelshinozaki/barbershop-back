@@ -1,4 +1,5 @@
 import { ApolloServer } from '@apollo/server';
+import { getIntrospectionQuery } from 'graphql';
 import { MAX_QUERY_DEPTH, MAX_QUERY_FIELDS, queryLimitsPlugin } from './query-limits.plugin';
 
 // Schema pequeno com relação cíclica (loja → barbeiros → loja...), como no app
@@ -61,6 +62,12 @@ describe('queryLimitsPlugin', () => {
     const fields = Array.from({ length: MAX_QUERY_FIELDS }, (_, i) => `f${i}: name`).join(' ');
     const r = await run(`fragment F on Shop { ${fields} } { shop(id: 1) { ...F } }`);
     expect(r.errors?.[0].extensions?.code).toBe('QUERY_TOO_COMPLEX');
+  });
+
+  it('deixa a introspection passar (o Playground precisa dela)', async () => {
+    const r = await run(getIntrospectionQuery());
+    expect(r.errors).toBeUndefined();
+    expect(r.data?.__schema).toBeTruthy();
   });
 
   it('no limite exato ainda passa', async () => {

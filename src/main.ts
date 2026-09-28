@@ -57,16 +57,19 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true }));
 
   // Security Headers with Helmet
+  // O GraphQL Playground (só fora de produção) carrega JS/CSS de
+  // cdn.jsdelivr.net. Sem isso na CSP a página fica só com o fundo #172a3a.
+  const playgroundCdn = process.env.NODE_ENV === 'production' ? [] : ['https://cdn.jsdelivr.net'];
   app.use(
     helmet({
       // Content Security Policy
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', ...playgroundCdn],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
           imgSrc: ["'self'", 'data:', 'https:'],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", ...playgroundCdn],
           connectSrc: [
             "'self'",
             'https://api.stripe.com',
