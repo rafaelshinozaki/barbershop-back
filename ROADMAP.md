@@ -468,11 +468,25 @@ Objetivo: abrir de verdade, começando pequeno.
 - **Cidade piloto + 1–2 categorias** (ex.: barbeiro e manicure em uma cidade). Enche a oferta primeiro (com o modo solo do H2) e só depois abre a busca ao público.
 - **Atendimento a domicílio** (item 9): área, taxa, deslocamento na agenda, sinal obrigatório/recomendado, endereço só para quem atende, botão de ajuda.
 - **Nota do cliente** dada pelo profissional (item 3), só depois do jurídico no H4.
-- **"Destaque" do profissional** ✅, no mesmo modelo do destaque da unidade: o admin liga até uma data na aba Profissionais da página de Destaque do backoffice; o profissional destacado sobe no topo da busca por relevância (a ordem escolhida pela pessoa continua valendo) e ganha o selo. Compra com cartão ✅ (unidade e profissional): 30 dias por compra, somando ao que já vale, pelo card "Destaque na busca" (página pública da unidade, para dono e gerente; Perfis e privacidade, para o profissional com a página pública). É receita da plataforma, sem Connect. Preço provisório de R$ 29,00 por 30 dias, o mesmo para os dois (`FEATURED_PRICE_CENTS`); o preço final fica para quando o produto decidir. Três dias antes de vencer, quem tem o Destaque recebe um aviso no sininho e no celular (uma vez por vencimento), e o backoffice tem a aba Compras com a receita (últimos 30 dias e total) e a lista das compras pagas.
-- **Vagas para freelancer** ✅: a unidade (gerente e dono) abre uma vaga por período (até 90 dias, com especialidade, número de pessoas e o combinado de pagamento em texto). Os profissionais da plataforma veem as vagas abertas em Vagas, com filtro por cidade e especialidade, e se candidatam com uma mensagem. A unidade aceita, e isso vira o convite com vínculo temporário no período da vaga (o mesmo fluxo de convite), ou recusa. Cada resposta e o encerramento avisam no sininho e no celular. Falta: a taxa por vínculo fechado (decisão de produto).
+- **"Destaque" do profissional** ✅, no mesmo modelo do destaque da unidade: o admin liga até uma data na aba Profissionais da página de Destaque do backoffice; o profissional destacado sobe no topo da busca por relevância (a ordem escolhida pela pessoa continua valendo) e ganha o selo. Compra com cartão ✅ (unidade e profissional): 30 dias por compra, somando ao que já vale, pelo card "Destaque na busca" (página pública da unidade, para dono e gerente; Perfis e privacidade, para o profissional com a página pública). É receita da plataforma, sem Connect. Preço e dias vêm de Preços e taxas (padrão R$ 29,00 a unidade e R$ 19,00 o profissional, por 30 dias). Três dias antes de vencer, quem tem o Destaque recebe um aviso no sininho e no celular (uma vez por vencimento), e o backoffice tem a aba Compras com a receita (últimos 30 dias e total) e a lista das compras pagas.
+- **Vagas para freelancer** ✅: a unidade (gerente e dono) abre uma vaga por período (até 90 dias, com especialidade, número de pessoas e o combinado de pagamento em texto). Os profissionais da plataforma veem as vagas abertas em Vagas, com filtro por cidade e especialidade, e se candidatam com uma mensagem. A unidade aceita, e isso vira o convite com vínculo temporário no período da vaga (o mesmo fluxo de convite), ou recusa. Cada resposta e o encerramento avisam no sininho e no celular. A taxa por vínculo fechado ✅ sai de Preços e taxas: com Stripe, aceitar o freelancer pede o pagamento com cartão e o convite sai quando confirma; se o aceite não der mais certo, a taxa volta.
 - Lista de espera no marketplace ✅ (primeira parte): na janela de agendamento, dia aberto e cheio, o cliente pede "me avise se abrir vaga" com o profissional escolhido ou qualquer um. Entra no fim da mesma fila da equipe (marcada como online), recebe um e-mail com o link para sair, e o aviso de vaga chega no e-mail informado com o botão "Agendar agora" já no dia. Até 60 dias à frente, no máximo 5 dias aguardando por pessoa e 5 entradas por e-mail a cada 24 horas (a confirmação não vira disparador contra o e-mail de outra pessoa), e cliente bloqueado não entra. Também avisa quando a agenda abre horário novo ✅ (folga desfeita, fechamento removido, escala ou horário de funcionamento ampliados): compara os horários livres de antes e de depois e avisa, na ordem de entrada, quem ganhou um horário que não havia.
 
 Sucesso: liquidez na cidade piloto (a maioria das buscas encontra horário em até 48h), retenção dos dois lados; só então replicar para outras cidades.
+
+#### Preços e taxas (genéricos, editáveis sem deploy) ✅
+Todos os valores cobrados pela plataforma ficam num lugar só (`src/pricing/pricing.ts`) e o admin muda em Backoffice → Preços e taxas, sem deploy (tabela `PlatformSetting`). Os padrões são genéricos, para refinar com números reais:
+
+| Item | Padrão |
+|---|---|
+| Taxa da plataforma sobre o que passa pelo Stripe (sinal, pagamento pelo app, caixinha, repasses) | 15% |
+| Pro (por mês) | R$ 49,00 |
+| Destaque da unidade (por período) | R$ 29,00 |
+| Destaque do profissional (por período) | R$ 19,00 |
+| Dias de Destaque por compra | 30 |
+| Taxa por vaga preenchida (a unidade paga ao aceitar o freelancer; 0 desliga) | R$ 15,00 |
+
+Mudar vale para as próximas cobranças; o que já foi pago fica como estava.
 
 #### Decisões em aberto (definir antes do horizonte indicado)
 - **Preço do Pro** (H2). A cota grátis já está definida: **30 atendimentos concluídos** e **30 produtos vendidos** por conta própria por mês, não por faturamento.
