@@ -72,6 +72,15 @@ export function queryLimitsPlugin(): ApolloServerPlugin {
       return {
         async didResolveOperation({ document, operation }) {
           if (!operation) return;
+          // O Playground carrega o schema com a introspection padrão, que tem
+          // ~15 níveis (ofType aninhado). Ela só pede metadados do schema e,
+          // em produção, o Apollo nem expõe __schema/__type.
+          const introspectionOnly = operation.selectionSet.selections.every(
+            (sel) =>
+              sel.kind === Kind.FIELD &&
+              (sel.name.value === '__schema' || sel.name.value === '__type'),
+          );
+          if (introspectionOnly) return;
           const { depth, fields } = measureOperation(document, operation);
           if (depth > MAX_QUERY_DEPTH) {
             throw new GraphQLError(
