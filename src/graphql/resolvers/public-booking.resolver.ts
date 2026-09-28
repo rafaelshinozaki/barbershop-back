@@ -139,7 +139,7 @@ export class PublicBookingResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('serviceIds', { type: () => [Int] }) serviceIds: number[],
     @Args('barberId', { type: () => Int, nullable: true }) barberId?: number | null,
-    @Args('fromDate', { nullable: true }) fromDate?: string | null,
+    @Args('fromDate', { type: () => String, nullable: true }) fromDate?: string | null,
   ) {
     return this.barbershopService.getPublicNextAvailableSlot(
       barbershopId,

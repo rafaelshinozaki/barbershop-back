@@ -104,7 +104,7 @@ export class PrepaymentService {
       }
       if (existing.status !== 'canceled' && existing.amount === cents) {
         return {
-          clientSecret: existing.client_secret!,
+          clientSecret: existing.client_secret,
           amount,
           currency: appt.barbershop.currency,
         };
@@ -136,7 +136,7 @@ export class PrepaymentService {
       await this.stripe.cancelPaymentIntent(intent.id).catch(() => undefined);
       return this.start(token);
     }
-    return { clientSecret: intent.client_secret!, amount, currency: appt.barbershop.currency };
+    return { clientSecret: intent.client_secret, amount, currency: appt.barbershop.currency };
   }
 
   /** A tela voltou do cartão: confere no Stripe e registra */

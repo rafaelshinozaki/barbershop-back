@@ -105,7 +105,7 @@ export class ChairRentType {
   billingMode: string;
 
   /** Manual: próximo vencimento */
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   nextDueDate?: Date | null;
 
   /** Mensalidades manuais em aberto (soma) */
@@ -115,11 +115,11 @@ export class ChairRentType {
   @Field(() => Float, { nullable: true })
   amount?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   currency?: string | null;
 
   /** Pago até (fim do período da última fatura paga) */
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   paidUntil?: Date | null;
 
   @Field(() => Float)
@@ -155,37 +155,37 @@ export class ChairRentPaymentType {
   @Field()
   method: string;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   dueDate?: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   paidAt?: Date | null;
 
   @Field()
   overdue: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes?: string | null;
 
   /** Quem registrou o pagamento manual */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   recordedByName?: string | null;
 
   /** Número do recibo (pagos) */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   receiptNumber?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   periodStart?: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   periodEnd?: Date | null;
 
   /** Recibo do Stripe (página) */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   receiptUrl?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   receiptPdfUrl?: string | null;
 }
 
@@ -210,7 +210,7 @@ export class AuthorizeChairRentResultType {
   link: ChairRentType;
 
   /** Cartão pediu confirmação (3D Secure): o front confirma com isto */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   clientSecret?: string | null;
 }
 
@@ -251,13 +251,13 @@ export class ClosureType {
   @Field({ description: 'YYYY-MM-DD no fuso da unidade' })
   date: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   openTime?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   closeTime?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   reason?: string | null;
 }
 
@@ -569,10 +569,10 @@ export class ReviewType {
   reviewerName: string;
 
   /** Resposta pública da unidade */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   reply?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   repliedAt?: string | null;
 }
 
@@ -631,13 +631,13 @@ export class ReviewRequestType {
   @Field(() => Int, { nullable: true, description: 'Nota que o cliente já deu à unidade (editar)' })
   rating?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   comment?: string | null;
 
   @Field(() => Int, { nullable: true, description: 'Nota que já deu ao profissional (editar)' })
   professionalRating?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   professionalComment?: string | null;
 }
 
@@ -766,7 +766,7 @@ export class ManagedAppointmentType {
   depositRefunded: boolean;
 
   /** Aguardando o sinal online: até quando o horário fica reservado */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   holdExpiresAt?: string | null;
 
   /** Link de gerenciar (só na lista de próximos horários do cliente logado) */

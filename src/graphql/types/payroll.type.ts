@@ -35,13 +35,13 @@ export class BarberPayEntryType {
   @Field(() => Float)
   amount: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   method?: string | null;
 
   @Field()
   date: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes?: string | null;
 
   /** Fechamento em que entrou (null = em aberto) */
@@ -114,7 +114,7 @@ export class PayrollPreviewType extends PayBreakdown {
   entries: BarberPayEntryType[];
 
   /** Período que se sobrepõe a um pagamento já feito */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   alreadyPaid?: string | null;
 }
 
@@ -129,7 +129,7 @@ export class BarberPayoutType extends PayBreakdown {
   @Field()
   paidAt: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes?: string | null;
 }
 
@@ -262,7 +262,7 @@ export class SetBarberPayConfigInput {
   @Field(() => Float, { nullable: true })
   fixedAmount?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   payPeriod?: string | null;
 }
 
@@ -277,14 +277,14 @@ export class AddBarberPayEntryInput {
   @Field(() => Float)
   amount: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   method?: string | null;
 
   /** YYYY-MM-DD (fuso da unidade); padrão: agora */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   date?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes?: string | null;
 }
 
@@ -305,6 +305,6 @@ export class PayBarberInput {
   @Field()
   method: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes?: string | null;
 }

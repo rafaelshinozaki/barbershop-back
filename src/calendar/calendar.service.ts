@@ -125,10 +125,13 @@ export class CalendarService {
     }
     let barberId: number | undefined;
     if (scope === 'MINE') {
-      barberId = (await this.prisma.barber.findFirst({
+      const barber = await this.prisma.barber.findFirst({
         where: { barbershopId: feed.barbershopId, userId: feed.userId, isActive: true },
         select: { id: true },
-      }))!.id;
+      });
+      // Saiu da unidade depois de assinar a agenda: o link deixa de valer
+      if (!barber) throw new NotFoundException('Agenda não encontrada');
+      barberId = barber.id;
     }
     const now = Date.now();
     const appointments = await this.prisma.appointment.findMany({

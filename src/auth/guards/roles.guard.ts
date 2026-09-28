@@ -39,7 +39,7 @@ export class RolesGuard implements CanActivate {
     }
 
     let req: Request;
-    let token: string;
+    let token: string | undefined;
 
     try {
       // Try GraphQL context first

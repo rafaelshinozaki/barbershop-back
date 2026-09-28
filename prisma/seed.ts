@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { Sex, faker } from '@faker-js/faker';
 import * as bcrypt from 'bcryptjs';
 import { BR_LOCATIONS, cpf, seedDemoData } from './seed-demo';
+import { must } from '../src/common/must';
 
 const prisma = new PrismaClient();
 
@@ -434,7 +435,10 @@ async function main() {
             ...sharedUserData,
             email: u.email,
             fullName: u.fullName,
-            roleId: rs.find((r) => r.name === u.role)!.id,
+            roleId: must(
+              rs.find((r) => r.name === u.role),
+              `papel ${u.role}`,
+            ).id,
           },
         });
         createdSeedUsers.push({ email: u.email, id: user.id });
@@ -527,7 +531,9 @@ async function main() {
             isActive: true,
           },
         });
-        console.log(`  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`);
+        console.log(
+          `  Barbershop ID: ${barbershop.id} - acesse /barbershops/${barbershop.id}/appointments`,
+        );
       } else if (existingBarbershop) {
         console.log('Green Barbershop already exists, skipping...');
       }
@@ -552,15 +558,16 @@ async function main() {
         },
       ];
       for (const staff of green ? staffByCargo : []) {
+        const greenId = must(green?.id, 'Green Barbershop');
         const user = createdSeedUsers.find((u) => u.email === staff.email);
         if (!user) continue;
         const exists = await prisma.barber.findFirst({
-          where: { barbershopId: green!.id, userId: user.id },
+          where: { barbershopId: greenId, userId: user.id },
         });
         if (exists) continue;
         console.log(`Adding ${staff.name} (${staff.staffType}) to Green Barbershop...`);
         await prisma.barber.create({
-          data: { barbershopId: green!.id, userId: user.id, isActive: true, ...staff },
+          data: { barbershopId: greenId, userId: user.id, isActive: true, ...staff },
         });
       }
     }
@@ -593,7 +600,9 @@ async function main() {
           provider: 'local',
           fullName: userData.fullName,
           email: userData.email,
-          roleId: rs.filter((r) => r.name === (['BarbershopOwner', 'BarbershopManager', 'BarbershopEmployee'][i % 3]))[0].id,
+          roleId: rs.filter(
+            (r) => r.name === ['BarbershopOwner', 'BarbershopManager', 'BarbershopEmployee'][i % 3],
+          )[0].id,
           password: userData.password,
           gender: userData.gender,
           phone: userData.phone,

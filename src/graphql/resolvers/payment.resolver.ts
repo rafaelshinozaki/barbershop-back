@@ -282,7 +282,8 @@ export class PaymentResolver {
           2,
         )}`,
       );
-      return setupIntent;
+      if (!setupIntent.client_secret) throw new Error('Stripe não devolveu o client_secret');
+      return { ...setupIntent, client_secret: setupIntent.client_secret };
     } catch (error) {
       this.logger.error(`Error creating setup intent for user ${userId}:`, error);
       throw new Error(`Failed to create setup intent: ${error.message}`);
@@ -357,7 +358,7 @@ export class PaymentResolver {
 
       return {
         success: result.success,
-        subscription: null,
+        subscription: undefined,
       };
     } catch (error) {
       this.logger.error(`Error confirming payment intent for user ${userId}:`, error);

@@ -11,6 +11,7 @@ import { Prisma, PrismaClient, TreatmentCategory } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import * as bcrypt from 'bcryptjs';
 import { DEFAULT_PRICING, PLATFORM_CURRENCY } from '../src/pricing/pricing';
+import { must } from '../src/common/must';
 
 const SEED_PASSWORD = bcrypt.hashSync('pwned', 10);
 
@@ -446,7 +447,7 @@ const CLIENT_ACCOUNTS = [
 ];
 
 async function ensureClientAccounts(prisma: PrismaClient) {
-  const accounts = [];
+  const accounts: Prisma.ClientAccountGetPayload<object>[] = [];
   for (const c of CLIENT_ACCOUNTS) {
     let account = await prisma.clientAccount.findUnique({ where: { email: c.email } });
     if (!account) {
@@ -677,7 +678,7 @@ async function seedGreenOperations(
   console.log('Creating Green Barbershop operational demo data...');
   faker.seed(2026);
   const networkId = shop.networkId;
-  const ownerId = shop.ownerUserId!;
+  const ownerId = must(shop.ownerUserId, 'dono da unidade');
   const staffUser = await prisma.user.findFirst({
     where: { email: 'bianca.silverio@barbershop.com' },
   });
@@ -720,11 +721,15 @@ async function seedGreenOperations(
           }),
     );
   }
-  const svc = (name: string) => services.find((s) => s.name === name)!;
+  const svc = (name: string) =>
+    must(
+      services.find((s) => s.name === name),
+      `serviço ${name}`,
+    );
   const bookable = services.filter((s) => s.name !== 'Platinado');
 
   // Produtos + estoque
-  const categories = [];
+  const categories: Prisma.ProductCategoryGetPayload<object>[] = [];
   for (const [i, c] of PRODUCT_CATEGORIES.entries()) {
     categories.push(
       await prisma.productCategory.create({
@@ -732,12 +737,15 @@ async function seedGreenOperations(
       }),
     );
   }
-  const products = [];
+  const products: (Prisma.BarbershopProductGetPayload<object> & { price: number })[] = [];
   for (const p of PRODUCTS) {
     const product = await prisma.barbershopProduct.create({
       data: {
         barbershopId: shopId,
-        categoryId: categories.find((c) => c.name === p.category)!.id,
+        categoryId: must(
+          categories.find((c) => c.name === p.category),
+          `categoria ${p.category}`,
+        ).id,
         name: p.name,
         sku: p.sku,
         icon: p.icon,
@@ -784,7 +792,7 @@ async function seedGreenOperations(
   }
 
   // Recursos (cadeiras)
-  const resources = [];
+  const resources: Prisma.ResourceGetPayload<object>[] = [];
   for (const name of ['Cadeira 1', 'Cadeira 2', 'Cadeira 3']) {
     resources.push(
       await prisma.resource.create({ data: { barbershopId: shopId, name, type: 'CHAIR' } }),
@@ -878,7 +886,7 @@ async function seedGreenOperations(
 
   // Clientes: aniversariantes deste mês, inativos há 60+ dias, um opt-out
   const now = new Date();
-  const customers = [];
+  const customers: Prisma.CustomerGetPayload<object>[] = [];
   for (const [i, name] of CUSTOMER_NAMES.entries()) {
     const existing = await prisma.customer.findFirst({ where: { networkId, name } });
     const birthMonth = i % 6 === 0 ? now.getUTCMonth() : (i * 5) % 12;
@@ -1730,7 +1738,7 @@ async function ensureOtherShops(prisma: PrismaClient, clientAccounts: { id: numb
           birthdate: new Date('1985-06-15T12:00:00Z'),
           readTerms: true,
           isActive: true,
-          roleId: ownerRole!.id,
+          roleId: must(ownerRole, 'papel BarbershopOwner').id,
           userSystemConfig: {
             create: {
               theme: 'dark',
@@ -1963,7 +1971,7 @@ async function ensureChairRent(prisma: PrismaClient) {
               description: `Aluguel da cadeira — ${green.name}`,
               amount: 450,
               paymentMethod: r.method,
-              expenseDate: paidAt!,
+              expenseDate: must(paidAt, 'data do pagamento'),
               createdByUserId: navalha.ownerUserId,
             },
           })
@@ -2464,12 +2472,13 @@ async function ensureMarketplace(prisma: PrismaClient) {
     take: 3,
   });
   for (const shop of featuredShops) {
-    const paidAt = new Date(shop.featuredUntil!.getTime() - featuredDays * 86_400_000);
+    const featuredUntil = must(shop.featuredUntil, 'fim do Destaque');
+    const paidAt = new Date(featuredUntil.getTime() - featuredDays * 86_400_000);
     await prisma.featuredPurchase.create({
       data: {
         ownerType: 'barbershop',
         ownerId: shop.id,
-        userId: shop.ownerUserId!,
+        userId: must(shop.ownerUserId, 'dono da unidade'),
         amountCents: DEFAULT_PRICING.featuredShopPriceCents,
         currency: PLATFORM_CURRENCY,
         days: featuredDays,

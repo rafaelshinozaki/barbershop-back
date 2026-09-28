@@ -760,6 +760,7 @@ export class UserService {
       const userRole = await this.prisma.role.findFirst({
         where: { name: Role.BARBERSHOP_OWNER },
       });
+      if (!userRole) throw new Error(`Role ${Role.BARBERSHOP_OWNER} não encontrada`);
 
       user = await this.prisma.user.create({
         data: {
@@ -1434,7 +1435,7 @@ export class UserService {
     return {
       data: history.map(({ sessionToken, ...item }) => ({
         ...item,
-        sessionId: (sessionToken && openByToken.get(sessionToken)) ?? null,
+        sessionId: sessionToken ? openByToken.get(sessionToken) ?? null : null,
         isCurrent: !!sessionToken && sessionToken === currentSessionToken,
         createdAt: item.createdAt.toISOString(),
       })),
@@ -1504,7 +1505,7 @@ export class UserService {
   async terminateSession(
     userId: number,
     sessionId: number,
-    currentSessionToken: string,
+    currentSessionToken: string | undefined,
   ): Promise<boolean> {
     // Buscar a sessão
     const session = await (this.prisma as any).activeSession?.findFirst({

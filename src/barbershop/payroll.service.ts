@@ -126,18 +126,19 @@ export class PayrollService {
     if (needsFixed && (fixed == null || !(fixed > 0) || fixed > MAX_AMOUNT)) {
       throw new BadRequestException('Informe o valor fixo');
     }
+    const fixedAmount = needsFixed && fixed != null ? new Decimal(round2(fixed)) : null;
     const saved = await this.prisma.barberPayConfig.upsert({
       where: { barberId },
       create: {
         barberId,
         barbershopId,
         payType: data.payType,
-        fixedAmount: needsFixed ? new Decimal(round2(fixed!)) : null,
+        fixedAmount,
         payPeriod: period,
       },
       update: {
         payType: data.payType,
-        fixedAmount: needsFixed ? new Decimal(round2(fixed!)) : null,
+        fixedAmount,
         payPeriod: period,
       },
     });

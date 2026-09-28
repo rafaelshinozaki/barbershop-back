@@ -1,4 +1,5 @@
 // src\payments\payments.service.ts
+import { must } from '../common/must';
 import { PAGAMENTO_STATUS, PLANO_STATUS, MEMBERSHIP_STATUS } from '@/common';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { addDays, addYears, format } from 'date-fns';
@@ -406,8 +407,6 @@ export class PaymentsService {
     }
 
     const priceDiff = Number(newPlan.price) - Number(subscription.plan.price);
-    const lastPayment = subscription.payments[0];
-    const nextPaymentDate = lastPayment?.nextPaymentDate || addDays(new Date(), 30);
 
     // Atualizar assinatura no Stripe com proration_behavior: 'none' para não cobrar imediatamente
     if (subscription.stripeSubscriptionId) {
@@ -659,7 +658,7 @@ export class PaymentsService {
       if (!validation.isValid) {
         throw new BadRequestException(validation.error || 'Cupom inválido');
       }
-      const discountAmount = roundMoney(Math.min(price, validation.discountAmount));
+      const discountAmount = roundMoney(Math.min(price, validation.discountAmount ?? 0));
       coupon = { couponId: validation.coupon.id, originalAmount: price, discountAmount };
     }
     const finalAmount = roundMoney(price - (coupon?.discountAmount ?? 0));
@@ -970,7 +969,10 @@ export class PaymentsService {
       }
       return { overdue: false, outcome: null };
     }
-    await this.stripeService.setDefaultPaymentMethod(customerId!, paymentMethodId);
+    await this.stripeService.setDefaultPaymentMethod(
+      must(customerId, 'cliente Stripe'),
+      paymentMethodId,
+    );
 
     const overdue = await this.prisma.subscription.findFirst({
       where: {
@@ -1136,7 +1138,9 @@ export class PaymentsService {
       // procura pela renewalKey — só dá como falha se ela não existir lá.
       // Nunca tenta de novo às cegas: seria cobrar duas vezes.
       if (Date.now() - payment.createdAt.getTime() < 3600_000) return 'in_progress';
-      const found = await this.stripeService.findPaymentIntentByRenewalKey(payment.renewalKey!);
+      const found = payment.renewalKey
+        ? await this.stripeService.findPaymentIntentByRenewalKey(payment.renewalKey)
+        : null;
       if (!found) {
         await this.markRenewalFailed(payment.id, 'Cobrança interrompida');
         return 'failed';

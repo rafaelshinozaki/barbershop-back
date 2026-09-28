@@ -15,10 +15,11 @@ export class MailgunService {
       throw new Error('MAILGUN_API_KEY is required in environment variables');
     }
     const username = 'api';
-    this.domain = this.config.get<string>('MAILGUN_DOMAIN');
-    if (!this.domain) {
+    const domain = this.config.get<string>('MAILGUN_DOMAIN');
+    if (!domain) {
       throw new Error('MAILGUN_DOMAIN is required in environment variables');
     }
+    this.domain = domain;
 
     const mailgun = new Mailgun(FormData);
     this.client = mailgun.client({ username, key: apiKey, url: 'https://api.mailgun.net' });

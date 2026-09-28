@@ -17,11 +17,11 @@ export class Payment {
   @Field()
   nextPaymentDate: string;
 
-  @Field({ nullable: true })
-  paymentMethod?: string;
+  @Field(() => String, { nullable: true })
+  paymentMethod?: string | null;
 
-  @Field({ nullable: true })
-  transactionId?: string;
+  @Field(() => String, { nullable: true })
+  transactionId?: string | null;
 
   @Field()
   status: string;

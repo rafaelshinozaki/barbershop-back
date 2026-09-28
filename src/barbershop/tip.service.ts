@@ -221,7 +221,7 @@ export class TipService {
       },
     );
     return {
-      clientSecret: intent.client_secret!,
+      clientSecret: intent.client_secret,
       paymentIntentId: intent.id,
       amount: cents / 100,
       currency: appt.barbershop.currency,

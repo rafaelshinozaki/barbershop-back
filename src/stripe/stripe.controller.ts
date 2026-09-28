@@ -55,7 +55,7 @@ export class StripeController {
   @ApiResponse({ status: 200 })
   @HttpCode(200)
   async handleWebhook(@Headers('stripe-signature') signature: string, @Req() req: Request) {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET') ?? '';
     // Eventos das contas conectadas (Connect) chegam num endpoint próprio,
     // com outro segredo; o mesmo handler aceita os dois
     const connectSecret = this.configService.get<string>('STRIPE_CONNECT_WEBHOOK_SECRET');

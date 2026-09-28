@@ -1,3 +1,4 @@
+import { must } from '../common/must';
 import {
   BadRequestException,
   ForbiddenException,
@@ -138,7 +139,7 @@ export class FeaturedPaymentService {
         pending.days === offer.days
       ) {
         // Mesmo preço e dias de agora: retoma; se o admin mudou, começa outra
-        return this.startResult(pending, existing.client_secret!);
+        return this.startResult(pending, must(existing.client_secret, 'client_secret'));
       } else {
         if (existing.status !== 'canceled') {
           await this.stripe.cancelPaymentIntent(existing.id).catch(() => undefined);
@@ -173,7 +174,7 @@ export class FeaturedPaymentService {
       where: { id: purchase.id },
       data: { stripePaymentIntentId: intent.id },
     });
-    return this.startResult(purchase, intent.client_secret!);
+    return this.startResult(purchase, must(intent.client_secret, 'client_secret'));
   }
 
   private startResult(
@@ -274,10 +275,11 @@ export class FeaturedPaymentService {
       },
     });
     for (const shop of shops) {
-      if (!pending(shop.featuredUntil!, shop.featuredRemindedUntil)) continue;
+      const until = shop.featuredUntil;
+      if (!until || !pending(until, shop.featuredRemindedUntil)) continue;
       const claimed = await this.prisma.barbershop.updateMany({
-        where: { id: shop.id, featuredUntil: shop.featuredUntil },
-        data: { featuredRemindedUntil: shop.featuredUntil },
+        where: { id: shop.id, featuredUntil: until },
+        data: { featuredRemindedUntil: until },
       });
       if (claimed.count === 0) continue;
       const users = [
@@ -285,12 +287,7 @@ export class FeaturedPaymentService {
         shop.network?.ownerUserId,
         ...shop.barbers.map((b) => b.userId),
       ].filter((u): u is number => typeof u === 'number');
-      await this.notifyExpiring(
-        users,
-        shop.name,
-        shop.featuredUntil!,
-        `/barbershops/${shop.id}/public-page`,
-      );
+      await this.notifyExpiring(users, shop.name, until, `/barbershops/${shop.id}/public-page`);
       sent++;
     }
 
@@ -299,13 +296,14 @@ export class FeaturedPaymentService {
       select: { id: true, userId: true, featuredUntil: true, featuredRemindedUntil: true },
     });
     for (const pro of pros) {
-      if (!pending(pro.featuredUntil!, pro.featuredRemindedUntil)) continue;
+      const until = pro.featuredUntil;
+      if (!until || !pending(until, pro.featuredRemindedUntil)) continue;
       const claimed = await this.prisma.professional.updateMany({
-        where: { id: pro.id, featuredUntil: pro.featuredUntil },
-        data: { featuredRemindedUntil: pro.featuredUntil },
+        where: { id: pro.id, featuredUntil: until },
+        data: { featuredRemindedUntil: until },
       });
       if (claimed.count === 0) continue;
-      await this.notifyExpiring([pro.userId], null, pro.featuredUntil!, '/profile-privacy');
+      await this.notifyExpiring([pro.userId], null, until, '/profile-privacy');
       sent++;
     }
     return sent;

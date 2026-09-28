@@ -1,3 +1,4 @@
+import { must } from '../common/must';
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import {
   appointmentManageUrl,
@@ -21,7 +22,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
-import { isStaffType, StaffType, takesAppointments } from './staff-roles';
+import { isStaffType, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional, shiftsOverlap } from './professional';
 import { acceptsNewClient } from './profile-privacy';
 import {
@@ -1439,7 +1440,9 @@ export class BarbershopService {
     });
     for (const link of links) {
       try {
-        await this.stripeService.cancelSubscription(link.rentStripeSubscriptionId!);
+        await this.stripeService.cancelSubscription(
+          must(link.rentStripeSubscriptionId, 'assinatura do aluguel'),
+        );
       } catch (error: any) {
         if (error?.code !== 'resource_missing') throw error;
       }
@@ -2566,7 +2569,7 @@ export class BarbershopService {
           unitPrice: new Decimal(s.unitPrice),
         })),
       });
-      return tx.appointment.findUnique({
+      return tx.appointment.findUniqueOrThrow({
         where: { id: appointment.id },
         include: { services: true, customer: true, barber: true },
       });
@@ -4056,7 +4059,12 @@ export class BarbershopService {
       where: { id: { in: ids }, barbershopId, isActive: true },
     });
     if (found.length !== ids.length) throw new NotFoundException('Serviço não encontrado');
-    const services = ids.map((id) => found.find((s) => s.id === id)!);
+    const services = ids.map((id) =>
+      must(
+        found.find((s) => s.id === id),
+        `serviço ${id}`,
+      ),
+    );
     return {
       services,
       durationMinutes: services.reduce((sum, s) => sum + s.durationMinutes, 0),
@@ -4359,7 +4367,7 @@ export class BarbershopService {
     if (!auto) {
       const barber = await this.prisma.barber.findFirst({
         where: {
-          id: input.barberId!,
+          id: must(input.barberId, 'profissional escolhido'),
           barbershopId: input.barbershopId,
           isActive: true,
           ...BOOKABLE_STAFF,
@@ -4445,9 +4453,10 @@ export class BarbershopService {
     // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
+    const bookingCustomerId = customer.id;
     const deposits = services.filter((sv) => sv.depositAmount != null);
     const depositAmount = deposits.length
-      ? deposits.reduce((sum, sv) => sum.add(sv.depositAmount!), new Decimal(0))
+      ? deposits.reduce((sum, sv) => sum.add(sv.depositAmount ?? 0), new Decimal(0))
       : null;
     // Sinal online: o horário fica reservado (aguardando pagamento) por
     // alguns minutos; sem pagar, é liberado (ver DepositPaymentService)
@@ -4466,7 +4475,7 @@ export class BarbershopService {
         const appointment = await tx.appointment.create({
           data: {
             barbershopId: input.barbershopId,
-            customerId: customer!.id,
+            customerId: bookingCustomerId,
             barberId,
             startAt,
             endAt,
@@ -4506,11 +4515,11 @@ export class BarbershopService {
     // Confirmação por e-mail com o link pra cancelar/remarcar (best-effort:
     // o horário já está marcado, e-mail fora do ar não desfaz nada)
     // Aguardando o sinal: a confirmação sai quando o pagamento for aprovado
-    const confirmationEmail = input.customerEmail?.trim() || customer!.email;
+    const confirmationEmail = input.customerEmail?.trim() || customer.email;
     if (created && confirmationEmail && created.status === 'CONFIRMED') {
-      this.sendAppointmentEmail(created.id, 'appointment_confirmation', confirmationEmail).catch(
-        (err) =>
-          this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
+      const createdId = created.id;
+      this.sendAppointmentEmail(createdId, 'appointment_confirmation', confirmationEmail).catch(
+        (err) => this.logger.error(`Erro ao enviar confirmação do agendamento #${createdId}:`, err),
       );
     }
     return created;
@@ -4704,8 +4713,8 @@ export class BarbershopService {
       barberId: appt.barberId,
       barberName: appt.barber.name,
       serviceId: services[0]?.service?.id ?? null,
-      serviceIds: services.map((s) => s.service!.id),
-      serviceName: services.map((s) => s.service!.name).join(' + '),
+      serviceIds: services.map((s) => s.service.id),
+      serviceName: services.map((s) => s.service.name).join(' + '),
       price: services.reduce((sum, s) => sum + Number(s.unitPrice) * (s.quantity ?? 1), 0),
       currency: shop.currency,
       depositAmount: appt.depositAmount != null ? Number(appt.depositAmount) : null,
@@ -5067,7 +5076,7 @@ export class BarbershopService {
           _count: { _all: true },
         })
       ).map((g) => [
-        g.professionalId!,
+        g.professionalId,
         {
           averageRating: g._avg.rating != null ? Math.round(g._avg.rating * 10) / 10 : null,
           reviewCount: g._count._all,
@@ -5082,9 +5091,11 @@ export class BarbershopService {
         const shops = p.showLocations ? p.barbers.map((b) => b.barbershop) : [];
         const cities = [...new Set([...p.cities, ...shops.map((s) => s.city)])];
         const distances = point
-          ? shops
-              .filter((s) => s.latitude != null && s.longitude != null)
-              .map((s) => haversineKm(point.lat, point.lng, s.latitude!, s.longitude!))
+          ? shops.flatMap((s) =>
+              s.latitude != null && s.longitude != null
+                ? [haversineKm(point.lat, point.lng, s.latitude, s.longitude)]
+                : [],
+            )
           : [];
         const prices = p.barbers
           .flatMap((b) => b.barbershop.services.map((s) => Number(s.price)))
@@ -5093,7 +5104,7 @@ export class BarbershopService {
           ? ratings.get(p.id) ?? { averageRating: null, reviewCount: 0 }
           : { averageRating: null, reviewCount: 0 };
         return {
-          slug: p.slug!,
+          slug: must(p.slug, 'página do profissional'),
           name: p.user.fullName,
           photoKey: p.showPhoto ? p.user.photoKey : null,
           specialization: p.barbers.find((b) => b.specialization)?.specialization ?? null,
@@ -5741,13 +5752,15 @@ export class BarbershopService {
     const clientAccount = await this.prisma.clientAccount.findUnique({
       where: { id: clientAccountId },
     });
-    if (!clientAccount?.stripeCustomerId) {
+    const stripeCustomerId = clientAccount?.stripeCustomerId;
+    if (!stripeCustomerId) {
       throw new BadRequestException('Salve um cartão antes de assinar');
     }
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id: planId, barbershopId, isActive: true },
     });
-    if (!plan?.stripePriceId) throw new NotFoundException('Plano não encontrado');
+    const stripePriceId = plan?.stripePriceId;
+    if (!plan || !stripePriceId) throw new NotFoundException('Plano não encontrado');
 
     // Dois cliques (ou duas abas) juntos passavam os dois pela checagem e
     // criavam DUAS assinaturas no Stripe — cobrança em dobro todo mês. Agora
@@ -5769,17 +5782,11 @@ export class BarbershopService {
         }
         const previous = await tx.clientSubscription.count({ where: { clientAccountId, planId } });
 
-        await this.stripeService.attachPaymentMethod(
-          paymentMethodId,
-          clientAccount.stripeCustomerId!,
-        );
-        await this.stripeService.setDefaultPaymentMethod(
-          clientAccount.stripeCustomerId!,
-          paymentMethodId,
-        );
+        await this.stripeService.attachPaymentMethod(paymentMethodId, stripeCustomerId);
+        await this.stripeService.setDefaultPaymentMethod(stripeCustomerId, paymentMethodId);
         const stripeSubscription = await this.stripeService.createSubscription(
-          clientAccount.stripeCustomerId!,
-          plan.stripePriceId!,
+          stripeCustomerId,
+          stripePriceId,
           {
             clientAccountId: String(clientAccountId),
             barbershopId: String(barbershopId),
@@ -5917,7 +5924,7 @@ export class BarbershopService {
           notes: s.notes,
         })),
       });
-      return tx.walkIn.findUnique({
+      return tx.walkIn.findUniqueOrThrow({
         where: { id: walkIn.id },
         include: { services: { include: { service: true } }, customer: true, barber: true },
       });
@@ -6255,7 +6262,7 @@ export class BarbershopService {
         });
       }
 
-      return tx.sale.findUnique({
+      return tx.sale.findUniqueOrThrow({
         where: { id: sale.id },
         include: { items: true, customer: true, barber: true },
       });
@@ -7007,16 +7014,17 @@ export class BarbershopService {
 
     for (const sale of sales) {
       const barberId = sale.barberId as number;
-      if (!byBarber.has(barberId)) {
-        byBarber.set(barberId, {
+      let acc = byBarber.get(barberId);
+      if (!acc) {
+        acc = {
           salesCount: 0,
           totalServiceSales: 0,
           totalProductSales: 0,
           serviceCommission: 0,
           productCommission: 0,
-        });
+        };
+        byBarber.set(barberId, acc);
       }
-      const acc = byBarber.get(barberId)!;
       acc.salesCount++;
       for (const item of sale.items) {
         const total = Number(item.totalPrice);
@@ -7121,19 +7129,21 @@ export class BarbershopService {
       const isNoShow = appt.status === 'NO_SHOW';
       if (isNoShow) totalNoShow++;
 
-      if (!byBarber.has(appt.barberId)) {
-        byBarber.set(appt.barberId, { name: appt.barber.name, noShow: 0, completed: 0 });
+      let barberAcc = byBarber.get(appt.barberId);
+      if (!barberAcc) {
+        barberAcc = { name: appt.barber.name, noShow: 0, completed: 0 };
+        byBarber.set(appt.barberId, barberAcc);
       }
-      const barberAcc = byBarber.get(appt.barberId)!;
       if (isNoShow) barberAcc.noShow++;
       else barberAcc.completed++;
 
       for (const s of appt.services) {
         if (!s.service) continue;
-        if (!byService.has(s.service.id)) {
-          byService.set(s.service.id, { name: s.service.name, noShow: 0, completed: 0 });
+        let serviceAcc = byService.get(s.service.id);
+        if (!serviceAcc) {
+          serviceAcc = { name: s.service.name, noShow: 0, completed: 0 };
+          byService.set(s.service.id, serviceAcc);
         }
-        const serviceAcc = byService.get(s.service.id)!;
         if (isNoShow) serviceAcc.noShow++;
         else serviceAcc.completed++;
       }
@@ -7168,17 +7178,19 @@ export class BarbershopService {
 
     for (const item of saleItems) {
       if (item.itemType === 'SERVICE' && item.service) {
-        if (!serviceSales.has(item.service.id)) {
-          serviceSales.set(item.service.id, { name: item.service.name, quantity: 0, revenue: 0 });
+        let acc = serviceSales.get(item.service.id);
+        if (!acc) {
+          acc = { name: item.service.name, quantity: 0, revenue: 0 };
+          serviceSales.set(item.service.id, acc);
         }
-        const acc = serviceSales.get(item.service.id)!;
         acc.quantity += item.quantity;
         acc.revenue += Number(item.totalPrice);
       } else if (item.itemType === 'PRODUCT' && item.product) {
-        if (!productSales.has(item.product.id)) {
-          productSales.set(item.product.id, { name: item.product.name, quantity: 0, revenue: 0 });
+        let acc = productSales.get(item.product.id);
+        if (!acc) {
+          acc = { name: item.product.name, quantity: 0, revenue: 0 };
+          productSales.set(item.product.id, acc);
         }
-        const acc = productSales.get(item.product.id)!;
         acc.quantity += item.quantity;
         acc.revenue += Number(item.totalPrice);
       }
@@ -7235,14 +7247,15 @@ export class BarbershopService {
     >();
     for (const sale of paidSales) {
       const barberId = sale.barberId ?? 0;
-      if (!byBarberRevenue.has(barberId)) {
-        byBarberRevenue.set(barberId, {
+      let acc = byBarberRevenue.get(barberId);
+      if (!acc) {
+        acc = {
           name: sale.barber?.name ?? '',
           revenue: 0,
           salesCount: 0,
-        });
+        };
+        byBarberRevenue.set(barberId, acc);
       }
-      const acc = byBarberRevenue.get(barberId)!;
       acc.revenue += Number(sale.total);
       acc.salesCount += 1;
     }

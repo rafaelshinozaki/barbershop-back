@@ -16,7 +16,7 @@ export class CalendarFeedType {
   createdAt: Date;
 
   /** Última vez que o app de agenda buscou (confirma que a assinatura funciona) */
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   lastAccessAt?: Date | null;
 }
 

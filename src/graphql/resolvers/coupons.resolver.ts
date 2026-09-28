@@ -6,6 +6,7 @@ import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
+import { withoutNulls } from '../../common/without-nulls';
 import {
   Coupon,
   CouponValidationResult,
@@ -83,7 +84,7 @@ export class CouponsResolver {
   @Roles(Role.SYSTEM_ADMIN)
   async createCoupon(@Args('data') data: CreateCouponInput) {
     const couponData = {
-      ...data,
+      ...withoutNulls(data),
       applicablePlans: data.applicablePlans ? JSON.parse(data.applicablePlans) : undefined,
     };
     return await this.couponsService.createCoupon(couponData);
@@ -97,7 +98,7 @@ export class CouponsResolver {
     @Args('data') data: UpdateCouponInput,
   ) {
     const updateData = {
-      ...data,
+      ...withoutNulls(data),
       applicablePlans: data.applicablePlans ? JSON.parse(data.applicablePlans) : undefined,
     };
     return await this.couponsService.updateCoupon(id, updateData);

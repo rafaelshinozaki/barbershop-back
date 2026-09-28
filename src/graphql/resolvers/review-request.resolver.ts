@@ -19,7 +19,7 @@ export class ManagedReviewType {
   @Field(() => Int)
   rating: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   comment?: string | null;
 
   @Field()
@@ -28,16 +28,16 @@ export class ManagedReviewType {
   @Field()
   reviewerName: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   reply?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   repliedAt?: Date | null;
 
-  @Field({ nullable: true, description: 'Denunciada (aguardando moderação)' })
+  @Field(() => Date, { nullable: true, description: 'Denunciada (aguardando moderação)' })
   reportedAt?: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   reportReason?: string | null;
 
   @Field({ description: 'Ocultada pela moderação (fora da página e da nota)' })

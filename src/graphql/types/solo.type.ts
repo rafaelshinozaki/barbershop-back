@@ -8,10 +8,10 @@ export class SoloPracticeType {
   @Field(() => Int, { nullable: true })
   barbershopId: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   slug: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   name: string | null;
 
   @Field(() => Int)
@@ -57,7 +57,7 @@ export class SoloPracticeType {
   @Field()
   proActive: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   proUntil: string | null;
 
   @Field()
@@ -78,7 +78,7 @@ export class ProReferralType {
   @Field(() => Int)
   months: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   proUntil: string | null;
 
   @Field()
