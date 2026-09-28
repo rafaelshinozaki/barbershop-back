@@ -3,6 +3,8 @@ import {
   appointmentManageUrl,
   createAppointmentToken,
   verifyAppointmentToken,
+  verifyWaitlistLeaveToken,
+  waitlistLeaveUrl,
 } from './appointment-link';
 import {
   Injectable,
@@ -222,6 +224,24 @@ function socialUrl(value: string | null | undefined, host: string, label: string
   }
   url.protocol = 'https:';
   return url.toString().slice(0, 300);
+}
+
+/** Até quantos dias à frente o cliente entra na lista de espera online */
+const WAITLIST_MAX_DAYS_AHEAD = 60;
+/** Quantas entradas online aguardando uma mesma pessoa pode ter na rede */
+const WAITLIST_MAX_ONLINE_PER_CUSTOMER = 5;
+
+/** Página da unidade já com o dia (e o profissional e o serviço pedidos) */
+function waitlistBookUrl(
+  slug: string,
+  date: string,
+  entry: { barberId: number | null; serviceId: number | null },
+) {
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const params = new URLSearchParams({ date });
+  if (entry.serviceId) params.set('services', String(entry.serviceId));
+  if (entry.barberId) params.set('barber', String(entry.barberId));
+  return `${front}/u/${encodeURIComponent(slug)}?${params.toString()}`;
 }
 
 @Injectable()
@@ -3166,6 +3186,172 @@ export class BarbershopService {
   }
 
   /**
+   * Lista de espera online: dia cheio na tela de agendamento, o cliente pede
+   * para ser avisado se abrir vaga naquele dia (com o profissional escolhido
+   * ou qualquer um). Entra no fim da mesma fila que a equipe usa; um e-mail
+   * confirma com o link para sair da lista.
+   */
+  async joinPublicWaitlist(input: {
+    barbershopId: number;
+    barberId?: number | null;
+    serviceIds: number[];
+    date: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    clientAccountId?: number;
+  }) {
+    const barbershop = await this.prisma.barbershop.findFirst({
+      where: { id: input.barbershopId, isActive: true },
+    });
+    if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const name = input.customerName?.trim() ?? '';
+    const phone = input.customerPhone?.trim() ?? '';
+    const email = input.customerEmail?.trim().toLowerCase() ?? '';
+    if (name.length < 2 || phone.length < 8) {
+      throw new BadRequestException('Informe nome e telefone');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('Informe um e-mail válido para receber o aviso');
+    }
+    const today = toZonedParts(new Date(), safeTimeZone(barbershop.timezone)).dateStr;
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
+      input.date < today ||
+      input.date > addDaysStr(today, WAITLIST_MAX_DAYS_AHEAD)
+    ) {
+      throw new BadRequestException(
+        `Escolha um dia entre hoje e os próximos ${WAITLIST_MAX_DAYS_AHEAD} dias`,
+      );
+    }
+    let barberId: number | null = null;
+    if (input.barberId != null) {
+      const barber = await this.prisma.barber.findFirst({
+        where: { id: input.barberId, barbershopId: barbershop.id, isActive: true },
+        select: { id: true },
+      });
+      if (!barber) throw new NotFoundException('Profissional não encontrado');
+      barberId = barber.id;
+    }
+    const service = input.serviceIds.length
+      ? await this.prisma.barbershopService.findFirst({
+          where: { id: { in: input.serviceIds }, barbershopId: barbershop.id },
+          select: { id: true },
+        })
+      : null;
+    if (input.serviceIds.length && !service) {
+      throw new NotFoundException('Serviço não encontrado');
+    }
+
+    await this.ensureNotBlocked(barbershop.networkId, {
+      customerPhone: phone,
+      customerEmail: email,
+      clientAccountId: input.clientAccountId,
+    });
+
+    const networkId = barbershop.networkId;
+    let customer = await this.prisma.customer.findFirst({ where: { networkId, phone } });
+    if (!customer) {
+      customer = await this.prisma.customer.create({
+        data: {
+          networkId,
+          name,
+          phone,
+          email,
+          clientAccountId: input.clientAccountId ?? null,
+        },
+      });
+    }
+
+    const date = new Date(`${input.date}T00:00:00Z`);
+    const existing = await this.prisma.waitlistEntry.findFirst({
+      where: {
+        barbershopId: barbershop.id,
+        customerId: customer.id,
+        status: 'WAITING',
+        date,
+        barberId,
+        serviceId: service?.id ?? null,
+      },
+    });
+    if (existing) return { entryId: existing.id, alreadyWaiting: true };
+
+    // Sem lotar a fila de uma unidade com a mesma pessoa
+    const waiting = await this.prisma.waitlistEntry.count({
+      where: { customerId: customer.id, status: 'WAITING', source: 'online' },
+    });
+    if (waiting >= WAITLIST_MAX_ONLINE_PER_CUSTOMER) {
+      throw new BadRequestException(
+        `Você já está na lista de espera de ${WAITLIST_MAX_ONLINE_PER_CUSTOMER} dias. Saia de algum pelo link do e-mail.`,
+      );
+    }
+
+    const entry = await this.prisma.waitlistEntry.create({
+      data: {
+        barbershopId: barbershop.id,
+        customerId: customer.id,
+        barberId,
+        serviceId: service?.id ?? null,
+        date,
+        source: 'online',
+        contactEmail: email,
+      },
+      include: { barber: { select: { name: true } } },
+    });
+    this.realtime.notify(barbershop.id, 'WAITLIST', 'CREATED');
+
+    const lang = langForCountry(barbershop.country);
+    const dateStr = new Date(`${input.date}T12:00:00Z`).toLocaleDateString(LOCALE[lang], {
+      timeZone: 'UTC',
+    });
+    try {
+      await this.notificationQueue.email(
+        {
+          kind: 'customer',
+          loggedAgainstUserId: barbershop.ownerUserId ?? 0,
+          template: 'waitlist_joined',
+          context: {
+            CustomerName: name,
+            BarbershopName: barbershop.name,
+            WaitlistDate: dateStr,
+            BarberName: entry.barber?.name ?? null,
+            LeaveUrl: waitlistLeaveUrl(entry.id),
+            Year: new Date().getFullYear(),
+          },
+          subject: {
+            pt: `Você está na lista de espera de ${barbershop.name}`,
+            en: `You're on the waitlist at ${barbershop.name}`,
+            es: `Estás en la lista de espera de ${barbershop.name}`,
+          },
+          lang,
+          meta: 'waitlist-joined',
+          to: email,
+        },
+        `waitlist-joined-${entry.id}`,
+      );
+    } catch (err) {
+      this.logger.error(`Erro ao enfileirar confirmação da lista de espera #${entry.id}:`, err);
+    }
+    return { entryId: entry.id, alreadyWaiting: false };
+  }
+
+  /** "Sair da lista de espera" pelo link do e-mail, sem login */
+  async leaveWaitlist(token: string) {
+    const id = verifyWaitlistLeaveToken(token);
+    if (!id) throw new BadRequestException('Link inválido');
+    const entry = await this.prisma.waitlistEntry.findUnique({
+      where: { id },
+      include: { barbershop: { select: { name: true } } },
+    });
+    if (!entry) throw new NotFoundException('Você não está mais na lista de espera');
+    if (entry.status === 'WAITING') {
+      await this.prisma.waitlistEntry.update({ where: { id }, data: { status: 'CANCELLED' } });
+      this.realtime.notify(entry.barbershopId, 'WAITLIST', 'UPDATED');
+    }
+    return entry.barbershop.name;
+  }
+
+  /**
    * Um horário ficou livre (cancelado, remarcado, reserva sem sinal que
    * expirou): avisa o primeiro da lista de espera que combine. Horário que
    * já passou não interessa a ninguém.
@@ -3222,7 +3408,8 @@ export class BarbershopService {
     // Envio pela fila (tentativas + limite de taxa), sem segurar o
     // cancelamento esperando o Mailgun/a Meta responderem
     try {
-      if (match.customer.email) {
+      const to = match.contactEmail ?? match.customer.email;
+      if (to) {
         await this.notificationQueue.email(
           {
             kind: 'customer',
@@ -3234,6 +3421,7 @@ export class BarbershopService {
               BarbershopPhone: match.barbershop.phone,
               AppointmentDate: dateStr,
               AppointmentTime: timeStr,
+              BookUrl: waitlistBookUrl(match.barbershop.slug, localDate, match),
               Year: new Date().getFullYear(),
             },
             subject: {
@@ -3243,7 +3431,7 @@ export class BarbershopService {
             },
             lang,
             meta: 'waitlist-slot-available',
-            to: match.customer.email,
+            to,
           },
           `waitlist-email-${match.id}`,
         );

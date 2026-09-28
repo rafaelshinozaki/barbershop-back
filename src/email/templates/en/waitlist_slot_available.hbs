@@ -17,6 +17,7 @@
     .details { background-color: #f4f4f4; border-radius: 6px; padding: 16px 20px; margin: 20px 0; }
     .details p { margin-bottom: 8px; font-size: 15px; }
     .details strong { color: #000; }
+    .button { display: inline-block; background-color: #000; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; margin: 8px 0 16px; }
     .footer { background-color: #f4f4f4; color: #777777; text-align: center; padding: 20px; font-size: 14px; }
     @media only screen and (max-width: 600px) {
       .container { width: 100% !important; border-radius: 0; }
@@ -36,6 +37,7 @@
         <p><strong>Date:</strong> {{AppointmentDate}}</p>
         <p><strong>Time:</strong> {{AppointmentTime}}</p>
       </div>
+      {{#if BookUrl}}<p><a class="button" href="{{BookUrl}}">Book now</a></p>{{/if}}
       <p>Call us at {{BarbershopPhone}} or book directly in the app as soon as you can — it's first come, first served.</p>
       <p>See you soon!</p>
     </div>

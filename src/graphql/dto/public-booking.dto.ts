@@ -193,3 +193,42 @@ export class CreateReviewInput {
   @IsString()
   comment?: string;
 }
+
+/** Lista de espera online: dia cheio, o cliente pede aviso se abrir vaga */
+@InputType()
+export class JoinPublicWaitlistInput {
+  @Field(() => Int)
+  @IsInt()
+  barbershopId: number;
+
+  /** Sem profissional: qualquer um */
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  barberId?: number | null;
+
+  @Field(() => [Int], { nullable: true })
+  @IsOptional()
+  @IsInt({ each: true })
+  serviceIds?: number[] | null;
+
+  /** Dia (AAAA-MM-DD, no fuso da unidade) */
+  @Field()
+  @IsString()
+  date: string;
+
+  @Field()
+  @IsString()
+  @MinLength(2, { message: 'Nome muito curto' })
+  customerName: string;
+
+  @Field()
+  @IsString()
+  @MinLength(8, { message: 'Telefone inválido' })
+  customerPhone: string;
+
+  /** Obrigatório: o aviso de vaga e o link de sair vão por e-mail */
+  @Field()
+  @IsEmail({}, { message: 'Email inválido' })
+  customerEmail: string;
+}

@@ -770,3 +770,13 @@ export class ManagedAppointmentType {
   @Field({ nullable: true })
   manageToken?: string;
 }
+
+@ObjectType()
+export class JoinWaitlistResultType {
+  @Field(() => Int)
+  entryId: number;
+
+  /** Já estava na lista para esse dia: não duplica */
+  @Field()
+  alreadyWaiting: boolean;
+}

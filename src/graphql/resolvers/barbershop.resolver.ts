@@ -1444,6 +1444,7 @@ export class BarbershopResolver {
       notes: e.notes ?? undefined,
       status: e.status,
       notifiedAt: e.notifiedAt ? e.notifiedAt.toISOString() : undefined,
+      source: e.source ?? 'staff',
       createdAt: e.createdAt.toISOString(),
     };
   }
