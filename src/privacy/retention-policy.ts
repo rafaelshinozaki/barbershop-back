@@ -17,6 +17,8 @@ export const RETENTION_DAYS = {
   chatText: 365,
   /** Nota de conduta do cliente, quando existir, sem novo atendimento. */
   clientConductNote: 365 * 2,
+  /** Pedido de suporte, contado da última atividade. */
+  supportTicket: 365 * 2,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

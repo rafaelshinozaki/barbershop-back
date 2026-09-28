@@ -6,6 +6,8 @@ import { ModerationResolver } from './resolvers/moderation.resolver';
 import { AccountLinkResolver } from './resolvers/account-link.resolver';
 import { IdentityVerificationResolver } from './resolvers/identity-verification.resolver';
 import { ChatResolver } from './resolvers/chat.resolver';
+import { SupportResolver } from './resolvers/support.resolver';
+import { SupportModule } from '../support/support.module';
 import { SoloResolver } from './resolvers/solo.resolver';
 import { ImportResolver } from './resolvers/import.resolver';
 import { PublicProfessionalResolver } from './resolvers/public-professional.resolver';
@@ -65,6 +67,7 @@ import { SocialModule } from '../social/social.module';
     PaymentsModule,
     ClientAuthModule,
     SocialModule,
+    SupportModule,
   ],
   providers: [
     RealtimeResolver,
@@ -101,6 +104,7 @@ import { SocialModule } from '../social/social.module';
     AccountLinkResolver,
     IdentityVerificationResolver,
     ChatResolver,
+    SupportResolver,
     SoloResolver,
     ImportResolver,
     PublicProfessionalResolver,

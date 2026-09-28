@@ -158,6 +158,8 @@ export class AccountDeletionService {
       this.prisma.userNotification.deleteMany({ where: { userId } }),
       this.prisma.notificationPreference.deleteMany({ where: { userId } }),
       this.prisma.emailLogger.deleteMany({ where: { userId } }),
+      // Pedidos de suporte (e as mensagens, em cascata)
+      this.prisma.supportTicket.deleteMany({ where: { userId } }),
       // Convites que a pessoa mandou têm o e-mail de terceiros
       this.prisma.friendInvite.deleteMany({ where: { inviterId: userId } }),
       this.prisma.friendInvite.updateMany({

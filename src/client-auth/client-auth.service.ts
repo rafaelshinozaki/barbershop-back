@@ -18,6 +18,7 @@ import { normalizeLang } from '@/email/language';
 import { appointmentReviewUrl } from '../barbershop/appointment-link';
 import { ClientAccountDTO } from './dto/client-account.dto';
 import { AccountLinkService } from './account-link.service';
+import { assertNotSuspended } from './suspension';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -401,6 +402,9 @@ export class ClientAuthService {
       }
     }
 
+    // Senha certa, conta suspensa: diz o motivo em vez de "senha inválida"
+    assertNotSuspended(account);
+
     // Fichas criadas desde o último login (se o e-mail já está confirmado)
     await this.linkVerifiedCustomers(account);
 
@@ -579,6 +583,7 @@ export class ClientAuthService {
       this.prisma.clientFavoriteBarber.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId } }),
       this.prisma.clientAccountToken.deleteMany({ where: { clientAccountId } }),
+      this.prisma.supportTicket.deleteMany({ where: { clientAccountId } }),
       this.prisma.customer.updateMany({
         where: { clientAccountId },
         data: { clientAccountId: null },
@@ -620,9 +625,12 @@ export class ClientAuthService {
       }) as { clientAccountId: number; v?: number };
       const account = await this.prisma.clientAccount.findUnique({
         where: { id: decoded.clientAccountId },
-        select: { sessionVersion: true, deletedAt: true },
+        select: { sessionVersion: true, deletedAt: true, suspendedAt: true },
       });
-      return account && !account.deletedAt && (decoded.v ?? 0) === account.sessionVersion
+      return account &&
+        !account.deletedAt &&
+        !account.suspendedAt &&
+        (decoded.v ?? 0) === account.sessionVersion
         ? decoded.clientAccountId
         : undefined;
     } catch {

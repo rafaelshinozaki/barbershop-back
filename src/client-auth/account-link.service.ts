@@ -3,6 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
+import { assertNotSuspended } from './suspension';
 
 type StaffUser = {
   id: number;
@@ -219,7 +220,10 @@ export class AccountLinkService {
     const linked = await this.prisma.clientAccount.findFirst({
       where: { userId, deletedAt: null },
     });
-    if (linked) return { account: linked, created: false };
+    if (linked) {
+      assertNotSuspended(linked);
+      return { account: linked, created: false };
+    }
     const existing = await this.clientByEmail(staff.email);
     if (existing) {
       throw new BadRequestException(

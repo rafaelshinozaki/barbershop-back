@@ -34,7 +34,8 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
       const account = await this.prisma.clientAccount.findUnique({
         where: { id: decoded.clientAccountId },
       });
-      if (!account || account.deletedAt) {
+      // Suspensa pelo admin da plataforma: nenhuma sessão vale
+      if (!account || account.deletedAt || account.suspendedAt) {
         throw new UnauthorizedException('Conta de cliente não encontrada.');
       }
       // Senha trocada (ou conta retomada pelo dono do e-mail) derruba os
