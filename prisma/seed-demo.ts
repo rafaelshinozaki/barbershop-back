@@ -10,6 +10,7 @@
 import { Prisma, PrismaClient, TreatmentCategory } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import * as bcrypt from 'bcryptjs';
+import { DEFAULT_PRICING, PLATFORM_CURRENCY } from '../src/pricing/pricing';
 
 const SEED_PASSWORD = bcrypt.hashSync('pwned', 10);
 
@@ -2378,6 +2379,205 @@ async function ensureNewFeatures(prisma: PrismaClient) {
   }
 }
 
+// Marketplace: donos da Vintage e do Studio Navalha com página de profissional
+// pública e abertos a freela (um com Destaque pago, outro vencendo em 2 dias),
+// vagas da Green (uma aberta com candidatura, uma preenchida com a taxa paga),
+// compras do Destaque na aba Compras do backoffice e uma entrada online na
+// lista de espera. Cayo (dono da Green) fica de fora: os E2E mexem no perfil dele.
+async function ensureMarketplace(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green || !green.ownerUserId) return;
+  if (await prisma.jobOpening.count({ where: { barbershopId: green.id } })) return;
+  console.log('Marketplace: public professionals, job openings, Destaque purchases...');
+
+  const pros = [
+    {
+      email: 'marcos.andrade@barbershop.com',
+      slug: 'marcos-andrade',
+      specialties: [TreatmentCategory.HAIR, TreatmentCategory.BEARD],
+      cities: ['São Paulo', 'São José dos Campos'],
+      featuredUntil: atBrt(20, 23),
+      paidAt: atBrt(-10, 14),
+    },
+    {
+      email: 'tiago.moura@barbershop.com',
+      slug: 'tiago-moura',
+      specialties: [TreatmentCategory.HAIR, TreatmentCategory.BROWS_LASHES],
+      cities: ['Campinas', 'São José dos Campos'],
+      featuredUntil: atBrt(2, 23),
+      paidAt: atBrt(-28, 11),
+    },
+  ];
+  const users: { id: number }[] = [];
+  let purchase = 0;
+  const featuredDays = DEFAULT_PRICING.featuredDays;
+  for (const p of pros) {
+    const user = await prisma.user.findFirst({ where: { email: p.email, provider: 'local' } });
+    if (!user) continue;
+    users.push(user);
+    const slugTaken = await prisma.professional.findFirst({
+      where: { slug: p.slug, userId: { not: user.id } },
+    });
+    const pro = await prisma.professional.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id },
+      update: {},
+    });
+    await prisma.professional.update({
+      where: { id: pro.id },
+      data: {
+        slug: pro.slug ?? (slugTaken ? null : p.slug),
+        visibility: 'public',
+        isPublic: true,
+        roles: ['barber'],
+        specialties: p.specialties,
+        cities: p.cities,
+        openToWork: true,
+        engagements: ['freelance', 'fixed'],
+        featuredUntil: p.featuredUntil,
+      },
+    });
+    await prisma.barber.updateMany({
+      where: { userId: user.id, professionalId: null },
+      data: { professionalId: pro.id },
+    });
+    await prisma.featuredPurchase.create({
+      data: {
+        ownerType: 'professional',
+        ownerId: pro.id,
+        userId: user.id,
+        amountCents: DEFAULT_PRICING.featuredProPriceCents,
+        currency: PLATFORM_CURRENCY,
+        days: featuredDays,
+        stripePaymentIntentId: `pi_demo_featured_${++purchase}`,
+        status: 'paid',
+        paidAt: p.paidAt,
+        featuredUntil: p.featuredUntil,
+      },
+    });
+  }
+
+  // Destaque das unidades que já aparecem em destaque na busca
+  const featuredShops = await prisma.barbershop.findMany({
+    where: { featuredUntil: { gt: new Date() }, ownerUserId: { not: null } },
+    orderBy: { id: 'asc' },
+    take: 3,
+  });
+  for (const shop of featuredShops) {
+    const paidAt = new Date(shop.featuredUntil!.getTime() - featuredDays * 86_400_000);
+    await prisma.featuredPurchase.create({
+      data: {
+        ownerType: 'barbershop',
+        ownerId: shop.id,
+        userId: shop.ownerUserId!,
+        amountCents: DEFAULT_PRICING.featuredShopPriceCents,
+        currency: PLATFORM_CURRENCY,
+        days: featuredDays,
+        stripePaymentIntentId: `pi_demo_featured_${++purchase}`,
+        status: 'paid',
+        paidAt: paidAt < new Date() ? paidAt : new Date(),
+        featuredUntil: shop.featuredUntil,
+      },
+    });
+  }
+
+  // Vagas da Green
+  const [tiago, marcos] = [users[1], users[0]];
+  const ymd = (offset: number) => atBrt(offset, 12).toISOString().slice(0, 10);
+  const saturdays = weekdayFrom(14, 6);
+  const open = await prisma.jobOpening.create({
+    data: {
+      barbershopId: green.id,
+      createdByUserId: green.ownerUserId,
+      title: 'Barbeiro(a) freelancer para os sábados',
+      description:
+        'Movimento forte aos sábados. Procuramos alguém com experiência em degradê e barba ' +
+        'para cobrir das 9h às 18h. Material e cadeira por nossa conta.',
+      category: TreatmentCategory.HAIR,
+      startDate: saturdays.date,
+      endDate: ymd(saturdays.offset + 28),
+      payInfo: 'R$ 250 a diária + 10% dos atendimentos',
+      slots: 2,
+    },
+  });
+  if (tiago) {
+    await prisma.jobApplication.create({
+      data: {
+        jobOpeningId: open.id,
+        userId: tiago.id,
+        message: 'Tenho 8 anos de experiência com degradê e posso ir todos os sábados.',
+        createdAt: atBrt(-1, 19),
+      },
+    });
+  }
+  const filled = await prisma.jobOpening.create({
+    data: {
+      barbershopId: green.id,
+      createdByUserId: green.ownerUserId,
+      title: 'Cobertura de férias (barba)',
+      description: 'Duas semanas cobrindo as férias da equipe.',
+      category: TreatmentCategory.BEARD,
+      startDate: ymd(-20),
+      endDate: ymd(-6),
+      payInfo: '40% dos atendimentos',
+      status: 'filled',
+      closedAt: atBrt(-24, 10),
+      createdAt: atBrt(-30, 9),
+    },
+  });
+  if (marcos) {
+    await prisma.jobApplication.create({
+      data: {
+        jobOpeningId: filled.id,
+        userId: marcos.id,
+        message: 'Faço barba na navalha há 10 anos.',
+        status: 'accepted',
+        decidedAt: atBrt(-24, 10),
+        createdAt: atBrt(-27, 20),
+        feeCents: DEFAULT_PRICING.jobFillFeeCents,
+        feePaymentIntentId: 'pi_demo_job_fee_1',
+        feePayerUserId: green.ownerUserId,
+        feePaidAt: atBrt(-24, 10),
+      },
+    });
+  }
+
+  // Lista de espera: uma cliente entrou pela tela de agendamento
+  const account = await prisma.clientAccount.findUnique({
+    where: { email: 'mariana.costa@cliente.com' },
+  });
+  const service = await prisma.barbershopService.findFirst({
+    where: { barbershopId: green.id, isActive: true, name: 'Corte masculino' },
+  });
+  if (account) {
+    const customer =
+      (await prisma.customer.findFirst({
+        where: { networkId: green.networkId, clientAccountId: account.id },
+      })) ??
+      (await prisma.customer.create({
+        data: {
+          networkId: green.networkId,
+          clientAccountId: account.id,
+          name: account.name,
+          phone: account.phone ?? '(12) 98222-3344',
+          email: account.email,
+        },
+      }));
+    const day = weekdayFrom(12);
+    await prisma.waitlistEntry.create({
+      data: {
+        barbershopId: green.id,
+        customerId: customer.id,
+        serviceId: service?.id ?? null,
+        date: new Date(`${day.date}T00:00:00Z`),
+        source: 'online',
+        contactEmail: account.email,
+        createdAt: atBrt(-1, 21),
+      },
+    });
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -2418,5 +2618,6 @@ export async function seedDemoData(prisma: PrismaClient) {
   await ensureChairRent(prisma);
   await ensurePayroll(prisma);
   await ensureNewFeatures(prisma);
+  await ensureMarketplace(prisma);
   await seedNotifications(prisma, green.id);
 }
