@@ -29,6 +29,7 @@ import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 import { JobOpeningService } from './job-opening.service';
+import { FeaturedPaymentService } from './featured-payment.service';
 import { EmployeeInviteController } from './employee-invite.controller';
 import { BullModule } from '@nestjs/bullmq';
 import {
@@ -93,11 +94,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BarbershopMediaService,
     GeocodingService,
     JobOpeningService,
+    FeaturedPaymentService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
     JobOpeningService,
+    FeaturedPaymentService,
     BarbershopMediaService,
     GeocodingService,
     ReviewRequestService,

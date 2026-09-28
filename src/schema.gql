@@ -1538,6 +1538,31 @@ type ExpenseType {
   paymentMethod: String
 }
 
+type FeaturedCheckoutType {
+  clientSecret: String!
+  currency: String!
+  days: Int!
+  priceCents: Int!
+  purchaseId: Int!
+}
+
+type FeaturedStatusType {
+  """
+  Dá pra comprar agora (Stripe configurado e, no profissional, página pública)
+  """
+  available: Boolean!
+  currency: String!
+  days: Int!
+
+  """ISO"""
+  featuredUntil: String
+  isFeatured: Boolean!
+
+  """Profissional sem página pública: precisa deixar pública antes"""
+  needsPublicProfile: Boolean!
+  priceCents: Int!
+}
+
 type FinancialCategoryTotal {
   category: String!
   total: Float!
@@ -1947,6 +1972,7 @@ type Mutation {
   confirmAppTip(paymentIntentId: String!, token: String!): Boolean!
   confirmAppointmentPrepayment(token: String!): AppointmentPrepaymentType!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
+  confirmFeaturedPurchase(purchaseId: Int!): Boolean!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   contactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
@@ -2116,6 +2142,7 @@ type Mutation {
   startAppointmentPrepayment(token: String!): PrepaymentStartType!
   startBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountLinkType!
   startDepositPayment(token: String!): DepositPaymentType!
+  startFeaturedPurchase(ownerId: Int, ownerType: String!): FeaturedCheckoutType!
   startIdentityVerification: IdentityVerificationStartType!
   startMyPaymentAccount: PaymentAccountLinkType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
@@ -3040,6 +3067,12 @@ type Query {
   depositPayoutReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
   emailHistory(filters: EmailHistoryFilters!): PaginatedEmailHistory!
   expenses(barbershopId: Int!, category: String, from: String, to: String): [ExpenseType!]!
+  featuredStatus(
+    ownerId: Int
+
+    """barbershop | professional"""
+    ownerType: String!
+  ): FeaturedStatusType!
   financialSummary(barbershopId: Int!, from: String!, to: String!): FinancialSummaryType!
   geographicAnalysis: GeographicAnalysis!
   getAllPlans: [Plan!]!

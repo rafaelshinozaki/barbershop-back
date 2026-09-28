@@ -26,6 +26,7 @@ import { IdentityVerificationService } from '../barbershop/identity-verification
 import { ConnectService } from '../barbershop/connect.service';
 import { TipService } from '../barbershop/tip.service';
 import { PrepaymentService } from '../barbershop/prepayment.service';
+import { FeaturedPaymentService } from '../barbershop/featured-payment.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -44,6 +45,7 @@ export class StripeController {
     private connect: ConnectService,
     private tips: TipService,
     private prepayments: PrepaymentService,
+    private featured: FeaturedPaymentService,
   ) {}
 
   @Post('webhook')
@@ -443,6 +445,11 @@ export class StripeController {
     // Atendimento pago antes pelo app (a tela também registra; idempotente)
     if (meta.kind === 'appointment_prepayment') {
       await this.prepayments.finalize(paymentIntent);
+      return;
+    }
+    // Compra de Destaque (a tela também registra; idempotente)
+    if (meta.kind === 'featured_purchase') {
+      await this.featured.finalize(paymentIntent);
       return;
     }
     if (meta.renewalKey) {

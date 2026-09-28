@@ -351,6 +351,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       { finalizeAppTip: async () => false } as never,
       // Nem de atendimento pago pelo app
       { finalize: async () => false } as never,
+      // Nem de compra de Destaque
+      { finalize: async () => false } as never,
     );
     const deliver = (event: unknown) =>
       controller.handleWebhook('sig', { rawBody: Buffer.from(JSON.stringify(event)) } as never);

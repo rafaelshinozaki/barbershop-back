@@ -543,7 +543,7 @@ model Barbershop {
   facebookUrl    String?
   linkedinUrl    String?
   isActive       Boolean   @default(true)
-  featuredUntil  DateTime? // posicionamento pago "Destaque" na busca — ativado manualmente pelo admin, sem checkout automático ainda
+  featuredUntil  DateTime? // posicionamento pago "Destaque" na busca: comprado com cartão (30 dias por compra) ou ligado pelo admin
   // Fora da vitrine pela moderação (denúncia): some da busca e do sitemap; o link direto continua
   searchHiddenAt DateTime?
   networkId      Int
@@ -2135,5 +2135,30 @@ model JobApplication {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([jobOpeningId, userId])
+  @@index([userId])
+}
+
+// Compra de 30 dias de "Destaque" na busca, com cartão (Stripe, receita da
+// plataforma). Cada compra paga soma 30 dias ao fim do Destaque que já vale.
+model FeaturedPurchase {
+  id                    Int       @id @default(autoincrement())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  // barbershop | professional
+  ownerType             String
+  ownerId               Int
+  // Quem comprou (dono/gerente da unidade ou o próprio profissional)
+  userId                Int
+  amountCents           Int
+  currency              String
+  days                  Int
+  stripePaymentIntentId String?   @unique
+  // pending | paid | canceled
+  status                String    @default("pending")
+  paidAt                DateTime?
+  // Até quando o Destaque ficou depois desta compra
+  featuredUntil         DateTime?
+
+  @@index([ownerType, ownerId, status])
   @@index([userId])
 }
