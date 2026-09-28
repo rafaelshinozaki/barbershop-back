@@ -98,10 +98,13 @@ export class ScheduleService {
       if (d.open) checkRange(d.start, d.end, WEEKDAY_KEYS[d.dayOfWeek]);
       json[WEEKDAY_KEYS[d.dayOfWeek]] = d.open ? { start: d.start!, end: d.end! } : null;
     }
-    await this.prisma.barbershop.update({
-      where: { id: barbershopId },
-      data: { businessHours: JSON.stringify(json) },
-    });
+    // Horário ampliado pode abrir vaga para quem está na lista de espera
+    await this.barbershopService.withWaitlistOpening(barbershopId, {}, () =>
+      this.prisma.barbershop.update({
+        where: { id: barbershopId },
+        data: { businessHours: JSON.stringify(json) },
+      }),
+    );
     return this.getBusinessHours(userId, barbershopId);
   }
 
@@ -175,37 +178,40 @@ export class ScheduleService {
         }
       }
     }
-    await this.prisma.$transaction(
-      days.map((d) => {
-        const where = { barberId_dayOfWeek: { barberId, dayOfWeek: d.dayOfWeek } };
-        if (d.mode === 'SHOP') {
-          return this.prisma.barberSchedule.deleteMany({
-            where: { barberId, dayOfWeek: d.dayOfWeek },
+    // Escala ampliada pode abrir vaga para quem está na lista de espera
+    await this.barbershopService.withWaitlistOpening(barber.barbershopId, { barberId }, () =>
+      this.prisma.$transaction(
+        days.map((d) => {
+          const where = { barberId_dayOfWeek: { barberId, dayOfWeek: d.dayOfWeek } };
+          if (d.mode === 'SHOP') {
+            return this.prisma.barberSchedule.deleteMany({
+              where: { barberId, dayOfWeek: d.dayOfWeek },
+            });
+          }
+          const data =
+            d.mode === 'OFF'
+              ? // Folga fixa: linha inativa (os horários não importam)
+                {
+                  startTime: '00:00',
+                  endTime: '00:00',
+                  breakStart: null,
+                  breakEnd: null,
+                  isActive: false,
+                }
+              : {
+                  startTime: d.startTime!,
+                  endTime: d.endTime!,
+                  breakStart: d.breakStart || null,
+                  breakEnd: d.breakEnd || null,
+                  isActive: true,
+                };
+          return this.prisma.barberSchedule.upsert({
+            where,
+            create: { barberId, dayOfWeek: d.dayOfWeek, ...data },
+            update: data,
           });
-        }
-        const data =
-          d.mode === 'OFF'
-            ? // Folga fixa: linha inativa (os horários não importam)
-              {
-                startTime: '00:00',
-                endTime: '00:00',
-                breakStart: null,
-                breakEnd: null,
-                isActive: false,
-              }
-            : {
-                startTime: d.startTime!,
-                endTime: d.endTime!,
-                breakStart: d.breakStart || null,
-                breakEnd: d.breakEnd || null,
-                isActive: true,
-              };
-        return this.prisma.barberSchedule.upsert({
-          where,
-          create: { barberId, dayOfWeek: d.dayOfWeek, ...data },
-          update: data,
-        });
-      }),
+        }),
+      ),
     );
     return this.getWeeklySchedule(userId, barberId);
   }

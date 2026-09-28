@@ -230,6 +230,11 @@ function socialUrl(value: string | null | undefined, host: string, label: string
 const WAITLIST_MAX_DAYS_AHEAD = 60;
 /** Quantas entradas online aguardando uma mesma pessoa pode ter na rede */
 const WAITLIST_MAX_ONLINE_PER_CUSTOMER = 5;
+/** Quantas entradas conferir a cada mudança de agenda (as mais antigas primeiro) */
+const WAITLIST_OPENING_MAX_ENTRIES = 200;
+
+/** Onde a agenda pode ter aberto: um profissional (ou todos) e um período */
+export type WaitlistOpeningScope = { barberId?: number | null; from?: string; to?: string };
 
 /** Página da unidade já com o dia (e o profissional e o serviço pedidos) */
 function waitlistBookUrl(
@@ -2120,16 +2125,18 @@ export class BarbershopService {
       input.startTime,
       input.endTime,
     );
-    return this.prisma.barberSchedule.create({
-      data: {
-        barberId: input.barberId,
-        dayOfWeek: input.dayOfWeek,
-        startTime: input.startTime,
-        endTime: input.endTime,
-        breakStart: input.breakStart,
-        breakEnd: input.breakEnd,
-      },
-    });
+    return this.withWaitlistOpening(barber.barbershopId, { barberId: barber.id }, () =>
+      this.prisma.barberSchedule.create({
+        data: {
+          barberId: input.barberId,
+          dayOfWeek: input.dayOfWeek,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          breakStart: input.breakStart,
+          breakEnd: input.breakEnd,
+        },
+      }),
+    );
   }
 
   async updateBarberSchedule(
@@ -2160,7 +2167,11 @@ export class BarbershopService {
         endTime,
       );
     }
-    return this.prisma.barberSchedule.update({ where: { id }, data });
+    return this.withWaitlistOpening(
+      schedule.barber.barbershopId,
+      { barberId: schedule.barberId },
+      () => this.prisma.barberSchedule.update({ where: { id }, data }),
+    );
   }
 
   async deleteBarberSchedule(userId: number, id: number) {
@@ -2240,7 +2251,24 @@ export class BarbershopService {
     });
     if (!timeOff) throw new NotFoundException('Afastamento não encontrado');
     await this.ensureCanManageBarber(userId, timeOff.barber.barbershopId, timeOff.barberId);
-    await this.prisma.barberTimeOff.delete({ where: { id: timeOffId } });
+    // Folga desfeita: os dias dela podem ter aberto horário
+    const tz = safeTimeZone(
+      (
+        await this.prisma.barbershop.findUnique({
+          where: { id: timeOff.barber.barbershopId },
+          select: { timezone: true },
+        })
+      )?.timezone,
+    );
+    await this.withWaitlistOpening(
+      timeOff.barber.barbershopId,
+      {
+        barberId: timeOff.barberId,
+        from: toZonedParts(timeOff.startAt, tz).dateStr,
+        to: toZonedParts(timeOff.endAt, tz).dateStr,
+      },
+      () => this.prisma.barberTimeOff.delete({ where: { id: timeOffId } }),
+    );
     this.realtime.notify(timeOff.barber.barbershopId, 'APPOINTMENT', 'UPDATED');
     return true;
   }
@@ -3393,13 +3421,133 @@ export class BarbershopService {
     });
     // Quem está na tela da lista de espera vê a entrada virar "avisado"
     this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
+    await this.sendWaitlistNotice(match, appointment.startAt, localDate);
+  }
 
+  /**
+   * Abriu horário novo (folga desfeita, fechamento removido, escala ou
+   * horário de funcionamento ampliados): quem espera nesses dias e agora
+   * tem um horário que antes não havia é avisado, na ordem de entrada. Quem
+   * chama tira a foto (`waitlistOpeningSnapshot`) antes de mudar a agenda;
+   * assim, uma entrada num dia que já tinha horário livre não é avisada à
+   * toa. Cada horário novo avisa uma pessoa só, como no cancelamento.
+   */
+  async checkWaitlistOnOpening(
+    barbershopId: number,
+    opts: WaitlistOpeningScope = {},
+    before?: Map<number, Set<string>>,
+  ) {
+    const found = await this.waitlistOpeningSlots(barbershopId, opts);
+    const now = Date.now();
+    const given = new Map<string, Set<string>>();
+    let notified = 0;
+    for (const { entry, day, slots } of found) {
+      const had = before?.get(entry.id);
+      const taken = given.get(day) ?? new Set<string>();
+      const slot = slots.find((iso) => Date.parse(iso) > now && !had?.has(iso) && !taken.has(iso));
+      if (!slot) continue;
+      // Condicional: a equipe pode ter mexido na entrada enquanto isso
+      const claimed = await this.prisma.waitlistEntry.updateMany({
+        where: { id: entry.id, status: 'WAITING' },
+        data: { status: 'NOTIFIED', notifiedAt: new Date() },
+      });
+      if (claimed.count === 0) continue;
+      taken.add(slot);
+      given.set(day, taken);
+      notified++;
+      await this.sendWaitlistNotice(entry, new Date(slot), day);
+    }
+    if (notified) this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
+    return notified;
+  }
+
+  /** Horários livres de cada entrada aguardando, antes de a agenda mudar */
+  async waitlistOpeningSnapshot(barbershopId: number, opts: WaitlistOpeningScope = {}) {
+    const found = await this.waitlistOpeningSlots(barbershopId, opts);
+    return new Map(found.map(({ entry, slots }) => [entry.id, new Set(slots)]));
+  }
+
+  /**
+   * Muda a agenda e depois avisa a lista de espera do que abriu, sem segurar
+   * quem mudou (o aviso roda em segundo plano).
+   */
+  async withWaitlistOpening<T>(
+    barbershopId: number,
+    opts: WaitlistOpeningScope,
+    change: () => Promise<T>,
+  ): Promise<T> {
+    const before = await this.waitlistOpeningSnapshot(barbershopId, opts).catch(() => undefined);
+    const result = await change();
+    this.checkWaitlistOnOpening(barbershopId, opts, before).catch((err) =>
+      this.logger.error(`Erro ao avisar a lista de espera (unidade #${barbershopId}):`, err),
+    );
+    return result;
+  }
+
+  private async waitlistOpeningSlots(barbershopId: number, opts: WaitlistOpeningScope) {
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const today = toZonedParts(new Date(), safeTimeZone(shop?.timezone)).dateStr;
+    const from = opts.from && opts.from > today ? opts.from : today;
+    const last = addDaysStr(today, WAITLIST_MAX_DAYS_AHEAD);
+    const to = opts.to && opts.to < last ? opts.to : last;
+    if (from > to) return [];
+
+    const entries = await this.prisma.waitlistEntry.findMany({
+      where: {
+        barbershopId,
+        status: 'WAITING',
+        date: {
+          gte: new Date(`${from}T00:00:00Z`),
+          lt: new Date(`${nextDateStr(to)}T00:00:00Z`),
+        },
+        ...(opts.barberId != null ? { OR: [{ barberId: null }, { barberId: opts.barberId }] } : {}),
+      },
+      include: { customer: true, barbershop: true },
+      orderBy: { createdAt: 'asc' },
+      take: WAITLIST_OPENING_MAX_ENTRIES,
+    });
+    if (!entries.length) return [];
+    // Sem serviço na entrada: o mais curto da unidade
+    const shortest = await this.prisma.barbershopService.findFirst({
+      where: { barbershopId, isActive: true },
+      orderBy: { durationMinutes: 'asc' },
+      select: { id: true },
+    });
+    const found: { entry: (typeof entries)[number]; day: string; slots: string[] }[] = [];
+    for (const entry of entries) {
+      const serviceId = entry.serviceId ?? shortest?.id;
+      if (!serviceId) continue;
+      const day = entry.date.toISOString().slice(0, 10);
+      try {
+        const slots = await this.getPublicAvailableSlots(
+          barbershopId,
+          entry.barberId,
+          [serviceId],
+          day,
+        );
+        found.push({ entry, day, slots });
+      } catch {
+        // profissional ou serviço que saiu da página pública
+      }
+    }
+    return found;
+  }
+
+  /** Aviso de vaga (e-mail e WhatsApp) para uma entrada da lista de espera */
+  private async sendWaitlistNotice(
+    match: Prisma.WaitlistEntryGetPayload<{ include: { customer: true; barbershop: true } }>,
+    startAt: Date,
+    localDate: string,
+  ) {
     // Cliente não tem idioma salvo: língua do país da unidade
     const lang = langForCountry(match.barbershop.country);
-    const dateStr = appointment.startAt.toLocaleDateString(LOCALE[lang], {
+    const dateStr = startAt.toLocaleDateString(LOCALE[lang], {
       timeZone: match.barbershop.timezone,
     });
-    const timeStr = appointment.startAt.toLocaleTimeString(LOCALE[lang], {
+    const timeStr = startAt.toLocaleTimeString(LOCALE[lang], {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: match.barbershop.timezone,

@@ -202,7 +202,10 @@ export class ClosureService {
 
   async remove(userId: number, barbershopId: number, date: string) {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    await this.prisma.barbershopClosure.deleteMany({ where: { barbershopId, date } });
+    // Dia reaberto: avisa quem está na lista de espera dele
+    await this.barbershopService.withWaitlistOpening(barbershopId, { from: date, to: date }, () =>
+      this.prisma.barbershopClosure.deleteMany({ where: { barbershopId, date } }),
+    );
     return true;
   }
 

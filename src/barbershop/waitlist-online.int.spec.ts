@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { createWaitlistLeaveToken } from './appointment-link';
+import { ClosureService } from './closure.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -21,6 +22,15 @@ const addDays = (date: string, n: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const at = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00-03:00`);
 const settle = () => new Promise((r) => setTimeout(r, 50));
+// O aviso de horário novo roda em segundo plano: espera a entrada mudar
+async function waitFor(check: () => Promise<boolean>, ms = 5000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (await check()) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
 
 describe('Lista de espera online (integração)', () => {
   const prisma = new PrismaService();
@@ -36,6 +46,7 @@ describe('Lista de espera online (integração)', () => {
     { notify: () => undefined } as never,
   );
   const monday = mondayAhead();
+  const closures = new ClosureService(prisma, barbershops);
 
   let ownerId: number;
   let staffUserId: number;
@@ -228,5 +239,65 @@ describe('Lista de espera online (integração)', () => {
     await expect(join({ customerPhone: phone, date: addDays(monday, 8) })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it('abriu horário novo (folga desfeita, dia reaberto): avisa quem espera; mudança que não abre nada não avisa', async () => {
+    const statusOf = async (id: number) =>
+      (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id } })).status;
+    const phone = `5${RUN.slice(-9)}9`;
+
+    // Ana de folga o dia todo: o cliente entra na lista; a folga é desfeita
+    const offDay = addDays(monday, 14);
+    const off = await prisma.barberTimeOff.create({
+      data: {
+        barberId: ana,
+        startAt: at(offDay, '00:00'),
+        endAt: at(addDays(offDay, 1), '00:00'),
+        reason: 'PERSONAL',
+      },
+    });
+    const waiting = await join({
+      customerPhone: phone,
+      customerEmail: `abre-${RUN}@test.local`,
+      date: offDay,
+    });
+    // Um dia que já tinha horário livre, posto pela equipe
+    const staffEntry = await barbershops.createWaitlistEntry(ownerId, shopId, {
+      customerId,
+      barberId: beto,
+      date: new Date(`${addDays(monday, 15)}T00:00:00Z`),
+    });
+
+    // Mudança que não abre horário: ninguém é avisado
+    emails.length = 0;
+    await barbershops.withWaitlistOpening(shopId, {}, async () => undefined);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await statusOf(waiting.entryId)).toBe('WAITING');
+    expect(await statusOf(staffEntry.id)).toBe('WAITING');
+
+    await barbershops.deleteBarberTimeOff(ownerId, off.id);
+    expect(await waitFor(async () => (await statusOf(waiting.entryId)) === 'NOTIFIED')).toBe(true);
+    await settle();
+    const notice = emails.find((e) => e.template === 'waitlist_slot_available');
+    expect(notice.to).toBe(`abre-${RUN}@test.local`);
+    expect(notice.context.BookUrl).toContain(`date=${offDay}`);
+    // O dia da equipe não mudou: continua aguardando
+    expect(await statusOf(staffEntry.id)).toBe('WAITING');
+
+    // Fechamento removido: o dia reabre e avisa quem espera nele
+    const closedDay = addDays(monday, 16);
+    await prisma.barbershopClosure.create({
+      data: { barbershopId: shopId, date: closedDay, reason: 'Reforma' },
+    });
+    const onClosed = await join({
+      customerPhone: phone,
+      customerEmail: `abre-${RUN}@test.local`,
+      date: closedDay,
+      barberId: null,
+    });
+    emails.length = 0;
+    await closures.remove(ownerId, shopId, closedDay);
+    expect(await waitFor(async () => (await statusOf(onClosed.entryId)) === 'NOTIFIED')).toBe(true);
+    await barbershops.cancelWaitlistEntry(ownerId, shopId, staffEntry.id);
   });
 });
