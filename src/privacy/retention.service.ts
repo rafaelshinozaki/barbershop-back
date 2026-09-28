@@ -28,6 +28,7 @@ export class RetentionService {
     const chatBefore = cutoffBefore(now, RETENTION_DAYS.chatText);
     const supportBefore = cutoffBefore(now, RETENTION_DAYS.supportTicket);
     const pushBefore = cutoffBefore(now, RETENTION_DAYS.pushSubscription);
+    const searchBefore = cutoffBefore(now, RETENTION_DAYS.searchEvent);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -161,10 +162,26 @@ export class RetentionService {
       await this.prisma.pushSubscription.deleteMany({ where: { lastUsedAt: { lt: pushBefore } } })
     ).count;
 
+    // Buscas da métrica do piloto: um ano basta para comparar períodos
+    const searchEvents = await deleteInBatches(
+      (take) =>
+        this.prisma.searchEvent.findMany({
+          where: { createdAt: { lt: searchBefore } },
+          select: { id: true },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.searchEvent.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
       chatThreads,
       supportTickets,
       pushSubscriptions,
+      searchEvents,
       emailCopies,
       loginHistory,
       notifications,

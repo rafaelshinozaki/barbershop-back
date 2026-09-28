@@ -2665,6 +2665,27 @@ type PendingCustomerRatingType {
   startAt: DateTime!
 }
 
+type PilotCategoryMetricsType {
+  category: String!
+  evaluated: Int!
+  foundRate: Float
+  foundWithin48h: Int!
+  searches: Int!
+}
+
+type PilotMetricsType {
+  byCategory: [PilotCategoryMetricsType!]!
+  city: String
+  days: Int!
+  directBookings: Int!
+  evaluated: Int!
+  foundRate: Float
+  foundWithin48h: Int!
+  marketplaceBookings: Int!
+  marketplaceNewClients: Int!
+  searches: Int!
+}
+
 type Plan {
   billingCycle: String!
   createdAt: String!
@@ -3230,6 +3251,7 @@ type Query {
   openJobOpenings(category: TreatmentCategory, city: String): [JobOpeningType!]!
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
+  pilotMetrics(city: String, days: Int): PilotMetricsType!
   planDistribution: PlanDistribution!
   platformPricing: PricingType!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!

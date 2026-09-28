@@ -4157,6 +4157,7 @@ export class BarbershopService {
     barberId: number | null,
     serviceIds: number[],
     fromDate?: string | null,
+    maxDays = NEXT_AVAILABLE_DAYS,
   ): Promise<{ date: string; startAt: string } | null> {
     const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
     const shop = await this.prisma.barbershop.findUnique({
@@ -4185,7 +4186,7 @@ export class BarbershopService {
     // Data no passado vira hoje; muito longe não varre o ano inteiro
     const start =
       valid && fromDate > today && fromDate <= addDaysStr(today, 365) ? fromDate : today;
-    for (let i = 0; i < NEXT_AVAILABLE_DAYS; i++) {
+    for (let i = 0; i < maxDays; i++) {
       const date = addDaysStr(start, i);
       const perBarber = await Promise.all(
         barbers.map((b) => this.slotsForBarber(barbershopId, b, durationMinutes, date, timeZone)),

@@ -45,7 +45,9 @@ import {
   APPOINTMENT_REMINDERS_QUEUE,
   CHAIR_RENT_QUEUE,
   FEATURED_QUEUE,
+  PILOT_QUEUE,
 } from '../queue/queue.constants';
+import { PilotMetricsService, PilotProcessor, PilotScheduler } from './pilot-metrics.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -68,6 +70,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BullModule.registerQueue({ name: APPOINTMENT_REMINDERS_QUEUE }),
     BullModule.registerQueue({ name: CHAIR_RENT_QUEUE }),
     BullModule.registerQueue({ name: FEATURED_QUEUE }),
+    BullModule.registerQueue({ name: PILOT_QUEUE }),
   ],
   providers: [
     BarbershopService,
@@ -106,12 +109,16 @@ import { NotificationsModule } from '../notifications/notifications.module';
     FeaturedPaymentService,
     FeaturedScheduler,
     FeaturedProcessor,
+    PilotMetricsService,
+    PilotScheduler,
+    PilotProcessor,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
     JobOpeningService,
     FeaturedPaymentService,
+    PilotMetricsService,
     BarbershopMediaService,
     GeocodingService,
     ReviewRequestService,
