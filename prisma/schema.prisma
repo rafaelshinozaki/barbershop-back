@@ -1243,6 +1243,10 @@ model WaitlistEntry {
   notes        String?
   status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED
   notifiedAt   DateTime?
+  // staff (a equipe pôs) ou online (o cliente entrou pela tela de agendamento)
+  source       String             @default("staff")
+  // E-mail informado ao entrar online: o aviso vai para ele
+  contactEmail String?
   barbershop   Barbershop         @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber?            @relation(fields: [barberId], references: [id], onDelete: SetNull)

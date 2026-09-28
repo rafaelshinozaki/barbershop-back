@@ -1,10 +1,10 @@
-{{!-- src/email/templates/pt/waitlist_slot_available.hbs --}}
+{{!-- src/email/templates/en/waitlist_joined.hbs --}}
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vaga disponível — {{BarbershopName}}</title>
+  <title>Waitlist — {{BarbershopName}}</title>
   <style>
     body, p, h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
@@ -31,15 +31,14 @@
       <h1>{{BarbershopName}}</h1>
     </div>
     <div class="content">
-      <h2>Olá, {{CustomerName}}!</h2>
-      <p>Boa notícia: abriu uma vaga que combina com o que você pediu na lista de espera.</p>
+      <h2>Hi, {{CustomerName}}!</h2>
+      <p>You joined the waitlist at <strong>{{BarbershopName}}</strong>. If a time opens up, we'll email you right away — it's first come, first served.</p>
       <div class="details">
-        <p><strong>Data:</strong> {{AppointmentDate}}</p>
-        <p><strong>Horário:</strong> {{AppointmentTime}}</p>
+        <p><strong>Day:</strong> {{WaitlistDate}}</p>
+        <p><strong>Professional:</strong> {{#if BarberName}}{{BarberName}}{{else}}Any professional{{/if}}</p>
       </div>
-      {{#if BookUrl}}<p><a class="button" href="{{BookUrl}}">Agendar agora</a></p>{{/if}}
-      <p>Entre em contato pelo telefone {{BarbershopPhone}} ou agende direto pelo app o quanto antes — a vaga é por ordem de chegada.</p>
-      <p>Até já!</p>
+      <p>No longer want to be notified? <a href="{{LeaveUrl}}">Leave the waitlist</a>.</p>
+      <p style="font-size:13px;color:#777;">If this wasn't you, use the same link to leave.</p>
     </div>
     <div class="footer">
       <p>&copy; {{Year}} {{BarbershopName}}.</p>

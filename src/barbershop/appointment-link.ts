@@ -15,7 +15,7 @@ function secret() {
 
 // Cada link tem o seu propósito na assinatura: o de avaliar não serve pra
 // cancelar/remarcar, e vice-versa
-type Purpose = 'appointment-manage' | 'appointment-review' | 'support-ticket';
+type Purpose = 'appointment-manage' | 'appointment-review' | 'support-ticket' | 'waitlist-leave';
 
 function sign(appointmentId: number, purpose: Purpose) {
   return createHmac('sha256', secret())
@@ -78,4 +78,18 @@ export function verifySupportToken(token: string | undefined | null): number | n
 export function supportTicketUrl(ticketId: number): string {
   const front = process.env.FRONTEND_URL || 'http://localhost:5173';
   return `${front}/support/ticket?t=${encodeURIComponent(createSupportToken(ticketId))}`;
+}
+
+/** Link "sair da lista de espera" do e-mail de quem entrou pela tela de agendamento */
+export function createWaitlistLeaveToken(entryId: number): string {
+  return `${entryId}.${sign(entryId, 'waitlist-leave')}`;
+}
+
+export function verifyWaitlistLeaveToken(token: string | undefined | null): number | null {
+  return verify(token, 'waitlist-leave');
+}
+
+export function waitlistLeaveUrl(entryId: number): string {
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  return `${front}/waitlist/leave?t=${encodeURIComponent(createWaitlistLeaveToken(entryId))}`;
 }

@@ -1605,6 +1605,10 @@ export class WaitlistEntryType {
   @Field({ nullable: true })
   notifiedAt?: string;
 
+  /** staff (a equipe pôs) ou online (o cliente entrou pela tela de agendamento) */
+  @Field()
+  source: string;
+
   @Field()
   createdAt: string;
 }

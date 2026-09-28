@@ -25,6 +25,7 @@ import {
   PublicProfessionalSearchResultType,
   ReviewType,
   MyReviewType,
+  JoinWaitlistResultType,
 } from '../types/public-booking.type';
 import {
   ClientSubscriptionType,
@@ -33,6 +34,7 @@ import {
 } from '../types/barbershop.type';
 import {
   CreatePublicAppointmentInput,
+  JoinPublicWaitlistInput,
   SearchBarbershopsInput,
   SearchProfessionalsInput,
   CreateReviewInput,
@@ -221,6 +223,29 @@ export class PublicBookingResolver {
       // Quem acabou de agendar já pode cancelar/remarcar pela tela de confirmação
       manageToken: createAppointmentToken(appointment.id),
     };
+  }
+
+  // ---- Lista de espera online ----
+
+  @ThrottlePublicBooking()
+  @Mutation(() => JoinWaitlistResultType)
+  async joinPublicWaitlist(
+    @Args('input') input: JoinPublicWaitlistInput,
+    @Context() context: any,
+  ): Promise<JoinWaitlistResultType> {
+    const clientAccountId = await this.getOptionalClientAccountId(context.req);
+    return this.barbershopService.joinPublicWaitlist({
+      ...input,
+      serviceIds: input.serviceIds ?? [],
+      clientAccountId,
+    });
+  }
+
+  /** "Sair da lista de espera" pelo link do e-mail; devolve o nome da unidade */
+  @ThrottleAuth()
+  @Mutation(() => String)
+  async leaveWaitlist(@Args('token') token: string): Promise<string> {
+    return this.barbershopService.leaveWaitlist(token);
   }
 
   // ---- Cliente gerencia o próprio horário pelo link do e-mail ----
