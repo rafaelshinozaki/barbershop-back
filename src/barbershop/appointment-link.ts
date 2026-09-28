@@ -15,7 +15,7 @@ function secret() {
 
 // Cada link tem o seu propósito na assinatura: o de avaliar não serve pra
 // cancelar/remarcar, e vice-versa
-type Purpose = 'appointment-manage' | 'appointment-review';
+type Purpose = 'appointment-manage' | 'appointment-review' | 'support-ticket';
 
 function sign(appointmentId: number, purpose: Purpose) {
   return createHmac('sha256', secret())
@@ -64,4 +64,18 @@ export function appointmentReviewUrl(appointmentId: number, rating?: number): st
 export function appointmentManageUrl(appointmentId: number): string {
   const front = process.env.FRONTEND_URL || 'http://localhost:5173';
   return `${front}/booking/manage?t=${encodeURIComponent(createAppointmentToken(appointmentId))}`;
+}
+
+/** Link do pedido de suporte: quem pediu acompanha e responde sem login */
+export function createSupportToken(ticketId: number): string {
+  return `${ticketId}.${sign(ticketId, 'support-ticket')}`;
+}
+
+export function verifySupportToken(token: string | undefined | null): number | null {
+  return verify(token, 'support-ticket');
+}
+
+export function supportTicketUrl(ticketId: number): string {
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  return `${front}/support/ticket?t=${encodeURIComponent(createSupportToken(ticketId))}`;
 }

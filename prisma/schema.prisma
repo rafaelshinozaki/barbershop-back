@@ -67,6 +67,7 @@ model User {
   // Identidade confirmada (documento + selfie ao vivo, pelo Stripe Identity): selo "Verificado"
   identityVerifiedAt     DateTime?
   identityVerifications  IdentityVerification[]
+  supportTickets         SupportTicket[]
 
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
@@ -743,6 +744,12 @@ model ClientAccount {
   // equipe (User.password) e esta fica vazia.
   userId               Int?                        @unique
   linkedAt             DateTime?
+  // Suspensa pelo admin da plataforma (fraude, abuso): não entra e as
+  // sessões caem. Os dados continuam; suspender não é excluir.
+  suspendedAt          DateTime?
+  suspendedReason      String?
+  suspendedByUserId    Int?
+  supportTickets       SupportTicket[]
   user                 User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
   tokens               ClientAccountToken[]
   customers            Customer[]
@@ -1965,4 +1972,44 @@ model ChatMessage {
   thread       ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
+}
+
+// Suporte humano: "Fale com a gente" (visitante, cliente ou equipe) e a
+// fila no backoffice. Quem pediu acompanha e responde pelo link do e-mail,
+// sem login. Sai 24 meses depois da última atividade.
+model SupportTicket {
+  id              Int              @id @default(autoincrement())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  // open (esperando o suporte) | answered (esperando quem pediu) | closed
+  status          String           @default("open")
+  // account | booking | payment | safety | other
+  category        String
+  subject         String
+  name            String
+  email           String
+  language        String?
+  userId          Int?
+  clientAccountId Int?
+  lastActivityAt  DateTime         @default(now())
+  closedAt        DateTime?
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  clientAccount   ClientAccount?   @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+  messages        SupportMessage[]
+
+  @@index([status, lastActivityAt])
+  @@index([email])
+}
+
+model SupportMessage {
+  id           Int           @id @default(autoincrement())
+  createdAt    DateTime      @default(now())
+  ticketId     Int
+  // requester (quem pediu) | support (equipe da plataforma)
+  side         String
+  authorUserId Int?
+  body         String
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
 }

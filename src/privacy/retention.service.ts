@@ -26,6 +26,7 @@ export class RetentionService {
     const notificationBefore = cutoffBefore(now, RETENTION_DAYS.notification);
     const conductBefore = cutoffBefore(now, RETENTION_DAYS.clientConductNote);
     const chatBefore = cutoffBefore(now, RETENTION_DAYS.chatText);
+    const supportBefore = cutoffBefore(now, RETENTION_DAYS.supportTicket);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -138,8 +139,25 @@ export class RetentionService {
       BATCH,
     );
 
+    // Suporte: o pedido inteiro sai 24 meses depois da última atividade
+    const supportTickets = await deleteInBatches(
+      (take) =>
+        this.prisma.supportTicket.findMany({
+          where: { lastActivityAt: { lt: supportBefore } },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.supportTicket.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
       chatThreads,
+      supportTickets,
       emailCopies,
       loginHistory,
       notifications,

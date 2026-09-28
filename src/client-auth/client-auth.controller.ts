@@ -96,6 +96,10 @@ export class ClientAuthController {
       user.displayName,
       provider,
     );
+    if (account.suspendedAt) {
+      res.redirect(`${frontendUrl}/client/login?suspended=1`);
+      return;
+    }
     this.clientAuthService.issueCookie(account, res);
     res.redirect(`${frontendUrl}/client/account`);
   }

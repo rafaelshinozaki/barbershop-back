@@ -64,6 +64,20 @@ input AdjustInventoryInput {
   quantityChange: Float!
 }
 
+type AdminClientAccountType {
+  createdAt: DateTime!
+
+  """Fichas de cliente ligadas (unidades onde já foi atendido)"""
+  customerRecords: Int!
+  email: String!
+  emailVerifiedAt: DateTime
+  id: Int!
+  linkedToStaff: Boolean!
+  name: String!
+  suspendedAt: DateTime
+  suspendedReason: String
+}
+
 input AdminNotificationPreferenceInput {
   appointmentsEmail: Boolean
   appointmentsInApp: Boolean
@@ -974,6 +988,16 @@ type ConsentFormType {
   status: String!
 }
 
+input ContactSupportInput {
+  """account | booking | payment | safety | other"""
+  category: String!
+  email: String!
+  language: String
+  message: String!
+  name: String!
+  subject: String!
+}
+
 type Coupon {
   applicablePlans: String
   code: String!
@@ -1733,6 +1757,7 @@ type Mutation {
   addClientFavorite(networkId: Float!): [Network!]!
   addClientFavoriteBarber(barberId: Int!): [ClientFavoriteBarberType!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
+  answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
   barberAvatarUpload(barberId: Int!, contentType: String): PresignedUploadType!
@@ -1771,6 +1796,7 @@ type Mutation {
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
+  contactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
   createAppointmentSeries(barbershopId: Int!, input: AppointmentSeriesInput!): CreatedSeriesType!
   createBarber(barbershopId: Int!, input: CreateBarberInput!): Barber!
@@ -1872,6 +1898,7 @@ type Mutation {
   removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
+  replySupportTicket(body: String!, token: String!): Boolean!
   replyToProfessionalReview(reply: String, reviewId: Int!): Boolean!
   replyToReview(barbershopId: Int!, reply: String, reviewId: Int!): Boolean!
   reportChat(appointmentId: Int!, barbershopId: Int!, details: String, kind: String!, reason: String!): Boolean!
@@ -1897,6 +1924,7 @@ type Mutation {
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
+  setClientAccountSuspended(clientAccountId: Int!, reason: String, suspended: Boolean!): Boolean!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
 
   """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
@@ -1905,9 +1933,11 @@ type Mutation {
   setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
+  setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
+  staffContactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   startDepositPayment(token: String!): DepositPaymentType!
   startIdentityVerification: IdentityVerificationStartType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
@@ -2708,6 +2738,7 @@ type Query {
   accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
   adminBarbershops(query: String): [Barbershop!]!
+  adminClientAccounts(search: String): [AdminClientAccountType!]!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!
@@ -2857,6 +2888,9 @@ type Query {
   statusDistribution: StatusDistribution!
   subscriptionPlans(barbershopId: Int!): [ClientSubscriptionPlanType!]!
   subscriptionRevenueReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
+  supportOpenCount: Int!
+  supportQueue(status: String): [SupportTicketType!]!
+  supportTicket(token: String!): SupportTicketPublicType!
   trialStatus: TrialStatus!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!
@@ -3285,6 +3319,51 @@ type SubscriptionRevenueReportType {
 
 type SubscriptionSetupIntentType {
   clientSecret: String!
+}
+
+type SupportMessageType {
+  body: String!
+  createdAt: DateTime!
+  id: Int!
+
+  """requester (quem pediu) | support (plataforma)"""
+  side: String!
+}
+
+type SupportTicketCreatedType {
+  id: Int!
+}
+
+type SupportTicketPublicType {
+  category: String!
+  createdAt: DateTime!
+  id: Int!
+  messages: [SupportMessageType!]!
+
+  """open | answered | closed"""
+  status: String!
+  subject: String!
+}
+
+type SupportTicketType {
+  category: String!
+
+  """Conta de cliente de quem pediu, se logado"""
+  clientAccountId: Int
+  clientSuspended: Boolean!
+  createdAt: DateTime!
+  email: String!
+
+  """Aberto por alguém da equipe logado"""
+  fromStaff: Boolean!
+  id: Int!
+  lastActivityAt: DateTime!
+  messages: [SupportMessageType!]!
+  name: String!
+
+  """open | answered | closed"""
+  status: String!
+  subject: String!
 }
 
 type TimeToFirstAppointment {

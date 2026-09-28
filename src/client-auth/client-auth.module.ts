@@ -7,6 +7,7 @@ import { EmailModule } from '@/email/email.module';
 import { StripeModule } from '@/stripe/stripe.module';
 import { ClientAuthService } from './client-auth.service';
 import { AccountLinkService } from './account-link.service';
+import { ClientSuspensionService } from './client-suspension.service';
 import { ClientAuthController } from './client-auth.controller';
 import { GraphQLClientJwtAuthGuard } from './guards/graphql-client-jwt-auth.guard';
 import { ClientGoogleStrategy } from './strategies/client-google.strategy';
@@ -36,6 +37,7 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
   providers: [
     ClientAuthService,
     AccountLinkService,
+    ClientSuspensionService,
     GraphQLClientJwtAuthGuard,
     ClientGoogleStrategy,
     ClientFacebookStrategy,
@@ -44,6 +46,11 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
     ClientFacebookAuthGuard,
     ClientAppleAuthGuard,
   ],
-  exports: [ClientAuthService, AccountLinkService, GraphQLClientJwtAuthGuard],
+  exports: [
+    ClientAuthService,
+    AccountLinkService,
+    ClientSuspensionService,
+    GraphQLClientJwtAuthGuard,
+  ],
 })
 export class ClientAuthModule {}
