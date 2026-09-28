@@ -2810,6 +2810,22 @@ export class BarbershopService {
       }
     }
 
+    // A unidade cancelou: o atendimento pago antes pelo app volta sempre
+    // (diferente do sinal, que a equipe pode reter)
+    if (
+      data.status === 'CANCELLED' &&
+      appointment.status !== 'CANCELLED' &&
+      appointment.prepaidAt
+    ) {
+      try {
+        if (await this.refundPrepayment(appointmentId)) {
+          Object.assign(updated, { prepaidRefundedAt: new Date() });
+        }
+      } catch (err) {
+        this.logger.error(`Erro ao estornar o pagamento do agendamento #${appointmentId}:`, err);
+      }
+    }
+
     // Taxa de no-show/cancelamento tardio: cobrança 100% manual (mesma
     // filosofia do sinal e do cartão-presente) — só calcula e registra o
     // valor devido, não cobra sozinho. Best-effort: nunca bloqueia a
@@ -2961,6 +2977,74 @@ export class BarbershopService {
       throw err;
     }
     return true;
+  }
+
+  /**
+   * Devolve o atendimento pago antes pelo app (cancelado pela unidade ou
+   * pelo cliente). Desfaz a transferência pra unidade e devolve a taxa da
+   * plataforma. Uma vez só; sem pagamento (ou já devolvido): false.
+   */
+  async refundPrepayment(appointmentId: number) {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { prepaidAt: true, prepaidPaymentIntentId: true, prepaidRefundedAt: true },
+    });
+    const intentId = appt?.prepaidPaymentIntentId;
+    if (!intentId || !appt.prepaidAt || appt.prepaidRefundedAt) return false;
+    const now = new Date();
+    const claimed = await this.prisma.appointment.updateMany({
+      where: { id: appointmentId, prepaidRefundedAt: null, prepaidAt: { not: null } },
+      data: { prepaidRefundedAt: now },
+    });
+    if (claimed.count === 0) return false;
+    try {
+      await this.stripeService.createRefund(
+        intentId,
+        undefined,
+        'requested_by_customer',
+        `prepayment-refund-${intentId}`,
+        true,
+      );
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'charge_already_refunded') return true;
+      await this.prisma.appointment.updateMany({
+        where: { id: appointmentId, prepaidRefundedAt: now },
+        data: { prepaidRefundedAt: null },
+      });
+      throw err;
+    }
+    return true;
+  }
+
+  /** Estorno manual do atendimento pago pelo app (gerente e dono), ex.: falta */
+  async refundAppointmentPrepayment(userId: number, barbershopId: number, appointmentId: number) {
+    const barbershop = await this.ensureAccess(userId, barbershopId, 'manager');
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, barbershopId },
+      select: { prepaidAt: true, prepaidRefundedAt: true, sale: { select: { id: true } } },
+    });
+    if (!appointment) throw new NotFoundException('Agendamento não encontrado');
+    if (!appointment.prepaidAt) throw new BadRequestException('Este horário não foi pago pelo app');
+    if (appointment.prepaidRefundedAt)
+      throw new BadRequestException('O pagamento já foi estornado');
+    if (appointment.sale) {
+      throw new BadRequestException(
+        'A conta deste horário já foi fechada: estorne pelo painel do Stripe',
+      );
+    }
+    let refunded: boolean;
+    try {
+      refunded = await this.refundPrepayment(appointmentId);
+    } catch (err) {
+      this.logger.error(`Erro ao estornar o pagamento do agendamento #${appointmentId}:`, err);
+      throw new BadRequestException('Não foi possível estornar agora. Tente de novo.');
+    }
+    if (!refunded) throw new BadRequestException('O pagamento já foi estornado');
+    const updated = await this.prisma.appointment.findUniqueOrThrow({
+      where: { id: appointmentId },
+      include: { services: { include: { service: true } }, customer: true, barber: true },
+    });
+    return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
   /** Estorno manual do sinal pago online (gerente e dono). */
@@ -5480,6 +5564,8 @@ export class BarbershopService {
     // Conta do horário: uma venda só por horário, e o sinal já pago (online
     // ou na mão) é descontado do que se cobra agora
     let depositPaidOnAppointment = 0;
+    // Atendimento pago antes pelo app: também é descontado
+    let prepaidOnAppointment = 0;
     if (data.appointmentId) {
       const appt = await this.prisma.appointment.findFirst({
         where: { id: data.appointmentId, barbershopId },
@@ -5488,6 +5574,9 @@ export class BarbershopService {
           status: true,
           depositPaid: true,
           depositAmount: true,
+          prepaidAt: true,
+          prepaidAmount: true,
+          prepaidRefundedAt: true,
           sale: { select: { id: true } },
         },
       });
@@ -5499,6 +5588,9 @@ export class BarbershopService {
         throw new BadRequestException('Este horário não pode ser cobrado');
       }
       if (appt.depositPaid) depositPaidOnAppointment = Number(appt.depositAmount ?? 0);
+      if (appt.prepaidAt && !appt.prepaidRefundedAt) {
+        prepaidOnAppointment = Number(appt.prepaidAmount ?? 0);
+      }
     }
     await this.ensureItemsOfBarbershop(
       barbershopId,
@@ -5543,7 +5635,8 @@ export class BarbershopService {
 
     const afterDiscounts = Math.max(0, data.total - giftCardAmountApplied - loyaltyDiscountAmount);
     const depositApplied = Math.min(depositPaidOnAppointment, afterDiscounts);
-    const finalTotal = Math.round((afterDiscounts - depositApplied) * 100) / 100;
+    const prepaidApplied = Math.min(prepaidOnAppointment, afterDiscounts - depositApplied);
+    const finalTotal = Math.round((afterDiscounts - depositApplied - prepaidApplied) * 100) / 100;
 
     // Vincula a venda ao caixa aberto no momento, se houver um — é o que
     // permite reconciliar o fechamento de caixa depois (ver
@@ -5575,6 +5668,7 @@ export class BarbershopService {
           loyaltyDiscountAmount:
             loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
           depositApplied: depositApplied > 0 ? new Decimal(depositApplied) : null,
+          prepaidApplied: prepaidApplied > 0 ? new Decimal(prepaidApplied) : null,
         },
       });
       // Cobrou o atendimento: ele está concluído

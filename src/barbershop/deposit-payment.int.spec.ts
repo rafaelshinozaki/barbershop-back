@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { ConnectService } from './connect.service';
+import { PrepaymentService } from './prepayment.service';
 import { createAppointmentToken } from './appointment-link';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -27,6 +28,7 @@ type Intent = {
   client_secret: string;
   status: string;
   metadata: Record<string, string>;
+  amount?: number;
   transfer_data?: { destination: string } | null;
   application_fee_amount?: number | null;
 };
@@ -40,6 +42,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
   const stripe = {
     createPaymentIntent: async (amount: number, currency: string, _c: unknown, opts: any) => {
       const pi: Intent = {
+        amount,
         id: `pi_${RUN}_${++seq}`,
         client_secret: `secret_${seq}`,
         status: 'requires_payment_method',
@@ -105,6 +108,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     { email: async (job: any) => void emails.push(job) } as never,
     connect,
   );
+  const prepayments = new PrepaymentService(prisma, stripe as never, barbershops, connect);
   const monday = mondayAhead();
   const pay = (id: string) => (intents.get(id)!.status = 'succeeded');
 
@@ -604,5 +608,124 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect((await connect.barbershopDashboardLink(ownerId, shopId)).url).toBe(
       `https://connect.stripe.com/express/acct_${RUN}`,
     );
+  });
+
+  it('pagar o atendimento pelo app: direto na unidade; desconta na conta; cancelado, volta', async () => {
+    // A conta de recebimento da unidade já está ativa (teste anterior)
+    const tuesday = new Date(new Date(`${monday}T12:00:00Z`).getTime() + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const bookTue = async (hhmm: string) => {
+      const appt = await barbershops.createPublicAppointment({
+        barbershopId: shopId,
+        barberId,
+        serviceIds: [serviceId],
+        startAt: at(tuesday, hhmm).toISOString(),
+        customerName: 'Cliente Prepago',
+        customerPhone: `5${RUN.slice(-9)}${++n}`,
+        customerEmail: `prepago-${n}-${RUN}@test.local`,
+      });
+      const token = createAppointmentToken(appt!.id);
+      await deposits.start(token);
+      pay((await load(appt!.id)).depositPaymentIntentId!);
+      await deposits.confirm(token);
+      return { id: appt!.id, token };
+    };
+    const prepay = async (token: string, id: number) => {
+      await prepayments.start(token);
+      const piId = (await load(id)).prepaidPaymentIntentId!;
+      pay(piId);
+      expect(await prepayments.confirm(token)).toBe(true);
+      return piId;
+    };
+
+    // Serviço de 80 com sinal de 20 pago: falta 60
+    const a = await bookTue('10:00');
+    expect(await prepayments.status(a.token)).toMatchObject({
+      available: true,
+      amount: 60,
+      paid: false,
+    });
+    await prepayments.start(a.token);
+    const piA = (await load(a.id)).prepaidPaymentIntentId!;
+    // Direto na conta da unidade, com a taxa da plataforma (15% de 60)
+    expect(intents.get(piA)).toMatchObject({
+      amount: 6000,
+      transfer_data: { destination: `acct_${RUN}` },
+      application_fee_amount: 900,
+      metadata: { kind: 'appointment_prepayment', appointmentId: String(a.id) },
+    });
+    // Abrir de novo reaproveita o mesmo pagamento
+    await prepayments.start(a.token);
+    expect((await load(a.id)).prepaidPaymentIntentId).toBe(piA);
+    // Não pago ainda: nada registrado
+    expect(await prepayments.confirm(a.token)).toBe(false);
+    pay(piA);
+    expect(await prepayments.confirm(a.token)).toBe(true);
+    // Webhook depois: não duplica
+    expect(await prepayments.finalize(intents.get(piA) as never)).toBe(true);
+    expect(await prepayments.status(a.token)).toMatchObject({
+      paid: true,
+      paidAmount: 60,
+      available: false,
+    });
+    await expect(prepayments.start(a.token)).rejects.toBeInstanceOf(BadRequestException);
+
+    // Fechar a conta: sinal e pagamento pelo app descontados
+    const sale = await barbershops.createSale(ownerId, shopId, {
+      appointmentId: a.id,
+      barberId,
+      saleType: 'SERVICE',
+      items: [{ itemType: 'SERVICE', serviceId, quantity: 1, unitPrice: 80, totalPrice: 80 }],
+      subtotal: 80,
+      total: 80,
+      paymentStatus: 'PAID',
+      paymentMethod: 'CASH',
+    });
+    expect(Number(sale!.total)).toBe(0);
+    expect(Number(sale!.depositApplied)).toBe(20);
+    expect(Number(sale!.prepaidApplied)).toBe(60);
+    // Conta fechada: estorno só pelo painel do Stripe
+    await expect(barbershops.refundAppointmentPrepayment(ownerId, shopId, a.id)).rejects.toThrow(
+      'painel do Stripe',
+    );
+
+    // A unidade cancela: o pagamento pelo app volta inteiro (desfaz a transferência)
+    const b = await bookTue('11:00');
+    const piB = await prepay(b.token, b.id);
+    await barbershops.updateAppointment(
+      ownerId,
+      shopId,
+      b.id,
+      { status: 'CANCELLED' },
+      { refundDeposit: false },
+    );
+    expect(connectedRefunds).toContain(piB);
+    expect((await load(b.id)).prepaidRefundedAt).toBeInstanceOf(Date);
+    expect(await prepayments.status(b.token)).toMatchObject({ paid: false, refunded: true });
+
+    // Falta: a unidade estorna na mão (gerente/dono)
+    const c = await bookTue('12:00');
+    const piC = await prepay(c.token, c.id);
+    await barbershops.updateAppointment(ownerId, shopId, c.id, { status: 'NO_SHOW' });
+    expect(connectedRefunds).not.toContain(piC);
+    await expect(
+      barbershops.refundAppointmentPrepayment(staffUserId, shopId, c.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await barbershops.refundAppointmentPrepayment(ownerId, shopId, c.id);
+    expect(connectedRefunds).toContain(piC);
+    await expect(barbershops.refundAppointmentPrepayment(ownerId, shopId, c.id)).rejects.toThrow(
+      'já foi estornado',
+    );
+
+    // Pagou depois de o horário ser cancelado: registra e devolve na hora
+    const d = await bookTue('13:00');
+    await prepayments.start(d.token);
+    const piD = (await load(d.id)).prepaidPaymentIntentId!;
+    await barbershops.updateAppointment(ownerId, shopId, d.id, { status: 'CANCELLED' });
+    pay(piD);
+    await prepayments.finalize(intents.get(piD) as never);
+    expect(connectedRefunds).toContain(piD);
+    expect((await load(d.id)).prepaidRefundedAt).toBeInstanceOf(Date);
   });
 });

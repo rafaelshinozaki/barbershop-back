@@ -1173,6 +1173,14 @@ model Appointment {
   // Sinal pago direto na conta da unidade (Stripe Connect): o repasse já
   // foi feito pelo Stripe, com a taxa da plataforma descontada
   depositStripeAccountId String?
+  // Atendimento pago antes pelo app (Stripe Connect, direto na conta da
+  // unidade): o preço menos o sinal. Descontado ao fechar a conta; volta
+  // inteiro se o horário for cancelado.
+  prepaidAmount          Decimal?
+  prepaidAt              DateTime?
+  prepaidPaymentIntentId String?   @unique
+  prepaidStripeAccountId String?
+  prepaidRefundedAt      DateTime?
   depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
   // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
   holdExpiresAt  DateTime?
@@ -1407,6 +1415,8 @@ model Sale {
   loyaltyDiscountAmount Decimal?
   // Sinal já pago (online ou na mão) descontado ao fechar a conta do horário
   depositApplied Decimal?
+  // Parte paga antes pelo app (Appointment.prepaidAmount), descontada
+  prepaidApplied Decimal?
   barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer       Customer?  @relation(fields: [customerId], references: [id])
   barber         Barber?    @relation(fields: [barberId], references: [id])

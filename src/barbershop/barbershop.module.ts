@@ -20,6 +20,7 @@ import { ScheduleService } from './schedule.service';
 import { AppointmentSeriesService } from './appointment-series.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { ConnectService } from './connect.service';
+import { PrepaymentService } from './prepayment.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { BarbershopMediaService } from './media.service';
@@ -87,6 +88,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AppointmentSeriesService,
     DepositPaymentService,
     ConnectService,
+    PrepaymentService,
     BarbershopMediaService,
     GeocodingService,
   ],
@@ -102,6 +104,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AppointmentSeriesService,
     DepositPaymentService,
     ConnectService,
+    PrepaymentService,
     EmployeeInviteService,
     AccountDeletionService,
     SharedLocationService,

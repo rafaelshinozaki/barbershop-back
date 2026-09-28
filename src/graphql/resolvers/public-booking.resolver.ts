@@ -239,6 +239,8 @@ export class PublicBookingResolver {
     const { id, barbershopId } = await this.barbershopService.cancelManagedAppointment(token);
     // Cancelou dentro do prazo: o sinal pago online volta pro cartão
     await this.deposits.refundOnClientCancel(id);
+    // Pago antes pelo app: volta inteiro
+    await this.barbershopService.refundPrepayment(id).catch(() => undefined);
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     void this.activity.appointmentStatusChanged(id, 'CANCELLED', null);
     return this.barbershopService.getManagedAppointment(token);

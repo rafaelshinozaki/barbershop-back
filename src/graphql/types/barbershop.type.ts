@@ -756,6 +756,16 @@ export class Appointment {
   @Field({ nullable: true })
   depositRefundedAt?: Date;
 
+  /** Atendimento pago antes pelo app (direto na conta da unidade) */
+  @Field(() => Float, { nullable: true })
+  prepaidAmount?: number;
+
+  @Field({ nullable: true })
+  prepaidAt?: Date;
+
+  @Field({ nullable: true })
+  prepaidRefundedAt?: Date;
+
   @Field(() => [AppointmentServiceType], { nullable: true })
   services?: AppointmentServiceType[];
 
@@ -956,6 +966,10 @@ export class Sale {
   /** Sinal do horário descontado na conta */
   @Field(() => Float, { nullable: true })
   depositApplied?: number;
+
+  /** Parte paga antes pelo app, descontada na conta */
+  @Field(() => Float, { nullable: true })
+  prepaidApplied?: number;
 
   @Field()
   createdAt: string;
