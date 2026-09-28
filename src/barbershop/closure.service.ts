@@ -185,6 +185,9 @@ export class ClosureService {
         await this.barbershopService
           .refundOnlineDeposit(a.id)
           .catch((err) => this.logger.error(`Erro ao estornar o sinal #${a.id}:`, err));
+        await this.barbershopService
+          .refundPrepayment(a.id)
+          .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${a.id}:`, err));
         if (a.customer.email) {
           this.barbershopService
             .notifyAppointmentCancelled(a.id, a.customer.email, reason)

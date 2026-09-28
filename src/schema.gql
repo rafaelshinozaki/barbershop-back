@@ -196,6 +196,9 @@ type Appointment {
   endAt: String!
   id: Int!
   notes: String
+  prepaidAmount: Float
+  prepaidAt: DateTime
+  prepaidRefundedAt: DateTime
   resourceId: Int
   saleId: Int
   seriesId: String
@@ -213,6 +216,18 @@ type AppointmentCustomerRatingType {
 
   """Lados que ela ainda pode avaliar agora (unit, professional)"""
   sides: [String!]!
+}
+
+type AppointmentPrepaymentType {
+  """Preço dos serviços menos o sinal já pago"""
+  amount: Float!
+
+  """Dá pra pagar agora pelo app (unidade recebe pelo app)"""
+  available: Boolean!
+  currency: String!
+  paid: Boolean!
+  paidAmount: Float
+  refunded: Boolean!
 }
 
 input AppointmentSeriesInput {
@@ -1829,6 +1844,7 @@ type Mutation {
   completeFakePaymentAccount(accountId: String!): Boolean!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmAppTip(paymentIntentId: String!, token: String!): Boolean!
+  confirmAppointmentPrepayment(token: String!): AppointmentPrepaymentType!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   contactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
@@ -1926,6 +1942,7 @@ type Mutation {
   refreshBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
   refreshMyPaymentAccount: PaymentAccountStatusType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
+  refundAppointmentPrepayment(barbershopId: Int!, id: Int!): Appointment!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
   removeBarbershopPhoto(barbershopId: Int!): Boolean!
@@ -1985,6 +2002,7 @@ type Mutation {
     destination: String!
     token: String!
   ): AppTipPaymentType!
+  startAppointmentPrepayment(token: String!): PrepaymentStartType!
   startBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountLinkType!
   startDepositPayment(token: String!): DepositPaymentType!
   startIdentityVerification: IdentityVerificationStartType!
@@ -2486,6 +2504,12 @@ type PlanSubscription {
   userId: Int!
 }
 
+type PrepaymentStartType {
+  amount: Float!
+  clientSecret: String!
+  currency: String!
+}
+
 type PresignedUploadType {
   fields: [UploadFormFieldType!]!
   key: String!
@@ -2830,6 +2854,7 @@ type Query {
   appointment(barbershopId: Int!, id: Int!): Appointment
   appointmentChats(appointmentId: Int!, barbershopId: Int!): [ChatThreadType!]!
   appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
+  appointmentPrepayment(token: String!): AppointmentPrepaymentType!
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
@@ -3079,6 +3104,7 @@ type Sale {
   paidAt: String
   paymentMethod: String
   paymentStatus: String!
+  prepaidApplied: Float
   saleType: String!
   subtotal: Float!
   taxAmount: Float!

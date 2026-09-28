@@ -270,6 +270,10 @@ export class AppointmentSeriesService {
           .refundOnlineDeposit(t.id)
           .catch((err) => this.logger.error(`Erro ao estornar o sinal #${t.id}:`, err));
       }
+      // Pago antes pelo app: volta inteiro
+      await this.barbershopService
+        .refundPrepayment(t.id)
+        .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${t.id}:`, err));
     }
     const email = await this.customerEmail(appt.customerId);
     if (email && targets[0].startAt > new Date()) {

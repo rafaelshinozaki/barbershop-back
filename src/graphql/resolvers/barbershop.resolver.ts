@@ -1063,6 +1063,23 @@ export class BarbershopResolver {
     return result;
   }
 
+  /** Estorna o atendimento pago pelo app (gerente e dono), ex.: falta */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Appointment)
+  async refundAppointmentPrepayment(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const result = await this.barbershopService.refundAppointmentPrepayment(
+      user.id,
+      barbershopId,
+      id,
+    );
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    return result;
+  }
+
   // ============ WALK-INS ============
 
   @UseGuards(GraphQLJwtAuthGuard)

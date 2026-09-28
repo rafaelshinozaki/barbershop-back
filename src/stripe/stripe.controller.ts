@@ -25,6 +25,7 @@ import { DepositPaymentService } from '../barbershop/deposit-payment.service';
 import { IdentityVerificationService } from '../barbershop/identity-verification.service';
 import { ConnectService } from '../barbershop/connect.service';
 import { TipService } from '../barbershop/tip.service';
+import { PrepaymentService } from '../barbershop/prepayment.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -42,6 +43,7 @@ export class StripeController {
     private identity: IdentityVerificationService,
     private connect: ConnectService,
     private tips: TipService,
+    private prepayments: PrepaymentService,
   ) {}
 
   @Post('webhook')
@@ -436,6 +438,11 @@ export class StripeController {
     // Caixinha pelo app (a tela também registra; idempotente)
     if (meta.kind === 'appointment_tip') {
       await this.tips.finalizeAppTip(paymentIntent);
+      return;
+    }
+    // Atendimento pago antes pelo app (a tela também registra; idempotente)
+    if (meta.kind === 'appointment_prepayment') {
+      await this.prepayments.finalize(paymentIntent);
       return;
     }
     if (meta.renewalKey) {
