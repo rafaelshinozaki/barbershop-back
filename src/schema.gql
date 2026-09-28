@@ -1705,6 +1705,29 @@ type JobApplyResultType {
   status: String!
 }
 
+type JobFeeCheckoutType {
+  clientSecret: String!
+  currency: String!
+  feeCents: Int!
+}
+
+type JobFeeConfirmType {
+  opening: JobOpeningType!
+
+  """Pago e aceito"""
+  paid: Boolean!
+}
+
+type JobFillFeeType {
+  currency: String!
+
+  """Taxa por vaga preenchida, em centavos"""
+  feeCents: Int!
+
+  """Aceitar exige pagar a taxa agora (há taxa e o Stripe está configurado)"""
+  required: Boolean!
+}
+
 input JobOpeningInput {
   barbershopId: Int!
 
@@ -1997,6 +2020,7 @@ type Mutation {
   confirmAppointmentPrepayment(token: String!): AppointmentPrepaymentType!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmFeaturedPurchase(purchaseId: Int!): Boolean!
+  confirmJobAcceptPayment(applicationId: Int!, barbershopId: Int!): JobFeeConfirmType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
   contactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   createAppointment(barbershopId: Int!, input: CreateAppointmentInput!): Appointment!
@@ -2168,6 +2192,7 @@ type Mutation {
   startDepositPayment(token: String!): DepositPaymentType!
   startFeaturedPurchase(ownerId: Int, ownerType: String!): FeaturedCheckoutType!
   startIdentityVerification: IdentityVerificationStartType!
+  startJobAcceptPayment(applicationId: Int!, barbershopId: Int!): JobFeeCheckoutType!
   startMyPaymentAccount: PaymentAccountLinkType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
@@ -2203,6 +2228,7 @@ type Mutation {
   updateNetwork(input: UpdateNetworkInput!): Network!
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
+  updatePlatformPricing(input: UpdatePricingInput!): PricingType!
   updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
   updateResource(barbershopId: Int!, id: Int!, input: UpdateResourceInput!): ResourceType!
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
@@ -2687,6 +2713,49 @@ type PresignedUploadType {
   url: String!
 }
 
+type PricingType {
+  """Valores padrão (genéricos) do código"""
+  defaults: PricingValuesType!
+
+  """Dias de Destaque por compra"""
+  featuredDays: Int!
+
+  """Destaque do profissional por período, em centavos"""
+  featuredProPriceCents: Int!
+
+  """Destaque da unidade por período, em centavos"""
+  featuredShopPriceCents: Int!
+
+  """Taxa por vaga preenchida, em centavos (0 = grátis)"""
+  jobFillFeeCents: Int!
+
+  """% da plataforma sobre o que passa pelo Stripe"""
+  platformFeePercent: Float!
+
+  """Pro por mês, em centavos"""
+  proPriceCents: Int!
+}
+
+type PricingValuesType {
+  """Dias de Destaque por compra"""
+  featuredDays: Int!
+
+  """Destaque do profissional por período, em centavos"""
+  featuredProPriceCents: Int!
+
+  """Destaque da unidade por período, em centavos"""
+  featuredShopPriceCents: Int!
+
+  """Taxa por vaga preenchida, em centavos (0 = grátis)"""
+  jobFillFeeCents: Int!
+
+  """% da plataforma sobre o que passa pelo Stripe"""
+  platformFeePercent: Float!
+
+  """Pro por mês, em centavos"""
+  proPriceCents: Int!
+}
+
 type ProReferralType {
   claimed: Boolean!
   code: String!
@@ -3110,6 +3179,7 @@ type Query {
   giftCards(networkId: Int!): [GiftCardType!]!
   inventoryItems(barbershopId: Int!): [InventoryItemType!]!
   inventoryMovements(barbershopId: Int!, productId: Int!): [InventoryMovementType!]!
+  jobFillFee: JobFillFeeType!
   latestPendingPayment: Payment
   linkedSocialAccounts: [LinkedSocialAccountType!]!
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
@@ -3158,6 +3228,7 @@ type Query {
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
   planDistribution: PlanDistribution!
+  platformPricing: PricingType!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
   previewShopImport(barbershopId: Int!, csv: String!): ShopImportResultType!
   publicAvailableSlots(barberId: Int, barbershopId: Int!, date: String!, serviceId: Int, serviceIds: [Int!]): [String!]!
@@ -3908,6 +3979,15 @@ input UpdatePlanInput {
   name: String
   price: Float
   stripePriceId: String
+}
+
+input UpdatePricingInput {
+  featuredDays: Int
+  featuredProPriceCents: Int
+  featuredShopPriceCents: Int
+  jobFillFeeCents: Int
+  platformFeePercent: Float
+  proPriceCents: Int
 }
 
 input UpdateProductCategoryInput {

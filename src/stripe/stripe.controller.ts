@@ -27,6 +27,7 @@ import { ConnectService } from '../barbershop/connect.service';
 import { TipService } from '../barbershop/tip.service';
 import { PrepaymentService } from '../barbershop/prepayment.service';
 import { FeaturedPaymentService } from '../barbershop/featured-payment.service';
+import { JobOpeningService } from '../barbershop/job-opening.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -46,6 +47,7 @@ export class StripeController {
     private tips: TipService,
     private prepayments: PrepaymentService,
     private featured: FeaturedPaymentService,
+    private jobs: JobOpeningService,
   ) {}
 
   @Post('webhook')
@@ -450,6 +452,11 @@ export class StripeController {
     // Compra de Destaque (a tela também registra; idempotente)
     if (meta.kind === 'featured_purchase') {
       await this.featured.finalize(paymentIntent);
+      return;
+    }
+    // Taxa por vaga preenchida (a tela também registra; idempotente)
+    if (meta.kind === 'job_fill_fee') {
+      await this.jobs.finalizeFee(paymentIntent);
       return;
     }
     if (meta.renewalKey) {

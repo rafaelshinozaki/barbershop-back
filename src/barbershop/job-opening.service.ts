@@ -4,7 +4,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import type Stripe from 'stripe';
 import { TreatmentCategory } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RealtimeService } from '@/realtime/realtime.service';
@@ -19,6 +21,11 @@ import {
 } from '@/common/timezone.util';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
+import { StripeService } from '@/stripe/stripe.service';
+import { stripeConfigured } from './stripe-configured';
+import { PLATFORM_CURRENCY, currentPricing } from '@/pricing/pricing';
+
+const FEE_KIND = 'job_fill_fee';
 
 /** Até quantos dias à frente a vaga pode começar */
 const MAX_DAYS_AHEAD = 180;
@@ -58,6 +65,7 @@ export class JobOpeningService {
     private readonly invites: EmployeeInviteService,
     private readonly realtime: RealtimeService,
     private readonly push: PushService,
+    @Optional() private readonly stripe?: StripeService,
   ) {}
 
   private async today(barbershopId: number) {
@@ -241,7 +249,166 @@ export class JobOpeningService {
   }
 
   /** Aceita: cria o convite com o período da vaga; o profissional aceita pelo e-mail */
+  // ============ TAXA POR VAGA PREENCHIDA ============
+
+  /** Quanto custa aceitar agora (valor de "Preços e taxas"); sem Stripe ou 0, não cobra */
+  fillFee() {
+    const feeCents = currentPricing().jobFillFeeCents;
+    return {
+      feeCents,
+      currency: PLATFORM_CURRENCY,
+      required: feeCents > 0 && stripeConfigured() && !!this.stripe,
+    };
+  }
+
+  /** Começa (ou retoma) o pagamento da taxa: client secret pro cartão */
+  async startAcceptPayment(userId: number, barbershopId: number, applicationId: number) {
+    await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    const fee = this.fillFee();
+    if (!fee.required || !this.stripe)
+      throw new BadRequestException('Esta vaga não tem taxa agora');
+    const application = await this.pendingApplication(barbershopId, applicationId);
+    if (application.feePaidAt)
+      throw new BadRequestException('A taxa desta candidatura já foi paga');
+    // Sem vaga no plano, o convite falharia: avisa antes de cobrar
+    await this.barbershops.ensureBarberLimitNotExceeded(barbershopId);
+
+    if (application.feePaymentIntentId) {
+      const existing = await this.stripe.retrievePaymentIntent(application.feePaymentIntentId);
+      if (existing.status === 'succeeded') {
+        await this.finalizeFee(existing);
+        throw new BadRequestException('A taxa acabou de ser confirmada');
+      }
+      if (existing.status !== 'canceled' && existing.amount === fee.feeCents) {
+        return {
+          clientSecret: existing.client_secret!,
+          feeCents: fee.feeCents,
+          currency: fee.currency,
+        };
+      }
+      if (existing.status !== 'canceled') {
+        await this.stripe.cancelPaymentIntent(existing.id).catch(() => undefined);
+      }
+    }
+    const intent = await this.stripe.createPaymentIntent(
+      fee.feeCents,
+      fee.currency.toLowerCase(),
+      undefined,
+      {
+        metadata: { kind: FEE_KIND, applicationId: String(applicationId) },
+        description: `Taxa da vaga "${application.jobOpening.title}"`,
+      },
+    );
+    await this.prisma.jobApplication.update({
+      where: { id: applicationId },
+      data: { feePaymentIntentId: intent.id, feeCents: fee.feeCents, feePayerUserId: userId },
+    });
+    return { clientSecret: intent.client_secret!, feeCents: fee.feeCents, currency: fee.currency };
+  }
+
+  /** A tela voltou do cartão: confere no Stripe; pago, aceita */
+  async confirmAcceptPayment(userId: number, barbershopId: number, applicationId: number) {
+    await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    const application = await this.prisma.jobApplication.findFirst({
+      where: { id: applicationId, jobOpening: { barbershopId } },
+      select: { feePaymentIntentId: true, status: true },
+    });
+    if (!application?.feePaymentIntentId || !this.stripe) {
+      throw new BadRequestException('Pagamento não iniciado');
+    }
+    const ok = await this.finalizeFee(
+      await this.stripe.retrievePaymentIntent(application.feePaymentIntentId),
+    );
+    return {
+      paid: ok,
+      opening: await this.forShop(userId, barbershopId, (await this.openingOf(applicationId))!),
+    };
+  }
+
+  private async openingOf(applicationId: number) {
+    return (
+      await this.prisma.jobApplication.findUnique({
+        where: { id: applicationId },
+        select: { jobOpeningId: true },
+      })
+    )?.jobOpeningId;
+  }
+
+  /**
+   * Taxa paga (tela ou webhook): aceita a candidatura. Idempotente. Se o
+   * aceite não der mais certo (já respondida, vaga fechada, convite
+   * recusado), a taxa volta para o cartão.
+   */
+  async finalizeFee(intent: Stripe.PaymentIntent): Promise<boolean> {
+    if (intent.status !== 'succeeded' || intent.metadata?.kind !== FEE_KIND) return false;
+    const applicationId = Number(intent.metadata?.applicationId);
+    const application = Number.isInteger(applicationId)
+      ? await this.prisma.jobApplication.findUnique({
+          where: { id: applicationId },
+          include: { jobOpening: { select: { barbershopId: true } } },
+        })
+      : null;
+    if (!application || application.feePaymentIntentId !== intent.id) {
+      this.logger.warn(`Pagamento ${intent.id} sem candidatura de vaga`);
+      return false;
+    }
+    if (application.feePaidAt) return application.status === 'accepted';
+    if (intent.amount < (application.feeCents ?? 0)) return false;
+    const claimed = await this.prisma.jobApplication.updateMany({
+      where: { id: applicationId, feePaidAt: null },
+      data: { feePaidAt: new Date() },
+    });
+    if (claimed.count === 0) return true;
+    try {
+      await this.acceptNow(
+        application.feePayerUserId!,
+        application.jobOpening.barbershopId,
+        applicationId,
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(`Taxa paga mas o aceite falhou (#${applicationId}): ${err}; devolvendo`);
+      await this.stripe
+        ?.createRefund(intent.id, undefined, 'requested_by_customer', `job-fee-refund-${intent.id}`)
+        .catch((e) => this.logger.error(`Erro ao devolver a taxa ${intent.id}:`, e));
+      // Devolvida: não conta como paga (um aceite depois pede a taxa de novo)
+      await this.prisma.jobApplication.update({
+        where: { id: applicationId },
+        data: { feeRefundedAt: new Date(), feePaidAt: null, feePaymentIntentId: null },
+      });
+      return false;
+    }
+  }
+
+  private async pendingApplication(barbershopId: number, applicationId: number) {
+    const application = await this.prisma.jobApplication.findFirst({
+      where: { id: applicationId, jobOpening: { barbershopId } },
+      include: { jobOpening: true },
+    });
+    if (!application) throw new NotFoundException('Candidatura não encontrada');
+    if (application.status !== 'pending') {
+      throw new BadRequestException('Esta candidatura já foi respondida');
+    }
+    if (application.jobOpening.status !== 'open') {
+      throw new BadRequestException('A vaga não está mais aberta');
+    }
+    return application;
+  }
+
+  /** Aceita (sem taxa, ou a taxa já paga): vira convite com o período da vaga */
   async accept(userId: number, barbershopId: number, applicationId: number) {
+    await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    if (this.fillFee().required) {
+      const paid = await this.prisma.jobApplication.findFirst({
+        where: { id: applicationId, feePaidAt: { not: null } },
+        select: { id: true },
+      });
+      if (!paid) throw new BadRequestException('Pague a taxa da vaga para aceitar');
+    }
+    return this.acceptNow(userId, barbershopId, applicationId);
+  }
+
+  private async acceptNow(userId: number, barbershopId: number, applicationId: number) {
     await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
     const application = await this.prisma.jobApplication.findFirst({
       where: { id: applicationId, jobOpening: { barbershopId } },

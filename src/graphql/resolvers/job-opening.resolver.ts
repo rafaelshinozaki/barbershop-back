@@ -153,6 +153,39 @@ export class MyJobApplicationType {
 }
 
 @ObjectType()
+export class JobFillFeeType {
+  @Field(() => Int, { description: 'Taxa por vaga preenchida, em centavos' })
+  feeCents: number;
+
+  @Field()
+  currency: string;
+
+  @Field({ description: 'Aceitar exige pagar a taxa agora (há taxa e o Stripe está configurado)' })
+  required: boolean;
+}
+
+@ObjectType()
+export class JobFeeCheckoutType {
+  @Field()
+  clientSecret: string;
+
+  @Field(() => Int)
+  feeCents: number;
+
+  @Field()
+  currency: string;
+}
+
+@ObjectType()
+export class JobFeeConfirmType {
+  @Field({ description: 'Pago e aceito' })
+  paid: boolean;
+
+  @Field(() => JobOpeningType)
+  opening: JobOpeningType;
+}
+
+@ObjectType()
 export class JobApplyResultType {
   @Field(() => Int)
   id: number;
@@ -198,6 +231,30 @@ export class JobOpeningResolver {
     @Args('applicationId', { type: () => Int }) applicationId: number,
   ) {
     return this.jobs.accept(user.id, barbershopId, applicationId);
+  }
+
+  /** Taxa por vaga preenchida (a unidade paga ao aceitar) */
+  @Query(() => JobFillFeeType)
+  jobFillFee() {
+    return this.jobs.fillFee();
+  }
+
+  @Mutation(() => JobFeeCheckoutType)
+  startJobAcceptPayment(
+    @CurrentUser() user: UserDTO,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('applicationId', { type: () => Int }) applicationId: number,
+  ) {
+    return this.jobs.startAcceptPayment(user.id, barbershopId, applicationId);
+  }
+
+  @Mutation(() => JobFeeConfirmType)
+  confirmJobAcceptPayment(
+    @CurrentUser() user: UserDTO,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('applicationId', { type: () => Int }) applicationId: number,
+  ) {
+    return this.jobs.confirmAcceptPayment(user.id, barbershopId, applicationId);
   }
 
   @Mutation(() => JobOpeningType)

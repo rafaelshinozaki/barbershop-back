@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 import { JobOpeningService } from './job-opening.service';
+import { DEFAULT_PRICING, setCurrentPricing } from '../pricing/pricing';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -56,6 +57,7 @@ describe('Vagas para freelancer (integração)', () => {
   let staffId: number;
   let proId: number;
   let pro2Id: number;
+  let pro3Id: number;
   let networkId: number;
   let shopId: number;
   const start = addDays(10);
@@ -100,6 +102,7 @@ describe('Vagas para freelancer (integração)', () => {
     staffId = await createUser('staff');
     proId = await createUser('pro');
     pro2Id = await createUser('pro-dois');
+    pro3Id = await createUser('pro-tres-x');
     networkId = (
       await prisma.network.create({ data: { ownerUserId: ownerId, name: `Rede Vaga ${RUN}` } })
     ).id;
@@ -133,7 +136,7 @@ describe('Vagas para freelancer (integração)', () => {
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
     await prisma.userNotification.deleteMany({
-      where: { userId: { in: [ownerId, staffId, proId, pro2Id] } },
+      where: { userId: { in: [ownerId, staffId, proId, pro2Id, pro3Id] } },
     });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
     await prisma.$disconnect();
@@ -239,5 +242,113 @@ describe('Vagas para freelancer (integração)', () => {
     expect(
       (await jobs.openOpenings(proId, { city: `Cidade Vaga ${RUN}` })).map((o) => o.id),
     ).toEqual([job.id]);
+  });
+
+  it('taxa por vaga preenchida: com Stripe, aceitar exige pagar; pago, aceita; se não der, devolve', async () => {
+    const intents = new Map<string, any>();
+    const refunds: string[] = [];
+    let seq = 0;
+    const stripe = {
+      createPaymentIntent: async (amount: number, _c: string, _x: unknown, opts: any) => {
+        const pi = {
+          id: `pi_job_${RUN}_${++seq}`,
+          amount,
+          status: 'requires_payment_method',
+          client_secret: `secret_job_${seq}`,
+          metadata: { ...opts.metadata },
+        };
+        intents.set(pi.id, pi);
+        return pi;
+      },
+      retrievePaymentIntent: async (id: string) => intents.get(id),
+      cancelPaymentIntent: async (id: string) => {
+        intents.get(id).status = 'canceled';
+      },
+      createRefund: async (id: string) => void refunds.push(id),
+    };
+    const keyBefore = process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = 'sk_test_simulado';
+    const paid = new JobOpeningService(
+      prisma,
+      barbershops,
+      invites,
+      { notifyUsers: () => undefined, notify: () => undefined } as never,
+      { sendToUsers: async () => undefined } as never,
+      stripe as never,
+    );
+    const pay = (id: string) => (intents.get(id).status = 'succeeded');
+    try {
+      expect(paid.fillFee()).toEqual({
+        feeCents: DEFAULT_PRICING.jobFillFeeCents,
+        currency: 'BRL',
+        required: true,
+      });
+      const job = await opening({ title: 'Vaga com taxa' });
+      const a = await paid.apply(pro3Id, job.id);
+      await expect(paid.accept(ownerId, shopId, a.id)).rejects.toThrow('Pague a taxa');
+      await expect(paid.startAcceptPayment(staffId, shopId, a.id)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+
+      const checkout = await paid.startAcceptPayment(ownerId, shopId, a.id);
+      expect(checkout.feeCents).toBe(DEFAULT_PRICING.jobFillFeeCents);
+      // Abrir de novo retoma o mesmo pagamento
+      expect((await paid.startAcceptPayment(ownerId, shopId, a.id)).clientSecret).toBe(
+        checkout.clientSecret,
+      );
+      // Sem pagar: não aceita
+      expect((await paid.confirmAcceptPayment(ownerId, shopId, a.id)).paid).toBe(false);
+      const piId = (await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } }))
+        .feePaymentIntentId!;
+      pay(piId);
+      const done = await paid.confirmAcceptPayment(ownerId, shopId, a.id);
+      expect(done.paid).toBe(true);
+      expect(done.opening.status).toBe('filled');
+      const app = await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } });
+      expect(app).toMatchObject({ status: 'accepted', feeCents: DEFAULT_PRICING.jobFillFeeCents });
+      expect(app.feePaidAt).toBeInstanceOf(Date);
+      expect(app.inviteId).not.toBeNull();
+      // Webhook depois: não aceita de novo
+      expect(await paid.finalizeFee(intents.get(piId))).toBe(true);
+      expect(
+        await prisma.employeeInvite.count({
+          where: { barbershopId: shopId, email: `job-pro-tres-x-${RUN}@test.local` },
+        }),
+      ).toBe(1);
+
+      // Libera as vagas do plano de teste, ocupadas pelos convites de antes
+      await prisma.barber.updateMany({
+        where: { barbershopId: shopId, userId: null },
+        data: { isActive: false },
+      });
+      // Pagou, mas a vaga foi encerrada no meio: a taxa volta
+      const other = await opening({ title: 'Vaga encerrada no meio' });
+      const b = await paid.apply(pro2Id, other.id);
+      await paid.startAcceptPayment(ownerId, shopId, b.id);
+      const piB = (await prisma.jobApplication.findUniqueOrThrow({ where: { id: b.id } }))
+        .feePaymentIntentId!;
+      await paid.close(ownerId, shopId, other.id);
+      pay(piB);
+      expect(await paid.finalizeFee(intents.get(piB))).toBe(false);
+      expect(refunds).toContain(piB);
+      const refunded = await prisma.jobApplication.findUniqueOrThrow({ where: { id: b.id } });
+      expect(refunded.feeRefundedAt).toBeInstanceOf(Date);
+      expect(refunded.feePaidAt).toBeNull();
+
+      // Taxa desligada (0) em "Preços e taxas": aceita direto
+      await prisma.barber.updateMany({
+        where: { barbershopId: shopId, userId: null },
+        data: { isActive: false },
+      });
+      setCurrentPricing({ jobFillFeeCents: 0 });
+      expect(paid.fillFee().required).toBe(false);
+      const free = await opening({ title: 'Vaga sem taxa' });
+      const c = await paid.apply(pro2Id, free.id);
+      expect((await paid.accept(ownerId, shopId, c.id)).status).toBe('filled');
+    } finally {
+      setCurrentPricing({});
+      if (keyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = keyBefore;
+    }
   });
 });
