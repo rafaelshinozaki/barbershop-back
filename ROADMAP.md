@@ -339,6 +339,7 @@ Proposta, até o jurídico fechar:
 |---|---|---|
 | Cópia de e-mail enviado, histórico de login e aviso no app | 12 meses | A tarefa diária apaga. Código de verificação e token de senha vencidos saem no mesmo dia |
 | Texto do chat | 12 meses depois da última mensagem daquele atendimento | Apaga o texto. Se houve denúncia ou disputa aberta, segura até ela fechar |
+| Pedido de suporte | 24 meses depois da última mensagem | Apaga o pedido inteiro. Sai antes se a conta de quem pediu for excluída |
 | Endereço de domicílio | some depois do atendimento, com uma janela curta | Já é visto só por quem vai atender e só perto do horário (item 9) |
 | Nota de conduta do cliente | enquanto a relação existe, ou até 2 anos sem novo atendimento | Sai também na exclusão da conta. Nunca vira página pública |
 | Histórico de serviços com o nome da pessoa | enquanto a conta existe | Na exclusão, tira o nome. O profissional fica com a contagem e o tipo de serviço, sem saber quem era |
@@ -447,11 +448,12 @@ Objetivo: dar condições de a plataforma intermediar estranhos com segurança.
 - **Caixinha pelo Stripe** (item 11), no mesmo fluxo do pagamento no app.
 - **Pagamento no app**: reavaliar a decisão de não usar Stripe Connect. Alternativas: Connect opcional só para quem quer receber pelo app, ou split via Pix. Mais reembolso, disputas e nota fiscal das taxas, da assinatura e da caixinha que passar pelo Stripe.
 - **Jurídico (LGPD e GDPR)**: termos de marketplace (plataforma intermediária, cancelamento, responsabilidade), contrato do profissional autônomo (sem vínculo), DPO e relatório de impacto para a **nota do cliente** e a **ficha técnica**. A política de retenção é a tabela do item 11, confirmada pelo jurídico e publicada. A tarefa diária já apaga cópia de e-mail, histórico de login, aviso no app e token vencido. Chat e nota de conduta entram nela quando existirem. O chat é apagado por conversa (12 meses depois da última mensagem), em lotes. A partição por mês ficou de fora: o Prisma veria as partições como tabelas estranhas no `migrate diff`, e a regra de guarda é por conversa, não por mês. Volta à mesa se o volume pedir. Pagamento e caixinha não entram nessa tarefa.
-- **Denúncia, bloqueio, suspensão e suporte humano**, parte A ✅:
+- **Denúncia, bloqueio, suspensão e suporte humano** ✅:
   - Quem participa denuncia a conversa (cliente pelo link ou pela conta, equipe pelo agendamento). O texto fica guardado até a moderação decidir. "Encerrar conversa" deixa a conversa visível, mas sem mensagem nova.
   - A unidade (gerente para cima) bloqueia um cliente, com motivo. O bloqueado não agenda online em nenhuma unidade da rede (checado pelo telefone, e-mail ou conta) nem manda mensagem. O balcão continua atendendo.
   - Desativar alguém da equipe derruba as sessões já abertas.
-  - Falta a parte B: o admin suspender a conta de um cliente e o suporte humano ("Fale com a gente" e fila no backoffice).
+  - O admin da plataforma suspende a conta de um cliente (fraude, abuso), com motivo. Suspensa, a conta não entra e as sessões caem; a pessoa recebe um e-mail com o motivo e o caminho do suporte. Os dados continuam, e reativar devolve o acesso. Suspender alguém da equipe continua sendo desativar a conta no backoffice.
+  - Suporte humano: "Fale com a gente" para visitante, cliente ou equipe. Quem pediu recebe um e-mail com o link do pedido e acompanha e responde por ele, sem login. A equipe da plataforma é avisada no sininho e responde pela fila do backoffice, e a resposta vai por e-mail.
 
 Sucesso: pagamentos pelo app sem aumento de disputas; jurídico aprovado para a nota do cliente e o domicílio.
 
