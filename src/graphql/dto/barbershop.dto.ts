@@ -913,6 +913,13 @@ export class CreateConsentFormInput {
 
   @Field({ nullable: true })
   expiresAt?: string;
+
+  /**
+   * O cliente autorizou registrar dados de saúde (alergias, condições) nesta
+   * ficha. Obrigatório para anamnese e teste de alergia com respostas.
+   */
+  @Field({ nullable: true })
+  healthConsent?: boolean;
 }
 
 @InputType()

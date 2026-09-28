@@ -542,9 +542,9 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 
 **4. Código que as decisões destravam**
 - Emissão automática de NFS-e da receita da plataforma (integração com o emissor escolhido).
-- Consentimento do cliente para alergias/dados de saúde na ficha técnica.
-- Origem do agendamento (vitrine da plataforma × link do próprio negócio), para medir o piloto agora e cobrar o cliente novo depois do piloto.
-- Métrica do piloto no backoffice: buscas na cidade que acharam horário em até 48 h, por categoria.
+- Consentimento para dados de saúde na ficha ✅: anamnese e teste de alergia só guardam respostas com o consentimento do cliente, que é registrado (quando e quem da equipe registrou). "Revogar consentimento" apaga as respostas e guarda a data. Ficha só para cliente da própria rede.
+- Origem do agendamento ✅: todo agendamento online guarda o canal (`marketplace` = veio da busca ou vitrine; `direct` = link, QR ou site do negócio) e se o cliente é novo no negócio. Quem chega pela busca fica marcado por 7 dias naquela unidade. A equipe vê "Veio pela vitrine do app" e "Cliente novo" no detalhe do agendamento. É a base da taxa por cliente novo, depois do piloto.
+- Métrica do piloto ✅ (Backoffice → Piloto): cada busca de unidades é avaliada alguns minutos depois (alguma das 5 primeiras tinha horário em até 48 h?), sem dado pessoal. A página mostra a taxa (meta: acima de 50%), por categoria, e os agendamentos pela vitrine (com clientes novos) e pelo link do negócio, por cidade e período.
 - Troca de marca, depois da checagem no INPI.
 - Atendimento a domicílio (item 9) e nota do cliente entre negócios: só depois do piloto e do parecer jurídico.
 

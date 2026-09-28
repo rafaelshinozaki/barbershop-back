@@ -1355,6 +1355,17 @@ export class BarbershopResolver {
     return this.barbershopService.signConsentForm(user.id, barbershopId, id, input.signatureName);
   }
 
+  /** O cliente revogou o consentimento de dados de saúde: apaga as respostas */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => ConsentFormType)
+  async revokeHealthConsent(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.revokeHealthConsent(user.id, barbershopId, id);
+  }
+
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async deleteConsentForm(

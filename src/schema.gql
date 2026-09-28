@@ -1070,6 +1070,8 @@ type ConsentFormType {
   customerId: Int!
   expiresAt: String
   formType: String!
+  healthConsentAt: String
+  healthConsentRevokedAt: String
   id: Int!
   signatureName: String
   signedAt: String
@@ -1223,6 +1225,7 @@ input CreateConsentFormInput {
   customerId: Int!
   expiresAt: String
   formType: String!
+  healthConsent: Boolean
 }
 
 input CreateCouponInput {
@@ -2155,6 +2158,7 @@ type Mutation {
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
+  revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
   savePushSubscription(input: PushSubscriptionInput!): Boolean!
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
