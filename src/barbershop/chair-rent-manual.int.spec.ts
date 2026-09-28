@@ -8,7 +8,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
-import { ChairRentService } from './chair-rent.service';
+import { ChairRentService, dueReached } from './chair-rent.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const DAY = 86_400_000;
@@ -168,7 +168,8 @@ describe('Aluguel da cadeira pago direto ao espaço (integração)', () => {
     let d = startedAt;
     for (;;) {
       d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 28, 12));
-      if (d.getTime() > Date.now()) break;
+      // Mesma regra do serviço: vence no dia, no fuso da unidade (não às 12h UTC)
+      if (!dueReached(d, 'America/Sao_Paulo')) break;
       expected.push(d);
     }
     expect(list.map((x) => x.dueDate!.toISOString())).toEqual(expected.map((x) => x.toISOString()));

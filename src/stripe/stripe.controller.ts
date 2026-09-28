@@ -23,6 +23,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { ChairRentService } from '../barbershop/chair-rent.service';
 import { DepositPaymentService } from '../barbershop/deposit-payment.service';
 import { IdentityVerificationService } from '../barbershop/identity-verification.service';
+import { ConnectService } from '../barbershop/connect.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -38,6 +39,7 @@ export class StripeController {
     private chairRent: ChairRentService,
     private deposits: DepositPaymentService,
     private identity: IdentityVerificationService,
+    private connect: ConnectService,
   ) {}
 
   @Post('webhook')
@@ -46,6 +48,9 @@ export class StripeController {
   @HttpCode(200)
   async handleWebhook(@Headers('stripe-signature') signature: string, @Req() req: Request) {
     const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    // Eventos das contas conectadas (Connect) chegam num endpoint próprio,
+    // com outro segredo; o mesmo handler aceita os dois
+    const connectSecret = this.configService.get<string>('STRIPE_CONNECT_WEBHOOK_SECRET');
 
     let event: Stripe.Event;
     try {
@@ -55,7 +60,12 @@ export class StripeController {
         return { received: false };
       }
       const payload = rawBody.toString('utf8');
-      event = await this.stripeService.handleWebhookEvent(payload, signature, webhookSecret);
+      try {
+        event = await this.stripeService.handleWebhookEvent(payload, signature, webhookSecret);
+      } catch (err) {
+        if (!connectSecret) throw err;
+        event = await this.stripeService.handleWebhookEvent(payload, signature, connectSecret);
+      }
     } catch (err) {
       this.logger.error('Invalid stripe webhook signature', err);
       return { received: false };
@@ -101,6 +111,12 @@ export class StripeController {
             (event.data.object as Stripe.Identity.VerificationSession).id,
           );
           break;
+        // Conta de recebimento (Connect): cadastro concluído, pendência, bloqueio
+        case 'account.updated': {
+          const account = event.data.object as Stripe.Account;
+          await this.connect.apply(account, account.id);
+          break;
+        }
         default:
           this.logger.log(`Unhandled event type: ${event.type}`);
       }

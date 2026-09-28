@@ -8,6 +8,7 @@ import { IdentityVerificationResolver } from './resolvers/identity-verification.
 import { ChatResolver } from './resolvers/chat.resolver';
 import { SupportResolver } from './resolvers/support.resolver';
 import { PushResolver } from './resolvers/push.resolver';
+import { ConnectResolver } from './resolvers/connect.resolver';
 import { SupportModule } from '../support/support.module';
 import { SoloResolver } from './resolvers/solo.resolver';
 import { ImportResolver } from './resolvers/import.resolver';
@@ -107,6 +108,7 @@ import { SocialModule } from '../social/social.module';
     ChatResolver,
     SupportResolver,
     PushResolver,
+    ConnectResolver,
     SoloResolver,
     ImportResolver,
     PublicProfessionalResolver,

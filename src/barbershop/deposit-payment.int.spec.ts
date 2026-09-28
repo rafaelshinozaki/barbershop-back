@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { DepositPaymentService } from './deposit-payment.service';
+import { ConnectService } from './connect.service';
 import { createAppointmentToken } from './appointment-link';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -26,6 +27,8 @@ type Intent = {
   client_secret: string;
   status: string;
   metadata: Record<string, string>;
+  transfer_data?: { destination: string } | null;
+  application_fee_amount?: number | null;
 };
 
 describe('Sinal online (integração, Stripe simulado)', () => {
@@ -41,6 +44,8 @@ describe('Sinal online (integração, Stripe simulado)', () => {
         client_secret: `secret_${seq}`,
         status: 'requires_payment_method',
         metadata: { ...opts.metadata, amount: String(amount), currency },
+        transfer_data: opts.destination ? { destination: opts.destination.accountId } : null,
+        application_fee_amount: opts.destination?.applicationFeeAmount ?? null,
       };
       intents.set(pi.id, pi);
       return pi;
@@ -49,14 +54,36 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     cancelPaymentIntent: async (id: string) => {
       intents.get(id)!.status = 'canceled';
     },
-    createRefund: async (id: string) => {
+    createRefund: async (id: string, _a?: number, _r?: string, _k?: string, connected = false) => {
       if (failNextRefund) {
         failNextRefund = false;
         throw new Error('Stripe fora do ar');
       }
       refunds.push(id);
+      if (connected) connectedRefunds.push(id);
     },
+    // Stripe Connect (conta de recebimento da unidade)
+    createConnectAccount: async (p: { country: string; metadata: Record<string, string> }) => {
+      connectCalls.push(`create:${p.country}:${p.metadata.ownerId}`);
+      return { id: `acct_${RUN}` };
+    },
+    createAccountOnboardingLink: async (id: string, returnUrl: string) => ({
+      url: `https://connect.stripe.com/setup/${id}?return=${encodeURIComponent(returnUrl)}`,
+    }),
+    retrieveConnectAccount: async (id: string) => ({
+      id,
+      charges_enabled: accountReady,
+      payouts_enabled: accountReady,
+      details_submitted: accountReady,
+      requirements: { disabled_reason: accountReady ? null : 'requirements.past_due' },
+    }),
+    createConnectLoginLink: async (id: string) => ({
+      url: `https://connect.stripe.com/express/${id}`,
+    }),
   };
+  const connectedRefunds: string[] = [];
+  const connectCalls: string[] = [];
+  let accountReady = false;
   let failNextRefund = false;
   const stub = {} as never;
   const barbershops = new BarbershopService(
@@ -68,9 +95,16 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     { email: async (job: any) => void emails.push(job), whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const deposits = new DepositPaymentService(prisma, stripe as never, barbershops, {
-    email: async (job: any) => void emails.push(job),
+  const connect = new ConnectService(prisma, stripe as never, barbershops, {
+    get: (k: string) => ({ FRONTEND_URL: 'https://app.test', NODE_ENV: 'test' }[k]),
   } as never);
+  const deposits = new DepositPaymentService(
+    prisma,
+    stripe as never,
+    barbershops,
+    { email: async (job: any) => void emails.push(job) } as never,
+    connect,
+  );
   const monday = mondayAhead();
   const pay = (id: string) => (intents.get(id)!.status = 'succeeded');
 
@@ -176,6 +210,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershopService.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.paymentAccount.deleteMany({ where: { ownerType: 'barbershop', ownerId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
@@ -503,5 +538,71 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     );
     expect(list).toEqual([expect.objectContaining({ id: off.id, barberName: 'Ana' })]);
     await barbershops.deleteBarberTimeOff(ownerId, off.id);
+  });
+
+  it('receber pelo app (Connect): só o dono cadastra; ativa, o sinal cai direto na unidade com a taxa', async () => {
+    expect(await connect.barbershopStatus(ownerId, shopId)).toMatchObject({
+      connected: false,
+      chargesEnabled: false,
+      feePercentage: 15,
+    });
+    // Gerente vê, só o dono cadastra (é pra onde vai o dinheiro)
+    await expect(connect.startBarbershopOnboarding(staffUserId, shopId)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    const { url } = await connect.startBarbershopOnboarding(ownerId, shopId);
+    expect(url).toContain(`acct_${RUN}`);
+    expect(url).toContain(encodeURIComponent(`/barbershops/${shopId}/settings?connect=return`));
+    expect(connectCalls).toEqual([`create:BR:${shopId}`]);
+    // De novo: continua a mesma conta
+    await connect.startBarbershopOnboarding(ownerId, shopId);
+    expect(connectCalls).toHaveLength(1);
+
+    // Cadastro pela metade: o sinal continua na plataforma (repasse manual)
+    expect(await connect.refreshBarbershop(ownerId, shopId)).toMatchObject({
+      connected: true,
+      chargesEnabled: false,
+      disabledReason: 'requirements.past_due',
+    });
+    const before = await paidBooking('10:30');
+    expect(intents.get(before.piId)!.transfer_data).toBeNull();
+    await expect(connect.barbershopDashboardLink(ownerId, shopId)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    // Stripe avisa que a conta pode receber (webhook account.updated)
+    accountReady = true;
+    await connect.apply(await stripe.retrieveConnectAccount(`acct_${RUN}`), `acct_${RUN}`);
+    expect(await connect.barbershopStatus(ownerId, shopId)).toMatchObject({
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      disabledReason: null,
+    });
+    const direct = await paidBooking('15:30');
+    // Sinal de 20: vai pra conta da unidade, a plataforma fica com 15% (3,00)
+    expect(intents.get(direct.piId)).toMatchObject({
+      transfer_data: { destination: `acct_${RUN}` },
+      application_fee_amount: 300,
+    });
+    expect((await load(direct.id)).depositStripeAccountId).toBe(`acct_${RUN}`);
+
+    // Relatório: o que caiu direto não entra no repasse devido
+    const report = await deposits.payoutReport(ownerId, shopId);
+    expect(report.paidOutAutomatically).toBe(17);
+    expect(report.netOwedToBarbershop).toBeCloseTo(
+      report.grossAmount - report.platformFeeAmount - 17,
+      2,
+    );
+
+    // Estorno do que foi pra unidade desfaz a transferência e devolve a taxa
+    await barbershops.updateAppointment(ownerId, shopId, direct.id, { status: 'CANCELLED' });
+    expect(connectedRefunds).toEqual([direct.piId]);
+    await barbershops.updateAppointment(ownerId, shopId, before.id, { status: 'CANCELLED' });
+    expect(connectedRefunds).not.toContain(before.piId);
+    expect(refunds).toContain(before.piId);
+
+    expect((await connect.barbershopDashboardLink(ownerId, shopId)).url).toBe(
+      `https://connect.stripe.com/express/acct_${RUN}`,
+    );
   });
 });

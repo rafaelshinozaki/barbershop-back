@@ -1166,6 +1166,9 @@ model Appointment {
   depositPaidAt  DateTime?
   /// Sinal pago online estornado (cliente cancelou, unidade cancelou ou estorno manual)
   depositRefundedAt DateTime?
+  // Sinal pago direto na conta da unidade (Stripe Connect): o repasse já
+  // foi feito pelo Stripe, com a taxa da plataforma descontada
+  depositStripeAccountId String?
   depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
   // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
   holdExpiresAt  DateTime?
@@ -2036,4 +2039,27 @@ model PushSubscription {
 
   @@index([userId])
   @@index([clientAccountId])
+}
+
+// Conta de recebimento no Stripe (Connect Express), opcional: quem liga
+// recebe o que passa pelo app direto na própria conta, com a taxa da
+// plataforma descontada pelo Stripe. Quem não liga continua no repasse
+// manual. ownerType: barbershop (sinal, pagamento) | professional (caixinha).
+model PaymentAccount {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  ownerType        String
+  ownerId          Int
+  // stripe | fake (fora de produção, sem Stripe configurado)
+  provider         String
+  stripeAccountId  String   @unique
+  chargesEnabled   Boolean  @default(false)
+  payoutsEnabled   Boolean  @default(false)
+  detailsSubmitted Boolean  @default(false)
+  // Pendência que o Stripe pede (requirements.disabled_reason)
+  disabledReason   String?
+  createdByUserId  Int?
+
+  @@unique([ownerType, ownerId])
 }

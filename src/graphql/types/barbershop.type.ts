@@ -1764,6 +1764,12 @@ export class SubscriptionRevenueReportType {
 
   @Field(() => Float)
   netOwedToBarbershop: number;
+
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Já caiu direto na conta de recebimento da unidade (Stripe Connect), sem a taxa',
+  })
+  paidOutAutomatically?: number;
 }
 
 // Type alias for resolver (naming consistency)

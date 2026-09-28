@@ -345,6 +345,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
       { finalize: async () => 'NOT_FOUND' } as never,
       // Nem de verificação de identidade
       { handleStripeSession: async () => undefined } as never,
+      // Nem de conta de recebimento (Connect)
+      { apply: async () => undefined } as never,
     );
     const deliver = (event: unknown) =>
       controller.handleWebhook('sig', { rawBody: Buffer.from(JSON.stringify(event)) } as never);

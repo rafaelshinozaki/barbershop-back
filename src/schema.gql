@@ -1763,6 +1763,7 @@ type Mutation {
   barberAvatarUpload(barberId: Int!, contentType: String): PresignedUploadType!
   barbershopCoverUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
   barbershopGalleryUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
+  barbershopPaymentDashboardLink(barbershopId: Int!): PaymentAccountLinkType!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelAppointmentSeries(appointmentId: Int!, barbershopId: Int!): Int!
   cancelManagedAppointment(token: String!): ManagedAppointmentType!
@@ -1794,6 +1795,7 @@ type Mutation {
     outcome: String!
     sessionId: String!
   ): Boolean!
+  completeFakePaymentAccount(accountId: String!): Boolean!
   completeSocialSignup(input: SocialSignupInput!, token: String!): User!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
   confirmPaymentIntent(paymentIntentId: String!): ConfirmPaymentIntentResponse!
@@ -1888,6 +1890,7 @@ type Mutation {
   reactivateBarber(barbershopId: Int!, id: Int!): Boolean!
   recordChairRentPayment(barbershopId: Int!, method: String!, notes: String, paymentId: Int!): ChairRentPaymentType!
   redeemClientSubscriptionSession(barbershopId: Int!, id: Int!): ClientSubscriptionType!
+  refreshBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
   refundAppointmentDeposit(barbershopId: Int!, id: Int!): Appointment!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!
@@ -1941,6 +1944,7 @@ type Mutation {
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   staffContactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
+  startBarbershopPaymentAccount(barbershopId: Int!): PaymentAccountLinkType!
   startDepositPayment(token: String!): DepositPaymentType!
   startIdentityVerification: IdentityVerificationStartType!
   startSocialSignup(email: String!, fullName: String!, provider: String!): String!
@@ -2301,6 +2305,29 @@ type Payment {
   subscriptionId: Int!
   transactionId: String
   updatedAt: String!
+}
+
+type PaymentAccountLinkType {
+  """Página do Stripe (cadastro ou painel)"""
+  url: String!
+}
+
+type PaymentAccountStatusType {
+  """Pode receber: o que passa pelo app cai direto nesta conta"""
+  chargesEnabled: Boolean!
+
+  """Já começou o cadastro da conta de recebimento"""
+  connected: Boolean!
+  detailsSubmitted: Boolean!
+
+  """Pendência apontada pelo Stripe"""
+  disabledReason: String
+
+  """Taxa da plataforma sobre o que passa pelo Stripe (%)"""
+  feePercentage: Float!
+
+  """O Stripe já transfere pro banco"""
+  payoutsEnabled: Boolean!
 }
 
 type PaymentIntentResponse {
@@ -2776,6 +2803,7 @@ type Query {
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
+  barbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!
   barbershopPhotos(barbershopId: Int!): [BarbershopPhotoType!]!
 
   """Vagas do plano ocupadas na unidade (só quem atende conta)"""
@@ -3325,6 +3353,11 @@ type SubscriptionResponse {
 type SubscriptionRevenueReportType {
   grossAmount: Float!
   netOwedToBarbershop: Float!
+
+  """
+  Já caiu direto na conta de recebimento da unidade (Stripe Connect), sem a taxa
+  """
+  paidOutAutomatically: Float
   paymentsCount: Int!
   platformFeeAmount: Float!
   platformFeePercentage: Float!
