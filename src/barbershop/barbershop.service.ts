@@ -1,4 +1,5 @@
 import { must } from '../common/must';
+import { bookingChannel } from './booking-channel';
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import {
   appointmentManageUrl,
@@ -4344,6 +4345,7 @@ export class BarbershopService {
     notes?: string;
     clientAccountId?: number;
     referralCode?: string;
+    channel?: string;
   }) {
     const barbershop = await this.prisma.barbershop.findFirst({
       where: { id: input.barbershopId, isActive: true },
@@ -4457,6 +4459,16 @@ export class BarbershopService {
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
     const bookingCustomerId = customer.id;
+    // Primeira vez no negócio: nenhum agendamento anterior na rede que não
+    // tenha sido cancelado (ficha nova ou ficha que nunca veio)
+    const firstVisit =
+      (await this.prisma.appointment.count({
+        where: {
+          customerId: bookingCustomerId,
+          barbershop: { networkId },
+          status: { not: 'CANCELLED' },
+        },
+      })) === 0;
     const deposits = services.filter((sv) => sv.depositAmount != null);
     const depositAmount = deposits.length
       ? deposits.reduce((sum, sv) => sum.add(sv.depositAmount ?? 0), new Decimal(0))
@@ -4485,6 +4497,8 @@ export class BarbershopService {
             status: payOnline ? 'PENDING_PAYMENT' : 'CONFIRMED',
             holdExpiresAt: payOnline ? new Date(Date.now() + DEPOSIT_HOLD_MINUTES * 60_000) : null,
             source: 'ONLINE',
+            bookingChannel: bookingChannel(input.channel),
+            firstVisit,
             notes: input.notes,
             depositAmount,
           },

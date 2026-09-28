@@ -743,6 +743,14 @@ export class Appointment {
   @Field()
   source: string;
 
+  /** Agendamento online: marketplace (busca/vitrine da plataforma) ou direct (link do negócio) */
+  @Field(() => String, { nullable: true })
+  bookingChannel?: string | null;
+
+  /** Primeira vez do cliente neste negócio */
+  @Field({ nullable: true })
+  firstVisit?: boolean;
+
   @Field(() => Float, { nullable: true })
   depositAmount?: number;
 

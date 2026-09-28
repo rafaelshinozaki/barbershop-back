@@ -1167,6 +1167,12 @@ model Appointment {
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN, IMPORT, HISTORY
+  // Agendamento online: por onde o cliente chegou. marketplace = busca ou
+  // vitrine da plataforma; direct = link, QR ou site do próprio negócio
+  bookingChannel String?
+  // Primeira vez do cliente naquele negócio (rede): base da taxa por cliente
+  // novo do marketplace, decidida para depois do piloto
+  firstVisit   Boolean   @default(false)
   reminderSentAt DateTime?
   reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
   clientRatingRequestSentAt DateTime? // aviso ao profissional pra avaliar o cliente (resumo do dia)
@@ -1219,6 +1225,7 @@ model Appointment {
   @@index([status, reviewRequestSentAt, endAt])
   @@index([seriesId])
   @@index([status, holdExpiresAt])
+  @@index([bookingChannel, createdAt])
 }
 
 model AppointmentService {

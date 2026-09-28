@@ -13,6 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { TreatmentCategory } from '../types/enums';
+import { BOOKING_CHANNELS } from '../../barbershop/booking-channel';
 import { SEARCH_SORTS, type SearchSort } from '@/barbershop/search';
 
 /** Filtros da busca pública de profissionais (e a base da de unidades) */
@@ -159,6 +160,15 @@ export class CreatePublicAppointmentInput {
   @IsOptional()
   @IsString()
   referralCode?: string;
+
+  /**
+   * Por onde o cliente chegou: marketplace (busca ou vitrine da plataforma)
+   * ou direct (link, QR ou site do negócio). Sem valor = direct.
+   */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsIn(BOOKING_CHANNELS)
+  channel?: string;
 }
 
 @InputType()
