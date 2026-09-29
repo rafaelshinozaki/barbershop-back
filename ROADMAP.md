@@ -563,10 +563,10 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Registro de ações do backoffice ✅: toda escrita das operações da equipe do sistema (mutations GraphQL e rotas REST que não são GET) fica registrada: quem fez, quando, a área, os dados (sem senha nem token; textos e listas longas cortados) e se deu certo. Um interceptor global faz o registro, então operação nova entra sozinha. Só o admin lê (`backofficeAuditLog`). O registro é apagado depois de 2 anos pela rotina de guarda de dados.
 - Duas etapas obrigatórias no backoffice ✅: conta do sistema (admin e equipe) entra com senha mais um código por e-mail, mesmo sem ter ligado as duas etapas. Vale em produção, ou com `BACKOFFICE_REQUIRE_2FA=true`. Conta do sistema também não entra mais pelo login social (Google/Apple/Facebook), que pulava a senha e o código.
 
-**6. Rápido e barato** (em andamento; spec abaixo)
-- Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. Erros e request lento no Sentry ✅. A fazer: trilha de ações no Axiom. Uma instância da API até ela saturar.
+**6. Rápido e barato** ✅ (spec abaixo)
+- Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. Erros e request lento no Sentry ✅, trilha de ações do app no Axiom ✅. Uma instância da API até ela saturar.
 
-## Horizonte: rápido e barato — em andamento
+## Horizonte: rápido e barato — ✅ concluído
 
 Registrado em 2026-09-29. O app fica o mais rápido possível pelo menor custo, com pouco uso do Postgres. A trilha do que a pessoa fez sai do banco.
 
@@ -592,7 +592,7 @@ Nesta ordem:
 3. **Uma instância até saturar.** Réplica de leitura é outro Postgres e só entra depois do cache. PostGIS continua adiado, como em [docs/LOAD_TEST.md](docs/LOAD_TEST.md).
 4. O front é SPA estática: CDN, sem custo de banco.
 
-### Trilha do que o usuário fez → Axiom
+### ✅ Trilha do que o usuário fez → Axiom
 
 Hoje só a equipe da plataforma deixa rastro, em `BackofficeAuditLog` (Postgres, lido pelo admin, apagado em 2 anos). Dono, gerente, recepção, profissional e cliente não têm trilha.
 
@@ -604,7 +604,9 @@ Interceptor no estilo de `BackofficeAuditInterceptor`, nas mutations de quem usa
 
 Campos: horário, id de quem fez, cargo, id da unidade quando houver, operação, tipo e id da entidade, sucesso ou falha, id do request. Fora do evento: senha, token, texto de chat, telefone, e-mail completo, endereço de domicílio e ficha de saúde. Texto e lista longos são cortados, como no backoffice.
 
-Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico de login.
+Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico de login (configurada no dataset, no Axiom).
+
+Feito em `src/activity/`: o `AppActivityInterceptor` (global) monta o evento só com ids (dos argumentos só saem `barbershopId` e o primeiro `<entidade>Id`; se não houver, o id do que a mutation devolveu) e o tipo do erro, nunca a mensagem. Os eventos juntam na memória e a cada 5 s (ou 200) viram um job; o worker faz o POST no ingest do Axiom, com as tentativas do BullMQ. Mutations só do backoffice ficam de fora (já vão pro `BackofficeAuditLog`). Conferido local: eventos chegam em lote, sem nome, e-mail ou telefone; com o Redis fora a requisição respondeu em 20 ms e o lote foi pro log.
 
 `BackofficeAuditLog` **fica no Postgres**. O volume é pequeno (poucas pessoas na equipe, poucas escritas por dia), então o argumento de custo não vale para ela. E a tela Registro de ações do backoffice lê dali: mover para o Axiom obrigaria a tela a consultar a API do Axiom ou a sumir. Guarda de 2 anos, como já está. O Axiom é só para a trilha do app.
 
