@@ -545,7 +545,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - S3 (`S3_BUCKET`), domínio/DNS e HTTPS do front e da API, `FRONTEND_URL`/`PUBLIC_API_URL`.
 - Segredos próprios dos links por e-mail (`APPOINTMENT_LINK_SECRET`, `UNSUBSCRIBE_SECRET`) e o primeiro admin (`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`).
 - Geocodificação: o Nominatim público tem limite de uso; em produção, um serviço próprio ou pago em `GEOCODING_URL`.
-- Operação: backup do Postgres, monitoramento de erros e alertas (hoje só logs).
+- Operação: backup do Postgres. Erros e a trilha do que o usuário fez estão no horizonte "Rápido e barato" (Sentry e Axiom; a trilha não entra no Postgres).
 
 **4. Código que as decisões destravam**
 - Emissão automática de NFS-e da receita da plataforma (integração com o emissor escolhido).
@@ -562,3 +562,56 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Equipe do backoffice com permissões por área ✅: o SystemAdmin é o mestre e vê tudo. Para cada pessoa da equipe (SystemManager), ele libera áreas: Suporte, Moderação, Usuários, Financeiro e Operação. Preços, planos, cupons, cargos e a própria equipe continuam só com ele. Toda operação da equipe declara a área (`@RequireArea`, conferido por teste). A equipe não altera contas do sistema: antes, um gerente do sistema conseguia trocar o e-mail do admin, desativá-lo ou apagá-lo. Aviso de suporte novo só vai para quem tem Suporte. Quem já era SystemManager ficou com todas as áreas.
 - Registro de ações do backoffice ✅: toda escrita das operações da equipe do sistema (mutations GraphQL e rotas REST que não são GET) fica registrada: quem fez, quando, a área, os dados (sem senha nem token; textos e listas longas cortados) e se deu certo. Um interceptor global faz o registro, então operação nova entra sozinha. Só o admin lê (`backofficeAuditLog`). O registro é apagado depois de 2 anos pela rotina de guarda de dados.
 - Duas etapas obrigatórias no backoffice ✅: conta do sistema (admin e equipe) entra com senha mais um código por e-mail, mesmo sem ter ligado as duas etapas. Vale em produção, ou com `BACKOFFICE_REQUIRE_2FA=true`. Conta do sistema também não entra mais pelo login social (Google/Apple/Facebook), que pulava a senha e o código.
+
+**6. Rápido e barato** (a implementar; spec abaixo)
+- Teto de conexões do Prisma, cache curto da busca pública no Redis, trilha de ações no Axiom e erros no Sentry. Uma instância da API até ela saturar.
+
+## Horizonte: rápido e barato — a implementar
+
+Registrado em 2026-09-29. O app fica o mais rápido possível pelo menor custo, com pouco uso do Postgres. A trilha do que a pessoa fez sai do banco.
+
+### Conexões do Postgres
+
+Hoje há um processo e um `PrismaClient` (`src/prisma/prisma.service.ts`), sem `connection_limit` na `DATABASE_URL`. O Prisma abre `CPUs × 2 + 1` conexões: numa máquina de 4 vCPU, cerca de 9. No teste de carga cada busca leva 5–15 ms no banco; o resto do tempo é a API montando o objeto. Vinte usuários ao mesmo tempo numa instância cabem nesse pool.
+
+Mais conexões não encurtam a query. Cada uma ocupa memória no Postgres (por volta de 5–10 MB) e, em excesso, o banco gasta o tempo trocando de conexão. O `max_connections` padrão é 100. Isso aperta quando existem vários processos — segunda instância da API, worker à parte, seed, Prisma Studio — porque cada um abre o próprio pool. A soma estoura o banco antes de estourar a CPU.
+
+- Fixar `connection_limit=10` na `DATABASE_URL` da instância única do piloto, com `pool_timeout=10`. Máquina com mais núcleo não abre mais conexão por causa disso.
+- Uma instância da API no piloto. A segunda só entra quando a primeira saturar: p95 da busca da cidade acima de ~400 ms de forma sustentada, ou a CPU da API no teto.
+- PgBouncer em modo transaction, no mesmo servidor, **junto com a segunda instância**. Segura o Postgres num punhado de conexões reais. Antes disso é processo a mais, sem ganho, e não se paga um banco maior para "ter mais conexões".
+
+### O que deixa rápido e alivia o banco
+
+Nesta ordem:
+
+1. **Cache de 30–60 s no Redis que já existe**, da busca pública (sem filtro e a da cidade, com categoria, raio, ordem e página na chave). É a mesma lista para todo visitante e é a tela mais cara (sem filtro: 28 req/s, p95 863 ms). Agenda da equipe e horário livre do dia ficam de fora: mudam o tempo todo e são por unidade. A vitrine pode atrasar até 60 s; não há invalidação na escrita.
+2. **A trilha de ações não grava no Postgres** (abaixo). Cada mutation viraria um insert na mesma hora do agendamento.
+3. **Uma instância até saturar.** Réplica de leitura é outro Postgres e só entra depois do cache. PostGIS continua adiado, como em [docs/LOAD_TEST.md](docs/LOAD_TEST.md).
+4. O front é SPA estática: CDN, sem custo de banco.
+
+### Trilha do que o usuário fez → Axiom
+
+Hoje só a equipe da plataforma deixa rastro, em `BackofficeAuditLog` (Postgres, lido pelo admin, apagado em 2 anos). Dono, gerente, recepção, profissional e cliente não têm trilha.
+
+A trilha do app vai para o **Axiom**: evento JSON, append-only, busca por pessoa, unidade e operação, retenção configurada lá. Sem tabela nova. Se o Axiom não servir, Better Stack Logs recebe o mesmo evento.
+
+Interceptor no estilo de `BackofficeAuditInterceptor`, nas mutations de quem usa o app. Queries não geram evento. O interceptor enfileira no BullMQ e um worker envia em lote. O request não espera o Axiom. Com o Redis fora, a ação da pessoa segue (como o e-mail); o evento se perde e o agendamento não trava.
+
+Campos: horário, id de quem fez, cargo, id da unidade quando houver, operação, tipo e id da entidade, sucesso ou falha, id do request. Fora do evento: senha, token, texto de chat, telefone, e-mail completo, endereço de domicílio e ficha de saúde. Texto e lista longos são cortados, como no backoffice.
+
+Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico de login. `BackofficeAuditLog` continua no Postgres enquanto a trilha não está no ar. Depois, as ações do backoffice passam pelo mesmo worker e a tabela sai.
+
+`LoginHistory` continua no Postgres: a tela de segurança lê dali, o volume é baixo e a guarda de 12 meses já apaga.
+
+### Erros e alerta → Sentry
+
+O log no stdout do Nest continua. O **Sentry** recebe exceção e request lento, com alerta. O plano gratuito cobre o piloto. Sentry é "quebrou"; Axiom é "quem fez".
+
+`SENTRY_DSN` vazio desliga o Sentry. `AXIOM_TOKEN` e `AXIOM_DATASET` vazios desligam a trilha. Nos dois casos a ação da pessoa segue, no mesmo espírito do WhatsApp sem token.
+
+### Fora deste horizonte
+
+- Subir `max_connections` para aguentar mais gente.
+- Gravar a trilha no Postgres.
+- PostHog: a métrica do piloto (busca com horário em 48 h, agendamento pela vitrine) já está no backoffice.
+- PgBouncer ou segunda instância antes de a primeira saturar.
