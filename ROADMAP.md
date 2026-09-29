@@ -576,7 +576,7 @@ Hoje há um processo e um `PrismaClient` (`src/prisma/prisma.service.ts`), sem `
 
 Mais conexões não encurtam a query. Cada uma ocupa memória no Postgres (por volta de 5–10 MB) e, em excesso, o banco gasta o tempo trocando de conexão. O `max_connections` padrão é 100. Isso aperta quando existem vários processos — segunda instância da API, worker à parte, seed, Prisma Studio — porque cada um abre o próprio pool. A soma estoura o banco antes de estourar a CPU.
 
-- Fixar `connection_limit=10` na `DATABASE_URL` da instância única do piloto, com `pool_timeout=10`. Máquina com mais núcleo não abre mais conexão por causa disso.
+- Fixar `connection_limit=10` na `DATABASE_URL` da instância única do piloto, com `pool_timeout=10`. Máquina com mais núcleo não abre mais conexão por causa disso. Os workers da fila (lembretes, retenção, e-mail) rodam no mesmo processo e dividem esse pool com as requisições.
 - Uma instância da API no piloto. A segunda só entra quando a primeira saturar: p95 da busca da cidade acima de ~400 ms de forma sustentada, ou a CPU da API no teto.
 - PgBouncer em modo transaction, no mesmo servidor, **junto com a segunda instância**. Segura o Postgres num punhado de conexões reais. Antes disso é processo a mais, sem ganho, e não se paga um banco maior para "ter mais conexões".
 
@@ -585,6 +585,8 @@ Mais conexões não encurtam a query. Cada uma ocupa memória no Postgres (por v
 Nesta ordem:
 
 1. **Cache de 30–60 s no Redis que já existe**, da busca pública (sem filtro e a da cidade, com categoria, raio, ordem e página na chave). É a mesma lista para todo visitante e é a tela mais cara (sem filtro: 28 req/s, p95 863 ms). Agenda da equipe e horário livre do dia ficam de fora: mudam o tempo todo e são por unidade. A vitrine pode atrasar até 60 s; não há invalidação na escrita.
+   - **Busca "perto de mim":** `lat`/`lng` chegam com a posição exata de cada pessoa, então cada visitante seria uma chave nova e o cache não acertaria. Na chave, a posição entra arredondada (2 casas decimais, ~1 km). A distância mostrada é calculada depois, com a posição exata, em cima da lista em cache.
+   - **Métrica do piloto:** hoje cada busca de unidades grava um `SearchEvent` (`public-booking.resolver.ts`), que alimenta a taxa de "horário em até 48 h". A busca servida do cache **continua registrando** o evento; senão a métrica perde justamente as buscas mais comuns. O registro é um insert por busca: entra na fila e é gravado em lote pelo worker, em vez de ir ao Postgres dentro da requisição.
 2. **A trilha de ações não grava no Postgres** (abaixo). Cada mutation viraria um insert na mesma hora do agendamento.
 3. **Uma instância até saturar.** Réplica de leitura é outro Postgres e só entra depois do cache. PostGIS continua adiado, como em [docs/LOAD_TEST.md](docs/LOAD_TEST.md).
 4. O front é SPA estática: CDN, sem custo de banco.
@@ -595,17 +597,27 @@ Hoje só a equipe da plataforma deixa rastro, em `BackofficeAuditLog` (Postgres,
 
 A trilha do app vai para o **Axiom**: evento JSON, append-only, busca por pessoa, unidade e operação, retenção configurada lá. Sem tabela nova. Se o Axiom não servir, Better Stack Logs recebe o mesmo evento.
 
-Interceptor no estilo de `BackofficeAuditInterceptor`, nas mutations de quem usa o app. Queries não geram evento. O interceptor enfileira no BullMQ e um worker envia em lote. O request não espera o Axiom. Com o Redis fora, a ação da pessoa segue (como o e-mail); o evento se perde e o agendamento não trava.
+Interceptor no estilo de `BackofficeAuditInterceptor`, nas mutations de quem usa o app. Queries não geram evento. O interceptor enfileira no BullMQ e um worker envia em lote. O request não espera o Axiom.
+
+**Com o Redis fora, o request também não pode esperar a fila.** Hoje a conexão do BullMQ usa o padrão do ioredis, que segura o comando e tenta de novo enquanto o Redis está fora, e o e-mail é enfileirado com `await` dentro da requisição: o pedido fica parado até o Redis voltar. Para a trilha, o interceptor não espera o `add` (dispara e segue, com o erro só no log) e a fila da trilha usa uma conexão própria com `enableOfflineQueue: false` e um tempo máximo curto. O evento se perde, a ação da pessoa segue. O mesmo ajuste vale para o enfileiramento de e-mail e WhatsApp.
 
 Campos: horário, id de quem fez, cargo, id da unidade quando houver, operação, tipo e id da entidade, sucesso ou falha, id do request. Fora do evento: senha, token, texto de chat, telefone, e-mail completo, endereço de domicílio e ficha de saúde. Texto e lista longos são cortados, como no backoffice.
 
-Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico de login. `BackofficeAuditLog` continua no Postgres enquanto a trilha não está no ar. Depois, as ações do backoffice passam pelo mesmo worker e a tabela sai.
+Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico de login.
+
+`BackofficeAuditLog` **fica no Postgres**. O volume é pequeno (poucas pessoas na equipe, poucas escritas por dia), então o argumento de custo não vale para ela. E a tela Registro de ações do backoffice lê dali: mover para o Axiom obrigaria a tela a consultar a API do Axiom ou a sumir. Guarda de 2 anos, como já está. O Axiom é só para a trilha do app.
 
 `LoginHistory` continua no Postgres: a tela de segurança lê dali, o volume é baixo e a guarda de 12 meses já apaga.
 
 ### Erros e alerta → Sentry
 
 O log no stdout do Nest continua. O **Sentry** recebe exceção e request lento, com alerta. O plano gratuito cobre o piloto. Sentry é "quebrou"; Axiom é "quem fez".
+
+Por padrão o SDK do Sentry manda cabeçalhos e corpo das requisições, com cookie de sessão e e-mail. Configurar `sendDefaultPii: false` e um `beforeSend` que tira cookie, `Authorization`, corpo do GraphQL e os mesmos campos que ficam fora da trilha.
+
+### LGPD
+
+Axiom e Sentry guardam dados fora do Brasil. Os dois entram na Política de privacidade como operadores, com transferência internacional (finalidade: segurança e funcionamento do serviço). O evento leva id, não nome nem e-mail; o que não pode sair do país não entra no evento.
 
 `SENTRY_DSN` vazio desliga o Sentry. `AXIOM_TOKEN` e `AXIOM_DATASET` vazios desligam a trilha. Nos dois casos a ação da pessoa segue, no mesmo espírito do WhatsApp sem token.
 
