@@ -27,6 +27,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
 import { BackofficeAuditInterceptor } from './backoffice/audit/backoffice-audit.interceptor';
 import { SentryInterceptor } from './common/sentry/sentry.interceptor';
+import { ActivityModule } from './activity/activity.module';
+import { AppActivityInterceptor } from './activity/app-activity.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
 import { RedisModule } from './redis/redis.module';
@@ -208,6 +210,7 @@ import { formatGqlError } from './graphql/format-error';
     HealthModule,
     NotificationsModule,
     BackofficeModule,
+    ActivityModule,
     BarbershopModule,
     SeoModule,
     GraphQLAppModule,
@@ -234,6 +237,11 @@ import { formatGqlError } from './graphql/format-error';
       // Erros inesperados e request lento no Sentry (sem SENTRY_DSN, nada)
       provide: APP_INTERCEPTOR,
       useClass: SentryInterceptor,
+    },
+    {
+      // Trilha do app no Axiom (sem AXIOM_TOKEN/AXIOM_DATASET, nada)
+      provide: APP_INTERCEPTOR,
+      useExisting: AppActivityInterceptor,
     },
   ],
 })

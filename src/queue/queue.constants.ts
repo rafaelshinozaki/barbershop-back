@@ -12,6 +12,8 @@ export const CHAIR_RENT_QUEUE = 'chair-rent';
 export const DATA_RETENTION_QUEUE = 'data-retention';
 export const FEATURED_QUEUE = 'featured';
 export const PILOT_QUEUE = 'pilot';
+// Trilha de ações do app (lotes pro Axiom)
+export const APP_ACTIVITY_QUEUE = 'app-activity';
 
 // Tentativas com espera exponencial (30s, 1min, 2min, 4min, 8min) — cobre
 // instabilidade do Mailgun/Meta sem martelar o provedor. Guarda histórico
