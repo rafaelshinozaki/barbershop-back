@@ -571,6 +571,9 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Cargos dos funcionários (Super admin, Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), quem vê o quê, mapa de telas × operações e fases 1–3. Fase 0 (base) feita.
 - Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
+**8. Registros e estabilidade** 🗺️ (spec abaixo)
+- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4.
+
 ## Horizonte: rápido e barato — ✅ concluído
 
 Registrado em 2026-09-29. O app fica o mais rápido possível pelo menor custo, com pouco uso do Postgres. A trilha do que a pessoa fez sai do banco.
@@ -868,3 +871,114 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 
 - Um segundo admin (`SystemAdmin`) para não depender de uma pessoa só? Recomendado: sim, com os dois usando duas etapas.
 - Reembolso pelo backoffice ou só pelo painel da Stripe? Recomendado: começar pelo painel da Stripe e trazer para o backoffice na Fase 2, quando o volume justificar.
+
+## Horizonte: Registros e estabilidade — 🗺️ Planejado
+
+Registrado em 2026-09-29. Duas perguntas para responder sempre:
+1. **Quem mudou o quê?** Exemplos: "o Cayo trocou o preço do corte", "alguém editou a Green Barbershop", "a equipe da plataforma suspendeu este cliente".
+2. **O sistema está de pé e aguentando?** Erros, lentidão, carga e fila, nos dois fronts (app e backoffice) e nos dois backs.
+
+### O que já existe
+
+| Peça | O que guarda | Quem vê | Falta |
+|---|---|---|---|
+| `BackofficeAuditLog` (Postgres, 2 anos) | Toda escrita da equipe da plataforma: quem, quando, operação, dados enviados, se deu certo | Admin, na tela Registro de ações | Valor de antes e depois; qual unidade ou pessoa foi afetada (hoje só aparece nos dados enviados) |
+| Trilha no Axiom (`src/activity/`) | Mutations de quem usa o app: id da pessoa, cargo, unidade, operação, sucesso | Só nós, no Axiom | Não guarda o que mudou e não aparece para o dono. Fica assim de propósito: é trilha técnica, só com ids |
+| Sentry no back principal | Erros e request lento | Só nós | Nada nos dois fronts nem no backoffice-back |
+| Teste de carga (`docs/LOAD_TEST.md`) | Rodado uma vez, à mão | — | Não se repete; sem limite que avise quando piorar |
+| `/health`, `/health/ready` | Se a API responde | — | Ninguém confere de fora; sem alerta |
+
+### 1. Histórico de alterações (o que o negócio vê)
+
+Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
+
+- **Cada linha guarda:**
+  - quando;
+  - quem: id, nome no momento e cargo;
+  - de onde veio: app, backoffice, cliente ou sistema (job);
+  - a unidade;
+  - o que foi alterado (tipo e id, mais um nome legível, ex.: "Green Barbershop", "Corte masculino");
+  - a ação: criou, alterou ou apagou;
+  - os **campos que mudaram, com antes → depois**.
+- **O que entra:**
+  - perfil da unidade (nome, endereço, contato, fotos, tipo);
+  - horário de funcionamento e fechamentos;
+  - serviços e preços;
+  - equipe e cargos (convite, troca de cargo, desligamento, escala);
+  - agendamentos (criar, remarcar, cancelar, fechar a conta, e por quem);
+  - cadastro de cliente (sem a ficha de saúde);
+  - configurações de pagamento, sinal, Connect e caixinha;
+  - plano;
+  - Destaque;
+  - resposta a avaliação.
+- **Quem vê:**
+  - **Dono e gerente:** tela **Histórico** nas configurações da unidade, com filtro por pessoa, por tipo e por período. Cada item aparece como frase, ex.: "Cayo alterou o preço de *Corte masculino* de R$ 40 para R$ 45 — hoje, 14:32".
+  - **Profissional:** só o que mexeu na própria agenda e nos próprios serviços.
+  - **Equipe da plataforma:** o histórico inteiro na ficha da unidade e na ficha da pessoa do backoffice (Fase 2 do Backoffice).
+  - **Quando a equipe da plataforma mexe na unidade:** o dono vê "Equipe da plataforma" com o motivo, sem o nome do funcionário. O nome fica no registro interno.
+- **Dado pessoal:**
+  - A ficha de saúde nunca entra: aparece só "ficha técnica atualizada".
+  - Telefone e e-mail do cliente aparecem mascarados (`(11) 9••••-1234`).
+  - Guarda de 1 ano, apagada pela rotina de guarda de dados.
+  - Quando alguém exclui a conta, o nome dessa pessoa vira "Conta excluída" no histórico.
+- **Como gravar:**
+  - Recomendado: **gatilho no Postgres** nas tabelas acompanhadas. O gatilho compara a linha antiga com a nova e grava só os campos da lista de cada tabela.
+  - Quem fez vem de `set_config('app.actor', …)` na mesma transação. Um wrapper de escrita do Prisma faz isso a partir do request.
+  - Por que gatilho: pega **os dois backs**, já que o backoffice-back vai escrever direto no banco. Também pega jobs e scripts, e ninguém consegue "esquecer" de registrar uma operação nova.
+  - Sem quem fez, a linha fica como "Sistema". Um teste garante que toda tabela acompanhada tem gatilho.
+
+### 2. Registro de ações da equipe (backoffice)
+
+- Continua existindo, e agora aponta para o que foi afetado: guarda o tipo e o id, a unidade e o nome legível. Ex.: "Cayo (Suporte N2) suspendeu o cliente Fulano — motivo: fraude".
+- O valor de antes e depois vem do `ChangeLog` da mesma transação, ligado pelo id do request.
+- Depois da separação do backoffice, fica no schema `backoffice` e o autor é a `StaffUser`.
+
+### 3. Estabilidade: erros, lentidão e carga
+
+- **Sentry nos dois fronts:**
+  - erros de JavaScript com source map enviado no build do CI e versão = commit;
+  - Web Vitals (LCP, INP, CLS) por página;
+  - trace ligado ao back (`sentry-trace` no request), com amostra de 10%.
+  - Replay de sessão desligado. Se um dia for ligado, só em erro e com tudo mascarado.
+  - Mesmo `beforeSend` sem dado pessoal do back.
+- **Sentry no backoffice-back**, com a mesma configuração do back principal.
+- **Id do request de ponta a ponta:** o front gera um `x-request-id`. O backoffice-back repassa e o back devolve. O id vai para o Sentry (tag), o Axiom, o `ChangeLog` e o registro de ações. Com isso, "a tela deu erro às 14:32" leva a tudo o que aconteceu naquele request.
+- **Métricas a cada 60 s para o Axiom:**
+  - requisições, erros e p50/p95 por operação;
+  - pool do Prisma (em uso e esperando);
+  - Redis;
+  - filas do BullMQ (esperando, falhas, mais antiga);
+  - memória, CPU e atraso do event loop.
+  - Com um painel no Axiom. É barato, porque é um evento por minuto por instância.
+- **Conferência de fora a cada minuto:**
+  - os dois fronts;
+  - o `/health/ready` do back e do backoffice-back.
+  - Serviço grátis (UptimeRobot ou Better Stack). Alerta por e-mail e WhatsApp ou Telegram.
+- **Alertas:**
+  - site fora por 2 minutos;
+  - erro acima de 2% por 5 min;
+  - p95 acima de 1 s por 10 min;
+  - fila com falha ou job esperando há mais de 10 min;
+  - pool com espera;
+  - erro novo no Sentry depois de um deploy.
+  - Vão para o Super admin e o Administrador.
+- **Carga contínua:**
+  - O script k6 do `docs/LOAD_TEST.md` vira um workflow semanal (e manual antes de release grande).
+  - Roda contra homologação com os dados do teste de carga.
+  - Limites que quebram o workflow: busca p95 < 300 ms a 50 req/s, agenda p95 < 200 ms, 0% de erro.
+  - O resultado fica salvo para comparar semana a semana.
+- **Tela Saúde do sistema no backoffice** (Fase 3 do Backoffice): lê essas métricas, o estado das filas, o último backup e o link para o Sentry e o Axiom.
+- **`docs/RUNBOOK.md`:** o que fazer em cada alerta (reiniciar, escalar, pausar fila, reverter deploy).
+
+### Etapas
+
+- **R1 — estabilidade básica** (rápido, sem mudar produto): Sentry nos dois fronts e no backoffice-back, `x-request-id`, conferência de fora com alertas.
+- **R2 — `ChangeLog`:** gatilhos, wrapper do autor, lista de campos por tabela e tela Histórico para dono e gerente.
+- **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice.
+- **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
+
+### Decisões em aberto
+
+- **O dono vê o nome do funcionário da plataforma?** Recomendado: não, só "Equipe da plataforma" e o motivo. O nome aparece se ele pedir pelo suporte.
+- **Guarda do histórico:** recomendado 1 ano para o negócio e 2 anos para a equipe da plataforma. Pode crescer num plano pago.
+- **Gatilho no Postgres × gravar no código:** recomendado o gatilho, porque são dois backs escrevendo. Se for no código, cada back precisa de uma cópia da regra.
