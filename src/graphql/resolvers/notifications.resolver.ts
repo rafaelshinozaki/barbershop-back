@@ -16,6 +16,7 @@ import { CreateNotificationDto } from '../../notifications/dto/create-notificati
 import { CommonResponse } from '../types/common-response.type';
 import { NotificationCount } from '../types/notification-count.type';
 import { SmartLogger } from '../../common/logger.util';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @Resolver(() => UserNotification)
 export class NotificationsResolver {
@@ -94,6 +95,7 @@ export class NotificationsResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => UserNotification)
   async createNotification(
     @CurrentUser() user: UserDTO,
@@ -121,6 +123,7 @@ export class NotificationsResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => CommonResponse)
   async createBatchNotifications(
     @CurrentUser() user: UserDTO,

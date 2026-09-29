@@ -8,6 +8,7 @@ import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { FeaturedPaymentService } from '../../barbershop/featured-payment.service';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @ObjectType()
 export class FeaturedStatusType {
@@ -129,6 +130,7 @@ export class FeaturedResolver {
   /** Backoffice: compras pagas de Destaque e a receita */
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Query(() => AdminFeaturedPurchasesType)
   adminFeaturedPurchases(@Args('limit', { type: () => Int, nullable: true }) limit?: number) {
     return this.featured.adminPurchases(limit ?? 100);

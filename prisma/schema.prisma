@@ -34,6 +34,9 @@ model User {
   viewerModeStartDate DateTime?
   roleId              Int
   twoFactorEnabled    Boolean            @default(false)
+  // Equipe do sistema (SystemManager): áreas do backoffice liberadas (support,
+  // moderation, users, finance, operations). O SystemAdmin vê tudo.
+  backofficeAreas     String[]           @default([])
   photoKey            String?
   ActiveSession       ActiveSession[]
   address             Address?

@@ -6,6 +6,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { PilotMetricsService } from '../../barbershop/pilot-metrics.service';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @ObjectType()
 export class PilotCategoryMetricsType {
@@ -73,6 +74,7 @@ export class PilotResolver {
 
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => PilotMetricsType)
   pilotMetrics(
     @Args('days', { type: () => Int, nullable: true }) days?: number,

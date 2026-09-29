@@ -22,6 +22,8 @@ export class UserDTO {
   userSystemConfig: UserSystemConfigDTO | null;
   notificationPreference: NotificationPreferenceSchema | null;
   twoFactorEnabled: boolean;
+  /** Áreas do backoffice da equipe do sistema (SystemManager) */
+  backofficeAreas?: string[];
   photoKey?: string | null;
   role?: { id: number; name: string };
   stripeCustomerId?: string | null;

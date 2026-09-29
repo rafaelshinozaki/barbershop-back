@@ -5,6 +5,7 @@ import { normalizeLang } from '@/email/language';
 import { RealtimeService } from '@/realtime/realtime.service';
 import { PushService } from '@/push/push.service';
 import { NotificationType } from '@/notifications/dto/create-notification.dto';
+import { BackofficeArea } from '../auth/backoffice-areas';
 import { Role } from '@/auth/interfaces/roles';
 import { supportTicketUrl, verifySupportToken } from '@/barbershop/appointment-link';
 import { backofficeUrl } from '../common/cors-origins';
@@ -249,12 +250,18 @@ export class SupportService {
     }
   }
 
-  /** Sininho da equipe da plataforma (admin e gerente do sistema) */
+  /** Sininho da equipe da plataforma (admin e quem da equipe tem a área Suporte) */
   private async notifyAdmins(subject: string) {
     const admins = await this.prisma.user.findMany({
       where: {
         isActive: true,
-        role: { name: { in: [Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER] } },
+        OR: [
+          { role: { name: Role.SYSTEM_ADMIN } },
+          {
+            role: { name: Role.SYSTEM_MANAGER },
+            backofficeAreas: { has: BackofficeArea.SUPPORT },
+          },
+        ],
       },
       select: { id: true, userSystemConfig: { select: { language: true } } },
     });

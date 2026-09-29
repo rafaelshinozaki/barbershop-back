@@ -18,6 +18,7 @@ import { PLANO_STATUS } from '../../common/contants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../aws/s3.service';
 import { SmartLogger } from '../../common/logger.util';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @Resolver(() => User)
 export class UserResolver {
@@ -335,6 +336,7 @@ export class UserResolver {
   // outro usuário só sabendo o ID).
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Query(() => User)
   async user(@Args('id', { type: () => Int }) id: number) {
     return this.userService.getUserById(id);
@@ -342,6 +344,7 @@ export class UserResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Query(() => [User])
   async getAllUsers() {
     return this.userService.getAllUsers();
@@ -364,6 +367,7 @@ export class UserResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Query(() => [User])
   async getUsers() {
     return this.userService.getAllUsers();

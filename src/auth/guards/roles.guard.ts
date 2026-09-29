@@ -19,6 +19,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
+import { BACKOFFICE_AREA_KEY, hasBackofficeArea } from '../backoffice-areas';
 
 const SYSTEM_ROLES = [Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER].map((r) => r.toLowerCase());
 
@@ -140,6 +141,18 @@ export class RolesGuard implements CanActivate {
             user.role.name
           }`,
         );
+      }
+
+      // Equipe do sistema: só nas áreas do backoffice liberadas pelo admin.
+      // Operação que aceita SystemManager sem @RequireArea recusa a equipe.
+      if (user.role.name.toLowerCase() === Role.SYSTEM_MANAGER.toLowerCase()) {
+        const area = this.reflector.getAllAndOverride<string>(BACKOFFICE_AREA_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!hasBackofficeArea(user.role.name, user.backofficeAreas, area)) {
+          throw new ForbiddenException('Sem acesso a esta área do backoffice.');
+        }
       }
       return true;
     } catch (error) {

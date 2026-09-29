@@ -20,6 +20,7 @@ import { SubscriptionGuard } from '@/auth/guards/subscription.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/roles.decorator';
 import { Role } from '@/auth/interfaces/roles';
+import { BackofficeArea, RequireArea } from '../auth/backoffice-areas';
 
 @ApiTags('payments')
 @ApiCookieAuth()
@@ -104,6 +105,7 @@ export class PaymentsController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @ApiOperation({ summary: 'Cancel user subscription' })
   @ApiResponse({ status: 200, description: 'Subscription canceled' })
   @Delete('cancel/:userId')
@@ -153,6 +155,7 @@ export class PaymentsController {
   // Operação do sistema (cobra/lista pagamentos de todos): só admin
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Post('recurring/process')
   @ApiOperation({ summary: 'Processar cobranças recorrentes manualmente' })
   @ApiResponse({ status: 200, description: 'Cobranças processadas com sucesso' })
@@ -164,6 +167,7 @@ export class PaymentsController {
   // Operação do sistema (cobra/lista pagamentos de todos): só admin
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Get('recurring/overdue')
   @ApiOperation({ summary: 'Listar pagamentos vencidos' })
   @ApiResponse({ status: 200, description: 'Lista de pagamentos vencidos' })
@@ -174,6 +178,7 @@ export class PaymentsController {
   // Operação do sistema (cobra/lista pagamentos de todos): só admin
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Post('recurring/force/:paymentId')
   @ApiOperation({ summary: 'Forçar processamento de um pagamento recorrente específico' })
   @ApiResponse({ status: 200, description: 'Pagamento processado com sucesso' })
@@ -185,6 +190,7 @@ export class PaymentsController {
   // Operação do sistema (cobra/lista pagamentos de todos): só admin
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Get('recurring/stats')
   @ApiOperation({ summary: 'Obter estatísticas de pagamentos recorrentes' })
   @ApiResponse({ status: 200, description: 'Estatísticas dos pagamentos recorrentes' })
