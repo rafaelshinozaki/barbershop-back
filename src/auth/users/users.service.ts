@@ -43,6 +43,9 @@ const hashResetToken = (token: string) => createHash('sha256').update(token).dig
 // conta pelo tempo)
 const DUMMY_PASSWORD_HASH = '$2a$10$PeSKuJ0PbHqOusQLVmt5vum0Bz05aiX1hAxEcm16nhEuTTbliDMhu';
 
+/** Cargos que o cadastro pode criar (o resto só o admin atribui) */
+const SIGNUP_ROLES: string[] = [Role.BARBERSHOP_OWNER, Role.BARBERSHOP_EMPLOYEE];
+
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -243,8 +246,11 @@ export class UserService {
       // Hash da senha
       const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-      // Buscar role (padrão User ou roleName quando fornecido, ex: BarbershopOwner)
-      const roleName = (userData as any).roleName ?? Role.BARBERSHOP_OWNER;
+      // Cadastro só cria dono ou profissional. O roleName vinha do corpo da
+      // requisição sem filtro: o POST /user/create público aceitava
+      // "SystemAdmin" e criava um admin do sistema
+      const requested = (userData as any).roleName;
+      const roleName = SIGNUP_ROLES.includes(requested) ? requested : Role.BARBERSHOP_OWNER;
       const defaultRole = await this.prisma.role.findFirst({
         where: { name: roleName },
       });
@@ -262,7 +268,8 @@ export class UserService {
           idDocNumber: userData.idDocNumber,
           phone: userData.phone,
           gender: userData.gender,
-          birthdate: userData.birthdate,
+          // "1990-01-01" (só a data) passa na validação mas o Prisma quer data e hora
+          birthdate: userData.birthdate ? new Date(userData.birthdate) : userData.birthdate,
           readTerms: userData.readTerms,
           membership: MEMBERSHIP_STATUS.FREE,
           isActive: true,
