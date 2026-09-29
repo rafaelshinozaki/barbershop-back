@@ -38,6 +38,7 @@ import { PricingModule } from './pricing/pricing.module';
 import { LocationsModule } from './locations/locations.module';
 import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
+import { formatGqlError } from './graphql/format-error';
 
 @Module({
   imports: [
@@ -176,22 +177,8 @@ import { isAllowedOrigin } from './common/cors-origins';
           },
         },
       },
-      formatError: (formattedError) => {
-        // Evita "Converting circular structure to JSON" - retorna apenas campos serializáveis
-        try {
-          const ext = formattedError.extensions as Record<string, unknown> | undefined;
-          const code =
-            typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined;
-          return {
-            message: String(formattedError.message ?? 'Internal server error'),
-            locations: formattedError.locations,
-            path: formattedError.path,
-            extensions: code !== undefined ? { code } : undefined,
-          };
-        } catch {
-          return { message: 'Internal server error' };
-        }
-      },
+      // Sem texto interno do banco na resposta (ver format-error.ts)
+      formatError: formatGqlError,
       // Playground/introspection/debug expõem todo o schema (incluindo a
       // superfície de auth) e detalhes internos de erro para reconhecimento
       // de um atacante — habilitados só fora de produção.
