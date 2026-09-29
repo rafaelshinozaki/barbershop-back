@@ -18,6 +18,32 @@ import { Role } from '../interfaces/roles';
 import { PrismaService } from '@/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'crypto';
+
+const SYSTEM_ROLES = [Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER].map((r) => r.toLowerCase());
+
+/**
+ * Operação só de admin/gerente do sistema (backoffice). Com
+ * BACKOFFICE_GATEWAY_SECRET configurado, ela só é aceita vinda da API do
+ * backoffice (repo barbershop-backoffice-back), que manda o segredo no
+ * header x-backoffice-gateway: a API pública deixa de expor o backoffice,
+ * mesmo pra quem tem o login de admin. Sem a variável (dev, testes), não
+ * muda nada.
+ */
+export function isBackofficeOnly(roles: string[]): boolean {
+  return roles.length > 0 && roles.every((r) => SYSTEM_ROLES.includes(String(r).toLowerCase()));
+}
+
+export function gatewayAllowed(
+  secret: string | undefined,
+  header: string | string[] | undefined,
+): boolean {
+  if (!secret) return true;
+  if (typeof header !== 'string') return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -66,6 +92,16 @@ export class RolesGuard implements CanActivate {
       // Fallback to HTTP context
       req = context.switchToHttp().getRequest<Request>();
       token = req.cookies?.Authentication;
+    }
+
+    if (
+      isBackofficeOnly(requiredRoles) &&
+      !gatewayAllowed(
+        this.configService.get<string>('BACKOFFICE_GATEWAY_SECRET'),
+        req?.headers?.['x-backoffice-gateway'],
+      )
+    ) {
+      throw new ForbiddenException('Operação do backoffice: use o app do backoffice.');
     }
 
     if (!token) {
