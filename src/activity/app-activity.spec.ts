@@ -79,7 +79,7 @@ describe('trilha do app (Axiom)', () => {
             { input: { barbershopId: 1, customerName: 'Ana', customerPhone: '11999' } },
             {
               user: { id: 5, role: { name: 'BarbershopOwner' } },
-              headers: { 'x-request-id': 'r1' },
+              requestId: 'r1',
             },
           ),
           ok({ id: 77, customerName: 'Ana' }),

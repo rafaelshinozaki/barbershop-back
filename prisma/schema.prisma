@@ -2235,6 +2235,8 @@ model BackofficeAuditLog {
   args       Json?
   success    Boolean
   error      String?
+  // Mesmo id do Sentry e da trilha no Axiom (x-request-id)
+  requestId  String?
 
   @@index([createdAt])
   @@index([actorId])

@@ -41,6 +41,8 @@ export interface AuditEntry {
   args?: unknown;
   success: boolean;
   error?: string | null;
+  /** Mesmo id do Sentry e da trilha: liga a ação ao que aconteceu no request */
+  requestId?: string | null;
 }
 
 export interface AuditFilters {
@@ -72,6 +74,7 @@ export class BackofficeAuditService {
           args: args === null ? Prisma.JsonNull : (args as Prisma.InputJsonValue),
           success: entry.success,
           error: entry.error ? entry.error.slice(0, 500) : null,
+          requestId: entry.requestId ?? null,
         },
       });
     } catch (error) {

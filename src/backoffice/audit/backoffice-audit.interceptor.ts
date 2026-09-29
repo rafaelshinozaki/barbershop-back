@@ -44,6 +44,7 @@ export class BackofficeAuditInterceptor implements NestInterceptor {
         args: call.args,
         success,
         error,
+        requestId: call.requestId ?? null,
       });
 
     return next.handle().pipe(
@@ -58,19 +59,20 @@ export class BackofficeAuditInterceptor implements NestInterceptor {
   /** Operação, dados e quem chamou; undefined = leitura (não registra). */
   private describe(
     context: ExecutionContext,
-  ): { operation: string; args: unknown; actor?: Actor } | undefined {
+  ): { operation: string; args: unknown; actor?: Actor; requestId?: string } | undefined {
     if (context.getType<string>() === 'graphql') {
       const gql = GqlExecutionContext.create(context);
       const info = gql.getInfo<GraphQLResolveInfo>();
       if (info?.parentType?.name !== 'Mutation') return undefined;
       const ctx = gql.getContext<{
-        req?: { user?: Actor; backofficeActor?: Actor };
+        req?: { user?: Actor; backofficeActor?: Actor; requestId?: string };
         user?: Actor;
       }>();
       return {
         operation: info.fieldName,
         args: gql.getArgs(),
         actor: ctx.req?.backofficeActor ?? ctx.user ?? ctx.req?.user,
+        requestId: ctx.req?.requestId,
       };
     }
     const req = context.switchToHttp().getRequest<{
@@ -81,6 +83,7 @@ export class BackofficeAuditInterceptor implements NestInterceptor {
       params?: unknown;
       user?: Actor;
       backofficeActor?: Actor;
+      requestId?: string;
     }>();
     if (!req || req.method === 'GET' || req.method === 'HEAD') return undefined;
     const params = req.params as Record<string, unknown> | undefined;
@@ -88,6 +91,7 @@ export class BackofficeAuditInterceptor implements NestInterceptor {
       operation: `${req.method} ${req.route?.path ?? req.url.split('?')[0]}`,
       args: params && Object.keys(params).length ? { params, body: req.body } : req.body,
       actor: req.backofficeActor ?? req.user,
+      requestId: req.requestId,
     };
   }
 }
