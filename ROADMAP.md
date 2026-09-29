@@ -511,7 +511,8 @@ Fechadas pelo que faz mais sentido para um app de agendamento de beleza no Brasi
 
 **Histórico de alterações** (2026-09-29)
 - O dono vê "Equipe da plataforma" com o motivo quando a plataforma mexe na unidade, sem o nome do funcionário (informado se ele pedir pelo suporte).
-- Guarda: 1 ano para o histórico do negócio e 2 anos para o registro da equipe da plataforma. Ver o horizonte "Registros e estabilidade".
+- Guarda: 1 ano para o histórico do negócio e 2 anos para o registro da equipe da plataforma.
+- Gravado por gatilho no Postgres, para pegar os dois backs, jobs e scripts. Ver o horizonte "Registros e estabilidade".
 
 **Arquitetura: backoffice fora do app** (2026-09-29)
 - **Tudo do backoffice fica em dois apps próprios**, fora do app das barbearias:
@@ -926,7 +927,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - Guarda de 1 ano (decidido), apagada pela rotina de guarda de dados.
   - Quando alguém exclui a conta, o nome dessa pessoa vira "Conta excluída" no histórico.
 - **Como gravar:**
-  - Recomendado: **gatilho no Postgres** nas tabelas acompanhadas. O gatilho compara a linha antiga com a nova e grava só os campos da lista de cada tabela.
+  - **Gatilho no Postgres** (decidido) nas tabelas acompanhadas. O gatilho compara a linha antiga com a nova e grava só os campos da lista de cada tabela.
   - Quem fez vem de `set_config('app.actor', …)` na mesma transação. Um wrapper de escrita do Prisma faz isso a partir do request.
   - Por que gatilho: pega **os dois backs**, já que o backoffice-back vai escrever direto no banco. Também pega jobs e scripts, e ninguém consegue "esquecer" de registrar uma operação nova.
   - Sem quem fez, a linha fica como "Sistema". Um teste garante que toda tabela acompanhada tem gatilho.
@@ -985,7 +986,5 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 
 - **O dono não vê o nome do funcionário da plataforma.** No histórico dele aparece "Equipe da plataforma" com o motivo. O nome fica no registro interno do backoffice e é informado se o dono pedir pelo suporte.
 - **Guarda do histórico:** 1 ano para as alterações do negócio (`ChangeLog`) e 2 anos para o registro da equipe da plataforma. A limpeza fica na rotina de guarda de dados.
+- **O histórico é gravado por gatilho no Postgres**, não no código de cada back. Com o back principal e o backoffice-back escrevendo no mesmo banco, o gatilho pega os dois, além dos jobs e scripts. Uma operação nova não fica sem registro.
 
-### Decisões em aberto
-
-- **Gatilho no Postgres × gravar no código:** recomendado o gatilho, porque são dois backs escrevendo. Se for no código, cada back precisa de uma cópia da regra.
