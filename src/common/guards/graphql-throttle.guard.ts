@@ -1,3 +1,4 @@
+import { clientIp } from '../client-ip';
 import { Injectable, ExecutionContext, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { GqlExecutionContext } from '@nestjs/graphql';
@@ -33,8 +34,9 @@ export class GraphQLThrottleGuard extends ThrottlerGuard {
     // furava todos os limites (agendamento público, esqueci a senha,
     // suporte...). Atrás de proxy, req.ip já vem certo pelo "trust proxy"
     // (main.ts); o X-Forwarded-For não é lido direto porque também é do cliente.
+    // Pela API do backoffice, vale o IP que ela calculou (com o segredo).
     try {
-      return req?.ip || req?.socket?.remoteAddress || req?.connection?.remoteAddress || 'unknown';
+      return clientIp(req);
     } catch (error) {
       new Logger(GraphQLThrottleGuard.name).warn(
         `Error getting request info for GraphQL throttling: ${error}`,
