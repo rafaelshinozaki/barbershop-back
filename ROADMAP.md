@@ -567,7 +567,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. Erros e request lento no Sentry ✅, trilha de ações do app no Axiom ✅. Uma instância da API até ela saturar.
 
 **7. Backoffice — telas, operações e acessos** 🗺️ (spec abaixo)
-- Mapa de telas × áreas × operações, perfis sugeridos e fases 1–3. Fase 0 (base) feita.
+- Cargos dos funcionários (Super admin, Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), quem vê o quê, mapa de telas × operações e fases 1–3. Fase 0 (base) feita.
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -644,13 +644,15 @@ Registrado em 2026-09-29. Mapa do app do backoffice (`barbershop-backoffice-fron
 
 ### Princípios
 
-- **Dois cargos, cinco áreas.** Continuam só os dois cargos do sistema: `SystemAdmin` (o admin, mestre) e `SystemManager` (a equipe). O que a equipe vê sai das **áreas** que o admin libera por pessoa (`User.backofficeAreas`). Não há cargo novo por função: o perfil de cada pessoa é um conjunto de áreas.
+- **Cargos com nome para os funcionários.** O `SystemAdmin` é o Super admin. Cada funcionário é `SystemManager` com um cargo de backoffice (Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), que define as permissões dele. Ver "Cargos dos funcionários da plataforma".
 - **O back decide, a tela acompanha.** Toda operação de sistema declara a área (`@RequireArea`), e um teste confere. A tela só esconde o que a pessoa não pode usar, para não mostrar um botão que dá erro. Com `BACKOFFICE_GATEWAY_SECRET`, só a API do backoffice chama essas operações.
 - **Só o admin mexe no que muda o negócio ou a própria equipe:** preços e taxas, planos, cupons, cargos, a equipe e as áreas, o registro de ações e contas do sistema (editar, desativar ou apagar admin e equipe).
 - **Toda escrita fica registrada** (`BackofficeAuditLog`, 2 anos). Entrada com senha e código por e-mail, sem login social.
 - **A equipe vê o mínimo de dado pessoal** para fazer o trabalho: o dado sensível do cliente fica com o negócio, e a ficha de saúde nunca aparece no backoffice.
 
-### Áreas
+### Áreas (hoje)
+
+As cinco áreas abaixo são o que existe hoje (`User.backofficeAreas`). Os cargos da seção seguinte as substituem por permissões mais finas.
 
 | Área | Para quê |
 |---|---|
@@ -660,18 +662,59 @@ Registrado em 2026-09-29. Mapa do app do backoffice (`barbershop-backoffice-fron
 | **Financeiro** (`finance`) | Plano de cada conta, cobranças recorrentes (atraso, forçar, cancelar) e receita do Destaque |
 | **Operação** (`operations`) | Painel e métricas, piloto, Destaque (ligar/desligar), avisos no sininho e e-mails para usuários |
 
-### Perfis sugeridos (conjuntos de áreas)
+### Cargos dos funcionários da plataforma
 
-O admin pode montar qualquer combinação. Estes são os presets que a tela Equipe deve oferecer num clique (Fase 1):
+Quem trabalha na empresa (não nas barbearias) recebe **um cargo de backoffice**. O cargo é fixo no código, com um nome e um conjunto de permissões. O admin só escolhe o cargo da pessoa e não monta permissões na mão. O `SystemAdmin` é o **Super admin**. Todo funcionário é `SystemManager` com `backofficeRole`.
 
-| Perfil | Áreas | Quem é |
-|---|---|---|
-| **Atendimento** | Suporte | Responde os pedidos e suspende cliente que abusa |
-| **Moderação** | Moderação + Suporte | Cuida de denúncias e fala com quem denunciou ou foi denunciado |
-| **Sucesso do cliente** | Usuários + Suporte + Operação | Ajuda os negócios: corrige cadastro, reativa conta, manda aviso, acompanha métricas |
-| **Financeiro** | Financeiro + Usuários | Planos, cobranças em atraso e receita |
-| **Crescimento** | Operação | Piloto, Destaque, métricas, avisos e e-mails |
-| **Coordenação** | Todas as cinco | Braço direito do admin, ainda sem o que é só do admin |
+| Cargo | Quem é | Pode | Não pode |
+|---|---|---|---|
+| **Super admin** | O dono da plataforma (1 ou 2 pessoas) | Tudo, inclusive preços e taxas, planos e criar ou tirar administradores | — |
+| **Administrador** | Braço direito do dono | Tudo da operação: equipe (menos admins), cupons, registro de ações, saúde do sistema, apagar conta | Mudar preços, taxas e planos; mexer em Super admin ou em outro Administrador |
+| **Coordenador de operações** | Lidera suporte e moderação | Tudo de Suporte, Moderação, Usuários (inclui importar e apagar, com confirmação) e Operação; vê o Financeiro e o registro de ações | Alterar plano, cobrança e reembolso; equipe; cupons |
+| **Suporte N1** | Atendente | Responder e fechar pedidos; ver a ficha (só leitura) de quem pediu | Suspender, editar ou desativar conta (passa para o N2) |
+| **Suporte N2** | Atendente sênior | O do N1, mais suspender/reativar cliente, editar cadastro, ativar/desativar conta e derrubar sessões | Apagar conta; importar; plano e cobrança |
+| **Moderador** | Cuida de denúncias | Fila de moderação (ocultar/manter conteúdo, avaliações denunciadas), suspender cliente por abuso, ver a ficha | Responder suporte; editar cadastro; nada financeiro |
+| **Financeiro** | Contas a receber | Trocar plano, cobranças recorrentes (forçar, cancelar), pagamentos pelo app e reembolso até um limite, compras do Destaque, cupons | Editar ou apagar conta; suporte; moderação; avisos e e-mails |
+| **Crescimento** | Marketing e comercial | Painel, piloto, análise, ligar/desligar Destaque, avisos e e-mails em massa; ver cupons | Ver contato de uma pessoa específica (só dados agregados); editar conta; financeiro |
+| **Analista** | Leitura para decisões | Painel, piloto e análise, só leitura e só números agregados | Qualquer alteração; lista de pessoas |
+
+Regras que valem para todos:
+- **Quem dá cargo:** só o Super admin cria ou tira Administrador. O Administrador dá os outros cargos. Ninguém muda o próprio cargo.
+- **Ação sem volta** (apagar conta, reembolso acima do limite, e-mail para mais de 1.000 pessoas): quem não é Administrador pede confirmação de um Administrador (Fase 3; até lá, só Administrador ou Super admin faz).
+- **Dado pessoal no mínimo:** Crescimento e Analista não veem nome, e-mail nem telefone. O Suporte vê o contato de quem abriu o pedido. A ficha de saúde nunca aparece. Conversa só aparece quando está anexada a uma denúncia.
+- **Todos** entram com senha mais código, e toda alteração fica no registro de ações.
+
+#### Quem vê o quê
+
+`A` = vê e altera · `V` = só vê · `–` = não vê. Colunas: Super admin (SA), Administrador (AD), Coordenador (CO), Suporte N1 (S1), Suporte N2 (S2), Moderador (MO), Financeiro (FI), Crescimento (CR), Analista (AN).
+
+| Tela | SA | AD | CO | S1 | S2 | MO | FI | CR | AN |
+|---|---|---|---|---|---|---|---|---|---|
+| Painel | V | V | V | – | – | – | V | V | V |
+| Piloto / Análise | V | V | V | – | – | – | – | V | V |
+| Suporte (fila) | A | A | A | A | A | – | – | – | – |
+| Contas de cliente (suspender) | A | A | A | V | A | A | – | – | – |
+| Moderação | A | A | A | – | V | A | – | – | – |
+| Usuários (lista e ficha) | A | A | A | V | A | V | V | – | – |
+| Usuários: apagar / importar CSV | A | A | A¹ | – | – | – | – | – | – |
+| Trocar plano / Cobranças recorrentes | A | A | V | – | – | – | A | – | – |
+| Pagamentos pelo app / reembolso | A | A | V | – | – | – | A² | – | – |
+| Destaque (ligar/desligar) | A | A | A | – | – | – | – | A | – |
+| Destaque: Compras | V | V | V | – | – | – | V | – | – |
+| Avisos no sininho / E-mails | A | A | A | – | – | – | – | A³ | – |
+| Cupons | A | A | – | – | – | – | A | V | – |
+| Preços e taxas / Planos | A | V | – | – | – | – | V | – | – |
+| Equipe | A | A⁴ | – | – | – | – | – | – | – |
+| Registro de ações | V | V | V | – | – | – | – | – | – |
+| Saúde do sistema | V | V | – | – | – | – | – | – | – |
+
+¹ Apagar pede confirmação de um Administrador (Fase 3). ² Até o limite; acima dele, confirmação de um Administrador. ³ Escolhe o público por filtro (cargo, cidade, plano), sem ver a lista de pessoas. ⁴ Menos Super admin e outros Administradores.
+
+#### Como fica no código
+
+- As áreas viram **permissões** mais finas (ex.: `support.reply`, `clients.suspend`, `users.edit`, `users.delete`, `finance.write`, `refund`, `featured.write`, `notify.send`, `moderation.resolve`, `metrics.read`, `team.manage`, `pricing.manage`, `audit.read`). `@RequireArea` vira `@RequirePermission`, e continua o teste que obriga toda operação de sistema a declarar a sua.
+- `BACKOFFICE_ROLES` no back define cada cargo como uma lista de permissões. O front do backoffice lê as permissões da pessoa e mostra só as telas e botões dela.
+- `User.backofficeRole` no lugar de `backofficeAreas`. Migração: quem tem as cinco áreas vira Coordenador de operações; os outros ganham o cargo mais próximo, e o Super admin confere na tela Equipe.
 
 ### Telas, operações e acesso
 
@@ -686,7 +729,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | ↳ trocar cargo | Admin | Muda o cargo (inclusive para cargo do sistema) | `updateUserRole` | ✅ |
 | ↳ conta do sistema | Admin | Editar, desativar ou apagar admin/equipe | `assertCanManageAccounts` | ✅ |
 | **Importar usuários** (`/import-users`) | Usuários | Importa CSV | REST `/user/admin/import-csv` | ✅ |
-| **Equipe** (`/team`) | Admin | Quem é da equipe e quais áreas tem | `backofficeTeam`, `setBackofficeAreas` | 🔧 falta preset de perfil |
+| **Equipe** (`/team`) | Admin | Funcionários e o cargo de cada um; convidar | `backofficeTeam`, `setBackofficeAreas` (vira `setBackofficeRole`) | 🔧 falta cargo e convite (Fase 1) |
 | **Registro de ações** (`/audit`) | Admin | O que a equipe alterou, por pessoa e operação | `backofficeAuditLog` | ✅ |
 | **Avisos no sininho** (`/manage-notifications`) | Operação | Mandar aviso para uma pessoa ou para várias; histórico | `createNotification`, `createBatchNotifications`, `allNotificationsWithUser`, `usersDetailed` | 🔧 ver Fase 1 |
 | **E-mails para usuários** (`/manage-email-notifications`) | Operação | Mandar e-mail e ver o histórico | `sendEmailNotification`, `emailHistory`, `usersDetailed` | 🔧 ver Fase 1 |
@@ -723,8 +766,9 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 - Avisos, E-mails e Análise são de Operação, mas usam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tem só Operação vê a tela e toma erro. Correção: um seletor de pessoas enxuto na área Operação (id, nome, cargo, sem telefone ou endereço) e `allNotificationsWithUser` com `@RequireArea(OPERATIONS)`.
 - Tela Planos (admin), usando as operações que já existem.
 - Tirar as operações antigas duplicadas (lista acima).
-- Presets de perfil na tela Equipe, mais "convidar para a equipe": o admin cria a conta `SystemManager` com e-mail e áreas, e a pessoa define a senha pelo link. Hoje só dá para trocar o cargo de uma conta que já existe.
-- E2E por perfil: cada preset abre só as suas telas e toma 403 no resto.
+- Cargos dos funcionários: permissões no lugar das áreas, `BACKOFFICE_ROLES`, `User.backofficeRole` e a migração de quem já tem áreas.
+- Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa e-mail e cargo e a pessoa define a senha pelo link). Hoje só dá para trocar o cargo de uma conta que já existe.
+- E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e toma 403 no resto.
 
 **Fase 2 — ver tudo de um negócio sem sair do backoffice**
 - Ficha da unidade e ficha da pessoa, só leitura, com links entre elas e para as filas (suporte, moderação).
