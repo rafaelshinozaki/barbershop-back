@@ -14,8 +14,10 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { randomInt } from 'crypto';
+import { SearchCacheService } from './search-cache.service';
 import { langForCountry, LOCALE } from '../email/language';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
@@ -308,6 +310,7 @@ export class BarbershopService {
     private readonly stripeService: StripeService,
     private readonly notificationQueue: NotificationQueueService,
     private readonly realtime: RealtimeService,
+    @Optional() private readonly searchCache?: SearchCacheService,
   ) {}
 
   /**
@@ -5324,6 +5327,8 @@ export class BarbershopService {
       data: { featuredUntil: until },
       include: { user: { select: { fullName: true } } },
     });
+    // Destaque muda a ordem e o selo da busca: vale na hora, não em 45 s
+    await this.searchCache?.bump();
     return this.adminProfessional(updated);
   }
 
@@ -5347,10 +5352,12 @@ export class BarbershopService {
   }
 
   async setBarbershopFeatured(barbershopId: number, featuredUntil: string | null) {
-    return this.prisma.barbershop.update({
+    const updated = await this.prisma.barbershop.update({
       where: { id: barbershopId },
       data: { featuredUntil: featuredUntil ? new Date(featuredUntil) : null },
     });
+    await this.searchCache?.bump();
+    return updated;
   }
 
   // ============ AVALIAÇÕES ============

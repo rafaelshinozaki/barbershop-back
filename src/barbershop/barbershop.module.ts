@@ -48,6 +48,7 @@ import {
   PILOT_QUEUE,
 } from '../queue/queue.constants';
 import { PilotMetricsService, PilotProcessor, PilotScheduler } from './pilot-metrics.service';
+import { SearchCacheService } from './search-cache.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -112,6 +113,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PilotMetricsService,
     PilotScheduler,
     PilotProcessor,
+    SearchCacheService,
   ],
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
@@ -119,6 +121,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     JobOpeningService,
     FeaturedPaymentService,
     PilotMetricsService,
+    SearchCacheService,
     BarbershopMediaService,
     GeocodingService,
     ReviewRequestService,
