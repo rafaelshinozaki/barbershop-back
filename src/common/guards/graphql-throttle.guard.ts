@@ -2,6 +2,14 @@ import { Injectable, ExecutionContext, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { GqlExecutionContext } from '@nestjs/graphql';
 
+/**
+ * Testes E2E (várias sessões seguidas do mesmo IP) desligam o limite com
+ * THROTTLE_DISABLED=true. Em produção nunca: a variável é ignorada.
+ */
+export function throttleDisabled(env: NodeJS.ProcessEnv = process.env) {
+  return env.THROTTLE_DISABLED === 'true' && env.NODE_ENV !== 'production';
+}
+
 @Injectable()
 export class GraphQLThrottleGuard extends ThrottlerGuard {
   // Subscription (WebSocket) não tem resposta HTTP pra pôr os headers de
@@ -9,6 +17,7 @@ export class GraphQLThrottleGuard extends ThrottlerGuard {
   // exige login e origem permitida no handshake (app.module.ts), e cada
   // subscription é uma conexão longa, não uma rajada de requisições.
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (throttleDisabled()) return true;
     if (
       context.getType<'http' | 'graphql'>() === 'graphql' &&
       GqlExecutionContext.create(context).getInfo()?.operation?.operation === 'subscription'
@@ -19,29 +28,19 @@ export class GraphQLThrottleGuard extends ThrottlerGuard {
   }
 
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    // Handle GraphQL context safely
-    let ip = 'unknown';
-    let userAgent = 'unknown';
-
+    // Só o IP. Antes a chave era IP + User-Agent, e o User-Agent é o cliente
+    // que manda: trocar o header a cada requisição zerava o contador e
+    // furava todos os limites (agendamento público, esqueci a senha,
+    // suporte...). Atrás de proxy, req.ip já vem certo pelo "trust proxy"
+    // (main.ts); o X-Forwarded-For não é lido direto porque também é do cliente.
     try {
-      if (req && req.headers) {
-        // Try to get IP from various sources
-        ip =
-          req.ip ||
-          req.connection?.remoteAddress ||
-          req.socket?.remoteAddress ||
-          (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0] : null) ||
-          'unknown';
-
-        userAgent = req.headers['user-agent'] || 'unknown';
-      }
+      return req?.ip || req?.socket?.remoteAddress || req?.connection?.remoteAddress || 'unknown';
     } catch (error) {
       new Logger(GraphQLThrottleGuard.name).warn(
         `Error getting request info for GraphQL throttling: ${error}`,
       );
+      return 'unknown';
     }
-
-    return `${ip}-${userAgent}`;
   }
 
   protected getRequestResponse(context: ExecutionContext) {
