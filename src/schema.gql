@@ -335,6 +335,24 @@ type AuthorizeChairRentResultType {
   link: ChairRentType!
 }
 
+type BackofficeAuditEntryType {
+  actorEmail: String!
+  actorId: Int
+  actorRole: String!
+  area: String
+  args: String
+  createdAt: DateTime!
+  error: String
+  id: Int!
+  operation: String!
+  success: Boolean!
+}
+
+type BackofficeAuditPageType {
+  items: [BackofficeAuditEntryType!]!
+  total: Int!
+}
+
 type BackofficeDashboard {
   marketplaceMetrics: MarketplaceMetrics!
   planDistribution: PlanDistribution!
@@ -3142,6 +3160,7 @@ type Query {
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
+  backofficeAuditLog(actorId: Int, limit: Int, offset: Int, operation: String): BackofficeAuditPageType!
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
   backofficeTeam: [BackofficeTeamMemberType!]!

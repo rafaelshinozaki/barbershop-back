@@ -2219,3 +2219,24 @@ model SearchEvent {
   @@index([evaluatedAt])
   @@index([createdAt])
 }
+
+// Registro de ações do backoffice: toda escrita de operação só da equipe do
+// sistema (quem, quando, o quê, com quais dados e se deu certo). Senhas e
+// tokens não entram; textos longos e listas grandes são cortados.
+model BackofficeAuditLog {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  actorId    Int?
+  actorEmail String
+  actorRole  String
+  // Nome da mutation (GraphQL) ou "POST /user/admin/set-active" (REST)
+  operation  String
+  area       String?
+  args       Json?
+  success    Boolean
+  error      String?
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([operation])
+}

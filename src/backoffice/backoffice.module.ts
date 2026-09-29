@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BackofficeService } from './backoffice.service';
 import { BackofficeTeamService } from './backoffice-team.service';
+import { BackofficeAuditService } from './audit/backoffice-audit.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 
@@ -25,7 +26,7 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [BackofficeService, BackofficeTeamService],
-  exports: [BackofficeService, BackofficeTeamService],
+  providers: [BackofficeService, BackofficeTeamService, BackofficeAuditService],
+  exports: [BackofficeService, BackofficeTeamService, BackofficeAuditService],
 })
 export class BackofficeModule {}
