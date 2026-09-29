@@ -563,10 +563,10 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Registro de ações do backoffice ✅: toda escrita das operações da equipe do sistema (mutations GraphQL e rotas REST que não são GET) fica registrada: quem fez, quando, a área, os dados (sem senha nem token; textos e listas longas cortados) e se deu certo. Um interceptor global faz o registro, então operação nova entra sozinha. Só o admin lê (`backofficeAuditLog`). O registro é apagado depois de 2 anos pela rotina de guarda de dados.
 - Duas etapas obrigatórias no backoffice ✅: conta do sistema (admin e equipe) entra com senha mais um código por e-mail, mesmo sem ter ligado as duas etapas. Vale em produção, ou com `BACKOFFICE_REQUIRE_2FA=true`. Conta do sistema também não entra mais pelo login social (Google/Apple/Facebook), que pulava a senha e o código.
 
-**6. Rápido e barato** (a implementar; spec abaixo)
-- Teto de conexões do Prisma, cache curto da busca pública no Redis, trilha de ações no Axiom e erros no Sentry. Uma instância da API até ela saturar.
+**6. Rápido e barato** (em andamento; spec abaixo)
+- Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. A fazer: trilha de ações no Axiom e erros no Sentry. Uma instância da API até ela saturar.
 
-## Horizonte: rápido e barato — a implementar
+## Horizonte: rápido e barato — em andamento
 
 Registrado em 2026-09-29. O app fica o mais rápido possível pelo menor custo, com pouco uso do Postgres. A trilha do que a pessoa fez sai do banco.
 
@@ -576,7 +576,7 @@ Hoje há um processo e um `PrismaClient` (`src/prisma/prisma.service.ts`), sem `
 
 Mais conexões não encurtam a query. Cada uma ocupa memória no Postgres (por volta de 5–10 MB) e, em excesso, o banco gasta o tempo trocando de conexão. O `max_connections` padrão é 100. Isso aperta quando existem vários processos — segunda instância da API, worker à parte, seed, Prisma Studio — porque cada um abre o próprio pool. A soma estoura o banco antes de estourar a CPU.
 
-- Fixar `connection_limit=10` na `DATABASE_URL` da instância única do piloto, com `pool_timeout=10`. Máquina com mais núcleo não abre mais conexão por causa disso. Os workers da fila (lembretes, retenção, e-mail) rodam no mesmo processo e dividem esse pool com as requisições.
+- ✅ Fixar `connection_limit=10` na `DATABASE_URL` da instância única do piloto, com `pool_timeout=10`. Máquina com mais núcleo não abre mais conexão por causa disso. Os workers da fila (lembretes, retenção, e-mail) rodam no mesmo processo e dividem esse pool com as requisições. Feito em `src/prisma/pool-url.ts`: se a URL não traz `connection_limit`/`pool_timeout`, a API usa 10 e 10 s; o que vier na URL vale.
 - Uma instância da API no piloto. A segunda só entra quando a primeira saturar: p95 da busca da cidade acima de ~400 ms de forma sustentada, ou a CPU da API no teto.
 - PgBouncer em modo transaction, no mesmo servidor, **junto com a segunda instância**. Segura o Postgres num punhado de conexões reais. Antes disso é processo a mais, sem ganho, e não se paga um banco maior para "ter mais conexões".
 
@@ -584,9 +584,10 @@ Mais conexões não encurtam a query. Cada uma ocupa memória no Postgres (por v
 
 Nesta ordem:
 
-1. **Cache de 30–60 s no Redis que já existe**, da busca pública (sem filtro e a da cidade, com categoria, raio, ordem e página na chave). É a mesma lista para todo visitante e é a tela mais cara (sem filtro: 28 req/s, p95 863 ms). Agenda da equipe e horário livre do dia ficam de fora: mudam o tempo todo e são por unidade. A vitrine pode atrasar até 60 s; não há invalidação na escrita.
+1. ✅ **Cache de 30–60 s no Redis que já existe**, da busca pública (sem filtro e a da cidade, com categoria, raio, ordem e página na chave). É a mesma lista para todo visitante e é a tela mais cara (sem filtro: 28 req/s, p95 863 ms). Agenda da equipe e horário livre do dia ficam de fora: mudam o tempo todo e são por unidade. A vitrine pode atrasar até 60 s; não há invalidação na escrita.
    - **Busca "perto de mim":** `lat`/`lng` chegam com a posição exata de cada pessoa, então cada visitante seria uma chave nova e o cache não acertaria. Na chave, a posição entra arredondada (2 casas decimais, ~1 km). A distância mostrada é calculada depois, com a posição exata, em cima da lista em cache.
-   - **Métrica do piloto:** hoje cada busca de unidades grava um `SearchEvent` (`public-booking.resolver.ts`), que alimenta a taxa de "horário em até 48 h". A busca servida do cache **continua registrando** o evento; senão a métrica perde justamente as buscas mais comuns. O registro é um insert por busca: entra na fila e é gravado em lote pelo worker, em vez de ir ao Postgres dentro da requisição.
+   - **Métrica do piloto:** hoje cada busca de unidades grava um `SearchEvent` (`public-booking.resolver.ts`), que alimenta a taxa de "horário em até 48 h". A busca servida do cache **continua registrando** o evento; senão a métrica perde justamente as buscas mais comuns. O registro é um insert por busca: entra num lote gravado a cada 5 s (ou a cada 50 buscas), em vez de ir ao Postgres dentro da requisição.
+   - Feito em `src/barbershop/search-cache.service.ts` (busca de unidades e de profissionais, 45 s). Local: 52 ms na primeira busca, 5–7 ms nas seguintes, com a distância de cada pessoa.
 2. **A trilha de ações não grava no Postgres** (abaixo). Cada mutation viraria um insert na mesma hora do agendamento.
 3. **Uma instância até saturar.** Réplica de leitura é outro Postgres e só entra depois do cache. PostGIS continua adiado, como em [docs/LOAD_TEST.md](docs/LOAD_TEST.md).
 4. O front é SPA estática: CDN, sem custo de banco.
@@ -599,7 +600,7 @@ A trilha do app vai para o **Axiom**: evento JSON, append-only, busca por pessoa
 
 Interceptor no estilo de `BackofficeAuditInterceptor`, nas mutations de quem usa o app. Queries não geram evento. O interceptor enfileira no BullMQ e um worker envia em lote. O request não espera o Axiom.
 
-**Com o Redis fora, o request também não pode esperar a fila.** Hoje a conexão do BullMQ usa o padrão do ioredis, que segura o comando e tenta de novo enquanto o Redis está fora, e o e-mail é enfileirado com `await` dentro da requisição: o pedido fica parado até o Redis voltar. Para a trilha, o interceptor não espera o `add` (dispara e segue, com o erro só no log) e a fila da trilha usa uma conexão própria com `enableOfflineQueue: false` e um tempo máximo curto. O evento se perde, a ação da pessoa segue. O mesmo ajuste vale para o enfileiramento de e-mail e WhatsApp.
+**Com o Redis fora, o request também não pode esperar a fila.** Hoje a conexão do BullMQ usa o padrão do ioredis, que segura o comando e tenta de novo enquanto o Redis está fora, e o e-mail é enfileirado com `await` dentro da requisição: o pedido fica parado até o Redis voltar. Para a trilha, o interceptor não espera o `add` (dispara e segue, com o erro só no log) e a fila da trilha usa uma conexão própria com `enableOfflineQueue: false` e um tempo máximo curto. O evento se perde, a ação da pessoa segue. O mesmo ajuste vale para o enfileiramento de e-mail e WhatsApp: ✅ feito, a requisição espera a fila no máximo 2 s (`withEnqueueTimeout`) e o envio sai quando o Redis voltar.
 
 Campos: horário, id de quem fez, cargo, id da unidade quando houver, operação, tipo e id da entidade, sucesso ou falha, id do request. Fora do evento: senha, token, texto de chat, telefone, e-mail completo, endereço de domicílio e ficha de saúde. Texto e lista longos são cortados, como no backoffice.
 

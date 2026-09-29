@@ -1,3 +1,4 @@
+import { SearchCacheService } from '../../barbershop/search-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
 import { NotFoundException, UseGuards, UseFilters } from '@nestjs/common';
@@ -71,6 +72,7 @@ export class PublicBookingResolver {
     private readonly closures: ClosureService,
     private readonly deposits: DepositPaymentService,
     private readonly pilot: PilotMetricsService,
+    private readonly searchCache: SearchCacheService,
   ) {}
 
   @Query(() => PublicBarbershopType)
@@ -103,15 +105,20 @@ export class PublicBookingResolver {
 
   @Query(() => [PublicBarbershopSearchResultType])
   async searchBarbershops(@Args('input') input: SearchBarbershopsInput) {
-    const results = await this.barbershopService.searchPublicBarbershops(input);
-    // Métrica do piloto: a busca achou horário em até 48 h?
-    void this.pilot.recordSearch(input, results);
+    // Cache curto (mesma lista pra todo visitante); a distância sai do ponto exato
+    const results = await this.searchCache.cached('barbershops', input, (i) =>
+      this.barbershopService.searchPublicBarbershops(i),
+    );
+    // Métrica do piloto: toda busca conta, venha do cache ou do banco
+    this.pilot.recordSearch(input, results);
     return results;
   }
 
   @Query(() => [PublicProfessionalSearchResultType])
   async searchProfessionals(@Args('input') input: SearchProfessionalsInput) {
-    return this.barbershopService.searchPublicProfessionals(input);
+    return this.searchCache.cached('professionals', input, (i) =>
+      this.barbershopService.searchPublicProfessionals(i),
+    );
   }
 
   @Query(() => [String])

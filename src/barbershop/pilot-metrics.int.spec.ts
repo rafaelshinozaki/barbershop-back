@@ -112,16 +112,18 @@ describe('Métrica do piloto (integração)', () => {
 
   it('registra as buscas, avalia a liquidez e soma por cidade e categoria', async () => {
     // Achou: a unidade aberta está entre as primeiras
-    await pilot.recordSearch({ city: CITY, category: 'HAIR' }, [
+    pilot.recordSearch({ city: CITY, category: 'HAIR' }, [
       { id: emptyShop, city: CITY },
       { id: openShop, city: CITY },
     ]);
     // Não achou: só a unidade sem profissional
-    await pilot.recordSearch({ city: CITY, category: 'HAIR' }, [{ id: emptyShop, city: CITY }]);
+    pilot.recordSearch({ city: CITY, category: 'HAIR' }, [{ id: emptyShop, city: CITY }]);
     // Sem resultado: já nasce avaliada como "não achou"
-    await pilot.recordSearch({ city: CITY }, []);
+    pilot.recordSearch({ city: CITY }, []);
     // Por localização (sem cidade): vale a cidade da primeira unidade
-    await pilot.recordSearch({ lat: -23.5, lng: -46.6 }, [{ id: openShop, city: CITY }]);
+    pilot.recordSearch({ lat: -23.5, lng: -46.6 }, [{ id: openShop, city: CITY }]);
+    // Gravadas em lote, fora da requisição
+    await pilot.flushSearches();
 
     const before = await pilot.metrics(7, CITY);
     expect(before).toMatchObject({ searches: 4, evaluated: 1, foundWithin48h: 0 });

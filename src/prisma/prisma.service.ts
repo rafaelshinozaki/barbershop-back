@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { withPoolLimits } from './pool-url';
 
 @Injectable()
 export class PrismaService extends PrismaClient {
   constructor() {
-    super();
+    // Teto de conexões (os workers da fila dividem este pool com as requisições)
+    const url = withPoolLimits(process.env.DATABASE_URL);
+    super(url ? { datasources: { db: { url } } } : undefined);
 
     const softDeleteModels = ['User', 'Plan'];
 
