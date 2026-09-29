@@ -3,8 +3,13 @@ import { createHash } from 'crypto';
 import { RedisService } from '../redis/redis.service';
 import { clampRadius, haversineKm, rankResults, type SearchSort } from './search';
 
-/** A vitrine pode atrasar até isso; não há invalidação na escrita. */
+/**
+ * A vitrine pode atrasar até isso. A única invalidação é o Destaque (ligado
+ * pelo admin ou comprado), que sobe a "geração" do cache: quem pagou ou foi
+ * tirado do topo vê a mudança na hora.
+ */
 export const SEARCH_CACHE_TTL_SECONDS = 45;
+const GENERATION_KEY = 'search:gen';
 
 type SearchInput = {
   query?: string | null;
@@ -95,7 +100,8 @@ export class SearchCacheService {
     input: I,
     compute: (input: I) => Promise<R[]>,
   ): Promise<R[]> {
-    const { key, rounded } = searchCacheKey(kind, input);
+    const { key: base, rounded } = searchCacheKey(kind, input);
+    const key = `${base}:g${await this.generation()}`;
     let hit: R[] | null = null;
     try {
       hit = await this.redis.getJson<R[]>(key);
@@ -109,5 +115,22 @@ export class SearchCacheService {
       this.logger.warn(`Cache da busca não gravado: ${err.message}`);
     });
     return repositionResults(fresh, input);
+  }
+
+  /** Mudou o Destaque: as listas em cache deixam de valer (sem apagar chave por chave) */
+  async bump(): Promise<void> {
+    try {
+      await this.redis.client.incr(GENERATION_KEY);
+    } catch (err) {
+      this.logger.warn(`Cache da busca não renovado: ${(err as Error).message}`);
+    }
+  }
+
+  private async generation(): Promise<string> {
+    try {
+      return (await this.redis.client.get(GENERATION_KEY)) ?? '0';
+    } catch {
+      return '0';
+    }
   }
 }

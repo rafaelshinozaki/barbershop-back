@@ -82,6 +82,45 @@ describe('cache da busca pública', () => {
   });
 });
 
+describe('cache da busca: Destaque vale na hora', () => {
+  const fakeRedis = () => {
+    const store = new Map<string, unknown>();
+    return {
+      getJson: jest.fn(async (k: string) => store.get(k) ?? null),
+      setJson: jest.fn(async (k: string, v: unknown) => void store.set(k, v)),
+      client: {
+        get: jest.fn(async (k: string) => (store.has(k) ? String(store.get(k)) : null)),
+        incr: jest.fn(async (k: string) => {
+          const n = Number(store.get(k) ?? 0) + 1;
+          store.set(k, n);
+          return n;
+        }),
+      },
+    };
+  };
+
+  it('depois do bump a busca vai ao banco de novo', async () => {
+    const cache = new SearchCacheService(fakeRedis() as never);
+    const compute = jest
+      .fn()
+      .mockResolvedValueOnce([shop('Antes', -23.181, -45.888, { isFeatured: true })])
+      .mockResolvedValueOnce([shop('Depois', -23.181, -45.888)]);
+    const input = { city: 'x' };
+    await cache.cached('barbershops', input, compute);
+    expect((await cache.cached('barbershops', input, compute))[0].name).toBe('Antes');
+    await cache.bump();
+    const fresh = await cache.cached('barbershops', input, compute);
+    expect(compute).toHaveBeenCalledTimes(2);
+    expect(fresh[0]).toMatchObject({ name: 'Depois', isFeatured: false });
+  });
+
+  it('bump com o Redis fora não derruba quem mudou o Destaque', async () => {
+    const redis = fakeRedis();
+    redis.client.incr.mockRejectedValue(new Error('Connection is closed'));
+    await expect(new SearchCacheService(redis as never).bump()).resolves.toBeUndefined();
+  });
+});
+
 describe('fila com o Redis fora', () => {
   it('a requisição não espera mais que o limite', async () => {
     const onTimeout = jest.fn();

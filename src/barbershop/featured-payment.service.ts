@@ -18,6 +18,7 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
+import { SearchCacheService } from './search-cache.service';
 import { stripeConfigured } from './stripe-configured';
 import { PLATFORM_CURRENCY, currentPricing } from '../pricing/pricing';
 
@@ -54,6 +55,7 @@ export class FeaturedPaymentService {
     private readonly stripe: StripeService,
     private readonly barbershops: BarbershopService,
     @Optional() private readonly push?: PushService,
+    @Optional() private readonly searchCache?: SearchCacheService,
   ) {}
 
   /** Confere quem pode comprar e devolve o alvo (id, nome, Destaque atual) */
@@ -244,6 +246,8 @@ export class FeaturedPaymentService {
       where: { id: purchase.id },
       data: { featuredUntil: rows[0]?.featuredUntil ?? null },
     });
+    // Comprou o Destaque: aparece no topo da busca na hora
+    await this.searchCache?.bump();
     return true;
   }
 
