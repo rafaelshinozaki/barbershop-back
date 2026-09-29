@@ -9,6 +9,7 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { ReviewRequestService } from '../../barbershop/review-request.service';
 import { ReviewManagementService } from '../../barbershop/review-management.service';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 /** Avaliação vista pela unidade (e pela moderação da plataforma) */
 @ObjectType()
@@ -104,6 +105,7 @@ export class ReviewRequestResolver {
 
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.MODERATION)
   @Query(() => [ManagedReviewType])
   async reportedReviews() {
     return this.reviews.listForModeration();
@@ -111,6 +113,7 @@ export class ReviewRequestResolver {
 
   @UseGuards(RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.MODERATION)
   @Mutation(() => Boolean)
   async moderateReview(
     @Args('reviewId', { type: () => Int }) reviewId: number,

@@ -166,3 +166,41 @@ describe('guards das rotas REST', () => {
     expect(Object.keys(PUBLIC_ROUTES).filter((r) => !unguarded.has(r))).toEqual([]);
   });
 });
+
+/**
+ * Toda operação que aceita a equipe do sistema (SystemManager, no método ou
+ * na classe) diz a área do backoffice (@RequireArea). Sem ela o guard recusa
+ * a equipe, então operação nova esquecida quebraria a tela de quem tem a área.
+ */
+function operationsWithoutArea(): string[] {
+  const found: string[] = [];
+  const files = [
+    ...readdirSync(DIR)
+      .filter((f) => f.endsWith('.resolver.ts'))
+      .map((f) => join(DIR, f)),
+    ...controllerFiles(SRC),
+  ];
+  for (const path of files) {
+    const src = readFileSync(path, 'utf8');
+    const classHeader = src.match(
+      /((?:@[\w.]+\((?:[^()]|\([^()]*\))*\)\s*)+)export class \w+/,
+    )?.[1];
+    const classRoles = classHeader?.match(/@Roles\(([^)]*)\)/)?.[1];
+    const classArea = /@RequireArea\(/.test(classHeader ?? '');
+    for (const [, decorators, method] of src.matchAll(DECORATED_METHOD)) {
+      if (!/@(Query|Mutation)\(/.test(decorators) && !ROUTE.test(decorators)) continue;
+      const roles = decorators.match(/@Roles\(([^)]*)\)/)?.[1] ?? classRoles ?? '';
+      if (!roles.includes('SYSTEM_MANAGER')) continue;
+      if (!classArea && !/@RequireArea\(/.test(decorators)) {
+        found.push(`${relative(SRC, path)}#${method}`);
+      }
+    }
+  }
+  return found.sort();
+}
+
+describe('áreas do backoffice', () => {
+  it('toda operação da equipe do sistema tem área', () => {
+    expect(operationsWithoutArea()).toEqual([]);
+  });
+});

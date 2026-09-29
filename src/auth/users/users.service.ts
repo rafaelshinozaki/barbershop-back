@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { UserDTO } from './dto/user.dto';
+import { assertCanManageAccounts } from '../backoffice-areas';
 import { UserSystemConfigDTO } from './dto/userSystemConfig.dto';
 import { LoginHistoryDTO } from './dto/login-history.dto';
 import { Prisma } from '@prisma/client';
@@ -902,6 +903,21 @@ export class UserService {
     } as any;
   }
 
+  /**
+   * Recusa quando alguém da equipe do sistema tenta mexer em conta do sistema
+   * (admin ou equipe): só o admin faz isso.
+   */
+  async assertCanManageUsers(actor: Pick<UserDTO, 'role'> | undefined, userIds: number[]) {
+    const targets = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { role: { select: { name: true } } },
+    });
+    assertCanManageAccounts(
+      actor?.role?.name,
+      targets.map((t) => t.role?.name),
+    );
+  }
+
   async getUserById(userId: number) {
     this.logger.log(`Fetching user by ID: ${userId}`);
     const user = await this.prisma.user.findFirst({
@@ -929,6 +945,7 @@ export class UserService {
         isActive: true,
         photoKey: true,
         twoFactorEnabled: true,
+        backofficeAreas: true,
         subscriptions: {
           where: { status: PLANO_STATUS.ACTIVE },
           select: { status: true, plan: { select: { name: true } } },
@@ -2050,7 +2067,12 @@ export class UserService {
     }
     return this.prisma.user.update({
       where: { id: userId },
-      data: { roleId: role.id },
+      // Áreas do backoffice só valem pra equipe do sistema: quem sai dela perde,
+      // quem entra começa sem nenhuma (o admin libera em Equipe)
+      data: {
+        roleId: role.id,
+        ...(roleName === Role.SYSTEM_MANAGER ? {} : { backofficeAreas: [] }),
+      },
       include: { role: true },
     });
   }

@@ -9,6 +9,7 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { ThrottleReport } from '../../common/decorators/throttle.decorator';
 import { ModerationService } from '../../barbershop/moderation.service';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @ObjectType()
 export class ReportReasonCountType {
@@ -83,6 +84,7 @@ export class ModerationResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.MODERATION)
   @Query(() => [ModerationItemType])
   moderationQueue() {
     return this.moderation.queue();
@@ -91,6 +93,7 @@ export class ModerationResolver {
   /** hide | dismiss | restore */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.MODERATION)
   @Mutation(() => Boolean)
   resolveContentReports(
     @Args('targetType') targetType: string,

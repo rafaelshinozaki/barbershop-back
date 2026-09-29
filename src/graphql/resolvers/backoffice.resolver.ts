@@ -4,7 +4,7 @@ import {
 } from '../../payments/payments.service';
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { DEFAULT_TIMEZONE, monthRangeUtc, toZonedParts } from '../../common/timezone.util';
-import { UseGuards } from '@nestjs/common';
+import { ForbiddenException, UseGuards } from '@nestjs/common';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { UserService } from '../../auth/users/users.service';
 import {
@@ -43,6 +43,8 @@ import { SmartLogger } from '../../common/logger.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentsService } from '../../payments/payments.service';
 import { PAGAMENTO_STATUS } from '../../common/contants';
+import { BackofficeArea, hasBackofficeArea, RequireArea } from '../../auth/backoffice-areas';
+import { CurrentUser } from '../../auth/current-user.decorator';
 
 // Tudo aqui é do backoffice: sem login de admin/gerente do sistema, nada
 // responde. A trava fica na classe para operação nova não nascer aberta
@@ -62,6 +64,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => BackofficeStats)
   async backofficeStats() {
     return this.backofficeService.getStats();
@@ -69,6 +72,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => UserGrowthData)
   async userGrowthData() {
     return this.backofficeService.getUserGrowth();
@@ -76,6 +80,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => RoleDistribution)
   async roleDistribution() {
     return this.backofficeService.getRoleDistribution();
@@ -83,6 +88,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => StatusDistribution)
   async statusDistribution() {
     return this.backofficeService.getStatusDistribution();
@@ -90,6 +96,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => PlanDistribution)
   async planDistribution() {
     return this.backofficeService.getPlanDistribution();
@@ -97,6 +104,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => GeographicAnalysis)
   async geographicAnalysis() {
     return this.backofficeService.getGeographicAnalysis();
@@ -104,6 +112,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => DemographicAnalysis)
   async demographicAnalysis() {
     return this.backofficeService.getDemographicAnalysis();
@@ -111,6 +120,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Query(() => DetailedUsersResponse)
   async usersDetailed(@Args('filters') filters: UsersDetailedFilters) {
     const filtersWithDefaults = {
@@ -123,6 +133,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => MarketplaceMetrics)
   async marketplaceMetrics() {
     return this.backofficeService.getMarketplaceMetrics();
@@ -130,6 +141,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => BackofficeDashboard)
   async backofficeDashboard() {
     this.logger.log('backofficeDashboard called');
@@ -176,8 +188,17 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Mutation(() => Boolean)
-  async bulkUserAction(@Args('input') input: BulkUserAction) {
+  async bulkUserAction(@Args('input') input: BulkUserAction, @CurrentUser() actor: UserDTO) {
+    await this.userService.assertCanManageUsers(actor, input.userIds);
+    // Trocar plano é do financeiro
+    if (
+      input.action === 'changePlan' &&
+      !hasBackofficeArea(actor?.role?.name, actor?.backofficeAreas, BackofficeArea.FINANCE)
+    ) {
+      throw new ForbiddenException('Sem acesso a esta área do backoffice.');
+    }
     switch (input.action) {
       case 'activate':
         await this.userService.setMultipleUsersActive(input.userIds, true);
@@ -198,30 +219,38 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Mutation(() => Boolean)
   async setUserActive(
     @Args('userId', { type: () => Int }) userId: number,
     @Args('active') active: boolean,
+    @CurrentUser() actor: UserDTO,
   ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     await this.userService.setUserActive(userId, active);
     return true;
   }
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @Mutation(() => Boolean)
   async changeUserPlan(
     @Args('userId', { type: () => Int }) userId: number,
     @Args('plan') plan: string,
+    @CurrentUser() actor: UserDTO,
   ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     await this.userService.changeUserPlan(userId, plan);
     return true;
   }
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Mutation(() => Boolean)
-  async updateUser(@Args('input') input: UpdateUserByAdminInput) {
+  async updateUser(@Args('input') input: UpdateUserByAdminInput, @CurrentUser() actor: UserDTO) {
+    await this.userService.assertCanManageUsers(actor, [input.userId]);
     const userDto: Partial<UserDTO> = {
       id: input.userId,
     };
@@ -240,14 +269,20 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @Mutation(() => Boolean)
-  async removeUser(@Args('userId', { type: () => Int }) userId: number) {
+  async removeUser(
+    @Args('userId', { type: () => Int }) userId: number,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     await this.userService.removeUser(userId);
     return true;
   }
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => Boolean)
   async sendEmailNotification(@Args('input') input: SendEmailNotificationInput) {
     await this.backofficeService.sendEmailNotification(input);
@@ -256,6 +291,7 @@ export class BackofficeResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => PaginatedEmailHistory)
   async emailHistory(@Args('filters') filters: EmailHistoryFilters) {
     return this.backofficeService.getEmailHistory(filters);
@@ -285,6 +321,7 @@ export class BackofficeResolver {
     return '65+';
   }
 
+  @RequireArea(BackofficeArea.FINANCE)
   @Query(() => [AdminRecurringPaymentsStats])
   async allRecurringPaymentsStats(): Promise<AdminRecurringPaymentsStats[]> {
     this.logger.log('Fetching all recurring payments stats for admin');
@@ -411,6 +448,7 @@ export class BackofficeResolver {
     }
   }
 
+  @RequireArea(BackofficeArea.FINANCE)
   @Query(() => [OverduePaymentDetail])
   async allOverduePayments(
     @Args('filters', { nullable: true }) filters?: OverduePaymentsFilters,
@@ -522,6 +560,7 @@ export class BackofficeResolver {
     }
   }
 
+  @RequireArea(BackofficeArea.FINANCE)
   @Mutation(() => AdminProcessAllRecurringPaymentsResponse)
   async processAllRecurringPaymentsAdmin(): Promise<AdminProcessAllRecurringPaymentsResponse> {
     this.logger.log('Processing all recurring payments for admin');
@@ -545,6 +584,7 @@ export class BackofficeResolver {
     }
   }
 
+  @RequireArea(BackofficeArea.FINANCE)
   @Mutation(() => AdminProcessRecurringPaymentResponse)
   async processRecurringPaymentAdmin(
     @Args('paymentId', { type: () => Int }) paymentId: number,
@@ -568,6 +608,7 @@ export class BackofficeResolver {
     }
   }
 
+  @RequireArea(BackofficeArea.FINANCE)
   @Query(() => PaginatedCompletedPayments)
   async allCompletedPayments(
     @Args('filters') filters: CompletedPaymentsFilters,

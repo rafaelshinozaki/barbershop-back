@@ -353,6 +353,16 @@ type BackofficeStats {
   totalUsers: Int!
 }
 
+type BackofficeTeamMemberType {
+  backofficeAreas: [String!]!
+  email: String!
+  fullName: String!
+  id: Int!
+  isActive: Boolean!
+  role: String!
+  twoFactorEnabled: Boolean!
+}
+
 type Barber {
   accessEndsAt: DateTime
   accessStartsAt: DateTime
@@ -2164,6 +2174,7 @@ type Mutation {
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
+  setBackofficeAreas(areas: [String!]!, userId: Int!): [String!]!
   setBarberAvatar(barberId: Int!, key: String): String
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
   setBarberWeeklySchedule(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [WeeklyScheduleDayType!]!
@@ -3133,6 +3144,7 @@ type Query {
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
+  backofficeTeam: [BackofficeTeamMemberType!]!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
   barberPayStatement(barberId: Int, barbershopId: Int!): BarberPayStatementType!
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
@@ -4130,6 +4142,7 @@ type UseSavedCardResponse {
 
 type User {
   address: Address
+  backofficeAreas: [String!]
   birthdate: String!
   createdAt: String!
   deleted_at: String

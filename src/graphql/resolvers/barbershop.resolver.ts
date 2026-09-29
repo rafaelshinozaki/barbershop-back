@@ -98,6 +98,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 @Resolver(() => Barbershop)
 export class BarbershopResolver {
@@ -1643,6 +1644,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => [Barbershop])
   async adminBarbershops(@Args('query', { nullable: true }) query?: string) {
     return this.barbershopService.getAdminBarbershops(query);
@@ -1650,6 +1652,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => Barbershop)
   async setBarbershopFeatured(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
@@ -1660,6 +1663,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => [AdminProfessionalType])
   async adminProfessionals(@Args('query', { nullable: true }) query?: string) {
     return this.barbershopService.getAdminProfessionals(query);
@@ -1667,6 +1671,7 @@ export class BarbershopResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => AdminProfessionalType)
   async setProfessionalFeatured(
     @Args('professionalId', { type: () => Int }) professionalId: number,

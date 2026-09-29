@@ -22,6 +22,7 @@ import { ThrottleEmail } from '../../common/decorators/throttle.decorator';
 import { SupportService } from '../../support/support.service';
 import { ClientAuthService } from '../../client-auth/client-auth.service';
 import { ClientSuspensionService } from '../../client-auth/client-suspension.service';
+import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 // Responder pelo link do e-mail: 20 por hora por IP/navegador
 const ThrottleSupportReply = () => Throttle({ default: { limit: 20, ttl: 3600000 } });
@@ -185,6 +186,7 @@ export class SupportResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Query(() => [SupportTicketType])
   supportQueue(@Args('status', { nullable: true }) status?: string) {
     return this.support.queue(status);
@@ -192,6 +194,7 @@ export class SupportResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Query(() => Int)
   supportOpenCount() {
     return this.support.openCount();
@@ -199,6 +202,7 @@ export class SupportResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Mutation(() => Boolean)
   answerSupportTicket(
     @Args('ticketId', { type: () => Int }) ticketId: number,
@@ -212,6 +216,7 @@ export class SupportResolver {
   /** open | answered | closed */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Mutation(() => Boolean)
   setSupportTicketStatus(
     @Args('ticketId', { type: () => Int }) ticketId: number,
@@ -222,6 +227,7 @@ export class SupportResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Query(() => [AdminClientAccountType])
   adminClientAccounts(@Args('search', { nullable: true }) search?: string) {
     return this.suspension.search(search);
@@ -230,6 +236,7 @@ export class SupportResolver {
   /** Suspender (fraude, abuso) ou reativar a conta de um cliente */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
   @Mutation(() => Boolean)
   setClientAccountSuspended(
     @Args('clientAccountId', { type: () => Int }) clientAccountId: number,

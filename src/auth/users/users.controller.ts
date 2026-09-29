@@ -22,6 +22,7 @@ import { Roles } from '../roles.decorator';
 import { Role } from '../interfaces/roles';
 import { RolesGuard } from '../guards/roles.guard';
 import { ThrottleAuth } from '@/common/decorators/throttle.decorator';
+import { BackofficeArea, RequireArea } from '../backoffice-areas';
 
 @ApiTags('user')
 @ApiCookieAuth()
@@ -96,6 +97,7 @@ export class UserController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @ApiOperation({ summary: 'List users with filters' })
   @ApiResponse({ status: 200, description: 'List of users' })
   @ApiQuery({ name: 'plan', required: false })
@@ -133,46 +135,76 @@ export class UserController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @ApiOperation({ summary: 'Activate or deactivate user' })
   @ApiResponse({ status: 200, description: 'User status updated' })
   @Post('admin/set-active')
-  setActive(@Body('userId') userId: number, @Body('active') active: boolean) {
+  async setActive(
+    @Body('userId') userId: number,
+    @Body('active') active: boolean,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     return this.userService.setUserActive(userId, active);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @ApiOperation({ summary: 'Activate or deactivate multiple users' })
   @ApiResponse({ status: 200, description: 'Users status updated' })
   @Post('admin/set-multiple-active')
-  setMultipleActive(@Body('userIds') userIds: number[], @Body('active') active: boolean) {
+  async setMultipleActive(
+    @Body('userIds') userIds: number[],
+    @Body('active') active: boolean,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, userIds);
     return this.userService.setMultipleUsersActive(userIds, active);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @ApiOperation({ summary: 'Change multiple users plan' })
   @ApiResponse({ status: 200, description: 'Users plan changed' })
   @Post('admin/change-multiple-plans')
-  changeMultiplePlans(@Body('userIds') userIds: number[], @Body('plan') plan: string) {
+  async changeMultiplePlans(
+    @Body('userIds') userIds: number[],
+    @Body('plan') plan: string,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, userIds);
     return this.userService.changeMultipleUsersPlan(userIds, plan);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @ApiOperation({ summary: 'Update payment status' })
   @ApiResponse({ status: 200, description: 'Payment status updated' })
   @Post('admin/update-payment-status')
-  updatePaymentStatus(@Body('userId') userId: number, @Body('status') status: MEMBERSHIP_STATUS) {
+  async updatePaymentStatus(
+    @Body('userId') userId: number,
+    @Body('status') status: MEMBERSHIP_STATUS,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     return this.userService.updatePaymentStatus(userId, status);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.FINANCE)
   @ApiOperation({ summary: 'Change user plan' })
   @ApiResponse({ status: 200, description: 'User plan changed' })
   @Post('admin/change-plan')
-  changePlan(@Body('userId') userId: number, @Body('plan') plan: string) {
+  async changePlan(
+    @Body('userId') userId: number,
+    @Body('plan') plan: string,
+    @CurrentUser() actor: UserDTO,
+  ) {
+    await this.userService.assertCanManageUsers(actor, [userId]);
     return this.userService.changeUserPlan(userId, plan);
   }
 
@@ -195,6 +227,7 @@ export class UserController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS)
   @ApiOperation({ summary: 'Import users from CSV' })
   @ApiResponse({ status: 200, description: 'Users imported' })
   @Post('admin/import-csv')

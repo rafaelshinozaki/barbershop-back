@@ -355,6 +355,8 @@ async function main() {
           email: 'jacqueline.mariane@barbershop.com',
           fullName: 'Jacqueline Mariane',
           role: 'SystemManager',
+          // Exemplo de equipe: suporte e moderação, sem dinheiro nem usuários
+          backofficeAreas: ['support', 'moderation'],
         },
         {
           email: 'cayo.carlos@barbershop.com',
@@ -435,6 +437,7 @@ async function main() {
             ...sharedUserData,
             email: u.email,
             fullName: u.fullName,
+            backofficeAreas: 'backofficeAreas' in u ? u.backofficeAreas : [],
             roleId: must(
               rs.find((r) => r.name === u.role),
               `papel ${u.role}`,

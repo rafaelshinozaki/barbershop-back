@@ -142,6 +142,10 @@ export class User {
   @Field()
   twoFactorEnabled: boolean;
 
+  /** Áreas do backoffice da equipe do sistema (SystemManager); vazio pros outros */
+  @Field(() => [String], { nullable: true })
+  backofficeAreas?: string[];
+
   @Field({ nullable: true })
   photoKey?: string;
 
