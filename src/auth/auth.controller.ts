@@ -1,4 +1,6 @@
 // src\auth\auth.controller.ts
+import { needsLoginCode, socialLoginAllowed } from './backoffice-login';
+import { backofficeUrl } from '../common/cors-origins';
 import { Controller, Post, Res, UseGuards, Get, Req, Body, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -40,7 +42,8 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (user.twoFactorEnabled) {
+    // Conta do sistema: código obrigatório (BACKOFFICE_REQUIRE_2FA / produção)
+    if (needsLoginCode(user)) {
       const loginId = randomUUID();
       await this.userService.sendLoginCode(user, loginId);
       res.send({ success: true, twoFactor: true, loginId });
@@ -202,6 +205,13 @@ export class AuthController {
       user.displayName,
       provider,
     );
+    // Conta do sistema entra só com e-mail, senha e código: o login social
+    // pularia os dois
+    if (!socialLoginAllowed(dbUser)) {
+      this.logger.warn(`Login social recusado para conta do sistema (usuário ${dbUser.id})`);
+      res.redirect(`${backofficeUrl()}/login?error=social`);
+      return;
+    }
     // Login social: sem caixa "Lembrar de mim"; fica lembrado
     await this.authService.login(dbUser, req, res, true);
 
