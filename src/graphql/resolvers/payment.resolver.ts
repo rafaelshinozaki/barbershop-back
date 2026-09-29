@@ -332,7 +332,10 @@ export class PaymentResolver {
     }
 
     try {
-      const result = await this.paymentsService.confirmPaymentIntent(paymentIntentId);
+      const result = await this.paymentsService.confirmPaymentIntent(
+        context.req.user.id,
+        paymentIntentId,
+      );
 
       if ('subscription' in result && result.subscription) {
         const subscriptionWithPlan = await this.prisma.subscription.findUnique({
@@ -375,7 +378,7 @@ export class PaymentResolver {
     this.logger.log(`Deleting payment method ${paymentMethodId} for user ${userId}`);
 
     try {
-      const result = await this.paymentsService.deletePaymentMethod(paymentMethodId);
+      const result = await this.paymentsService.deletePaymentMethod(userId, paymentMethodId);
 
       this.logger.log(`Deleted payment method for user ${userId}`);
       return {
@@ -584,7 +587,7 @@ export class PaymentResolver {
     this.logger.log(`Processing recurring payment ${paymentId} for user ${userId}`);
 
     try {
-      const result = await this.paymentsService.forceRecurringPayment(paymentId);
+      const result = await this.paymentsService.forceRecurringPayment(paymentId, userId);
       return {
         success: result.success,
         message: result.message,

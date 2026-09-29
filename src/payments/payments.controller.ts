@@ -70,22 +70,6 @@ export class PaymentsController {
     return this.paymentsService.getPaymentMethods((req as any).user.userId);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Test authentication and user data' })
-  @ApiResponse({ status: 200, description: 'User data' })
-  @Get('test-auth')
-  testAuth(@Req() req: Request) {
-    const user = (req as any).user;
-    return {
-      success: true,
-      user: {
-        userId: user.userId,
-        email: user.email,
-        authenticated: true,
-      },
-    };
-  }
-
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @ApiOperation({ summary: 'Get invoice by id' })
   @ApiResponse({ status: 200, description: 'Invoice data' })
@@ -135,48 +119,6 @@ export class PaymentsController {
     return this.paymentsService.createSetupIntent((req as any).user.userId);
   }
 
-  @ApiOperation({ summary: 'Test PaymentIntent creation' })
-  @ApiResponse({ status: 200, description: 'PaymentIntent test' })
-  @Post('test-payment-intent')
-  async testPaymentIntent(@Body() body: any) {
-    try {
-      return await this.paymentsService.testPaymentIntentCreation(body.planId);
-    } catch (error) {
-      return {
-        error: error.message,
-        stack: error.stack,
-      };
-    }
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Test getInvoices with detailed logs' })
-  @ApiResponse({ status: 200, description: 'Test result' })
-  @Get('test-invoices/:userId')
-  async testGetInvoices(@Param('userId') userId: string, @Req() req: Request) {
-    this.logger.log(`=== TEST GET INVOICES FOR USER ${userId} ===`);
-    this.logger.log(`Authenticated user ID: ${(req as any).user.userId}`);
-
-    try {
-      const result = await this.paymentsService.getInvoices(+userId);
-      this.logger.log(`Test result: ${JSON.stringify(result)}`);
-      return {
-        success: true,
-        userId: +userId,
-        authenticatedUserId: (req as any).user.userId,
-        result: result,
-      };
-    } catch (error) {
-      this.logger.error(`Test error: ${error.message}`);
-      return {
-        success: false,
-        userId: +userId,
-        authenticatedUserId: (req as any).user.userId,
-        error: error.message,
-      };
-    }
-  }
-
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create PaymentIntent for checkout' })
   @ApiResponse({ status: 200, description: 'PaymentIntent created' })
@@ -190,18 +132,27 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Confirm PaymentIntent' })
   @ApiResponse({ status: 200, description: 'PaymentIntent confirmed' })
   @Post('confirm-payment-intent')
-  async confirmPaymentIntent(@Body() body: { paymentIntentId: string }) {
-    return this.paymentsService.confirmPaymentIntent(body.paymentIntentId);
+  async confirmPaymentIntent(@Req() req: Request, @Body() body: { paymentIntentId: string }) {
+    return this.paymentsService.confirmPaymentIntent(
+      (req as any).user.userId,
+      body.paymentIntentId,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete payment method' })
   @ApiResponse({ status: 200, description: 'Payment method deleted' })
   @Delete('payment-methods/:paymentMethodId')
-  async deletePaymentMethod(@Param('paymentMethodId') paymentMethodId: string) {
-    return this.paymentsService.deletePaymentMethod(paymentMethodId);
+  async deletePaymentMethod(
+    @Req() req: Request,
+    @Param('paymentMethodId') paymentMethodId: string,
+  ) {
+    return this.paymentsService.deletePaymentMethod((req as any).user.userId, paymentMethodId);
   }
 
+  // Operação do sistema (cobra/lista pagamentos de todos): só admin
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Post('recurring/process')
   @ApiOperation({ summary: 'Processar cobranças recorrentes manualmente' })
   @ApiResponse({ status: 200, description: 'Cobranças processadas com sucesso' })
@@ -210,6 +161,9 @@ export class PaymentsController {
     return this.paymentsService.processRecurringPayments();
   }
 
+  // Operação do sistema (cobra/lista pagamentos de todos): só admin
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Get('recurring/overdue')
   @ApiOperation({ summary: 'Listar pagamentos vencidos' })
   @ApiResponse({ status: 200, description: 'Lista de pagamentos vencidos' })
@@ -217,6 +171,9 @@ export class PaymentsController {
     return this.paymentsService.getOverduePayments();
   }
 
+  // Operação do sistema (cobra/lista pagamentos de todos): só admin
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Post('recurring/force/:paymentId')
   @ApiOperation({ summary: 'Forçar processamento de um pagamento recorrente específico' })
   @ApiResponse({ status: 200, description: 'Pagamento processado com sucesso' })
@@ -225,6 +182,9 @@ export class PaymentsController {
     return this.paymentsService.forceRecurringPayment(parseInt(paymentId));
   }
 
+  // Operação do sistema (cobra/lista pagamentos de todos): só admin
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @Get('recurring/stats')
   @ApiOperation({ summary: 'Obter estatísticas de pagamentos recorrentes' })
   @ApiResponse({ status: 200, description: 'Estatísticas dos pagamentos recorrentes' })

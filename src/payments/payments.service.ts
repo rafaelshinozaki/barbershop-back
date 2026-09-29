@@ -559,8 +559,20 @@ export class PaymentsService {
     return await this.stripeService.createSetupIntent(stripeCustomerId);
   }
 
-  async deletePaymentMethod(paymentMethodId: string) {
+  async deletePaymentMethod(userId: number, paymentMethodId: string) {
     this.logger.log(`Deleting payment method: ${paymentMethodId}`);
+    // Só o cartão do próprio usuário (antes qualquer login removia o de outro)
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripeCustomerId: true },
+    });
+    const pm = user?.stripeCustomerId
+      ? await this.stripeService.retrievePaymentMethod(paymentMethodId).catch(() => null)
+      : null;
+    const owner = typeof pm?.customer === 'string' ? pm.customer : pm?.customer?.id;
+    if (!pm || !owner || owner !== user?.stripeCustomerId) {
+      throw new NotFoundException('Cartão não encontrado');
+    }
 
     try {
       await this.stripeService.detachPaymentMethod(paymentMethodId);
@@ -569,59 +581,6 @@ export class PaymentsService {
       this.logger.error('Error deleting payment method:', error);
       throw error;
     }
-  }
-
-  async testPaymentIntentCreation(planId: number) {
-    this.logger.log(`Testing PaymentIntent creation for plan ${planId}`);
-
-    const plan = await this.prisma.plan.findFirst({
-      where: { id: planId },
-    });
-
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
-    }
-
-    if (!plan.stripePriceId) {
-      throw new BadRequestException('Plan does not have a Stripe price ID configured');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: 1 } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Create customer
-    const customer = await this.stripeService.createCustomer(user.email, user.fullName, {
-      userId: '1',
-    });
-
-    // Create PaymentIntent
-    const paymentIntent = await this.stripeService.createPaymentIntent(
-      Math.floor(Number(plan.price) * 100 + 0.5),
-      'brl',
-      customer.id,
-    );
-
-    return {
-      success: true,
-      paymentIntent: {
-        id: paymentIntent.id,
-        client_secret: paymentIntent.client_secret,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency,
-      },
-      customer: {
-        id: customer.id,
-        email: customer.email,
-      },
-      plan: {
-        id: plan.id,
-        name: plan.name,
-        price: plan.price,
-        stripePriceId: plan.stripePriceId,
-      },
-    };
   }
 
   async createPaymentIntentForCheckout(userId: number, planId: number, couponCode?: string) {
@@ -742,12 +701,18 @@ export class PaymentsService {
     };
   }
 
-  async confirmPaymentIntent(paymentIntentId: string) {
+  async confirmPaymentIntent(callerUserId: number, paymentIntentId: string) {
     this.logger.log(`Confirming PaymentIntent: ${paymentIntentId}`);
+
+    // Só o pagamento criado pra quem chama (o userId vai nos metadados)
+    const owned = await this.stripeService.retrievePaymentIntent(paymentIntentId).catch(() => null);
+    if (!owned || parseInt(owned.metadata?.userId || '0') !== callerUserId) {
+      throw new NotFoundException('Pagamento não encontrado');
+    }
 
     try {
       // First, retrieve the PaymentIntent to check its current status
-      const existingPaymentIntent = await this.stripeService.retrievePaymentIntent(paymentIntentId);
+      const existingPaymentIntent = owned;
       this.logger.log(`PaymentIntent current status: ${existingPaymentIntent.status}`);
 
       let paymentIntent;
@@ -1342,9 +1307,13 @@ export class PaymentsService {
   /**
    * Força o processamento de um pagamento recorrente específico
    */
-  async forceRecurringPayment(paymentId: number) {
-    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
-    if (!payment) {
+  /** ownerUserId: quando vem de um usuário comum, só o pagamento dele */
+  async forceRecurringPayment(paymentId: number, ownerUserId?: number) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { subscription: { select: { userId: true } } },
+    });
+    if (!payment || (ownerUserId != null && payment.subscription.userId !== ownerUserId)) {
       throw new NotFoundException('Pagamento não encontrado');
     }
     // Antes cobrava o preço do plano de novo, mesmo de um pagamento já pago.
@@ -1378,7 +1347,7 @@ export class PaymentsService {
       },
     });
 
-    if (!payment) {
+    if (!payment || payment.subscription.userId !== userId) {
       throw new NotFoundException('Pagamento não encontrado');
     }
 
