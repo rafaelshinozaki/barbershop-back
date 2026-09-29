@@ -577,7 +577,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
 **8. Registros e estabilidade** 🗺️ (spec abaixo)
-- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4.
+- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1 ✅ no código).
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -977,7 +977,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 
 ### Etapas
 
-- **R1 — estabilidade básica** (rápido, sem mudar produto): Sentry nos dois fronts e no backoffice-back, `x-request-id`, conferência de fora com alertas.
+- **R1 — estabilidade básica** ✅ (código): Sentry nos dois fronts e no backoffice-back, `x-request-id` de ponta a ponta (front → API do backoffice → back, gravado no Sentry, no Axiom e no registro de ações). Como ligar e a conferência de fora em [docs/MONITORING.md](docs/MONITORING.md). Falta criar os projetos do Sentry e os monitores (UptimeRobot ou Better Stack) e configurar as variáveis no deploy.
 - **R2 — `ChangeLog`:** gatilhos, wrapper do autor, lista de campos por tabela e tela Histórico para dono e gerente.
 - **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice.
 - **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
