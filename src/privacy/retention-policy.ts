@@ -23,6 +23,8 @@ export const RETENTION_DAYS = {
   pushSubscription: 180,
   /** Busca registrada para a métrica do piloto (sem dado pessoal). */
   searchEvent: 365,
+  /** Registro de ações do backoffice (quem da equipe fez o quê). */
+  backofficeAudit: 365 * 2,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

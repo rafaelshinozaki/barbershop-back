@@ -25,6 +25,7 @@ import { join } from 'path';
 import { GraphQLAppModule } from './graphql/graphql.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
+import { BackofficeAuditInterceptor } from './backoffice/audit/backoffice-audit.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
 import { RedisModule } from './redis/redis.module';
@@ -222,6 +223,11 @@ import { formatGqlError } from './graphql/format-error';
     {
       provide: APP_INTERCEPTOR,
       useClass: ThrottleInterceptor,
+    },
+    {
+      // Registro de ações do backoffice (escritas das operações da equipe do sistema)
+      provide: APP_INTERCEPTOR,
+      useClass: BackofficeAuditInterceptor,
     },
   ],
 })

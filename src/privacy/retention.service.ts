@@ -29,6 +29,7 @@ export class RetentionService {
     const supportBefore = cutoffBefore(now, RETENTION_DAYS.supportTicket);
     const pushBefore = cutoffBefore(now, RETENTION_DAYS.pushSubscription);
     const searchBefore = cutoffBefore(now, RETENTION_DAYS.searchEvent);
+    const auditBefore = cutoffBefore(now, RETENTION_DAYS.backofficeAudit);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -177,7 +178,23 @@ export class RetentionService {
       BATCH,
     );
 
+    // Registro de ações do backoffice: dois anos
+    const backofficeAudit = await deleteInBatches(
+      (take) =>
+        this.prisma.backofficeAuditLog.findMany({
+          where: { createdAt: { lt: auditBefore } },
+          select: { id: true },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.backofficeAuditLog.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
+      backofficeAudit,
       chatThreads,
       supportTickets,
       pushSubscriptions,

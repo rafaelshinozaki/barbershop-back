@@ -24,6 +24,7 @@ import { UserResolver } from './resolvers/user.resolver';
 import { PlanResolver } from './resolvers/plan.resolver';
 import { BackofficeResolver } from './resolvers/backoffice.resolver';
 import { BackofficeTeamResolver } from './resolvers/backoffice-team.resolver';
+import { BackofficeAuditResolver } from './resolvers/backoffice-audit.resolver';
 import { NotificationsResolver } from './resolvers/notifications.resolver';
 import { PaymentResolver } from './resolvers/payment.resolver';
 import { CouponsResolver } from './resolvers/coupons.resolver';
@@ -84,6 +85,7 @@ import { SocialModule } from '../social/social.module';
     PlanResolver,
     BackofficeResolver,
     BackofficeTeamResolver,
+    BackofficeAuditResolver,
     NotificationsResolver,
     PaymentResolver,
     CouponsResolver,

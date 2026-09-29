@@ -143,6 +143,16 @@ export class RolesGuard implements CanActivate {
         );
       }
 
+      // Quem chamou, pro registro de ações do backoffice (nem toda operação
+      // passa pelo guard do JWT, que é quem preenche req.user)
+      if (req) {
+        (req as Request & { backofficeActor?: unknown }).backofficeActor = {
+          id: user.id,
+          email: user.email,
+          role: user.role.name,
+        };
+      }
+
       // Equipe do sistema: só nas áreas do backoffice liberadas pelo admin.
       // Operação que aceita SystemManager sem @RequireArea recusa a equipe.
       if (user.role.name.toLowerCase() === Role.SYSTEM_MANAGER.toLowerCase()) {
