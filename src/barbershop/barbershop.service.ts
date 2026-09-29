@@ -5024,6 +5024,9 @@ export class BarbershopService {
           name: b.name,
           categories: offer?.categories ?? [],
           distanceKm,
+          // Posição da unidade (fora do GraphQL): o cache da busca refaz a
+          // distância com o ponto exato de cada pessoa
+          points: b.latitude != null && b.longitude != null ? [[b.latitude, b.longitude]] : [],
           minPrice: offer?.minPrice ?? null,
           isFeatured: b.featuredUntil != null && b.featuredUntil > now,
           openNow: input.openNow ? isOpenAt(b as Parameters<typeof isOpenAt>[0], now) : false,
@@ -5238,6 +5241,10 @@ export class BarbershopService {
           // Atende a domicílio só com a identidade verificada
           homeService: p.offersHomeService && !!p.user.identityVerifiedAt,
           distanceKm: distances.length ? Math.round(Math.min(...distances) * 10) / 10 : null,
+          // Posições das unidades mostradas (fora do GraphQL), pro cache da busca
+          points: shops.flatMap((s) =>
+            s.latitude != null && s.longitude != null ? [[s.latitude, s.longitude]] : [],
+          ),
           minPrice: prices.length ? Math.min(...prices) : null,
           currency: p.barbers[0]?.barbershop.currency ?? null,
           isFeatured: p.featuredUntil != null && p.featuredUntil > now,
