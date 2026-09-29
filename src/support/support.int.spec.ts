@@ -137,7 +137,8 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
     expect(pings).toContain(adminId);
     const bell = await prisma.userNotification.findFirstOrThrow({ where: { userId: adminId } });
     // Valor do enum do sininho (outro valor quebra a lista)
-    expect(bell).toMatchObject({ type: 'info', actionUrl: '/backoffice/support' });
+    // O aviso leva pro app do backoffice (BACKOFFICE_URL; em dev, localhost:5180)
+    expect(bell).toMatchObject({ type: 'info', actionUrl: 'http://localhost:5180/support' });
 
     const queue = await support.queue();
     const item = queue.find((t) => t.id === id);
