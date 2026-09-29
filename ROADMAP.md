@@ -509,6 +509,10 @@ Fechadas pelo que faz mais sentido para um app de agendamento de beleza no Brasi
 **Marca**
 - **Nome de trabalho: "Marcaí"** (de "marca aí"). É curto, brasileiro, fala de agendar e serve para qualquer serviço de beleza, não só barbearia. **Antes de adotar:** busca no INPI (classes 35, 42 e 44) e checar `marcai.com.br` e os @ nas redes. Se estiver tomado, na ordem: "Horaí", "Cadeira Livre". Até lá o app segue como "Barbershop"; a troca (nome, logo, ícones do PWA, textos, e-mails) é uma tarefa só, depois da checagem.
 
+**Histórico de alterações** (2026-09-29)
+- O dono vê "Equipe da plataforma" com o motivo quando a plataforma mexe na unidade, sem o nome do funcionário (informado se ele pedir pelo suporte).
+- Guarda: 1 ano para o histórico do negócio e 2 anos para o registro da equipe da plataforma. Ver o horizonte "Registros e estabilidade".
+
 **Arquitetura: backoffice fora do app** (2026-09-29)
 - **Tudo do backoffice fica em dois apps próprios**, fora do app das barbearias:
   - `barbershop-backoffice-front`: as telas do admin do sistema.
@@ -915,11 +919,11 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - **Dono e gerente:** tela **Histórico** nas configurações da unidade, com filtro por pessoa, por tipo e por período. Cada item aparece como frase, ex.: "Cayo alterou o preço de *Corte masculino* de R$ 40 para R$ 45 — hoje, 14:32".
   - **Profissional:** só o que mexeu na própria agenda e nos próprios serviços.
   - **Equipe da plataforma:** o histórico inteiro na ficha da unidade e na ficha da pessoa do backoffice (Fase 2 do Backoffice).
-  - **Quando a equipe da plataforma mexe na unidade:** o dono vê "Equipe da plataforma" com o motivo, sem o nome do funcionário. O nome fica no registro interno.
+  - **Quando a equipe da plataforma mexe na unidade:** o dono vê "Equipe da plataforma" com o motivo, sem o nome do funcionário (decidido). O nome fica no registro interno.
 - **Dado pessoal:**
   - A ficha de saúde nunca entra: aparece só "ficha técnica atualizada".
   - Telefone e e-mail do cliente aparecem mascarados (`(11) 9••••-1234`).
-  - Guarda de 1 ano, apagada pela rotina de guarda de dados.
+  - Guarda de 1 ano (decidido), apagada pela rotina de guarda de dados.
   - Quando alguém exclui a conta, o nome dessa pessoa vira "Conta excluída" no histórico.
 - **Como gravar:**
   - Recomendado: **gatilho no Postgres** nas tabelas acompanhadas. O gatilho compara a linha antiga com a nova e grava só os campos da lista de cada tabela.
@@ -977,8 +981,11 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 - **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice.
 - **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
 
+### Decisões tomadas (2026-09-29)
+
+- **O dono não vê o nome do funcionário da plataforma.** No histórico dele aparece "Equipe da plataforma" com o motivo. O nome fica no registro interno do backoffice e é informado se o dono pedir pelo suporte.
+- **Guarda do histórico:** 1 ano para as alterações do negócio (`ChangeLog`) e 2 anos para o registro da equipe da plataforma. A limpeza fica na rotina de guarda de dados.
+
 ### Decisões em aberto
 
-- **O dono vê o nome do funcionário da plataforma?** Recomendado: não, só "Equipe da plataforma" e o motivo. O nome aparece se ele pedir pelo suporte.
-- **Guarda do histórico:** recomendado 1 ano para o negócio e 2 anos para a equipe da plataforma. Pode crescer num plano pago.
 - **Gatilho no Postgres × gravar no código:** recomendado o gatilho, porque são dois backs escrevendo. Se for no código, cada back precisa de uma cópia da regra.
