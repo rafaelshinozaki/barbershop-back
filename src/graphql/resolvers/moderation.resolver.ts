@@ -1,3 +1,4 @@
+import { clientIp } from '../../common/client-ip';
 import { Args, Context, Field, Int, Mutation, ObjectType, Query, Resolver } from '@nestjs/graphql';
 import { UseFilters, UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
@@ -56,12 +57,6 @@ export class ModerationItemType {
   @Field()
   lastReportedAt: Date;
 }
-
-const clientIp = (req: any): string => {
-  const forwarded = req?.headers?.['x-forwarded-for'];
-  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
-  return (first || req?.ip || req?.socket?.remoteAddress || 'unknown').trim();
-};
 
 /** Denúncia de conteúdo público e a fila de moderação do admin da plataforma */
 @Resolver()

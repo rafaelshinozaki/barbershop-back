@@ -1,4 +1,5 @@
 // src\auth\auth.service.ts
+import { clientIp } from '../common/client-ip';
 import { setAuthCookie } from './session-cookie';
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailService } from '@/email/email.service';
@@ -45,8 +46,8 @@ export class AuthService {
   async login(user: UserDTO, req: Request, res: Response, rememberMe = false) {
     const sessionToken = randomUUID();
 
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0] || req.ip;
+    // Não o X-Forwarded-For direto: o cliente escolheria o IP do histórico
+    const ip = clientIp(req);
     const { location, latitude, longitude } = await this.ipLocationService.lookup(ip ?? '');
     const existing = await (this.prisma as any).loginHistory?.findFirst({
       where: { userId: user.id, ip },
