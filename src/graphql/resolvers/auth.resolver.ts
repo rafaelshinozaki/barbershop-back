@@ -1,3 +1,4 @@
+import { needsLoginCode } from '../../auth/backoffice-login';
 import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql';
 import { BadRequestException, UseGuards, UseFilters } from '@nestjs/common';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
@@ -94,7 +95,8 @@ export class AuthResolver {
 
     this.logger.log('User verified, twoFactorEnabled', dbUser.twoFactorEnabled);
 
-    if (dbUser.twoFactorEnabled) {
+    // Conta do sistema: código obrigatório (BACKOFFICE_REQUIRE_2FA / produção)
+    if (needsLoginCode(dbUser)) {
       this.logger.log('2FA enabled, sending login code');
       const loginId = randomUUID();
       await this.userService.sendLoginCode(dbUser, loginId);
