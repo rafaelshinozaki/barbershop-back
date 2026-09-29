@@ -5,7 +5,11 @@
  * job diário cobrava de novo todo dia; (2) o plano pago pelo checkout nunca
  * renovava nem vencia; (3) o webhook duplicava pagamento em evento repetido.
  */
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService } from './coupons.service';
@@ -158,8 +162,8 @@ describe('Cobrança dos planos (integração com o banco)', () => {
 
     // A tela e o webhook confirmam ao mesmo tempo
     await Promise.all([
-      payments.confirmPaymentIntent(paymentIntentId!),
-      payments.confirmPaymentIntent(paymentIntentId!),
+      payments.confirmPaymentIntent(userId, paymentIntentId!),
+      payments.confirmPaymentIntent(userId, paymentIntentId!),
     ]);
     expect(await prisma.subscription.count({ where: { userId, status: 'ACTIVE' } })).toBe(1);
     expect(await prisma.payment.count({ where: { transactionId: paymentIntentId } })).toBe(1);
@@ -329,6 +333,18 @@ describe('Cobrança dos planos (integração com o banco)', () => {
     const before = charges.length;
     const result = await payments.forceRecurringPayment(paid.id);
     expect(result.success).toBe(false);
+    expect(charges.length).toBe(before);
+  });
+
+  it('usuário comum não força cobrança nem aplica cupom no pagamento de outro', async () => {
+    const paid = await prisma.payment.findFirstOrThrow({ where: { subscription: { userId } } });
+    const before = charges.length;
+    await expect(payments.forceRecurringPayment(paid.id, userId + 999_999)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(
+      payments.applyCouponToPayment('QUALQUER', userId + 999_999, paid.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(charges.length).toBe(before);
   });
 

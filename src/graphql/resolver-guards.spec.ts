@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 
 /**
  * Toda query/mutation do GraphQL precisa de um guard (no método ou na
@@ -94,5 +94,75 @@ describe('guards das operações GraphQL', () => {
   it('a lista de públicas não guarda nome que não existe mais', () => {
     const unguarded = new Set(unguardedOperations());
     expect(Object.keys(PUBLIC).filter((op) => !unguarded.has(op))).toEqual([]);
+  });
+});
+
+/**
+ * O mesmo para as rotas REST (controllers): as de pagamentos recorrentes, os
+ * e-mails de teste e a consulta de cliente do Stripe ficaram abertas porque
+ * o teste acima só olhava o GraphQL.
+ */
+const PUBLIC_ROUTES: Record<string, string> = {
+  'auth/auth.controller.ts#verifyLogin': 'login em duas etapas',
+  'auth/users/users.controller.ts#createUser': 'cadastro',
+  'barbershop/employee-invite.controller.ts#validateInvite': 'convite (token)',
+  'barbershop/employee-invite.controller.ts#acceptInvite': 'convite (token)',
+  'calendar/calendar.controller.ts#appointment': 'arquivo .ics do agendamento (token)',
+  'calendar/calendar.controller.ts#feed': 'agenda assinável (token secreto no nome)',
+  'health/health.controller.ts#getHealth': 'health check',
+  'locations/locations.controller.ts#states': 'lista de estados',
+  'locations/locations.controller.ts#cities': 'lista de cidades',
+  'plan/plan.controller.ts#getAllPlans': 'página de planos',
+  'plan/plan.controller.ts#getPlan': 'página de planos',
+  'seo/sitemap.controller.ts#sitemapXml': 'SEO',
+  'seo/sitemap.controller.ts#shop': 'SEO da página pública',
+  'seo/sitemap.controller.ts#shopImage': 'SEO da página pública',
+  'social/social.controller.ts#callback': 'retorno do OAuth (state assinado)',
+  'stripe/stripe.controller.ts#handleWebhook': 'webhook (assinatura do Stripe)',
+  'stripe/stripe.controller.ts#checkHealth': 'health check',
+  'stripe/stripe.controller.ts#getStripePlans': 'preços públicos dos planos',
+};
+
+const SRC = join(__dirname, '..');
+const ROUTE = /@(Get|Post|Put|Patch|Delete|All)\(/;
+
+function controllerFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? controllerFiles(join(dir, e.name))
+      : e.name.endsWith('.controller.ts')
+      ? [join(dir, e.name)]
+      : [],
+  );
+}
+
+function unguardedRoutes(): string[] {
+  const found: string[] = [];
+  for (const path of controllerFiles(SRC)) {
+    const file = relative(SRC, path);
+    const src = readFileSync(path, 'utf8');
+    const classHeaders = [
+      ...src.matchAll(/((?:@[\w.]+\((?:[^()]|\([^()]*\))*\)\s*)+)export class \w+/g),
+    ].map((m) => m[1]);
+    const classGuarded = classHeaders.some(
+      (h) => /@Controller\(/.test(h) && /@UseGuards\(/.test(h),
+    );
+    for (const [, decorators, method] of src.matchAll(DECORATED_METHOD)) {
+      if (!ROUTE.test(decorators)) continue;
+      if (!classGuarded && !/@UseGuards\(/.test(decorators)) found.push(`${file}#${method}`);
+    }
+  }
+  return found.sort();
+}
+
+describe('guards das rotas REST', () => {
+  it('toda rota sem guard é pública de propósito', () => {
+    const unexpected = unguardedRoutes().filter((r) => !(r in PUBLIC_ROUTES));
+    expect(unexpected).toEqual([]);
+  });
+
+  it('a lista de públicas não guarda rota que não existe mais', () => {
+    const unguarded = new Set(unguardedRoutes());
+    expect(Object.keys(PUBLIC_ROUTES).filter((r) => !unguarded.has(r))).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@
  * simulado): antes o cupom só mexia no registro do pagamento, nunca no valor
  * cobrado pelo Stripe — o "1 mês grátis" do convite de amigo não funcionava.
  */
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService, COUPON_TYPE } from './coupons.service';
@@ -103,7 +103,15 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
     // Sem confirmar, o cupom ainda não foi usado
     expect((await prisma.coupon.findUnique({ where: { id: coupon.id } }))!.usedCount).toBe(0);
 
-    await payments.confirmPaymentIntent(result.paymentIntentId!);
+    // Outro usuário não confirma o pagamento de quem criou (vira assinatura de outro)
+    await expect(
+      payments.confirmPaymentIntent(userId + 999_999, result.paymentIntentId!),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(await prisma.payment.count({ where: { transactionId: result.paymentIntentId } })).toBe(
+      0,
+    );
+
+    await payments.confirmPaymentIntent(userId, result.paymentIntentId!);
     const payment = await prisma.payment.findFirst({
       where: { transactionId: result.paymentIntentId },
     });
@@ -113,7 +121,7 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
     expect((await prisma.coupon.findUnique({ where: { id: coupon.id } }))!.usedCount).toBe(1);
 
     // Confirmar de novo (duplo clique) não duplica assinatura nem uso do cupom
-    await payments.confirmPaymentIntent(result.paymentIntentId!);
+    await payments.confirmPaymentIntent(userId, result.paymentIntentId!);
     expect(await prisma.payment.count({ where: { transactionId: result.paymentIntentId } })).toBe(
       1,
     );

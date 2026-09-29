@@ -6,9 +6,12 @@ import {
   HttpCode,
   Logger,
   Get,
-  Param,
   InternalServerErrorException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '@/auth/guards/roles.guard';
+import { Roles } from '@/auth/roles.decorator';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -467,7 +470,7 @@ export class StripeController {
       return;
     }
     if (meta.userId && meta.planId) {
-      await this.paymentsService.confirmPaymentIntent(paymentIntent.id);
+      await this.paymentsService.confirmPaymentIntent(Number(meta.userId), paymentIntent.id);
     }
   }
 
@@ -486,19 +489,9 @@ export class StripeController {
     };
   }
 
-  @Get('customer/:customerId')
-  @ApiOperation({ summary: 'Get Stripe customer info' })
-  @ApiResponse({ status: 200 })
-  async getCustomer(@Param('customerId') customerId: string) {
-    try {
-      const customer = await this.stripeService.getCustomer(customerId);
-      return customer;
-    } catch (error) {
-      this.logger.error(`Failed to get customer ${customerId}:`, error);
-      throw error;
-    }
-  }
-
+  // Diagnóstico: só admin
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN)
   @Get('test')
   @ApiOperation({ summary: 'Test Stripe connection' })
   @ApiResponse({ status: 200 })
