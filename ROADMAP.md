@@ -566,6 +566,9 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 **6. Rápido e barato** ✅ (spec abaixo)
 - Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. Erros e request lento no Sentry ✅, trilha de ações do app no Axiom ✅. Uma instância da API até ela saturar.
 
+**7. Backoffice — telas, operações e acessos** 🗺️ (spec abaixo)
+- Mapa de telas × áreas × operações, perfis sugeridos e fases 1–3. Fase 0 (base) feita.
+
 ## Horizonte: rápido e barato — ✅ concluído
 
 Registrado em 2026-09-29. O app fica o mais rápido possível pelo menor custo, com pouco uso do Postgres. A trilha do que a pessoa fez sai do banco.
@@ -634,3 +637,109 @@ Axiom e Sentry guardam dados fora do Brasil. Os dois entram na Política de priv
 - Gravar a trilha no Postgres.
 - PostHog: a métrica do piloto (busca com horário em 48 h, agendamento pela vitrine) já está no backoffice.
 - PgBouncer ou segunda instância antes de a primeira saturar.
+
+## Horizonte: Backoffice — telas, operações e acessos — 🗺️ Planejado
+
+Registrado em 2026-09-29. Mapa do app do backoffice (`barbershop-backoffice-front` + `barbershop-backoffice-back`): quem entra, o que cada pessoa vê e faz, o que já existe e o que falta.
+
+### Princípios
+
+- **Dois cargos, cinco áreas.** Continuam só os dois cargos do sistema: `SystemAdmin` (o admin, mestre) e `SystemManager` (a equipe). O que a equipe vê sai das **áreas** que o admin libera por pessoa (`User.backofficeAreas`). Não há cargo novo por função: o perfil de cada pessoa é um conjunto de áreas.
+- **O back decide, a tela acompanha.** Toda operação de sistema declara a área (`@RequireArea`), e um teste confere. A tela só esconde o que a pessoa não pode usar, para não mostrar um botão que dá erro. Com `BACKOFFICE_GATEWAY_SECRET`, só a API do backoffice chama essas operações.
+- **Só o admin mexe no que muda o negócio ou a própria equipe:** preços e taxas, planos, cupons, cargos, a equipe e as áreas, o registro de ações e contas do sistema (editar, desativar ou apagar admin e equipe).
+- **Toda escrita fica registrada** (`BackofficeAuditLog`, 2 anos). Entrada com senha e código por e-mail, sem login social.
+- **A equipe vê o mínimo de dado pessoal** para fazer o trabalho: o dado sensível do cliente fica com o negócio, e a ficha de saúde nunca aparece no backoffice.
+
+### Áreas
+
+| Área | Para quê |
+|---|---|
+| **Suporte** (`support`) | Pedidos de "Fale com a gente" e contas de cliente (suspender/reativar) |
+| **Moderação** (`moderation`) | Denúncias de conteúdo (fotos, perfis, comentários, conversas) e avaliações denunciadas |
+| **Usuários** (`users`) | Contas da plataforma (donos, gerentes, profissionais): ver, editar, ativar/desativar, apagar, importar CSV |
+| **Financeiro** (`finance`) | Plano de cada conta, cobranças recorrentes (atraso, forçar, cancelar) e receita do Destaque |
+| **Operação** (`operations`) | Painel e métricas, piloto, Destaque (ligar/desligar), avisos no sininho e e-mails para usuários |
+
+### Perfis sugeridos (conjuntos de áreas)
+
+O admin pode montar qualquer combinação. Estes são os presets que a tela Equipe deve oferecer num clique (Fase 1):
+
+| Perfil | Áreas | Quem é |
+|---|---|---|
+| **Atendimento** | Suporte | Responde os pedidos e suspende cliente que abusa |
+| **Moderação** | Moderação + Suporte | Cuida de denúncias e fala com quem denunciou ou foi denunciado |
+| **Sucesso do cliente** | Usuários + Suporte + Operação | Ajuda os negócios: corrige cadastro, reativa conta, manda aviso, acompanha métricas |
+| **Financeiro** | Financeiro + Usuários | Planos, cobranças em atraso e receita |
+| **Crescimento** | Operação | Piloto, Destaque, métricas, avisos e e-mails |
+| **Coordenação** | Todas as cinco | Braço direito do admin, ainda sem o que é só do admin |
+
+### Telas, operações e acesso
+
+Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" = só o `SystemAdmin`.
+
+| Tela (rota) | Área | O que faz | Operações no back | Situação |
+|---|---|---|---|---|
+| Entrar / código / esqueci a senha | — | Senha + código por e-mail; explica a recusa do login social | login, `verify2FA`, recuperação de senha | ✅ |
+| **Painel** (`/`) | Operação | Números da plataforma, crescimento, distribuição por plano/cargo/status, atividade do marketplace | `backofficeDashboard`, `backofficeStats`, `userGrowthData`, `planDistribution`, `roleDistribution`, `statusDistribution`, `marketplaceMetrics` | ✅ |
+| **Usuários** (`/manage-users`) | Usuários | Lista com filtros, editar, ativar/desativar (um ou vários), apagar | `usersDetailed`, `getUsers`, `user`, `updateUser`, `setUserActive`, `bulkUserAction`, `removeUser`, REST `/user/admin/list`, `set-active`, `set-multiple-active` | ✅ |
+| ↳ trocar plano (na linha e em lote) | Financeiro | Muda o plano da conta | `changeUserPlan`, REST `change-plan`, `change-multiple-plans`, `update-payment-status` | ✅ |
+| ↳ trocar cargo | Admin | Muda o cargo (inclusive para cargo do sistema) | `updateUserRole` | ✅ |
+| ↳ conta do sistema | Admin | Editar, desativar ou apagar admin/equipe | `assertCanManageAccounts` | ✅ |
+| **Importar usuários** (`/import-users`) | Usuários | Importa CSV | REST `/user/admin/import-csv` | ✅ |
+| **Equipe** (`/team`) | Admin | Quem é da equipe e quais áreas tem | `backofficeTeam`, `setBackofficeAreas` | 🔧 falta preset de perfil |
+| **Registro de ações** (`/audit`) | Admin | O que a equipe alterou, por pessoa e operação | `backofficeAuditLog` | ✅ |
+| **Avisos no sininho** (`/manage-notifications`) | Operação | Mandar aviso para uma pessoa ou para várias; histórico | `createNotification`, `createBatchNotifications`, `allNotificationsWithUser`, `usersDetailed` | 🔧 ver Fase 1 |
+| **E-mails para usuários** (`/manage-email-notifications`) | Operação | Mandar e-mail e ver o histórico | `sendEmailNotification`, `emailHistory`, `usersDetailed` | 🔧 ver Fase 1 |
+| **Análise geográfica e demográfica** (`/geographic-demographic-analysis`) | Operação | Onde estão e quem são os usuários | `geographicAnalysis`, `demographicAnalysis`, `usersDetailed` | 🔧 ver Fase 1 |
+| **Cobranças recorrentes** (`/recurring-payments`) | Financeiro | Em atraso, forçar cobrança, processar, cancelar assinatura, estatísticas | REST `/payments/recurring/*`, `/payments/cancel/:userId` | ✅ |
+| **Destaque** (`/featured-barbershops`) — abas Unidades e Profissionais | Operação | Ligar/desligar Destaque até uma data | `adminBarbershops`, `adminProfessionals`, `setBarbershopFeatured`, `setProfessionalFeatured` | ✅ |
+| ↳ aba Compras | Financeiro | Receita do Destaque (30 dias e total) e compras pagas | `adminFeaturedPurchases` | ✅ |
+| **Piloto** (`/pilot`) | Operação | Busca com horário em 48 h, agendamentos pela vitrine × link | `pilotMetrics` | ✅ |
+| **Moderação** (`/reviews`) | Moderação | Fila de denúncias de conteúdo e avaliações denunciadas | `moderationQueue`, `resolveContentReports`, `reportedReviews`, `moderateReview` | ✅ |
+| **Suporte** (`/support`) | Suporte | Fila de pedidos, responder, mudar status | `supportQueue`, `supportOpenCount`, `answerSupportTicket`, `setSupportTicketStatus` | ✅ |
+| **Contas de cliente** (`/client-accounts`) | Suporte | Buscar cliente, suspender/reativar com motivo | `adminClientAccounts`, `setClientAccountSuspended` | ✅ |
+| **Preços e taxas** (`/pricing`) | Admin | Taxas da plataforma e preço do Destaque, sem deploy | `platformPricing`, `updatePlatformPricing` | ✅ |
+| **Cupons** (`/coupons`) | Admin | Criar, editar, apagar cupons e ver o uso | `getAllCoupons`, `createCoupon`, `updateCoupon`, `deleteCoupon`, `getCouponStats` | ✅ |
+| **Planos** (`/plans`) | Admin | Criar/editar/remover plano, sincronizar com a Stripe | REST `/plans/create`, `update`, `remove`, `sync-stripe` (GraphQL `createPlan`, `updatePlan`, `removePlan`, `syncPlansWithStripe`) | 🆕 só existe no back |
+| **Ficha da unidade** (`/barbershops/:id`) | Usuários (leitura) | Uma unidade inteira num lugar: dono e equipe, plano, Connect, Destaque, denúncias, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
+| **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
+| **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
+| **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção e exclusão pedidos por e-mail/suporte, com prazo de 15 dias | novas operações; exclusão reusa `AccountDeletionService` | 🆕 Fase 3 |
+| **Saúde do sistema** (`/system`) | Admin | Filas (BullMQ), Redis, último backup, links do Sentry/Axiom | nova query só leitura | 🆕 Fase 3 |
+
+**Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
+
+**Operações antigas a tirar:** `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
+
+### Fases
+
+**Fase 0 — base** ✅ (feito)
+- App e API separados, lista de operações gerada do build, segredo da API.
+- Áreas por pessoa com `@RequireArea` e teste; a equipe não mexe em conta do sistema.
+- Registro de ações, duas etapas obrigatórias, sem login social para conta do sistema.
+- IP real do cliente (`TRUST_PROXY`, `x-backoffice-client-ip`), tempo máximo e imagem Docker.
+
+**Fase 1 — acertar o que já existe**
+- Avisos, E-mails e Análise são de Operação, mas usam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tem só Operação vê a tela e toma erro. Correção: um seletor de pessoas enxuto na área Operação (id, nome, cargo, sem telefone ou endereço) e `allNotificationsWithUser` com `@RequireArea(OPERATIONS)`.
+- Tela Planos (admin), usando as operações que já existem.
+- Tirar as operações antigas duplicadas (lista acima).
+- Presets de perfil na tela Equipe, mais "convidar para a equipe": o admin cria a conta `SystemManager` com e-mail e áreas, e a pessoa define a senha pelo link. Hoje só dá para trocar o cargo de uma conta que já existe.
+- E2E por perfil: cada preset abre só as suas telas e toma 403 no resto.
+
+**Fase 2 — ver tudo de um negócio sem sair do backoffice**
+- Ficha da unidade e ficha da pessoa, só leitura, com links entre elas e para as filas (suporte, moderação).
+- Busca única no topo (e-mail, nome, unidade, id), respeitando as áreas.
+- Pagamentos pelo app: lista e reembolso (Financeiro), com motivo no registro de ações.
+- Derrubar as sessões de uma pessoa (Usuários), que hoje só acontece ao desativar.
+
+**Fase 3 — governança**
+- Pedidos do titular (LGPD) com prazo e resposta registrada.
+- Ação que não volta atrás (apagar conta, reembolso acima de um valor) pede confirmação de um segundo membro com a mesma área, ou do admin.
+- Nível leitura × escrita por área (ex.: Financeiro só leitura para o contador).
+- Sessões da equipe: o admin vê onde cada pessoa está logada e derruba. Aviso por e-mail quando alguém da equipe ganha área nova.
+- Saúde do sistema (admin).
+
+### Decisões em aberto
+
+- Um segundo admin (`SystemAdmin`) para não depender de uma pessoa só? Recomendado: sim, com os dois usando duas etapas.
+- Reembolso pelo backoffice ou só pelo painel da Stripe? Recomendado: começar pelo painel da Stripe e trazer para o backoffice na Fase 2, quando o volume justificar.
