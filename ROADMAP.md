@@ -515,6 +515,7 @@ Fechadas pelo que faz mais sentido para um app de agendamento de beleza no Brasi
   - `barbershop-backoffice-back`: uma API fina na frente deste back. Não tem banco nem regra de negócio própria. Só repassa as operações que o app do backoffice usa, numa lista gerada do build dele, e manda um segredo.
 - **Por quê:** o app das barbearias não carrega nem expõe nada do backoffice. Com `BACKOFFICE_GATEWAY_SECRET` configurado, este back recusa operação só de admin/gerente do sistema que não venha dessa API, mesmo com o login de admin. Os dois apps podem ter deploy, domínio e acesso separados. Também abre caminho para funcionários da plataforma terem acesso ao backoffice.
 - **O que continua aqui:** a regra de negócio, o banco e os cargos (SystemAdmin/SystemManager) seguem neste back. Um endereço `/backoffice/...` no app das barbearias redireciona para o app do backoffice.
+- **Revisto em 2026-09-29:** o projeto principal fica sem nada do backoffice. Contas da equipe, login, operações e registro de ações vão para o `barbershop-backoffice-back`, no mesmo Postgres, com schema próprio e comandos na fila para os efeitos colaterais. Ver "Tirar o backoffice do projeto principal" no horizonte do Backoffice.
 
 **Jurídico: o caminho conservador até o advogado confirmar**
 - **Nota do cliente:** fica só dentro do negócio que avaliou. Não é compartilhada com outros negócios nem mostrada ao público. Compartilhar entre negócios só depois do parecer (LGPD: finalidade e transparência).
@@ -568,6 +569,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 
 **7. Backoffice — telas, operações e acessos** 🗺️ (spec abaixo)
 - Cargos dos funcionários (Super admin, Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), quem vê o quê, mapa de telas × operações e fases 1–3. Fase 0 (base) feita.
+- Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -644,7 +646,7 @@ Registrado em 2026-09-29. Mapa do app do backoffice (`barbershop-backoffice-fron
 
 ### Princípios
 
-- **Cargos com nome para os funcionários.** O `SystemAdmin` é o Super admin. Cada funcionário é `SystemManager` com um cargo de backoffice (Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), que define as permissões dele. Ver "Cargos dos funcionários da plataforma".
+- **Cargos com nome para os funcionários.** O Super admin e cada funcionário são contas da equipe (`StaffUser`, fora dos usuários do app) com um cargo de backoffice (Administrador, Coordenador, Suporte N1/N2, Moderador, Financeiro, Crescimento, Analista), que define as permissões dele. Ver "Cargos dos funcionários da plataforma".
 - **O back decide, a tela acompanha.** Toda operação de sistema declara a área (`@RequireArea`), e um teste confere. A tela só esconde o que a pessoa não pode usar, para não mostrar um botão que dá erro. Com `BACKOFFICE_GATEWAY_SECRET`, só a API do backoffice chama essas operações.
 - **Só o admin mexe no que muda o negócio ou a própria equipe:** preços e taxas, planos, cupons, cargos, a equipe e as áreas, o registro de ações e contas do sistema (editar, desativar ou apagar admin e equipe).
 - **Toda escrita fica registrada** (`BackofficeAuditLog`, 2 anos). Entrada com senha e código por e-mail, sem login social.
@@ -664,7 +666,7 @@ As cinco áreas abaixo são o que existe hoje (`User.backofficeAreas`). Os cargo
 
 ### Cargos dos funcionários da plataforma
 
-Quem trabalha na empresa (não nas barbearias) recebe **um cargo de backoffice**. O cargo é fixo no código, com um nome e um conjunto de permissões. O admin só escolhe o cargo da pessoa e não monta permissões na mão. O `SystemAdmin` é o **Super admin**. Todo funcionário é `SystemManager` com `backofficeRole`.
+Quem trabalha na empresa (não nas barbearias) recebe **um cargo de backoffice**. O cargo é fixo no código, com um nome e um conjunto de permissões. O admin só escolhe o cargo da pessoa e não monta permissões na mão. Hoje o Super admin é o `SystemAdmin` e o funcionário é `SystemManager`. Depois da separação, todos passam a ser `StaffUser` com `backofficeRole`, fora dos usuários do app.
 
 | Cargo | Quem é | Pode | Não pode |
 |---|---|---|---|
@@ -714,7 +716,7 @@ Regras que valem para todos:
 
 - As áreas viram **permissões** mais finas (ex.: `support.reply`, `clients.suspend`, `users.edit`, `users.delete`, `finance.write`, `refund`, `featured.write`, `notify.send`, `moderation.resolve`, `metrics.read`, `team.manage`, `pricing.manage`, `audit.read`). `@RequireArea` vira `@RequirePermission`, e continua o teste que obriga toda operação de sistema a declarar a sua.
 - `BACKOFFICE_ROLES` no back define cada cargo como uma lista de permissões. O front do backoffice lê as permissões da pessoa e mostra só as telas e botões dela.
-- `User.backofficeRole` no lugar de `backofficeAreas`. Migração: quem tem as cinco áreas vira Coordenador de operações; os outros ganham o cargo mais próximo, e o Super admin confere na tela Equipe.
+- `StaffUser.backofficeRole` (tabela do backoffice-back, ver "Tirar o backoffice do projeto principal") no lugar de `User.backofficeAreas`. Migração: `SystemAdmin` vira Super admin; quem tem as cinco áreas vira Coordenador de operações; os outros ganham o cargo mais próximo, e o Super admin confere na tela Equipe.
 
 ### Telas, operações e acesso
 
@@ -754,6 +756,85 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 
 **Operações antigas a tirar:** `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
 
+### Tirar o backoffice do projeto principal
+
+**Decisão (2026-09-29):** o projeto principal (`barbershop-front` e `barbershop-back`) fica **sem nada do backoffice**: sem tela, operação, cargo, conta da equipe, auditoria ou variável de ambiente. O backoffice vira dois apps completos:
+- `barbershop-backoffice-front`: as telas.
+- `barbershop-backoffice-back`: deixa de ser um repasse e vira a API do backoffice, com login próprio.
+
+Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
+
+**Por quê:**
+- O app das barbearias e dos clientes não carrega, não expõe e não testa nada de admin.
+- Uma falha no backoffice não abre porta no app público, e vice-versa.
+- Os funcionários da plataforma deixam de ser `User` do app.
+
+#### Como fica
+
+| Assunto | Hoje | Depois |
+|---|---|---|
+| **Contas da equipe** | `User` com cargo `SystemAdmin`/`SystemManager` e `backofficeAreas`, login e 2FA no back principal | Tabela `StaffUser` própria (senha, 2FA obrigatório, `backofficeRole`, sessões). Login, cookie e JWT próprios no backoffice-back, em outro domínio. `SystemAdmin` e `SystemManager` saem do enum `Role` |
+| **Banco** | Só o back principal acessa | Mesmo Postgres, dois donos. Schema `public`: negócio, migrações do back principal. Schema `backoffice`: `StaffUser`, sessões e registro de ações, migrações do backoffice-back. O backoffice-back usa um usuário do banco próprio: lê o `public` e escreve só nas colunas que administra |
+| **Operações do admin** | Resolvers e rotas no back principal, repassadas pela API fina | Implementadas no backoffice-back, que lê e escreve direto no banco |
+| **Efeitos colaterais** (derrubar sessões, e-mail, push, renovar o cache da busca) | Chamada direta no mesmo processo | O backoffice-back põe um **comando** numa fila do BullMQ (mesmo Redis): `session.revoke`, `email.send`, `notify.user`, `search-cache.bump`. O back principal consome esses comandos genéricos sem saber quem os mandou |
+| **Stripe** (planos, cupons, reembolso) | Chave do back principal | O backoffice-back usa uma **chave restrita** própria, só com o que precisa. O webhook da Stripe continua no back principal |
+| **Suporte** | Fila e resposta no back principal; aviso no sininho do app para a equipe | "Fale com a gente" continua no principal (cria o pedido e manda o e-mail a quem pediu). Fila, resposta e aviso à equipe ficam no backoffice. A resposta sai pelo comando `email.send` |
+| **Moderação** | Fila e resolução no back principal | A denúncia é criada no principal. A resolução acontece no backoffice (ocultar conteúdo mais `search-cache.bump`) |
+| **Métricas** (painel, piloto, análise) | Consultas no back principal | SQL no backoffice-back. Mais tarde, numa réplica de leitura |
+
+#### O que sai do back principal
+
+- Resolvers: `backoffice`, `backoffice-team`, `backoffice-audit` e `pilot`, mais as partes de admin de `coupons`, `plan`, `pricing` (a mutation), `featured` (`adminFeaturedPurchases`), `support` (fila, resposta, contas de cliente), `moderation`, `review-request` (`reportedReviews`, `moderateReview`), `notifications` (envio e histórico do admin), `barbershop` (`adminBarbershops`, `adminProfessionals`, ligar Destaque) e `user` (lista e ações de admin).
+- Rotas REST de admin: `/user/admin/*`, `/payments/recurring/*` (as manuais), `/payments/cancel/:userId`, as rotas de admin de `/coupons`, `/plans/create|update|remove|sync-stripe` e `/stripe/test`.
+- Código:
+  - `src/backoffice/` (inclui `BackofficeAuditInterceptor`);
+  - `auth/backoffice-areas.ts`, `auth/backoffice-login.ts`;
+  - o que é de sistema em `rbac-policy.ts` e no `RolesGuard`;
+  - `x-backoffice-client-ip` e o segredo em `common/client-ip.ts`;
+  - a origem do backoffice no CORS;
+  - o seed de admin.
+- Banco: `User.backofficeAreas` e as contas `SystemAdmin`/`SystemManager`, copiadas para `StaffUser` e depois apagadas. `BackofficeAuditLog` passa para o schema `backoffice`.
+- Variáveis: `BACKOFFICE_GATEWAY_SECRET`, `BACKOFFICE_REQUIRE_2FA` e a URL do backoffice.
+
+**Fica no principal, porque é do negócio:**
+- Leituras públicas: `platformPricing`, lista de planos, validar cupom.
+- Criar pedido de suporte e denúncia.
+- Compra do Destaque.
+- Cobrança recorrente automática e o webhook da Stripe.
+- Os consumidores dos comandos.
+
+#### O que sai do front principal
+
+- A rota `/backoffice` e o `BackofficeRedirect` (ficam uma versão para quem tem link salvo e depois saem).
+- "Gerenciar" no menu do perfil e `BACKOFFICE_URL`.
+- O desvio para o backoffice em `MainPage`.
+- Os cargos de sistema em `utils/permissions.ts`.
+- `services/graphql/backoffice.ts`, a parte de admin de `recurring-payments.ts` e de `support.ts` (`useSupportQueue`, `useAnswerSupportTicket`), `COUPONS_SERVICE.md` e as chaves de tradução do backoffice.
+- E2E: os passos de admin nos fluxos que cruzam os dois lados (suporte, moderação, avaliação denunciada, Destaque, suspensão) passam a chamar a API do backoffice-back, que sobe no CI do front. O login de admin em `auth.setup.ts` e `helpers.ts` sai.
+
+#### Etapas
+
+- **S1 — front principal limpo.** Não depende do back. Sai o que está listado acima e fica só o redirecionamento de `/backoffice`.
+- **S2 — contas da equipe no backoffice-back.**
+  - Schema `backoffice`, com `StaffUser` já com os cargos da seção "Cargos dos funcionários" (junta com a Fase 1).
+  - Login com senha e código, e sessões.
+  - Migração das contas `SystemAdmin`/`SystemManager`.
+  - O backoffice-front passa a entrar por aqui.
+- **S3 — operações para o backoffice-back, área por área.**
+  - Primeiro as leituras (painel, piloto, análise, listas). Depois as escritas, com os comandos na fila.
+  - Cada operação que muda de lugar sai do back principal e da lista de repasse no mesmo PR.
+  - Ordem: Operação → Suporte → Moderação → Usuários → Financeiro → só do admin.
+- **S4 — limpar o back principal.**
+  - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
+  - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
+
+#### Riscos e cuidados
+
+- **Duas bases de código escrevendo nas mesmas tabelas.** O backoffice-back escreve pouco (status, flags, plano, textos de resposta). Regra de negócio com efeito vai por comando para o principal, que é quem sabe executá-la. Um teste de contrato garante que cada comando tem consumidor.
+- **Schema divergente.** O CI do backoffice-back compara o `public` que ele usa (introspecção) com o do back principal e quebra se uma coluna que ele lê mudar.
+- **Ordem de deploy.** A migração do `public` sai antes. O backoffice-back só usa coluna nova depois que ela existe.
+- **Dado pessoal.** O usuário do banco do backoffice não enxerga a ficha de saúde (sem `GRANT` nessas tabelas). O registro de ações continua gravando toda escrita.
+
 ### Fases
 
 **Fase 0 — base** ✅ (feito)
@@ -766,7 +847,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 - Avisos, E-mails e Análise são de Operação, mas usam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tem só Operação vê a tela e toma erro. Correção: um seletor de pessoas enxuto na área Operação (id, nome, cargo, sem telefone ou endereço) e `allNotificationsWithUser` com `@RequireArea(OPERATIONS)`.
 - Tela Planos (admin), usando as operações que já existem.
 - Tirar as operações antigas duplicadas (lista acima).
-- Cargos dos funcionários: permissões no lugar das áreas, `BACKOFFICE_ROLES`, `User.backofficeRole` e a migração de quem já tem áreas.
+- Cargos dos funcionários: permissões no lugar das áreas e `BACKOFFICE_ROLES`, já na `StaffUser` do backoffice-back (etapa S2 de "Tirar o backoffice do projeto principal"), com a migração de quem já tem áreas.
 - Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa e-mail e cargo e a pessoa define a senha pelo link). Hoje só dá para trocar o cargo de uma conta que já existe.
 - E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e toma 403 no resto.
 
