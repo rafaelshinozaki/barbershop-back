@@ -564,7 +564,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Duas etapas obrigatórias no backoffice ✅: conta do sistema (admin e equipe) entra com senha mais um código por e-mail, mesmo sem ter ligado as duas etapas. Vale em produção, ou com `BACKOFFICE_REQUIRE_2FA=true`. Conta do sistema também não entra mais pelo login social (Google/Apple/Facebook), que pulava a senha e o código.
 
 **6. Rápido e barato** (em andamento; spec abaixo)
-- Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. A fazer: trilha de ações no Axiom e erros no Sentry. Uma instância da API até ela saturar.
+- Teto de conexões do Prisma ✅, cache curto da busca pública no Redis ✅ (métrica do piloto em lote ✅), fila que não trava a requisição com o Redis fora ✅. Erros e request lento no Sentry ✅. A fazer: trilha de ações no Axiom. Uma instância da API até ela saturar.
 
 ## Horizonte: rápido e barato — em andamento
 
@@ -610,11 +610,15 @@ Retenção no Axiom: **12 meses**, na faixa da cópia de e-mail e do histórico 
 
 `LoginHistory` continua no Postgres: a tela de segurança lê dali, o volume é baixo e a guarda de 12 meses já apaga.
 
-### Erros e alerta → Sentry
+### ✅ Erros e alerta → Sentry
 
 O log no stdout do Nest continua. O **Sentry** recebe exceção e request lento, com alerta. O plano gratuito cobre o piloto. Sentry é "quebrou"; Axiom é "quem fez".
 
-Por padrão o SDK do Sentry manda cabeçalhos e corpo das requisições, com cookie de sessão e e-mail. Configurar `sendDefaultPii: false` e um `beforeSend` que tira cookie, `Authorization`, corpo do GraphQL e os mesmos campos que ficam fora da trilha.
+Por padrão o SDK do Sentry manda cabeçalhos e corpo das requisições, com cookie de sessão e e-mail. Feito (`src/common/sentry/`), com o Sentry 11:
+- `dataCollection` sem usuário automático, cookie, corpo, query string, variáveis nem texto do GraphQL, dados de jobs e texto de SQL; `beforeSend`/`beforeSendTransaction`/`beforeSendSpan` tiram de novo cookie, `Authorization`, `x-backoffice-gateway`, corpo, usuário além do id e o texto de comando dos spans (a chave do Redis leva o e-mail, ex.: `auth:login-blocked:<e-mail>`).
+- Fora as integrações `LocalVariables` (copia variáveis da pilha no erro), `Console` e `Express` (aviso de MaxListeners em todo request).
+- `SentryInterceptor`: exceção inesperada e 5xx viram erro; entrada inválida, sem login e sem permissão não. Request acima de `SENTRY_SLOW_REQUEST_MS` (2 s) vira aviso. Vão a operação e o id de quem chamou.
+- Conferido contra um Sentry de mentira, com 100% de rastro: login certo e errado e consultas logadas, nenhum e-mail, senha ou cookie nos envios.
 
 ### LGPD
 

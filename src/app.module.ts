@@ -26,6 +26,7 @@ import { GraphQLAppModule } from './graphql/graphql.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
 import { BackofficeAuditInterceptor } from './backoffice/audit/backoffice-audit.interceptor';
+import { SentryInterceptor } from './common/sentry/sentry.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
 import { RedisModule } from './redis/redis.module';
@@ -228,6 +229,11 @@ import { formatGqlError } from './graphql/format-error';
       // Registro de ações do backoffice (escritas das operações da equipe do sistema)
       provide: APP_INTERCEPTOR,
       useClass: BackofficeAuditInterceptor,
+    },
+    {
+      // Erros inesperados e request lento no Sentry (sem SENTRY_DSN, nada)
+      provide: APP_INTERCEPTOR,
+      useClass: SentryInterceptor,
     },
   ],
 })

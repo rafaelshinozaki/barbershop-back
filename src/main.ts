@@ -1,4 +1,6 @@
 // src/main.ts
+// Primeiro de tudo: o Sentry (se SENTRY_DSN) instrumenta o que vem depois
+import './instrument';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestFactory } from '@nestjs/core';
