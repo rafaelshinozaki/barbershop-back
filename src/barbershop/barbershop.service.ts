@@ -6176,6 +6176,16 @@ export class BarbershopService {
   ) {
     checkSaleAmounts(data);
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    // Barbeiro: a venda é dele (como na listagem, que só mostra as dele).
+    // Antes dava pra lançar em nome de um colega (e a comissão ia junto) ou
+    // cobrar o atendimento de outro
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
+    if (ownBarberId !== null) {
+      if (data.barberId && data.barberId !== ownBarberId) {
+        throw new ForbiddenException('Você só registra vendas suas.');
+      }
+      data = { ...data, barberId: ownBarberId };
+    }
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
     // Conta do horário: uma venda só por horário, e o sinal já pago (online
@@ -6188,6 +6198,7 @@ export class BarbershopService {
         where: { id: data.appointmentId, barbershopId },
         select: {
           id: true,
+          barberId: true,
           status: true,
           depositPaid: true,
           depositAmount: true,
@@ -6199,6 +6210,7 @@ export class BarbershopService {
         },
       });
       if (!appt) throw new NotFoundException('Agendamento não encontrado');
+      this.ensureOwnAppointment(ownBarberId, appt);
       if (appt.sale) {
         throw new BadRequestException(`Este atendimento já foi cobrado (venda #${appt.sale.id})`);
       }

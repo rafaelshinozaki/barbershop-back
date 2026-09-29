@@ -1429,6 +1429,28 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(ownerIds).toEqual(expect.arrayContaining([own.id, other.id]));
     });
 
+    it('barbeiro não lança venda em nome de colega nem cobra o atendimento de outro', async () => {
+      const sale = (extra: Record<string, unknown>) =>
+        service.createSale(A.staffUserId, A.shopId, {
+          saleType: 'SERVICE',
+          items: [],
+          subtotal: 10,
+          total: 10,
+          ...extra,
+        });
+      // Sem dizer o profissional: a venda é dele
+      const mine = await sale({});
+      expect(mine.barberId).toBe(A.barberId);
+      await denied(sale({ barberId: A.otherBarberId }));
+      const othersAppt = await book(at(day, '16:00'), { barberId: A.otherBarberId });
+      await expect(sale({ appointmentId: othersAppt!.id })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(
+        (await prisma.appointment.findUniqueOrThrow({ where: { id: othersAppt!.id } })).status,
+      ).not.toBe('COMPLETED');
+    });
+
     it('gerente (como no Booksy) faz quase tudo do dono: caixa, relatórios, comissões; só apagar a unidade é do dono', async () => {
       expect(await service.getMyAccessLevel(managerUserId, A.shopId)).toBe('manager');
       await expect(
