@@ -7,6 +7,7 @@ import { PushService } from '@/push/push.service';
 import { NotificationType } from '@/notifications/dto/create-notification.dto';
 import { Role } from '@/auth/interfaces/roles';
 import { supportTicketUrl, verifySupportToken } from '@/barbershop/appointment-link';
+import { backofficeUrl } from '../common/cors-origins';
 
 export const SUPPORT_CATEGORIES = ['account', 'booking', 'payment', 'safety', 'other'] as const;
 export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
@@ -265,7 +266,7 @@ export class SupportService {
         title: text.title,
         message: text.message(subject.slice(0, 80)),
         type: NotificationType.INFO,
-        actionUrl: '/backoffice/support',
+        actionUrl: `${backofficeUrl()}/support`,
       };
     });
     await this.prisma.userNotification.createMany({ data });
@@ -276,7 +277,7 @@ export class SupportService {
         (lang) => ({
           title: ADMIN_TEXT[lang].title,
           body: ADMIN_TEXT[lang].message(subject.slice(0, 80)),
-          url: '/backoffice/support',
+          url: `${backofficeUrl()}/support`,
           tag: 'support',
         }),
       )

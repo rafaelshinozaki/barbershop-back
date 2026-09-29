@@ -12,13 +12,20 @@ const STATIC_ORIGINS = [
   'http://localhost:5176', // front em dev (porta alternativa)
   'http://localhost:5177', // front em dev (porta alternativa)
   'http://localhost:5178', // front em dev (porta alternativa)
+  'http://localhost:5180', // backoffice em dev
+  'http://localhost:5181', // backoffice em dev (porta alternativa)
   'https://barbershop-front-ten.vercel.app', // domínio Vercel (produção)
   'https://barbershop.zeero.dev.br', // domínio de produção
   'https://zeero.dev.br', // domínio alternativo
 ];
 
+/** Endereço do app de backoffice (repo barbershop-backoffice) */
+export function backofficeUrl(): string {
+  return (process.env.BACKOFFICE_URL || 'http://localhost:5180').replace(/\/+$/, '');
+}
+
 export function corsOriginList(frontendUrl?: string): string[] {
-  return [frontendUrl || 'http://localhost:5173', ...STATIC_ORIGINS];
+  return [frontendUrl || 'http://localhost:5173', backofficeUrl(), ...STATIC_ORIGINS];
 }
 
 // Subdomínio próprio de barbearia (ex.: barbeariavintage.<domínio da
