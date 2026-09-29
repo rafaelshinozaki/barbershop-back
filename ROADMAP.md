@@ -534,7 +534,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Falta só checar a marca no INPI e o domínio antes de trocar o nome.
 
 **2. Jurídico** (caminho decidido; falta o advogado revisar)
-- Reescrever Termos de uso e Política de privacidade com as decisões tomadas (as páginas `/terms` e `/privacy` existem com texto provisório) e passar por advogado.
+- Termos de uso e Política de privacidade ✅ reescritos com as decisões tomadas (pt, en e es, com aviso "em revisão jurídica"): controlador × operador, dados de saúde só com consentimento, operadores (Stripe, e-mail/WhatsApp, Sentry e Axiom só com ids) e transferência internacional, prazos de guarda da rotina diária, direitos e como exercer, taxas só no que passa pelo Stripe, freelancer sem subordinação. **Falta:** revisão do advogado, nome e contato do encarregado (DPO) e razão social/CNPJ no rodapé.
 - Confirmar os prazos da tabela de guarda e o consentimento para dado de saúde na ficha técnica.
 - Contratar o emissor de NFS-e (Focus NFe, NFE.io ou eNotas) e o cadastro municipal da empresa.
 
