@@ -219,6 +219,12 @@ export class SocialService {
     },
   ) {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    // Só imagem enviada pra esta unidade (a listagem assina um link de
+    // download pra essa chave: sem isso, qualquer arquivo do bucket)
+    const prefix = `social-posts/${barbershopId}/`;
+    if (!data.imageKey?.startsWith(prefix) || data.imageKey.includes('..')) {
+      throw new BadRequestException('Imagem inválida. Envie a imagem de novo.');
+    }
     if (!data.postToFacebook && !data.postToInstagram) {
       throw new BadRequestException('Escolha pelo menos uma rede social.');
     }
