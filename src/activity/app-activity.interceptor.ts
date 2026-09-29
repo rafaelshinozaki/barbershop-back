@@ -15,6 +15,7 @@ type Req = {
   url?: string;
   route?: { path?: string };
   headers?: Record<string, string | string[] | undefined>;
+  requestId?: string;
   body?: unknown;
   params?: unknown;
   user?: { id?: number; role?: { name?: string } | string };
@@ -53,10 +54,9 @@ export class AppActivityInterceptor implements NestInterceptor {
           : null;
       const user = req?.user;
       const role = typeof user?.role === 'string' ? user.role : user?.role?.name ?? null;
-      const header = req?.headers?.['x-request-id'];
       const event: AppActivityEvent = {
         _time: new Date().toISOString(),
-        requestId: (typeof header === 'string' && header.slice(0, 100)) || randomUUID(),
+        requestId: req?.requestId ?? randomUUID(),
         actorType: user?.id != null ? 'user' : req?.clientUser?.id != null ? 'client' : 'anonymous',
         actorId: user?.id ?? req?.clientUser?.id ?? null,
         role,

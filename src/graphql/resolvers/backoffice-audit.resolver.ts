@@ -38,6 +38,10 @@ export class BackofficeAuditEntryType {
 
   @Field(() => String, { nullable: true })
   error?: string | null;
+
+  /** Id do request (o mesmo do Sentry e da trilha) */
+  @Field(() => String, { nullable: true })
+  requestId?: string | null;
 }
 
 @ObjectType()

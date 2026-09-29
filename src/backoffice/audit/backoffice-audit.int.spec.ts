@@ -57,7 +57,7 @@ describe('registro de ações do backoffice (integração)', () => {
       getArgs: () => [
         null,
         args,
-        { req: { backofficeActor: actor } },
+        { req: { backofficeActor: actor, requestId: 'req-audit-0001' } },
         { parentType: { name: parent }, fieldName: field },
       ],
     } as unknown as ExecutionContext);
@@ -124,6 +124,7 @@ describe('registro de ações do backoffice (integração)', () => {
       success: true,
       error: null,
       args: { userId: 7, active: false, password: '[oculto]' },
+      requestId: 'req-audit-0001',
     });
     expect(second).toMatchObject({ success: false, error: 'Usuário não encontrado' });
   });

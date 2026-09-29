@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { corsOriginList, isAllowedOrigin } from './common/cors-origins';
+import { requestIdMiddleware } from './common/request-id';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -40,6 +41,9 @@ async function bootstrap() {
   // Log para debug do GraphQL
   logger.log('🚀 Iniciando aplicação...');
   logger.log('📋 Verificando configuração GraphQL...');
+
+  // Id do request antes de tudo (vai no Sentry, na trilha e no registro de ações)
+  app.use(requestIdMiddleware);
 
   // Custom body parser: saves raw body on webhook route for Stripe signature verification,
   // while parsing JSON normally for all other routes.
@@ -155,7 +159,10 @@ async function bootstrap() {
       }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization, apollo-require-preflight',
+    // x-request-id e sentry-trace/baggage: o front liga o erro da tela ao request
+    allowedHeaders:
+      'Content-Type, Authorization, apollo-require-preflight, x-request-id, sentry-trace, baggage',
+    exposedHeaders: 'x-request-id',
     credentials: true, // se você usar cookies ou auth
   });
 

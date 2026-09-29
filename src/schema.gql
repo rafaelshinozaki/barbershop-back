@@ -345,6 +345,7 @@ type BackofficeAuditEntryType {
   error: String
   id: Int!
   operation: String!
+  requestId: String
   success: Boolean!
 }
 
