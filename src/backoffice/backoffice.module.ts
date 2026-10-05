@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BackofficeService } from './backoffice.service';
 import { BackofficeTeamService } from './backoffice-team.service';
 import { BackofficeAuditService } from './audit/backoffice-audit.service';
+import { BarbershopDossierService } from './barbershop-dossier.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 
@@ -26,7 +27,17 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [BackofficeService, BackofficeTeamService, BackofficeAuditService],
-  exports: [BackofficeService, BackofficeTeamService, BackofficeAuditService],
+  providers: [
+    BackofficeService,
+    BackofficeTeamService,
+    BackofficeAuditService,
+    BarbershopDossierService,
+  ],
+  exports: [
+    BackofficeService,
+    BackofficeTeamService,
+    BackofficeAuditService,
+    BarbershopDossierService,
+  ],
 })
 export class BackofficeModule {}

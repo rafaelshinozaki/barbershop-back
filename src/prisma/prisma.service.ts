@@ -20,6 +20,12 @@ export const CHANGE_LOG_MODELS = new Set([
   'Appointment',
   'Customer',
   'Review',
+  // Sem unidade: o que a equipe da plataforma altera (registro de ações)
+  'User',
+  'ClientAccount',
+  'Professional',
+  'SupportTicket',
+  'ContentReport',
 ]);
 
 const WRITE_ACTIONS = new Set([
