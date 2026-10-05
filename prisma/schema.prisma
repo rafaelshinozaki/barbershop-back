@@ -2242,3 +2242,35 @@ model BackofficeAuditLog {
   @@index([actorId])
   @@index([operation])
 }
+
+/// Histórico de alterações (quem mudou o quê, antes → depois). Gravado por
+/// gatilho no banco (migração 20261112100000_change_log); o app só lê.
+model ChangeLog {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  barbershopId Int?
+  networkId    Int?
+  // Barbershop, BarbershopService, Appointment, Customer…
+  entityType   String
+  entityId     String
+  entityName   String?
+  // create | update | delete
+  action       String
+  // { campo: [antes, depois] } (telefone/e-mail mascarados, observações ocultas)
+  changes      Json
+  // user | client | staff | system
+  actorType    String
+  actorId      Int?
+  actorName    String?
+  actorRole    String?
+  // app | backoffice | system
+  origin       String
+  reason       String?
+  requestId    String?
+
+  @@index([barbershopId, createdAt])
+  @@index([networkId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}

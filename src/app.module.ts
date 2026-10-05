@@ -27,6 +27,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottleInterceptor } from './common/interceptors/throttle.interceptor';
 import { BackofficeAuditInterceptor } from './backoffice/audit/backoffice-audit.interceptor';
 import { SentryInterceptor } from './common/sentry/sentry.interceptor';
+import { ChangeActorInterceptor } from './common/change-actor.interceptor';
 import { ActivityModule } from './activity/activity.module';
 import { AppActivityInterceptor } from './activity/app-activity.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
@@ -223,6 +224,11 @@ import { formatGqlError } from './graphql/format-error';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      // Quem está agindo, pro histórico de alterações (gatilho no banco)
+      provide: APP_INTERCEPTOR,
+      useClass: ChangeActorInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

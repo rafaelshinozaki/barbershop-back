@@ -577,6 +577,9 @@ async function main() {
 
     if (SEED_DEMO) {
       await seedDemoData(prisma);
+      // O que o seed criou não é "alteração" de ninguém: o histórico da
+      // demonstração começa vazio (SEED_DEMO nunca roda em produção)
+      await prisma.changeLog.deleteMany({ where: { actorType: 'system' } });
     } else {
       console.log(
         IS_PRODUCTION

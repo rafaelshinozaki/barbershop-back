@@ -139,6 +139,9 @@ export class AccountDeletionService {
 
     const now = new Date();
     await this.prisma.$transaction([
+      // O negócio sai inteiro: sem uma linha de histórico por item apagado
+      // em cascata (vale só nesta transação)
+      this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
       // Negócio do dono (cascade leva clientes, agenda, vendas, equipe…)
       this.prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } }),
       this.prisma.network.deleteMany({ where: { id: { in: networkIds } } }),
@@ -168,6 +171,17 @@ export class AccountDeletionService {
         data: { acceptedByUserId: null },
       }),
       this.prisma.employeeInvite.deleteMany({ where: { inviterId: userId } }),
+      // Histórico: o do negócio apagado sai; nas outras unidades, quem fez
+      // vira "Conta excluída"
+      this.prisma.changeLog.deleteMany({
+        where: {
+          OR: [{ barbershopId: { in: shopIds } }, { networkId: { in: networkIds } }],
+        },
+      }),
+      this.prisma.changeLog.updateMany({
+        where: { actorType: 'user', actorId: userId },
+        data: { actorName: null },
+      }),
       this.prisma.employeeInvite.updateMany({
         where: { acceptedByUserId: userId },
         data: { acceptedByUserId: null },

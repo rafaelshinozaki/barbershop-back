@@ -589,6 +589,11 @@ export class ClientAuthService {
         where: { clientAccountId },
         data: { clientAccountId: null },
       }),
+      // Histórico das unidades: o que o cliente fez fica, sem o nome
+      this.prisma.changeLog.updateMany({
+        where: { actorType: 'client', actorId: clientAccountId },
+        data: { actorName: null },
+      }),
       this.prisma.clientAccount.update({
         where: { id: clientAccountId },
         data: {

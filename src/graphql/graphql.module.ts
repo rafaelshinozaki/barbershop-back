@@ -39,6 +39,7 @@ import { PayrollResolver } from './resolvers/payroll.resolver';
 import { CalendarResolver } from './resolvers/calendar.resolver';
 import { ReviewRequestResolver } from './resolvers/review-request.resolver';
 import { ClosureResolver } from './resolvers/closure.resolver';
+import { ChangeLogResolver } from './resolvers/change-log.resolver';
 import { ScheduleResolver } from './resolvers/schedule.resolver';
 import { AppointmentSeriesResolver } from './resolvers/appointment-series.resolver';
 import { DepositResolver } from './resolvers/deposit.resolver';
@@ -100,6 +101,7 @@ import { SocialModule } from '../social/social.module';
     CalendarResolver,
     ReviewRequestResolver,
     ClosureResolver,
+    ChangeLogResolver,
     ScheduleResolver,
     AppointmentSeriesResolver,
     DepositResolver,

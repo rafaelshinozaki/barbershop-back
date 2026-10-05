@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { corsOriginList, isAllowedOrigin } from './common/cors-origins';
 import { requestIdMiddleware } from './common/request-id';
+import { requestContextMiddleware } from './common/request-context';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -44,6 +45,8 @@ async function bootstrap() {
 
   // Id do request antes de tudo (vai no Sentry, na trilha e no registro de ações)
   app.use(requestIdMiddleware);
+  // Contexto do request (id e quem está agindo) pro histórico de alterações
+  app.use(requestContextMiddleware);
 
   // Custom body parser: saves raw body on webhook route for Stripe signature verification,
   // while parsing JSON normally for all other routes.
