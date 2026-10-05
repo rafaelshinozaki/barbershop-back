@@ -1028,7 +1028,13 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
     - `findUnique` sem chave dá erro em vez de devolver o primeiro registro.
   - **Teste:** o guard é testado contra o banco com o cookie do cliente, o `state` do OAuth, um token sem sessão e a sessão de verdade.
 
-### Boas-vindas personalizadas por cargo (pedido)
+### Boas-vindas personalizadas por cargo (pedido) ✅
+
+- **Feito:**
+  - **Back:** consulta `myOnboarding` com os passos do cargo na unidade mais recente da pessoa. O que dá para conferir nos dados se marca sozinho: serviços, horário, equipe, recebimento pelo app, primeiro agendamento, caixa aberto pela pessoa, escala, calendário sincronizado e foto. Os passos de abrir uma tela (página pública, agenda, relatórios…) contam ao abrir, pelo `completeOnboardingStep`. O "Dispensar" e o progresso ficam na tabela `OnboardingProgress`.
+  - **Quando aparece:** nos primeiros 30 dias da pessoa na unidade; o dono que ainda não cadastrou o negócio vê "Cadastrar o negócio".
+  - **Front:** o card substitui o antigo, com o texto e os passos de cada cargo (pt, en, es).
+  - **Falta:** o profissional por conta própria e o cliente final (área do cliente).
 
 - **Hoje:** há um card só, "Bem-vindo ao seu estabelecimento!".
   - Ele aparece para quem está no plano gratuito, de qualquer cargo. Na recepção e no básico aparece com o texto do dono ("Gerencie… funcionários e vendas").
@@ -1074,6 +1080,6 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 ### Ordem sugerida
 
 1. ✅ **Sobrando** itens 1 a 4, mais erros 2, 3 e 4. Plano, cobranças e franquia só para o dono (menu e rotas); a recepção vê o caixa, não o faturamento do dia; o painel diz se a pessoa vende (`canSell`); status da fila e datas no idioma do app; unidade sem acesso com aviso. Testado por cargo no E2E (`roles.spec.ts`).
-2. **Boas-vindas por cargo:** o progresso no back e os passos que se marcam sozinhos.
+2. ✅ **Boas-vindas por cargo:** o progresso no back e os passos que se marcam sozinhos.
 3. **Erros 5 a 11** e o que falta.
 

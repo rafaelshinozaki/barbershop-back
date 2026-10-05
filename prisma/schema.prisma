@@ -78,6 +78,7 @@ model User {
   jobApplications JobApplication[]
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
+  onboardingProgress  OnboardingProgress[]
 }
 
 // Métodos de login social adicionais conectados a uma conta (além do
@@ -2278,4 +2279,21 @@ model ChangeLog {
   @@index([actorId])
   @@index([createdAt])
   @@index([barberIds], type: Gin)
+}
+
+// Boas-vindas por cargo: o que a pessoa já marcou como feito (os passos que
+// o sistema confere sozinho, como "cadastrou serviços", não ficam aqui) e se
+// dispensou o card. Uma linha por pessoa e unidade; barbershopId 0 = dono que
+// ainda não cadastrou a primeira unidade.
+model OnboardingProgress {
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  userId       Int
+  barbershopId Int
+  stepsDone    String[]  @default([])
+  dismissedAt  DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, barbershopId])
 }

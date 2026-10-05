@@ -27,6 +27,8 @@ import { BackofficeTeamResolver } from './resolvers/backoffice-team.resolver';
 import { BackofficeAuditResolver } from './resolvers/backoffice-audit.resolver';
 import { SystemHealthResolver } from './resolvers/system-health.resolver';
 import { BackupModule } from '../backup/backup.module';
+import { OnboardingModule } from '../onboarding/onboarding.module';
+import { OnboardingResolver } from './resolvers/onboarding.resolver';
 import { BackofficeBarbershopResolver } from './resolvers/backoffice-barbershop.resolver';
 import { NotificationsResolver } from './resolvers/notifications.resolver';
 import { PaymentResolver } from './resolvers/payment.resolver';
@@ -82,8 +84,10 @@ import { SocialModule } from '../social/social.module';
     SocialModule,
     SupportModule,
     BackupModule,
+    OnboardingModule,
   ],
   providers: [
+    OnboardingResolver,
     RealtimeResolver,
     AuthResolver,
     UserResolver,
