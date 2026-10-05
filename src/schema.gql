@@ -780,6 +780,37 @@ type ChairRentType {
   totalReceived: Float!
 }
 
+type ChangeFieldType {
+  after: String
+  before: String
+  field: String!
+}
+
+type ChangeLogActorType {
+  id: Int!
+  kind: String!
+  name: String
+}
+
+type ChangeLogEntryType {
+  action: String!
+  actorId: Int
+  actorKind: String!
+  actorName: String
+  changes: [ChangeFieldType!]!
+  createdAt: DateTime!
+  entityId: String!
+  entityName: String
+  entityType: String!
+  id: Int!
+  reason: String
+}
+
+type ChangeLogPageType {
+  items: [ChangeLogEntryType!]!
+  total: Int!
+}
+
 input ChangePasswordInput {
   code: String!
   email: String!
@@ -3173,6 +3204,8 @@ type Query {
   barbershop(id: Int!): Barbershop
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
+  barbershopChangeLog(actorId: Int, barbershopId: Int!, entityType: String, from: DateTime, limit: Int, offset: Int, to: DateTime): ChangeLogPageType!
+  barbershopChangeLogActors(barbershopId: Int!): [ChangeLogActorType!]!
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
   barbershopJobOpenings(barbershopId: Int!): [JobOpeningType!]!

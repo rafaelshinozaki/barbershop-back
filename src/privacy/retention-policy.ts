@@ -25,6 +25,8 @@ export const RETENTION_DAYS = {
   searchEvent: 365,
   /** Registro de ações do backoffice (quem da equipe fez o quê). */
   backofficeAudit: 365 * 2,
+  /** Histórico de alterações do negócio (quem mudou o quê, antes → depois). */
+  changeLog: 365,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

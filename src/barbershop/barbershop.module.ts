@@ -15,6 +15,7 @@ import { ProReferralService } from './pro-referral.service';
 import { ImportService } from './import.service';
 import { ReviewRequestService } from './review-request.service';
 import { ClosureService } from './closure.service';
+import { ChangeLogService } from './change-log.service';
 import { ReviewManagementService } from './review-management.service';
 import { ScheduleService } from './schedule.service';
 import { AppointmentSeriesService } from './appointment-series.service';
@@ -98,6 +99,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AppointmentReminderProcessor,
     ReviewRequestService,
     ClosureService,
+    ChangeLogService,
     ReviewManagementService,
     ScheduleService,
     AppointmentSeriesService,
@@ -126,6 +128,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     GeocodingService,
     ReviewRequestService,
     ClosureService,
+    ChangeLogService,
     ReviewManagementService,
     ScheduleService,
     AppointmentSeriesService,
