@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { Role } from '../auth/interfaces/roles';
 import {
   DEFAULT_TIMEZONE,
   addDaysStr,
@@ -384,6 +386,54 @@ export class BackofficeService {
         labels: Object.keys(ageRanges),
         data: Object.values(ageRanges),
       },
+    };
+  }
+
+  /**
+   * Seletor de pessoas de Avisos e E-mails (área Operação): id, nome, cargo,
+   * plano e se está ativa. Contas do sistema ficam fora (não recebem aviso
+   * pela plataforma), e não sai contato nem endereço.
+   */
+  async listPeople(params: { name?: string; role?: string; page?: number; limit?: number }) {
+    const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
+    const page = Math.max(params.page ?? 1, 1);
+    const where: Prisma.UserWhereInput = {
+      deleted_at: null,
+      role: {
+        name: {
+          notIn: [Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER],
+          ...(params.role && params.role !== 'all' ? { equals: params.role } : {}),
+        },
+      },
+      ...(params.name?.trim()
+        ? { fullName: { contains: params.name.trim(), mode: 'insensitive' as const } }
+        : {}),
+    };
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          fullName: true,
+          membership: true,
+          isActive: true,
+          role: { select: { name: true } },
+        },
+        orderBy: { fullName: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return {
+      data: users.map((u) => ({
+        id: u.id,
+        fullName: u.fullName,
+        role: u.role?.name ?? '',
+        plan: String(u.membership ?? 'FREE'),
+        isActive: u.isActive ?? true,
+      })),
+      total,
     };
   }
 

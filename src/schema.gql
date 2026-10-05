@@ -374,6 +374,19 @@ type BackofficeDashboard {
   userGrowth: UserGrowthData!
 }
 
+type BackofficePeopleResponse {
+  data: [BackofficePerson!]!
+  total: Int!
+}
+
+type BackofficePerson {
+  fullName: String!
+  id: Int!
+  isActive: Boolean!
+  plan: String!
+  role: String!
+}
+
 type BackofficeStats {
   activeUsers: Int!
   appointmentsToday: Int!
@@ -2145,7 +2158,6 @@ type Mutation {
   cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
   cancelWaitlistEntry(barbershopId: Int!, id: Int!): Boolean!
-  changeMultipleUsersPlan(plan: String!, userIds: [Int!]!): Boolean!
   changePassword(input: ChangePasswordInput!): Boolean!
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
@@ -2334,7 +2346,6 @@ type Mutation {
   """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
   setCustomerBlocked(barbershopId: Int!, blocked: Boolean!, customerId: Int!, reason: String): BarbershopCustomer!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
-  setMultipleUsersActive(active: Boolean!, userIds: [Int!]!): Boolean!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
@@ -3314,6 +3325,7 @@ type Query {
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
   backofficeAuditLog(actorId: Int, limit: Int, offset: Int, operation: String): BackofficeAuditPageType!
   backofficeDashboard: BackofficeDashboard!
+  backofficePeople(limit: Int, name: String, page: Int, role: String): BackofficePeopleResponse!
   backofficeStats: BackofficeStats!
   backofficeTeam: [BackofficeTeamMemberType!]!
   backupStatus: BackupStatusType!

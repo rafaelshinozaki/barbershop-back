@@ -16,6 +16,7 @@ import {
   GeographicAnalysis,
   DemographicAnalysis,
   DetailedUsersResponse,
+  BackofficePeopleResponse,
   BackofficeDashboard,
   MarketplaceMetrics,
   OverduePaymentDetail,
@@ -116,6 +117,20 @@ export class BackofficeResolver {
   @Query(() => DemographicAnalysis)
   async demographicAnalysis() {
     return this.backofficeService.getDemographicAnalysis();
+  }
+
+  /** Quem recebe Avisos e E-mails: nome e cargo, sem contato (área Operação) */
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
+  @Query(() => BackofficePeopleResponse)
+  async backofficePeople(
+    @Args('name', { nullable: true }) name?: string,
+    @Args('role', { nullable: true }) role?: string,
+    @Args('page', { type: () => Int, nullable: true }) page?: number,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+  ) {
+    return this.backofficeService.listPeople({ name, role, page, limit });
   }
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)

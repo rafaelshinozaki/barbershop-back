@@ -430,3 +430,34 @@ export class PaginatedCompletedPayments {
   @Field(() => Int)
   totalPages: number;
 }
+
+/**
+ * Pessoa no seletor de Avisos e E-mails (área Operação): só o necessário
+ * para escolher quem recebe. Sem e-mail, telefone, endereço ou nascimento.
+ */
+@ObjectType()
+export class BackofficePerson {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  fullName: string;
+
+  @Field()
+  role: string;
+
+  @Field()
+  plan: string;
+
+  @Field()
+  isActive: boolean;
+}
+
+@ObjectType()
+export class BackofficePeopleResponse {
+  @Field(() => [BackofficePerson])
+  data: BackofficePerson[];
+
+  @Field(() => Int)
+  total: number;
+}
