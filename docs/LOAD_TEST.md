@@ -30,6 +30,16 @@ sai com um user-agent próprio: o limite por IP + navegador vale por cliente,
 e aqui cada requisição faz o papel de um cliente diferente. O teste mede o
 custo no servidor, não o limite.
 
+## Toda semana, no GitHub Actions
+
+O `.github/workflows/load-test.yml` roda toda segunda às 03:17 (Brasília), ou à mão em Actions → "Teste de carga semanal" → Run workflow. Faz os passos acima com 15 s por cenário e passa `LOAD_THRESHOLDS=scripts/load/thresholds.json`:
+- o run quebra se algum cenário der erro ou passar do p95 máximo;
+- os limites ficam em cerca de 2,5× o medido, para pegar regressão grande sem quebrar por variação do runner.
+
+O resultado sai no resumo do run e no artefato `load-result-<n>` (`LOAD_RESULT_JSON`, guardado por 90 dias).
+
+Rodada local de referência (2026-10-05, já com o cache da busca, 10 s por cenário): busca de unidades SP com p95 de 107 ms, horários livres 420 ms, agenda da semana 186 ms, nenhum erro.
+
 ## Resultado (2026-09-28)
 
 Uma instância da API (Node, um processo) e o Postgres 16 na mesma máquina

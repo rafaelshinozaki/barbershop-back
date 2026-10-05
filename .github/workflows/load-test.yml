@@ -1,0 +1,102 @@
+name: Teste de carga semanal
+
+# Mede a busca, a página da unidade, os horários livres e a agenda com o
+# volume do docs/LOAD_TEST.md (3.000 unidades, 360 mil agendamentos) e
+# quebra se algum cenário der erro ou passar do p95 de
+# scripts/load/thresholds.json. O resultado fica no resumo do run e como
+# artefato (90 dias) pra comparar semana a semana. Toda segunda de
+# madrugada (horário de Brasília) e quando rodado à mão.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Segundos por cenário
+        default: '15'
+
+concurrency:
+  group: load-test
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: barbershop
+          POSTGRES_PASSWORD: barbershop
+          POSTGRES_DB: barbershop_load
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U barbershop -d barbershop_load"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://barbershop:barbershop@localhost:5432/barbershop_load?schema=public
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Banco com o seed base e o volume do teste
+        run: |
+          npx prisma migrate deploy
+          SEED_DEMO=true pnpm seed
+          LOAD_TEST_DB=true npx ts-node --transpile-only scripts/load/generate.ts | tee generate.log
+          echo "LOAD_RUN=$(grep -o 'run=[a-z0-9]*' generate.log | cut -d= -f2)" >> "$GITHUB_ENV"
+
+      # Uma instância, como em produção hoje; sem limite por IP (cada
+      # requisição do teste faz o papel de um cliente diferente) e sem o
+      # serviço de mapas
+      - name: API
+        run: |
+          cp .env.example .env
+          PORT=3040 THROTTLE_DISABLED=true GEOCODING_DISABLED=true FRONTEND_URL=http://localhost:5174 \
+            node dist/src/main > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3040/health > /dev/null && break; sleep 1; done
+          curl -sf localhost:3040/health || { cat api.log; exit 1; }
+
+      - name: Carga
+        run: node scripts/load/run.mjs
+        env:
+          LOAD_API: http://localhost:3040
+          LOAD_SECONDS: ${{ github.event.inputs.seconds || '15' }}
+          LOAD_THRESHOLDS: scripts/load/thresholds.json
+          LOAD_RESULT_JSON: load-result.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-result-${{ github.run_number }}
+          path: |
+            load-result.json
+            api.log
+          retention-days: 90

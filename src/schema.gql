@@ -1581,6 +1581,14 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 """
 scalar DateTime
 
+type DbStatsType {
+  ok: Boolean!
+  pingMs: Int!
+  poolBusy: Int
+  poolIdle: Int
+  poolWaiting: Int
+}
+
 type DeleteCouponResponse {
   message: String!
   success: Boolean!
@@ -2061,6 +2069,11 @@ enum MembershipStatus {
   PAID
   PAST_DUE
   PREMIUM
+}
+
+type MemoryStatsType {
+  heapUsedMb: Float!
+  rssMb: Float!
 }
 
 type ModerationItemType {
@@ -2609,6 +2622,13 @@ type NotificationWithUser {
 
 input OpenCashSessionInput {
   openingBalance: Float!
+}
+
+type OperationStatsType {
+  count: Int!
+  errors: Int!
+  operation: String!
+  p95Ms: Int!
 }
 
 type OverduePayment {
@@ -3416,12 +3436,27 @@ type Query {
   supportOpenCount: Int!
   supportQueue(status: String): [SupportTicketType!]!
   supportTicket(token: String!): SupportTicketPublicType!
+  systemHealth: SystemHealthType
   trialStatus: TrialStatus!
   user(id: Int!): User!
   userGrowthData: UserGrowthData!
   userSystemConfig: UserSystemConfig!
   usersDetailed(filters: UsersDetailedFilters!): DetailedUsersResponse!
   waitlistEntries(barbershopId: Int!, status: String): [WaitlistEntryType!]!
+}
+
+type QueueStatsType {
+  active: Int!
+  delayed: Int!
+  failed: Int!
+  name: String!
+  oldestWaitingSec: Int!
+  waiting: Int!
+}
+
+type RedisStatsType {
+  ok: Boolean!
+  pingMs: Int!
 }
 
 type ReportReasonCountType {
@@ -3431,6 +3466,16 @@ type ReportReasonCountType {
 
 input RequestChangePasswordCodeInput {
   email: String!
+}
+
+type RequestStatsType {
+  errorRate: Float!
+  errors: Int!
+  maxMs: Int!
+  p50Ms: Int!
+  p95Ms: Int!
+  requests: Int!
+  slowest: [OperationStatsType!]!
 }
 
 input ResetPasswordInput {
@@ -3895,6 +3940,19 @@ type SupportTicketType {
   """open | answered | closed"""
   status: String!
   subject: String!
+}
+
+type SystemHealthType {
+  collectedAt: String!
+  cpuPercent: Float!
+  db: DbStatsType!
+  eventLoopLagP99Ms: Float!
+  instance: String!
+  intervalSec: Int!
+  memory: MemoryStatsType!
+  queues: [QueueStatsType!]!
+  redis: RedisStatsType!
+  requests: RequestStatsType!
 }
 
 type TimeToFirstAppointment {
