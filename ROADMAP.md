@@ -577,7 +577,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
 **8. Registros e estabilidade** 🗺️ (spec abaixo)
-- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1 ✅ no código).
+- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1 e R2 ✅ no código).
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -978,13 +978,18 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 ### Etapas
 
 - **R1 — estabilidade básica** ✅ (código): Sentry nos dois fronts e no backoffice-back, `x-request-id` de ponta a ponta (front → API do backoffice → back, gravado no Sentry, no Axiom e no registro de ações). Como ligar e a conferência de fora em [docs/MONITORING.md](docs/MONITORING.md). Falta criar os projetos do Sentry e os monitores (UptimeRobot ou Better Stack) e configurar as variáveis no deploy.
-- **R2 — `ChangeLog`:** gatilhos, wrapper do autor, lista de campos por tabela e tela Histórico para dono e gerente.
+- **R2 — `ChangeLog`** ✅: gatilhos, wrapper do autor, lista de campos por tabela e tela Histórico para dono e gerente.
   - Back ✅:
     - **Tabela e gatilho:** tabela `ChangeLog` e um gatilho genérico (`change_log_capture`) em 11 tabelas: unidade, rede, serviços, produtos, equipe, escala, folgas, fechamentos, agendamentos, clientes e avaliações. Telefone e e-mail ficam mascarados; observação, motivo de folga e nascimento ficam ocultos.
     - **Autor:** vem do contexto do request (AsyncLocalStorage, preenchido depois do login). O `PrismaService` põe o autor em `set_config` dentro da transação: a escrita solta vira transação, e as transações interativas e em lote recebem o autor no começo. Job e script ficam como "Sistema".
     - **Consultas:** `barbershopChangeLog` e `barbershopChangeLogActors`, só para dono e gerente. A equipe da plataforma aparece como "Equipe da plataforma", com o motivo.
     - **Guarda:** 1 ano. Quem exclui a conta vira "Conta excluída" no histórico; o negócio apagado leva o histórico junto, sem gravar uma linha por item apagado em cascata.
-  - Tela Histórico no front: a fazer.
+  - Front ✅: aba **Histórico** (só dono e gerente).
+    - **Cada linha** diz quem fez, o que alterou e o antes → depois de cada campo. Ex.: "Cayo Carlos alterou o serviço "Corte masculino" — Preço: R$ 50,00 → R$ 47,00".
+    - **Filtros:** pessoa, tipo e período, com "mostrar mais".
+    - **Valores formatados pelo campo:** dinheiro, data, sim/não, duração, dia da semana e situação.
+    - **Equipe da plataforma:** aparece sem o nome. Telas em pt, en e es.
+  - Fica para depois: o profissional ver só o histórico da própria agenda.
 - **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice.
 - **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
 
