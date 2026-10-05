@@ -7,11 +7,7 @@ import {
   Logger,
   Get,
   InternalServerErrorException,
-  UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@/auth/guards/roles.guard';
-import { Roles } from '@/auth/roles.decorator';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -487,31 +483,6 @@ export class StripeController {
       available: isAvailable,
       timestamp: new Date().toISOString(),
     };
-  }
-
-  // Diagnóstico: só admin
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Get('test')
-  @ApiOperation({ summary: 'Test Stripe connection' })
-  @ApiResponse({ status: 200 })
-  async testStripe() {
-    try {
-      const isAvailable = await this.stripeService.isAvailable();
-      return {
-        success: true,
-        available: isAvailable,
-        message: isAvailable ? 'Stripe is working correctly' : 'Stripe is not available',
-      };
-    } catch (error) {
-      this.logger.error('Stripe test failed:', error);
-      return {
-        success: false,
-        available: false,
-        message: 'Stripe test failed',
-        error: error.message,
-      };
-    }
   }
 
   @Get('plans')

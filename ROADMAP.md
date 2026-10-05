@@ -762,7 +762,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 
 **Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
 
-**Operações antigas a tirar:** `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
+**Operações antigas a tirar** ✅ (feito): `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
 
 ### Tirar o backoffice do projeto principal
 
@@ -852,9 +852,13 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - IP real do cliente (`TRUST_PROXY`, `x-backoffice-client-ip`), tempo máximo e imagem Docker.
 
 **Fase 1 — acertar o que já existe**
-- Avisos, E-mails e Análise são de Operação, mas usam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tem só Operação vê a tela e toma erro. Correção: um seletor de pessoas enxuto na área Operação (id, nome, cargo, sem telefone ou endereço) e `allNotificationsWithUser` com `@RequireArea(OPERATIONS)`.
+- 🔧 Avisos, E-mails e Análise são de Operação, mas usavam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tinha só Operação via a tela e tomava erro.
+  - ✅ **Seletor de pessoas enxuto** (`backofficePeople`, área Operação): id, nome, cargo, plano e se está ativa, sem e-mail, telefone ou endereço, e sem as contas do sistema. Avisos e E-mails usam ele.
+  - ✅ **Análise:** a aba com a lista de pessoas (com e-mail) só aparece para quem tem Usuários; quem tem só Operação vê os números.
+  - ✅ **Histórico de Avisos:** a aba só aparece para o admin, que é quem o back deixa ler hoje.
+  - **Falta decidir:** abrir `allNotificationsWithUser` para a área Operação (o histórico mostra para quem cada aviso foi), ou manter só com o admin.
 - Tela Planos (admin), usando as operações que já existem.
-- Tirar as operações antigas duplicadas (lista acima).
+- ✅ Tirar as operações antigas duplicadas: `setMultipleUsersActive` e `changeMultipleUsersPlan` saíram do schema (o backoffice usa `bulkUserAction`); `removeUser`, `setUserActive` e `changeUserPlan` ficaram só no `backoffice.resolver`, que declara a área e protege as contas do sistema; `GET /stripe/test` saiu.
 - Cargos dos funcionários: permissões no lugar das áreas e `BACKOFFICE_ROLES`, já na `StaffUser` do backoffice-back (etapa S2 de "Tirar o backoffice do projeto principal"), com a migração de quem já tem áreas.
 - Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa e-mail e cargo e a pessoa define a senha pelo link). Hoje só dá para trocar o cargo de uma conta que já existe.
 - E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e toma 403 no resto.

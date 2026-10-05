@@ -433,52 +433,9 @@ export class UserResolver {
     };
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Mutation(() => Boolean)
-  async removeUser(@Args('userId', { type: () => Int }) userId: number) {
-    return this.userService.removeUser(userId);
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Mutation(() => Boolean)
-  async setUserActive(
-    @Args('userId', { type: () => Int }) userId: number,
-    @Args('active') active: boolean,
-  ) {
-    return this.userService.setUserActive(userId, active);
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Mutation(() => Boolean)
-  async setMultipleUsersActive(
-    @Args('userIds', { type: () => [Int] }) userIds: number[],
-    @Args('active') active: boolean,
-  ) {
-    return this.userService.setMultipleUsersActive(userIds, active);
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Mutation(() => Boolean)
-  async changeMultipleUsersPlan(
-    @Args('userIds', { type: () => [Int] }) userIds: number[],
-    @Args('plan') plan: string,
-  ) {
-    return this.userService.changeMultipleUsersPlan(userIds, plan);
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @Mutation(() => Boolean)
-  async changeUserPlan(
-    @Args('userId', { type: () => Int }) userId: number,
-    @Args('plan') plan: string,
-  ) {
-    return this.userService.changeUserPlan(userId, plan);
-  }
+  // removeUser, setUserActive e changeUserPlan ficam só no backoffice.resolver
+  // (declaram a área e protegem as contas do sistema). As versões em lote
+  // saíram: o backoffice usa bulkUserAction.
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
