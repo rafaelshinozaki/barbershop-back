@@ -24,16 +24,23 @@ export class NotificationsResolver {
 
   constructor(private readonly notificationsService: NotificationsService) {}
 
+  // Histórico da tela Avisos: área Operação (liberado pelo dono da plataforma;
+  // antes só o admin, e quem tinha Operação via a tela e tomava erro)
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
   @Query(() => [NotificationWithUser])
   async allNotificationsWithUser(
+    @CurrentUser() viewer: UserDTO,
     @Args('limit', { type: () => Int, defaultValue: 100 }) limit: number,
   ) {
     this.logger.log(`allNotificationsWithUser called, limit: ${limit}`);
     const result = await this.notificationsService.getAllNotificationsWithUser(limit);
     this.logger.log(`allNotificationsWithUser returning ${result.length} notifications`);
-    return result;
+    // A equipe (área Operação) vê para quem foi, sem o contato: o e-mail só
+    // para o admin, como no seletor de pessoas
+    if (viewer.role?.name === Role.SYSTEM_ADMIN) return result;
+    return result.map((n) => ({ ...n, user: n.user ? { ...n.user, email: '' } : n.user }));
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

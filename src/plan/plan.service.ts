@@ -38,7 +38,7 @@ export class PlanService {
       this.logger.log(`Created Stripe product: ${stripeProduct.id} and price: ${stripePrice.id}`);
     } catch (error) {
       this.logger.error('Failed to create Stripe product/price:', error);
-      throw new BadRequestException('Failed to create plan in Stripe');
+      throw new BadRequestException('Não foi possível criar o plano na Stripe');
     }
 
     const prismaPlanData: Prisma.PlanCreateInput = {
@@ -58,70 +58,73 @@ export class PlanService {
   async updatePlan(planId: number, planData: Partial<PlanDTO>) {
     this.logger.log(`Updating plan with ID: ${planId}`);
 
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: planId },
-    });
+    const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan || plan.deleted_at) throw new NotFoundException('Plano não encontrado');
 
-    if (!plan) {
-      this.logger.warn(`Plan with ID: ${planId} not found`);
-      throw new NotFoundException('Plan not found');
-    }
+    const price = planData.price != null ? Number(planData.price) : Number(plan.price);
+    const billingCycle = planData.billingCycle ?? plan.billingCycle;
+    let stripePriceId = planData.stripePriceId ?? plan.stripePriceId;
 
-    // Se o preço mudou, criar um novo preço no Stripe
-    if (planData.price && Number(planData.price) !== Number(plan.price)) {
+    // Preço ou ciclo mudou: preço novo no Stripe, no mesmo produto do plano
+    // (preço no Stripe não muda; quem já assina continua no preço antigo)
+    if (price !== Number(plan.price) || billingCycle !== plan.billingCycle) {
       try {
-        const recurring = this.getRecurringInterval(planData.billingCycle || plan.billingCycle);
-
-        const newStripePrice = await this.stripeService.createPrice(
-          'prod_' + planId, // Assumindo que o produto já existe
-          Math.round(Number(planData.price) * 100),
+        const productId =
+          (plan.stripePriceId &&
+            (await this.stripeService.getPriceProductId(plan.stripePriceId))) ||
+          (
+            await this.stripeService.createProduct(
+              planData.name ?? plan.name,
+              plan.description ?? undefined,
+            )
+          ).id;
+        const newPrice = await this.stripeService.createPrice(
+          productId,
+          Math.round(price * 100),
           'brl',
-          recurring,
+          this.getRecurringInterval(billingCycle),
         );
-
-        planData.stripePriceId = newStripePrice.id;
-        this.logger.log(`Created new Stripe price: ${newStripePrice.id} for plan ${planId}`);
+        stripePriceId = newPrice.id;
+        this.logger.log(`Created new Stripe price: ${newPrice.id} for plan ${planId}`);
       } catch (error) {
         this.logger.error('Failed to create new Stripe price:', error);
-        throw new BadRequestException('Failed to update plan price in Stripe');
+        throw new BadRequestException('Não foi possível criar o preço novo na Stripe');
       }
     }
 
-    return await this.prisma.plan.update({
+    return this.prisma.plan.update({
       where: { id: planId },
-      data: planData,
+      data: {
+        name: planData.name ?? undefined,
+        description: planData.description ?? undefined,
+        price,
+        billingCycle,
+        features: planData.features ?? undefined,
+        stripePriceId,
+      },
     });
   }
 
+  /**
+   * Tira o plano da lista (não apaga: assinaturas antigas e pagamentos
+   * continuam apontando para ele). Com assinatura ativa, não sai.
+   */
   async removePlan(planId: number) {
     this.logger.log(`Removing plan with ID: ${planId}`);
 
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: planId },
-    });
+    const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan || plan.deleted_at) throw new NotFoundException('Plano não encontrado');
 
-    if (!plan) {
-      this.logger.warn(`Plan with ID: ${planId} not found`);
-      throw new NotFoundException('Plan not found');
-    }
-
-    // Verificar se há assinaturas ativas para este plano
     const activeSubscriptions = await this.prisma.subscription.count({
-      where: {
-        planId,
-        status: PLANO_STATUS.ACTIVE,
-      },
+      where: { planId, status: PLANO_STATUS.ACTIVE },
     });
-
     if (activeSubscriptions > 0) {
       throw new BadRequestException(
-        `Cannot delete plan with ${activeSubscriptions} active subscriptions`,
+        `O plano tem ${activeSubscriptions} assinatura(s) ativa(s) e não pode ser removido`,
       );
     }
 
-    return await this.prisma.plan.delete({
-      where: { id: planId },
-    });
+    return this.prisma.plan.update({ where: { id: planId }, data: { deleted_at: new Date() } });
   }
 
   async findAllPlans(): Promise<PlanDTO[]> {

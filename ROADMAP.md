@@ -741,9 +741,9 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Importar usuários** (`/import-users`) | Usuários | Importa CSV | REST `/user/admin/import-csv` | ✅ |
 | **Equipe** (`/team`) | Admin | Funcionários e o cargo de cada um; convidar | `backofficeTeam`, `setBackofficeAreas` (vira `setBackofficeRole`) | 🔧 falta cargo e convite (Fase 1) |
 | **Registro de ações** (`/audit`) | Admin | O que a equipe alterou, por pessoa e operação | `backofficeAuditLog` | ✅ |
-| **Avisos no sininho** (`/manage-notifications`) | Operação | Mandar aviso para uma pessoa ou para várias; histórico | `createNotification`, `createBatchNotifications`, `allNotificationsWithUser`, `usersDetailed` | 🔧 ver Fase 1 |
-| **E-mails para usuários** (`/manage-email-notifications`) | Operação | Mandar e-mail e ver o histórico | `sendEmailNotification`, `emailHistory`, `usersDetailed` | 🔧 ver Fase 1 |
-| **Análise geográfica e demográfica** (`/geographic-demographic-analysis`) | Operação | Onde estão e quem são os usuários | `geographicAnalysis`, `demographicAnalysis`, `usersDetailed` | 🔧 ver Fase 1 |
+| **Avisos no sininho** (`/manage-notifications`) | Operação | Mandar aviso para uma pessoa ou para várias; histórico | `createNotification`, `createBatchNotifications`, `allNotificationsWithUser`, `backofficePeople` | ✅ |
+| **E-mails para usuários** (`/manage-email-notifications`) | Operação | Mandar e-mail e ver o histórico | `sendEmailNotification`, `emailHistory`, `backofficePeople` | ✅ |
+| **Análise geográfica e demográfica** (`/geographic-demographic-analysis`) | Operação | Onde estão e quem são os usuários | `geographicAnalysis`, `demographicAnalysis`; a lista de pessoas (`usersDetailed`) só com Usuários | ✅ |
 | **Cobranças recorrentes** (`/recurring-payments`) | Financeiro | Em atraso, forçar cobrança, processar, cancelar assinatura, estatísticas | REST `/payments/recurring/*`, `/payments/cancel/:userId` | ✅ |
 | **Destaque** (`/featured-barbershops`) — abas Unidades e Profissionais | Operação | Ligar/desligar Destaque até uma data | `adminBarbershops`, `adminProfessionals`, `setBarbershopFeatured`, `setProfessionalFeatured` | ✅ |
 | ↳ aba Compras | Financeiro | Receita do Destaque (30 dias e total) e compras pagas | `adminFeaturedPurchases` | ✅ |
@@ -753,7 +753,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Contas de cliente** (`/client-accounts`) | Suporte | Buscar cliente, suspender/reativar com motivo | `adminClientAccounts`, `setClientAccountSuspended` | ✅ |
 | **Preços e taxas** (`/pricing`) | Admin | Taxas da plataforma e preço do Destaque, sem deploy | `platformPricing`, `updatePlatformPricing` | ✅ |
 | **Cupons** (`/coupons`) | Admin | Criar, editar, apagar cupons e ver o uso | `getAllCoupons`, `createCoupon`, `updateCoupon`, `deleteCoupon`, `getCouponStats` | ✅ |
-| **Planos** (`/plans`) | Admin | Criar/editar/remover plano, sincronizar com a Stripe | REST `/plans/create`, `update`, `remove`, `sync-stripe` (GraphQL `createPlan`, `updatePlan`, `removePlan`, `syncPlansWithStripe`) | 🆕 só existe no back |
+| **Planos** (`/plans`) | Admin | Criar/editar/remover plano, sincronizar com a Stripe | REST `/plans/create`, `update`, `remove`, `sync-stripe` (GraphQL `createPlan`, `updatePlan`, `removePlan`, `syncPlansWithStripe`) | ✅ |
 | **Ficha da unidade** (`/barbershops/:id`) | Usuários (leitura) | Uma unidade inteira num lugar: dono e equipe, plano, Connect, Destaque, denúncias, pedidos de suporte, histórico com nome da equipe | `adminBarbershopDossier`, `adminBarbershopChangeLog` | ✅ |
 | **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
 | **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
@@ -852,12 +852,14 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - IP real do cliente (`TRUST_PROXY`, `x-backoffice-client-ip`), tempo máximo e imagem Docker.
 
 **Fase 1 — acertar o que já existe**
-- 🔧 Avisos, E-mails e Análise são de Operação, mas usavam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tinha só Operação via a tela e tomava erro.
+- ✅ Avisos, E-mails e Análise são de Operação, mas usavam `usersDetailed` (Usuários), e Avisos ainda usa `allNotificationsWithUser` (só admin). Quem tinha só Operação via a tela e tomava erro.
   - ✅ **Seletor de pessoas enxuto** (`backofficePeople`, área Operação): id, nome, cargo, plano e se está ativa, sem e-mail, telefone ou endereço, e sem as contas do sistema. Avisos e E-mails usam ele.
   - ✅ **Análise:** a aba com a lista de pessoas (com e-mail) só aparece para quem tem Usuários; quem tem só Operação vê os números.
-  - ✅ **Histórico de Avisos:** a aba só aparece para o admin, que é quem o back deixa ler hoje.
-  - **Falta decidir:** abrir `allNotificationsWithUser` para a área Operação (o histórico mostra para quem cada aviso foi), ou manter só com o admin.
-- Tela Planos (admin), usando as operações que já existem.
+  - ✅ **Histórico de Avisos:** `allNotificationsWithUser` aberto para a área Operação (decidido pelo dono da plataforma em 2026-10-05). Mostra para quem foi cada aviso; o e-mail de quem recebeu só vai para o admin (a equipe recebe vazio e vê o #id).
+- ✅ Tela Planos (admin, `/plans`): lista, criar, editar, remover (com confirmação) e "Sincronizar com a Stripe".
+  - **Corrigido no back:** mudar o preço criava o preço novo num produto inexistente da Stripe (`'prod_' + id`); agora usa o produto do preço atual, ou cria um. Mudar o ciclo também gera preço novo.
+  - **Remover** só tira da lista (`deleted_at`), em vez de apagar a linha que assinaturas antigas e pagamentos apontam; com assinatura ativa, não sai.
+  - **Preço** não pode ser negativo; zero vale (plano gratuito). Mensagens em português.
 - ✅ Tirar as operações antigas duplicadas: `setMultipleUsersActive` e `changeMultipleUsersPlan` saíram do schema (o backoffice usa `bulkUserAction`); `removeUser`, `setUserActive` e `changeUserPlan` ficaram só no `backoffice.resolver`, que declara a área e protege as contas do sistema; `GET /stripe/test` saiu.
 - Cargos dos funcionários: permissões no lugar das áreas e `BACKOFFICE_ROLES`, já na `StaffUser` do backoffice-back (etapa S2 de "Tirar o backoffice do projeto principal"), com a migração de quem já tem áreas.
 - Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa e-mail e cargo e a pessoa define a senha pelo link). Hoje só dá para trocar o cargo de uma conta que já existe.

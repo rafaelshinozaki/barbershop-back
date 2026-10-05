@@ -1,5 +1,5 @@
 import { InputType, Field, Int } from '@nestjs/graphql';
-import { IsNotEmpty, IsNumber, IsString, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, IsOptional, Min } from 'class-validator';
 
 @InputType()
 export class CreatePlanInput {
@@ -16,6 +16,7 @@ export class CreatePlanInput {
   @Field()
   @IsNotEmpty()
   @IsNumber()
+  @Min(0, { message: 'O preço não pode ser negativo' })
   price: number;
 
   @Field()
@@ -49,6 +50,7 @@ export class UpdatePlanInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsNumber()
+  @Min(0, { message: 'O preço não pode ser negativo' })
   price?: number;
 
   @Field({ nullable: true })
