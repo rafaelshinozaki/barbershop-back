@@ -13,7 +13,6 @@ import { ReviewRequestService } from '@/barbershop/review-request.service';
 import { ClosureService } from '@/barbershop/closure.service';
 import { DepositPaymentService } from '@/barbershop/deposit-payment.service';
 import { PilotMetricsService } from '@/barbershop/pilot-metrics.service';
-import { ClientTokenPayload } from '@/client-auth/interfaces/client-token-payload.interface';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
 import {
@@ -49,6 +48,7 @@ import {
 } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
 import { createAppointmentToken } from '@/barbershop/appointment-link';
+import { clientClaims } from '../../auth/session-claims';
 
 // Sem @UseGuards em nenhum método — esta é a superfície pública da API,
 // pensada pra ser acessada por qualquer visitante (a página de uma unidade
@@ -170,15 +170,15 @@ export class PublicBookingResolver {
     try {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as ClientTokenPayload;
+      });
+      const claims = clientClaims(decoded);
+      if (!claims) return undefined;
       // Cookie de sessão encerrada (senha trocada) não vale mais
       const account = await this.prisma.clientAccount.findUnique({
-        where: { id: decoded.clientAccountId },
+        where: { id: claims.clientAccountId },
         select: { sessionVersion: true },
       });
-      return account && (decoded.v ?? 0) === account.sessionVersion
-        ? decoded.clientAccountId
-        : undefined;
+      return account && claims.v === account.sessionVersion ? claims.clientAccountId : undefined;
     } catch {
       return undefined;
     }

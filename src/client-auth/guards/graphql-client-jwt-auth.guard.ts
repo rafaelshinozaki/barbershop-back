@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ClientTokenPayload } from '../interfaces/client-token-payload.interface';
+import { clientClaims } from '../../auth/session-claims';
 
 @Injectable()
 export class GraphQLClientJwtAuthGuard implements CanActivate {
@@ -30,9 +31,12 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
       const decoded = this.jwtService.verify(cookieToken, {
         secret: this.configService.get<string>('JWT_SECRET'),
       }) as ClientTokenPayload;
+      // Só sessão do cliente: o token da equipe (ou o state do OAuth) não vale
+      const claims = clientClaims(decoded);
+      if (!claims) throw new UnauthorizedException('Sessão de cliente inválida.');
 
       const account = await this.prisma.clientAccount.findUnique({
-        where: { id: decoded.clientAccountId },
+        where: { id: claims.clientAccountId },
       });
       // Suspensa pelo admin da plataforma: nenhuma sessão vale
       if (!account || account.deletedAt || account.suspendedAt) {
@@ -40,7 +44,7 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
       }
       // Senha trocada (ou conta retomada pelo dono do e-mail) derruba os
       // cookies emitidos antes
-      if ((decoded.v ?? 0) !== account.sessionVersion) {
+      if (claims.v !== account.sessionVersion) {
         throw new UnauthorizedException('Sessão de cliente encerrada.');
       }
 

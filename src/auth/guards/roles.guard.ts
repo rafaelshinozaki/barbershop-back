@@ -20,6 +20,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import { BACKOFFICE_AREA_KEY, hasBackofficeArea } from '../backoffice-areas';
+import { staffClaims, staffSessionToken } from '../session-claims';
 
 const SYSTEM_ROLES = [Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER].map((r) => r.toLowerCase());
 
@@ -73,22 +74,8 @@ export class RolesGuard implements CanActivate {
       const gqlContext = GqlExecutionContext.create(context);
       req = gqlContext.getContext().req;
 
-      // Try to get token from Authorization header first
-      token = req.headers?.authorization?.replace('Bearer ', '');
-
-      // If no Authorization header, try cookies (multiple possible names)
-      if (!token && req.cookies) {
-        token = req.cookies.Authentication || req.cookies.token || req.cookies.access_token;
-      }
-
-      // Fallback: parse cookie header manually if req.cookies is undefined
-      if (!token && req.headers?.cookie) {
-        const cookieHeader = req.headers.cookie;
-        const match = cookieHeader.match(/(Authentication|token|access_token)=([^;]+)/);
-        if (match) {
-          token = match[2];
-        }
-      }
+      // Cabeçalho Bearer ou o cookie `Authentication` (nome exato)
+      token = staffSessionToken(req);
     } catch {
       // Fallback to HTTP context
       req = context.switchToHttp().getRequest<Request>();
@@ -113,18 +100,25 @@ export class RolesGuard implements CanActivate {
       // Decodifica o JWT
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as {
-        userId: number;
-      };
+      });
+      // Só sessão da equipe: cookie do cliente ou state do OAuth não valem
+      const claims = staffClaims(decoded);
+      if (!claims) throw new UnauthorizedException('Invalid session');
 
       // Busca o usuário no banco de dados usando o userId do token
       const user = await this.prisma.user.findUnique({
-        where: { id: decoded.userId },
+        where: { id: claims.userId },
         include: { role: true }, // Inclui as roles
       });
 
       if (!user) {
         throw new UnauthorizedException('User not found');
+      }
+      const activeSession = await this.prisma.activeSession.findUnique({
+        where: { sessionToken: claims.sessionToken },
+      });
+      if (!activeSession || activeSession.userId !== user.id) {
+        throw new UnauthorizedException('Session has been terminated');
       }
 
       if (!user.role) {

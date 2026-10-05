@@ -18,6 +18,7 @@ import { randomUUID } from 'crypto';
 import { ThrottleLogin, ThrottleAuth } from '@/common/decorators/throttle.decorator';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { staffClaims } from './session-claims';
 
 @ApiTags('auth')
 @ApiCookieAuth()
@@ -170,8 +171,8 @@ export class AuthController {
     try {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as { userId: number };
-      return decoded.userId;
+      });
+      return staffClaims(decoded)?.userId ?? null;
     } catch {
       return null;
     }

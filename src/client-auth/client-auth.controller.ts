@@ -6,7 +6,7 @@ import { ClientAuthService } from './client-auth.service';
 import { ClientGoogleAuthGuard } from './guards/client-google-auth.guard';
 import { ClientFacebookAuthGuard } from './guards/client-facebook-auth.guard';
 import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
-import { ClientTokenPayload } from './interfaces/client-token-payload.interface';
+import { clientClaims } from '../auth/session-claims';
 
 // Rotas REST puras porque OAuth precisa de um redirect de página inteira —
 // não dá para fazer esse fluxo via mutation GraphQL. O resto da API de
@@ -61,8 +61,8 @@ export class ClientAuthController {
     try {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as ClientTokenPayload;
-      return decoded.clientAccountId;
+      });
+      return clientClaims(decoded)?.clientAccountId ?? null;
     } catch {
       return null;
     }

@@ -8,6 +8,7 @@ import { Request } from 'express';
 import { TokenPayload } from '../interfaces/token-payload.interface';
 import { UserService } from '@/auth/users/users.service';
 import { AuthService } from '../auth.service';
+import { staffClaims } from '../session-claims';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -22,7 +23,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate({ userId, sessionToken }: TokenPayload, req: Request) {
+  async validate(payload: TokenPayload, req: Request) {
+    // Só sessão da equipe: cookie do cliente ou state do OAuth não valem
+    const claims = staffClaims(payload);
+    if (!claims) throw new UnauthorizedException('Invalid session');
+    const { userId, sessionToken } = claims;
     // Verificar se o token foi invalidado
     const token = req.cookies?.Authentication;
     if (token) {
@@ -52,11 +57,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // A sessão precisa ter uma ActiveSession correspondente — é isso que faz
     // "Terminar sessão"/"Sair de outras sessões" realmente revogar o acesso,
     // e não só remover uma linha decorativa da lista.
-    if (sessionToken) {
-      const activeSession = await this.userService.findActiveSessionByToken(sessionToken);
-      if (!activeSession) {
-        throw new UnauthorizedException('Session has been terminated');
-      }
+    const activeSession = await this.userService.findActiveSessionByToken(sessionToken);
+    if (!activeSession || activeSession.userId !== user.id) {
+      throw new UnauthorizedException('Session has been terminated');
     }
 
     return { ...user, sessionToken };
