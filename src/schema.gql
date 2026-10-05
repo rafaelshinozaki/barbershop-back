@@ -2511,6 +2511,7 @@ type NetworkDashboardStats {
   monthlyRevenue: [MonthlyRevenueItem!]!
   recentEvents: [NetworkDashboardEvent!]!
   revenueByBarbershop: [ShopRevenueItem!]!
+  revenueSamePeriodLastMonth: Float!
   revenueThisMonth: Float!
   revenueToday: Float!
   showQueue: Boolean!

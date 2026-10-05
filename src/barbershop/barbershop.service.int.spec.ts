@@ -1462,12 +1462,20 @@ describe('BarbershopService (integração com o banco)', () => {
         service.updateService(managerUserId, A.shopId, A.serviceId, { price: 55 }),
       ).resolves.toBeTruthy();
       await expect(service.getCashSessions(managerUserId, A.shopId)).resolves.toBeTruthy();
-      await expect(service.getNetworkDashboardStats(managerUserId)).resolves.toMatchObject({
+      const managerHome = await service.getNetworkDashboardStats(managerUserId);
+      expect(managerHome).toMatchObject({
         totalBarbershops: 1,
         view: 'network',
         showRevenueToday: true,
         canSell: true,
       });
+      // Atividade recente: só o que já aconteceu; comparação com o mesmo período
+      expect(
+        (managerHome.recentEvents as { type: string; date: string }[]).every(
+          (e) => e.type !== 'appointment' || new Date(e.date).getTime() <= Date.now(),
+        ),
+      ).toBe(true);
+      expect(managerHome.revenueSamePeriodLastMonth).toEqual(expect.any(Number));
       // Gerente toca o caixa: despesas e resumo da unidade
       await expect(service.getExpenses(managerUserId, A.shopId)).resolves.toBeTruthy();
       // Relatório avançado depende do plano, não do cargo

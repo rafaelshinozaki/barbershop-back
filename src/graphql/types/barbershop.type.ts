@@ -193,6 +193,10 @@ export class NetworkDashboardStats {
   @Field(() => Float)
   revenueThisMonth: number;
 
+  /** Faturamento do mês anterior até o mesmo ponto do mês (base da comparação) */
+  @Field(() => Float)
+  revenueSamePeriodLastMonth: number;
+
   @Field()
   currency: string;
 

@@ -1008,7 +1008,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 - **Guarda do histórico:** 1 ano para as alterações do negócio (`ChangeLog`) e 2 anos para o registro da equipe da plataforma. A limpeza fica na rotina de guarda de dados.
 - **O histórico é gravado por gatilho no Postgres**, não no código de cada back. Com o back principal e o backoffice-back escrevendo no mesmo banco, o gatilho pega os dois, além dos jobs e scripts. Uma operação nova não fica sem registro.
 
-## Horizonte: Jornada de cada tipo de usuário — 🗺️ Planejado
+## Horizonte: Jornada de cada tipo de usuário — 🚧 Em andamento
 
 Revisão de 2026-10-05: entrei no app principal como cada tipo de usuário do seed e abri todas as telas.
 - **Equipe da unidade:** dono (Cayo), gerente (Bianca), barbeiro (Minion), recepção (Julia), básico (Pedro).
@@ -1056,30 +1056,40 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 2. ✅ **Ícone e tela de Franquia** aparecem para a equipe. O ícone vem sem nome, e a tela diz "Cadastre uma unidade para criar sua franquia". Só o dono deveria ver; o gerente, no máximo para ler.
 3. ✅ **A recepção vê "Faturamento hoje" e o valor das vendas** em "Últimos eventos" na tela inicial. Isso contradiz a regra "recepção sem resumo financeiro" das abas.
 4. ✅ **O básico vê "Vender produto"** na tela inicial, mas não pode vender (a aba Vendas é bloqueada para ele).
-5. **O boas-vindas com o texto do dono** aparece para todos (ver acima).
+5. ✅ **O boas-vindas com o texto do dono** aparece para todos (ver acima).
 
 ### Errado ou confuso
 
-1. **"Últimos eventos"** (tela inicial e visão geral) lista agendamentos futuros ("13 de out.") misturados com vendas. Deveria ser "Atividade recente", com o que já aconteceu em ordem, sem repetir "Próximos horários".
+1. ✅ **"Últimos eventos"** (tela inicial e visão geral) lista agendamentos futuros ("13 de out.") misturados com vendas. Deveria ser "Atividade recente", com o que já aconteceu em ordem, sem repetir "Próximos horários".
 2. ✅ **Fila do Atendimento:** o status aparece em inglês cru ("WAITING").
 3. ✅ **Caixa:** a data aparece no formato americano ("9/29/2026, 11:45:00 AM") com o app em português.
 4. ✅ **Abrir uma unidade em que a pessoa não trabalha** (pelo link) fica em "Carregando…" para sempre. Deveria dizer "Você não tem acesso a esta unidade" e oferecer voltar.
-5. **A agenda abre às 00:00.** Deveria abrir no horário de funcionamento ou na hora atual.
-6. **Barbeiro e básico:** o campo "Profissional" do novo agendamento começa vazio, mas eles só podem agendar para si. Deveria vir preenchido e travado.
-7. **Seletor de unidade no topo:** fica "Selecione uma u…" (cortado) mesmo dentro da unidade ou com uma unidade só. Deveria mostrar a unidade atual, e já escolher sozinho quando houver só uma.
-8. **"Faturamento (mês vigente)" no começo do mês** mostra "-100% em relação ao mês anterior". Deveria comparar com o mesmo período do mês anterior.
-9. **Plano gratuito:** a faixa "Você está no plano gratuito. Assine para continuar." soa como bloqueio. Deveria dizer o que o plano gratuito permite e quando é preciso assinar.
-10. **Visitante sem login que abre o endereço principal** cai no login da equipe. Deveria cair numa página inicial com "Encontrar um horário" (a busca) e "Tenho um negócio" (o cadastro).
-11. **Perfil público do profissional:** mostra "0 atendimento concluído" (no singular, e mostrando o zero). Com zero, deveria esconder a linha.
+5. ✅ **A agenda abre às 00:00.** Deveria abrir no horário de funcionamento ou na hora atual.
+6. ✅ **Barbeiro e básico:** o campo "Profissional" do novo agendamento começa vazio, mas eles só podem agendar para si. Deveria vir preenchido e travado.
+7. ✅ **Seletor de unidade no topo:** fica "Selecione uma u…" (cortado) mesmo dentro da unidade ou com uma unidade só. Deveria mostrar a unidade atual, e já escolher sozinho quando houver só uma.
+8. ✅ **"Faturamento (mês vigente)" no começo do mês** mostra "-100% em relação ao mês anterior". Deveria comparar com o mesmo período do mês anterior.
+9. ✅ **Plano gratuito:** a faixa "Você está no plano gratuito. Assine para continuar." soa como bloqueio. Deveria dizer o que o plano gratuito permite e quando é preciso assinar.
+10. ✅ **Visitante sem login que abre o endereço principal** cai no login da equipe. Deveria cair numa página inicial com "Encontrar um horário" (a busca) e "Tenho um negócio" (o cadastro).
+11. ✅ **Perfil público do profissional:** mostra "0 atendimento concluído" (no singular, e mostrando o zero). Com zero, deveria esconder a linha.
 
 ### Falta
 
-1. **Teste E2E por cargo do que aparece no menu da conta e no topo** (Financeiro, Franquia, seletor de unidade), para o que é do dono não voltar a aparecer para a equipe.
+1. ✅ **Teste E2E por cargo do que aparece no menu da conta e no topo** (Financeiro, Franquia, seletor de unidade), para o que é do dono não voltar a aparecer para a equipe.
 2. **"O que o meu cargo pode fazer"** no perfil da equipe (ex.: "Barbeiro: vê e mexe só na própria agenda; vê o contato só de quem já atendeu"), para ninguém achar que é defeito.
 
 ### Ordem sugerida
 
 1. ✅ **Sobrando** itens 1 a 4, mais erros 2, 3 e 4. Plano, cobranças e franquia só para o dono (menu e rotas); a recepção vê o caixa, não o faturamento do dia; o painel diz se a pessoa vende (`canSell`); status da fila e datas no idioma do app; unidade sem acesso com aviso. Testado por cargo no E2E (`roles.spec.ts`).
 2. ✅ **Boas-vindas por cargo:** o progresso no back e os passos que se marcam sozinhos.
-3. **Erros 5 a 11** e o que falta.
+3. ✅ **Erros 1 e 5 a 11:**
+   - **Atividade recente:** só o que já aconteceu (agendamentos com início até agora e vendas), com o novo nome.
+   - **Agenda:** abre no horário de funcionamento da unidade (8h às 20h sem horário cadastrado), com 1 h de folga de cada lado, e alarga para caber qualquer agendamento fora do expediente. A da franquia também.
+   - **Profissional travado:** barbeiro e básico já veem o próprio nome no novo agendamento (agenda e modal rápido), sem poder trocar.
+   - **Seletor de unidade:** mostra a unidade aberta; fora dela, a única unidade ou a última aberta (guardada no navegador); senão, "Unidades".
+   - **Faturamento do mês:** compara com o mesmo período do mês anterior (`revenueSamePeriodLastMonth`), e não com o mês inteiro.
+   - **Plano gratuito:** "Você está no plano gratuito. Veja o que cada plano libera quando precisar de mais." com "Ver planos".
+   - **Visitante em "/":** página com "Encontrar um horário" (busca), entrar como cliente, "Cadastrar meu negócio" e "Já tenho conta: entrar". Link de indicação (`?pro=`) continua indo para o login.
+   - **Perfil público do profissional:** esconde a linha de atendimentos quando é zero.
+   - **Testes:** `roles.spec.ts` (profissional travado e seletor), `auth.spec.ts` (página do visitante) e o teste de integração do painel (sem futuro na atividade recente).
+4. **Ainda falta:** "O que o meu cargo pode fazer" no perfil da equipe e as boas-vindas do profissional por conta própria e do cliente final.
 
