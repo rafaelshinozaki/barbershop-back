@@ -577,7 +577,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
 **8. Registros e estabilidade** 🗺️ (spec abaixo)
-- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1 e R2 ✅ no código).
+- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1, R2 e R3 ✅ no código).
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -754,7 +754,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Preços e taxas** (`/pricing`) | Admin | Taxas da plataforma e preço do Destaque, sem deploy | `platformPricing`, `updatePlatformPricing` | ✅ |
 | **Cupons** (`/coupons`) | Admin | Criar, editar, apagar cupons e ver o uso | `getAllCoupons`, `createCoupon`, `updateCoupon`, `deleteCoupon`, `getCouponStats` | ✅ |
 | **Planos** (`/plans`) | Admin | Criar/editar/remover plano, sincronizar com a Stripe | REST `/plans/create`, `update`, `remove`, `sync-stripe` (GraphQL `createPlan`, `updatePlan`, `removePlan`, `syncPlansWithStripe`) | 🆕 só existe no back |
-| **Ficha da unidade** (`/barbershops/:id`) | Usuários (leitura) | Uma unidade inteira num lugar: dono e equipe, plano, Connect, Destaque, denúncias, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
+| **Ficha da unidade** (`/barbershops/:id`) | Usuários (leitura) | Uma unidade inteira num lugar: dono e equipe, plano, Connect, Destaque, denúncias, pedidos de suporte, histórico com nome da equipe | `adminBarbershopDossier`, `adminBarbershopChangeLog` | ✅ |
 | **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
 | **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
 | **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção e exclusão pedidos por e-mail/suporte, com prazo de 15 dias | novas operações; exclusão reusa `AccountDeletionService` | 🆕 Fase 3 |
@@ -990,7 +990,10 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
     - **Valores formatados pelo campo:** dinheiro, data, sim/não, duração, dia da semana e situação.
     - **Equipe da plataforma:** aparece sem o nome. Telas em pt, en e es.
   - Fica para depois: o profissional ver só o histórico da própria agenda.
-- **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice.
+- **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice ✅.
+  - **Registro ligado ao histórico:** cada ação do Registro de ações traz o que mudou de fato (as linhas do histórico do mesmo request), com a unidade afetada e um link para a ficha. O gatilho também passou a cobrir User, ClientAccount, Professional, SupportTicket e ContentReport (o que a equipe da plataforma altera). Essas linhas não aparecem no Histórico do dono.
+  - **Guarda:** o histórico do que a equipe da plataforma fez fica 2 anos, como o registro. Quem exclui a conta leva junto o histórico da própria conta.
+  - **Ficha da unidade** (backoffice, área Usuários, só leitura): dono e plano, equipe, movimento de 30 dias, avaliação, clientes, serviços, suporte e denúncias abertos, recebimento pelo app, Destaque, e o histórico com o nome de quem da equipe mexeu. É a "ficha da unidade" da Fase 2 do Backoffice.
 - **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
 
 ### Decisões tomadas (2026-09-29)
