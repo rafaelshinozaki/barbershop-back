@@ -577,7 +577,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - Tirar tudo do backoffice do projeto principal (front e back): contas da equipe, login, operações e auditoria no `barbershop-backoffice-back`, com etapas S1–S4.
 
 **8. Registros e estabilidade** 🗺️ (spec abaixo)
-- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 (R1, R2 e R3 ✅ no código).
+- Histórico de alterações para o negócio ("quem mudou o quê", com antes → depois), registro da equipe ligado a ele, Sentry nos fronts, id do request de ponta a ponta, conferência de fora, métricas, alertas e carga semanal. Etapas R1–R4 ✅ no código.
 
 ## Horizonte: rápido e barato — ✅ concluído
 
@@ -994,7 +994,12 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - **Registro ligado ao histórico:** cada ação do Registro de ações traz o que mudou de fato (as linhas do histórico do mesmo request), com a unidade afetada e um link para a ficha. O gatilho também passou a cobrir User, ClientAccount, Professional, SupportTicket e ContentReport (o que a equipe da plataforma altera). Essas linhas não aparecem no Histórico do dono.
   - **Guarda:** o histórico do que a equipe da plataforma fez fica 2 anos, como o registro. Quem exclui a conta leva junto o histórico da própria conta.
   - **Ficha da unidade** (backoffice, área Usuários, só leitura): dono e plano, equipe, movimento de 30 dias, avaliação, clientes, serviços, suporte e denúncias abertos, recebimento pelo app, Destaque, e o histórico com o nome de quem da equipe mexeu. É a "ficha da unidade" da Fase 2 do Backoffice.
-- **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook.**
+- **R4 — métricas, painel e alertas de lentidão e fila; carga semanal; runbook** ✅.
+  - **Métricas a cada 60 s** por instância: requests, erros, p95 e as operações mais lentas; pool do Prisma; ping do Postgres e do Redis; filas do BullMQ (com o job mais antigo); memória, CPU e event loop. Vão para o Axiom e para a consulta `systemHealth` (só o admin).
+  - **Alertas no Sentry:** lento, erro, pool esperando, banco ou Redis fora, fila parada e job com falha. No máximo 1 a cada 15 min por tipo, com limites em `ALERT_*`.
+  - **Teste de carga semanal no GitHub Actions**, com p95 máximo por cenário (`scripts/load/thresholds.json`) e o resultado guardado por 90 dias.
+  - **`docs/RUNBOOK.md`:** o que fazer em cada alerta. O painel no Axiom tem as consultas prontas no `docs/MONITORING.md`.
+  - Falta a tela Saúde do sistema no backoffice (a consulta já existe).
 
 ### Decisões tomadas (2026-09-29)
 

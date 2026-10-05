@@ -1,0 +1,14 @@
+{
+  "_comment": "p95 máximo (ms) por cenário no teste de carga semanal (GitHub Actions, 4 vCPU, banco na mesma máquina). Cerca de 2,5x o medido em docs/LOAD_TEST.md: pega regressão grande sem quebrar por variação do runner. Qualquer erro também quebra.",
+  "busca-unidades-sp": 750,
+  "busca-unidades-rj-categoria": 600,
+  "busca-unidades-sem-filtro": 2200,
+  "busca-unidades-texto": 700,
+  "busca-profissionais-sp": 1500,
+  "busca-profissionais-sem-filtro": 1500,
+  "busca-profissionais-texto": 800,
+  "pagina-unidade": 600,
+  "horarios-livres": 1100,
+  "proximo-horario": 1100,
+  "agenda-da-semana": 600
+}

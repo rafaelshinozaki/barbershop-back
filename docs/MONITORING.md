@@ -69,6 +69,46 @@ Configure assim:
 - Contatos: e-mail, mais o app no celular ou Telegram, do Super admin e do Administrador.
 - Opcional: página de status pública para os clientes.
 
+## Métricas a cada 60 s e alertas
+
+O `MetricsService` (`src/metrics/`) fecha um minuto por instância. Cada minuto traz:
+- requests, erros, p50/p95 e as 10 operações mais lentas;
+- pool do Prisma (ocupadas, livres, esperando);
+- ping do Postgres e do Redis;
+- filas do BullMQ (esperando, ativas, com falha, job mais antigo);
+- memória, CPU e atraso do event loop.
+
+Para onde vai cada minuto:
+- **Axiom:** um evento `type=metrics` no `AXIOM_METRICS_DATASET` (ou no `AXIOM_DATASET`). É barato: um evento por minuto por instância.
+- **Backoffice:** a tela **Saúde do sistema** (só o admin; consulta `systemHealth`) mostra o último minuto, mesmo sem Axiom.
+- **Alertas:** o que passa dos limites vira aviso no **Sentry** (tag `alert`, no máximo 1 a cada 15 min por tipo): `slow`, `errors`, `db-pool`, `db-down`, `redis-down`, `queue-stuck` e `queue-failed`. Os limites ficam em `ALERT_*` (ver `.env.example`).
+
+Para cada alerta, o que fazer está em [RUNBOOK.md](RUNBOOK.md).
+
+**Painel no Axiom** (Dashboards → New, uma consulta por gráfico, dataset das métricas):
+
+```kusto
+// p95 e requests por minuto
+['metrics'] | where type == 'metrics' | summarize p95 = max(['requests.p95Ms']), req = sum(['requests.requests']) by bin(_time, 1m)
+// taxa de erro
+['metrics'] | where type == 'metrics' | summarize erro = sum(['requests.errors']) * 1.0 / sum(['requests.requests']) by bin(_time, 5m)
+// pool e banco
+['metrics'] | where type == 'metrics' | summarize ocupadas = max(['db.poolBusy']), esperando = max(['db.poolWaiting']), ping = max(['db.pingMs']) by bin(_time, 1m)
+// memória, CPU e event loop por instância
+['metrics'] | where type == 'metrics' | summarize mem = max(['memory.rssMb']), cpu = max(cpuPercent), lag = max(eventLoopLagP99Ms) by bin(_time, 1m), instance
+```
+
+Troque `['metrics']` pelo nome do dataset. Os alertas já saem pelo Sentry. Monitor no Axiom é opcional, para quem preferir: use as mesmas consultas com um limite, em Monitors → New.
+
+## Teste de carga semanal
+
+O `.github/workflows/load-test.yml` roda toda segunda às 03:17 (Brasília) e pode ser disparado à mão. Ele:
+1. sobe Postgres, Redis e a API;
+2. gera o volume do `docs/LOAD_TEST.md`;
+3. roda os 11 cenários.
+
+O workflow quebra se algum cenário der erro ou passar do p95 de `scripts/load/thresholds.json`. O resultado fica no resumo do run e no artefato `load-result-<n>` (90 dias), para comparar semana a semana.
+
 ## O que fazer quando alertar (começo do runbook)
 
 | Alerta | Primeiro passo |
@@ -78,4 +118,4 @@ Configure assim:
 | Erro novo depois de um deploy | Abrir no Sentry, conferir o `release` e reverter se afeta login, agenda ou pagamento |
 | Muitos 504 na API do backoffice | O back está lento: ver os requests lentos no Sentry do back e o pool do Postgres |
 
-O runbook completo, com métricas, painel e alertas de lentidão e de fila, fica para a R4.
+O runbook completo, com os alertas de métrica, está em [RUNBOOK.md](RUNBOOK.md).

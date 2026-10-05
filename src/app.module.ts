@@ -29,6 +29,8 @@ import { BackofficeAuditInterceptor } from './backoffice/audit/backoffice-audit.
 import { SentryInterceptor } from './common/sentry/sentry.interceptor';
 import { ChangeActorInterceptor } from './common/change-actor.interceptor';
 import { ActivityModule } from './activity/activity.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { AppActivityInterceptor } from './activity/app-activity.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { GraphQLThrottleGuard } from './common/guards/graphql-throttle.guard';
@@ -212,6 +214,7 @@ import { formatGqlError } from './graphql/format-error';
     NotificationsModule,
     BackofficeModule,
     ActivityModule,
+    MetricsModule,
     BarbershopModule,
     SeoModule,
     GraphQLAppModule,
@@ -248,6 +251,11 @@ import { formatGqlError } from './graphql/format-error';
       // Trilha do app no Axiom (sem AXIOM_TOKEN/AXIOM_DATASET, nada)
       provide: APP_INTERCEPTOR,
       useExisting: AppActivityInterceptor,
+    },
+    {
+      // Tempo e erro de cada operação pras métricas do minuto (R4)
+      provide: APP_INTERCEPTOR,
+      useExisting: MetricsInterceptor,
     },
   ],
 })

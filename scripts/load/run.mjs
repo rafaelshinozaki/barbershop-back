@@ -9,7 +9,14 @@
  * segundo e erros. Cada requisição sai com um user-agent próprio: o limite
  * por IP + navegador da API vale por cliente, e aqui cada requisição é um
  * cliente diferente (mede o custo do servidor, não o limite).
+ *
+ * Com LOAD_THRESHOLDS=<arquivo .json> (ex.: scripts/load/thresholds.json),
+ * sai com erro se algum cenário passar do p95 máximo ou tiver erro: é o que
+ * o teste de carga semanal (.github/workflows/load-test.yml) usa.
+ * LOAD_RESULT_JSON=<arquivo> grava o resultado pra comparar semana a semana.
  */
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+
 const API = process.env.LOAD_API ?? 'http://localhost:3040'
 const RUN = process.env.LOAD_RUN
 const SECONDS = Number(process.env.LOAD_SECONDS ?? 20)
@@ -149,10 +156,39 @@ async function runScenario(name, fn, f) {
 const wanted = process.argv.slice(2)
 const f = await fixtures()
 console.log(`API ${API} · ${CONCURRENCY} simultâneos · ${SECONDS}s por cenário\n`)
-console.log('| Cenário | req/s | p50 ms | p95 ms | p99 ms | ok | erros |')
-console.log('|---|---:|---:|---:|---:|---:|---:|')
+console.log('| Cenário | req/s | p50 ms | p95 ms | p99 ms | ok | erros | limite p95 |')
+console.log('|---|---:|---:|---:|---:|---:|---:|---:|')
+const thresholds = process.env.LOAD_THRESHOLDS
+  ? JSON.parse(readFileSync(process.env.LOAD_THRESHOLDS, 'utf8'))
+  : null
+const results = []
+const lines = [
+  `API ${API} · ${CONCURRENCY} simultâneos · ${SECONDS}s por cenário`,
+  '',
+  '| Cenário | req/s | p50 ms | p95 ms | p99 ms | ok | erros | limite p95 |',
+  '|---|---:|---:|---:|---:|---:|---:|---:|'
+]
+const failures = []
 for (const [name, fn] of Object.entries(scenarios)) {
   if (wanted.length && !wanted.includes(name)) continue
   const r = await runScenario(name, fn, f)
-  console.log(`| ${r.name} | ${r.rps} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.ok} | ${r.errors}${r.firstError ? ` (${r.firstError})` : ''} |`)
+  const limit = thresholds?.[name]
+  results.push({ ...r, limit: limit ?? null })
+  if (r.errors > 0) failures.push(`${name}: ${r.errors} erro(s) (${r.firstError})`)
+  if (limit != null && r.p95 > limit) failures.push(`${name}: p95 ${r.p95} ms > ${limit} ms`)
+  const line = `| ${r.name} | ${r.rps} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.ok} | ${r.errors}${r.firstError ? ` (${r.firstError})` : ''} | ${limit ?? '—'} |`
+  lines.push(line)
+  console.log(line)
+}
+if (failures.length) lines.push('', '**Fora do limite:**', ...failures.map((x) => `- ${x}`))
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`)
+if (process.env.LOAD_RESULT_JSON) {
+  writeFileSync(
+    process.env.LOAD_RESULT_JSON,
+    JSON.stringify({ at: new Date().toISOString(), api: API, concurrency: CONCURRENCY, seconds: SECONDS, results }, null, 2)
+  )
+}
+if (thresholds && failures.length) {
+  console.error(`\nFora do limite:\n${failures.join('\n')}`)
+  process.exit(1)
 }

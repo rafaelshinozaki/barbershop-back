@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Métricas do pool de conexões (MetricsService)
+  previewFeatures = ["metrics"]
 }
 
 datasource db {
