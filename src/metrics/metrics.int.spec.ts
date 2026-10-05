@@ -20,7 +20,14 @@ describe('MetricsService (integração)', () => {
       throw new Error('não registrada');
     },
   };
-  const metrics = new MetricsService(prisma, redis, moduleRef as never);
+  const metrics = new MetricsService(
+    prisma,
+    redis,
+    moduleRef as never,
+    {
+      config: { enabled: false },
+    } as never,
+  );
 
   // Sem fila offline: espera conectar (no app, já está conectado bem antes)
   beforeAll(async () => {

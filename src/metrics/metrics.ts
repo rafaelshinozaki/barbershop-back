@@ -50,6 +50,8 @@ export type MetricsSnapshot = {
   };
   redis: { ok: boolean; pingMs: number };
   queues: QueueStats[];
+  /** Último backup (null com o backup desligado) */
+  backup: { lastAt: string | null; ageHours: number | null; stale: boolean } | null;
 };
 
 /** Percentil de uma lista já ordenada */
@@ -117,7 +119,8 @@ export type AlertKind =
   | 'queue-stuck'
   | 'db-pool'
   | 'db-down'
-  | 'redis-down';
+  | 'redis-down'
+  | 'backup-stale';
 
 export type AlertLimits = {
   p95Ms: number;
@@ -194,5 +197,13 @@ export function checkAlerts(
     });
   }
   if (!s.redis.ok) out.push({ kind: 'redis-down', message: 'Redis não respondeu ao ping' });
+  if (s.backup?.stale) {
+    out.push({
+      kind: 'backup-stale',
+      message: s.backup.lastAt
+        ? `Último backup do Postgres há ${Math.round(s.backup.ageHours ?? 0)} h`
+        : 'Nenhum backup do Postgres desde que o backup foi ligado',
+    });
+  }
   return out;
 }

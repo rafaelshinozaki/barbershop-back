@@ -393,6 +393,16 @@ type BackofficeTeamMemberType {
   twoFactorEnabled: Boolean!
 }
 
+type BackupStatusType {
+  ageHours: Float
+  enabled: Boolean!
+  lastAt: DateTime
+  maxAgeHours: Int!
+  retentionDays: Int!
+  sizeMb: Float
+  stale: Boolean!
+}
+
 type Barber {
   accessEndsAt: DateTime
   accessStartsAt: DateTime
@@ -2295,6 +2305,7 @@ type Mutation {
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
+  runBackupNow: Boolean!
   savePushSubscription(input: PushSubscriptionInput!): Boolean!
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
@@ -3281,6 +3292,7 @@ type Query {
   backofficeDashboard: BackofficeDashboard!
   backofficeStats: BackofficeStats!
   backofficeTeam: [BackofficeTeamMemberType!]!
+  backupStatus: BackupStatusType!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
   barberPayStatement(barberId: Int, barbershopId: Int!): BarberPayStatementType!
   barberSchedules(barberId: Int!): [BarberScheduleType!]!

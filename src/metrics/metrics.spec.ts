@@ -18,6 +18,7 @@ const snapshot = (over: Partial<MetricsSnapshot> = {}): MetricsSnapshot => ({
   db: { ok: true, pingMs: 2, poolBusy: 1, poolIdle: 9, poolWaiting: 0 },
   redis: { ok: true, pingMs: 1 },
   queues: [],
+  backup: null,
   ...over,
 });
 
@@ -92,5 +93,12 @@ describe('métricas do minuto', () => {
     expect(
       checkAlerts(snapshot({ db: { ...bad.db, ok: false } }), limits, new Map()).map((a) => a.kind),
     ).toEqual(['db-down']);
+    expect(
+      checkAlerts(
+        snapshot({ backup: { lastAt: '2026-10-03T06:30:00.000Z', ageHours: 53.5, stale: true } }),
+        limits,
+        new Map(),
+      ),
+    ).toEqual([{ kind: 'backup-stale', message: 'Último backup do Postgres há 54 h' }]);
   });
 });

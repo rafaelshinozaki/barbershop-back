@@ -551,7 +551,7 @@ O código de H1 a H5 está pronto, com exceção do que depende das decisões ab
 - S3 (`S3_BUCKET`), domínio/DNS e HTTPS do front e da API, `FRONTEND_URL`/`PUBLIC_API_URL`.
 - Segredos próprios dos links por e-mail (`APPOINTMENT_LINK_SECRET`, `UNSUBSCRIBE_SECRET`) e o primeiro admin (`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`).
 - Geocodificação: o Nominatim público tem limite de uso; em produção, um serviço próprio ou pago em `GEOCODING_URL`.
-- Operação: backup do Postgres. Erros e a trilha do que o usuário fez estão no horizonte "Rápido e barato" (Sentry e Axiom; a trilha não entra no Postgres).
+- Operação: backup do Postgres. O backup automático do provedor é o primeiro; o app faz uma segunda cópia diária no S3 (ligar `BACKUP_ENABLED` e o bucket, ver `docs/MONITORING.md`). Erros e a trilha do que o usuário fez estão no horizonte "Rápido e barato" (Sentry e Axiom; a trilha não entra no Postgres).
 
 **4. Código que as decisões destravam**
 - Emissão automática de NFS-e da receita da plataforma (integração com o emissor escolhido).
@@ -758,7 +758,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
 | **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
 | **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção e exclusão pedidos por e-mail/suporte, com prazo de 15 dias | novas operações; exclusão reusa `AccountDeletionService` | 🆕 Fase 3 |
-| **Saúde do sistema** (`/health`) | Admin | Último minuto da API: requests, p95, erros, CPU, memória, banco, Redis, filas (BullMQ) e operações mais lentas | `systemHealth` | ✅ (falta: último backup e links do Sentry/Axiom) |
+| **Saúde do sistema** (`/health`) | Admin | Último minuto da API: requests, p95, erros, CPU, memória, banco, Redis, filas (BullMQ) e operações mais lentas | `systemHealth`, `backupStatus`, `runBackupNow` | ✅ |
 
 **Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
 
@@ -870,7 +870,7 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - Ação que não volta atrás (apagar conta, reembolso acima de um valor) pede confirmação de um segundo membro com a mesma área, ou do admin.
 - Nível leitura × escrita por área (ex.: Financeiro só leitura para o contador).
 - Sessões da equipe: o admin vê onde cada pessoa está logada e derruba. Aviso por e-mail quando alguém da equipe ganha área nova.
-- Saúde do sistema (admin) ✅ (`/health`; falta o último backup).
+- Saúde do sistema (admin) ✅ (`/health`, com o último backup e links do Sentry e do Axiom).
 
 ### Decisões em aberto
 
@@ -999,7 +999,8 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - **Alertas no Sentry:** lento, erro, pool esperando, banco ou Redis fora, fila parada e job com falha. No máximo 1 a cada 15 min por tipo, com limites em `ALERT_*`.
   - **Teste de carga semanal no GitHub Actions**, com p95 máximo por cenário (`scripts/load/thresholds.json`) e o resultado guardado por 90 dias.
   - **`docs/RUNBOOK.md`:** o que fazer em cada alerta. O painel no Axiom tem as consultas prontas no `docs/MONITORING.md`.
-  - **Tela Saúde do sistema** no backoffice ✅ (`/health`, só o admin): o último minuto, atualizado a cada 30 s, com os mesmos limites dos alertas em vermelho. Falta mostrar o último backup.
+  - **Tela Saúde do sistema** no backoffice ✅ (`/health`, só o admin): o último minuto, atualizado a cada 30 s, com os mesmos limites dos alertas em vermelho, o último backup e os links do Sentry e do Axiom.
+  - **Backup diário do Postgres** ✅: `pg_dump` às 03:30 para um bucket S3 privado (segunda cópia, fora do provedor do banco), guardado por 30 dias. Alerta `backup-stale` se passar de 26 h, botão "Fazer backup agora" e o passo a passo para restaurar no `docs/RUNBOOK.md`. O CI faz o backup e o restaura num banco novo. Para ligar: `BACKUP_ENABLED=true` e o bucket.
 
 ### Decisões tomadas (2026-09-29)
 

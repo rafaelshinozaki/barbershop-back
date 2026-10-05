@@ -1,10 +1,11 @@
-import { Field, Float, Int, ObjectType, Query, Resolver } from '@nestjs/graphql';
+import { Field, Float, Int, Mutation, ObjectType, Query, Resolver } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { MetricsService } from '../../metrics/metrics.service';
+import { BackupScheduler, BackupService } from '../../backup/backup.service';
 
 @ObjectType()
 export class OperationStatsType {
@@ -136,17 +137,66 @@ export class SystemHealthType {
   queues: QueueStatsType[];
 }
 
+@ObjectType()
+export class BackupStatusType {
+  /** BACKUP_ENABLED=true */
+  @Field()
+  enabled: boolean;
+
+  @Field(() => Date, { nullable: true })
+  lastAt?: Date | null;
+
+  @Field(() => Float, { nullable: true })
+  sizeMb?: number | null;
+
+  @Field(() => Float, { nullable: true })
+  ageHours?: number | null;
+
+  @Field(() => Int)
+  maxAgeHours: number;
+
+  /** Mais velho que o limite (alerta backup-stale) */
+  @Field()
+  stale: boolean;
+
+  @Field(() => Int)
+  retentionDays: number;
+}
+
 /** Saúde do sistema (só o admin): o último minuto medido desta instância */
 @Resolver()
 @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
 @Roles(Role.SYSTEM_ADMIN)
 export class SystemHealthResolver {
-  constructor(private readonly metrics: MetricsService) {}
+  constructor(
+    private readonly metrics: MetricsService,
+    private readonly backups: BackupService,
+    private readonly backupScheduler: BackupScheduler,
+  ) {}
 
   /** Vazio no primeiro minuto depois de subir (ainda não fechou nenhum) */
   @Query(() => SystemHealthType, { nullable: true })
   systemHealth() {
     const s = this.metrics.latest();
     return s ? { ...s, collectedAt: s._time } : null;
+  }
+
+  /** Último backup do Postgres no S3 */
+  @Query(() => BackupStatusType)
+  async backupStatus() {
+    const status = await this.backups.status();
+    return {
+      ...status,
+      sizeMb: status.sizeBytes == null ? null : Math.round((status.sizeBytes / 1048576) * 10) / 10,
+      retentionDays: this.backups.config.retentionDays,
+    };
+  }
+
+  /** "Fazer backup agora": entra na fila e roda em segundo plano */
+  @Mutation(() => Boolean)
+  async runBackupNow() {
+    if (!this.backups.config.enabled) return false;
+    await this.backupScheduler.enqueueNow();
+    return true;
   }
 }

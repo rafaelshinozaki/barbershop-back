@@ -9,6 +9,11 @@ WORKDIR /app
 # (sem ele o `prisma migrate deploy` falha ao carregar o schema engine)
 RUN apk add --no-cache openssl
 
+# pg_dump para o backup diário (BACKUP_ENABLED). A versão maior do cliente
+# tem que ser igual ou maior que a do Postgres de produção
+ARG PG_CLIENT=postgresql16-client
+RUN apk add --no-cache ${PG_CLIENT}
+
 # Mesma versão do "packageManager" do package.json (antes instalava a mais
 # recente, que podia não bater com o lockfile)
 RUN npm install -g pnpm@9.5.0

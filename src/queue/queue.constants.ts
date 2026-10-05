@@ -14,6 +14,8 @@ export const FEATURED_QUEUE = 'featured';
 export const PILOT_QUEUE = 'pilot';
 // Trilha de ações do app (lotes pro Axiom)
 export const APP_ACTIVITY_QUEUE = 'app-activity';
+// Backup diário do Postgres para o S3
+export const BACKUP_QUEUE = 'backup';
 
 // Tentativas com espera exponencial (30s, 1min, 2min, 4min, 8min) — cobre
 // instabilidade do Mailgun/Meta sem martelar o provedor. Guarda histórico
