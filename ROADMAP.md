@@ -1046,18 +1046,18 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ### Sobrando: a equipe vê coisas do dono
 
-1. **Menu da conta → "Financeiro"** (histórico de pagamentos, pendências e "Meu Plano", com a compra de plano) aparece para todos os cargos. Só o dono deveria ver. As rotas `/pricing`, `/payment-history` e `/financial-issues` também abrem para a equipe.
-2. **Ícone e tela de Franquia** aparecem para a equipe. O ícone vem sem nome, e a tela diz "Cadastre uma unidade para criar sua franquia". Só o dono deveria ver; o gerente, no máximo para ler.
-3. **A recepção vê "Faturamento hoje" e o valor das vendas** em "Últimos eventos" na tela inicial. Isso contradiz a regra "recepção sem resumo financeiro" das abas.
-4. **O básico vê "Vender produto"** na tela inicial, mas não pode vender (a aba Vendas é bloqueada para ele).
+1. ✅ **Menu da conta → "Financeiro"** (histórico de pagamentos, pendências e "Meu Plano", com a compra de plano) aparece para todos os cargos. Só o dono deveria ver. As rotas `/pricing`, `/payment-history` e `/financial-issues` também abrem para a equipe.
+2. ✅ **Ícone e tela de Franquia** aparecem para a equipe. O ícone vem sem nome, e a tela diz "Cadastre uma unidade para criar sua franquia". Só o dono deveria ver; o gerente, no máximo para ler.
+3. ✅ **A recepção vê "Faturamento hoje" e o valor das vendas** em "Últimos eventos" na tela inicial. Isso contradiz a regra "recepção sem resumo financeiro" das abas.
+4. ✅ **O básico vê "Vender produto"** na tela inicial, mas não pode vender (a aba Vendas é bloqueada para ele).
 5. **O boas-vindas com o texto do dono** aparece para todos (ver acima).
 
 ### Errado ou confuso
 
 1. **"Últimos eventos"** (tela inicial e visão geral) lista agendamentos futuros ("13 de out.") misturados com vendas. Deveria ser "Atividade recente", com o que já aconteceu em ordem, sem repetir "Próximos horários".
-2. **Fila do Atendimento:** o status aparece em inglês cru ("WAITING").
-3. **Caixa:** a data aparece no formato americano ("9/29/2026, 11:45:00 AM") com o app em português.
-4. **Abrir uma unidade em que a pessoa não trabalha** (pelo link) fica em "Carregando…" para sempre. Deveria dizer "Você não tem acesso a esta unidade" e oferecer voltar.
+2. ✅ **Fila do Atendimento:** o status aparece em inglês cru ("WAITING").
+3. ✅ **Caixa:** a data aparece no formato americano ("9/29/2026, 11:45:00 AM") com o app em português.
+4. ✅ **Abrir uma unidade em que a pessoa não trabalha** (pelo link) fica em "Carregando…" para sempre. Deveria dizer "Você não tem acesso a esta unidade" e oferecer voltar.
 5. **A agenda abre às 00:00.** Deveria abrir no horário de funcionamento ou na hora atual.
 6. **Barbeiro e básico:** o campo "Profissional" do novo agendamento começa vazio, mas eles só podem agendar para si. Deveria vir preenchido e travado.
 7. **Seletor de unidade no topo:** fica "Selecione uma u…" (cortado) mesmo dentro da unidade ou com uma unidade só. Deveria mostrar a unidade atual, e já escolher sozinho quando houver só uma.
@@ -1073,7 +1073,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ### Ordem sugerida
 
-1. **Sobrando** itens 1 a 4, mais erros 2, 3 e 4: rápidos e só de tela.
+1. ✅ **Sobrando** itens 1 a 4, mais erros 2, 3 e 4. Plano, cobranças e franquia só para o dono (menu e rotas); a recepção vê o caixa, não o faturamento do dia; o painel diz se a pessoa vende (`canSell`); status da fila e datas no idioma do app; unidade sem acesso com aviso. Testado por cargo no E2E (`roles.spec.ts`).
 2. **Boas-vindas por cargo:** o progresso no back e os passos que se marcam sozinhos.
 3. **Erros 5 a 11** e o que falta.
 

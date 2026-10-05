@@ -1142,6 +1142,7 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(mine.view).toBe('mine');
       expect(mine.showRevenueToday).toBe(true);
       expect(mine.showQueue).toBe(true);
+      expect(mine.canSell).toBe(true);
     });
 
     it('barbeiro (o "Staffer" do Booksy): só a própria agenda; contato só de quem agendou com ele', async () => {
@@ -1249,6 +1250,7 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(basicHome.view).toBe('mine');
       expect(basicHome.showQueue).toBe(false);
       expect(basicHome.showRevenueToday).toBe(false);
+      expect(basicHome.canSell).toBe(false);
       await denied(service.getWaitlistEntries(basic, A.shopId));
       await denied(service.getCurrentCashSession(basic, A.shopId));
 
@@ -1322,7 +1324,10 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(desk.totalBarbershops).toBe(0);
       expect(desk.view).toBe('desk');
       expect(desk.showQueue).toBe(true);
-      expect(desk.showRevenueToday).toBe(true);
+      // Recepção vende no caixa, mas não vê o resumo do faturamento
+      expect(desk.showRevenueToday).toBe(false);
+      expect(desk.revenueToday).toBe(0);
+      expect(desk.canSell).toBe(true);
       // Na rede, vê a agenda da unidade inteira — com os nomes (sem telefone)
       const network = await service.getNetworkAppointments(reception);
       expect(network.map((a) => a.id)).toContain(forOther.id);
@@ -1461,6 +1466,7 @@ describe('BarbershopService (integração com o banco)', () => {
         totalBarbershops: 1,
         view: 'network',
         showRevenueToday: true,
+        canSell: true,
       });
       // Gerente toca o caixa: despesas e resumo da unidade
       await expect(service.getExpenses(managerUserId, A.shopId)).resolves.toBeTruthy();

@@ -2504,6 +2504,7 @@ type NetworkDashboardEvent {
 
 type NetworkDashboardStats {
   appointmentsToday: Int!
+  canSell: Boolean!
   currency: String!
   monthlyRevenue: [MonthlyRevenueItem!]!
   recentEvents: [NetworkDashboardEvent!]!
