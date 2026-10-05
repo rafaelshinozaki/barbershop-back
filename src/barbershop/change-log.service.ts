@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type { ChangeLog, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { toChangeFields, type ChangeField } from './change-log';
+
+export { toChangeFields, type ChangeField };
 
 export type ChangeLogFilters = {
   entityType?: string | null;
@@ -11,8 +14,6 @@ export type ChangeLogFilters = {
   limit?: number | null;
   offset?: number | null;
 };
-
-export type ChangeField = { field: string; before: string | null; after: string | null };
 
 /** Quem fez, como o dono vê: a equipe da plataforma aparece sem o nome */
 export type ActorKind = 'user' | 'client' | 'platform' | 'system';
@@ -32,21 +33,6 @@ export type ChangeLogEntry = {
 };
 
 const MAX_LIMIT = 100;
-
-/** Valor guardado (JSON) como texto pra tela formatar pelo campo */
-function asText(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'string') return value;
-  return String(value);
-}
-
-export function toChangeFields(changes: Prisma.JsonValue): ChangeField[] {
-  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return [];
-  return Object.entries(changes as Record<string, unknown>).map(([field, pair]) => {
-    const [before, after] = Array.isArray(pair) ? pair : [null, null];
-    return { field, before: asText(before), after: asText(after) };
-  });
-}
 
 /**
  * Como o dono vê quem fez: a equipe da plataforma vira "Equipe da

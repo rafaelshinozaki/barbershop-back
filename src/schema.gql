@@ -335,12 +335,23 @@ type AuthorizeChairRentResultType {
   link: ChairRentType!
 }
 
+type BackofficeAuditChangeType {
+  action: String!
+  barbershopId: Int
+  barbershopName: String
+  entityId: String!
+  entityName: String
+  entityType: String!
+  fields: [ChangeFieldType!]!
+}
+
 type BackofficeAuditEntryType {
   actorEmail: String!
   actorId: Int
   actorRole: String!
   area: String
   args: String
+  changes: [BackofficeAuditChangeType!]!
   createdAt: DateTime!
   error: String
   id: Int!
@@ -539,6 +550,35 @@ type BarbershopCustomer {
   notes: String
   phone: String!
   updatedAt: String!
+}
+
+type BarbershopDossierType {
+  activeServices: Int!
+  appointments30d: Int!
+  businessType: String!
+  cancelled30d: Int!
+  city: String!
+  completed30d: Int!
+  createdAt: DateTime!
+  customers: Int!
+  featuredUntil: DateTime
+  hiddenFromSearch: Boolean!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  networkName: String
+  noShow30d: Int!
+  onlineDeposit: Boolean!
+  openReports: Int!
+  openSupportTickets: Int!
+  owner: DossierOwnerType
+  payments: DossierPaymentsType!
+  practiceKind: String!
+  reviewAverage: Float
+  reviewCount: Int!
+  slug: String!
+  state: String!
+  team: [DossierTeamMemberType!]!
 }
 
 type BarbershopPhotoType {
@@ -1592,6 +1632,29 @@ type DetailedUsersResponse {
   page: Int!
   total: Int!
   totalPages: Int!
+}
+
+type DossierOwnerType {
+  email: String!
+  fullName: String!
+  id: Int!
+  isActive: Boolean!
+  membership: String!
+  proUntil: DateTime
+}
+
+type DossierPaymentsType {
+  chargesEnabled: Boolean!
+  connected: Boolean!
+  payoutsEnabled: Boolean!
+}
+
+type DossierTeamMemberType {
+  hasAccount: Boolean!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  staffType: String
 }
 
 input EmailHistoryFilters {
@@ -3174,6 +3237,8 @@ input PushSubscriptionInput {
 type Query {
   accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
+  adminBarbershopChangeLog(barbershopId: Int!, limit: Int, offset: Int): ChangeLogPageType!
+  adminBarbershopDossier(barbershopId: Int!): BarbershopDossierType!
   adminBarbershops(query: String): [Barbershop!]!
   adminClientAccounts(search: String): [AdminClientAccountType!]!
   adminFeaturedPurchases(limit: Int): AdminFeaturedPurchasesType!

@@ -594,6 +594,12 @@ export class ClientAuthService {
         where: { actorType: 'client', actorId: clientAccountId },
         data: { actorName: null },
       }),
+      // O histórico da própria conta tem nome e e-mail antigos (e esta
+      // exclusão não grava um novo)
+      this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
+      this.prisma.changeLog.deleteMany({
+        where: { entityType: 'ClientAccount', entityId: String(clientAccountId) },
+      }),
       this.prisma.clientAccount.update({
         where: { id: clientAccountId },
         data: {

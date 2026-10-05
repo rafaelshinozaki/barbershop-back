@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toChangeFields, type ChangeField } from '../../barbershop/change-log';
 
 /** Chaves com segredo: o valor não vai pro registro. */
 const SECRET_KEY = /pass|token|secret|cvc|cvv|cardnumber|otp/i;
@@ -101,12 +102,64 @@ export class BackofficeAuditService {
         skip,
       }),
     ]);
+    const changes = await this.changesOf(items.map((i) => i.requestId));
     return {
       total,
       items: items.map((i) => ({
         ...i,
         args: i.args === null ? null : JSON.stringify(i.args),
+        changes: (i.requestId && changes.get(i.requestId)) || [],
       })),
     };
   }
+
+  /**
+   * O que cada ação mudou de fato: as linhas do histórico de alterações
+   * gravadas no mesmo request (mesmo id), com a unidade afetada.
+   */
+  private async changesOf(requestIds: (string | null)[]): Promise<Map<string, AuditChange[]>> {
+    const ids = [...new Set(requestIds.filter((id): id is string => !!id))];
+    const byRequest = new Map<string, AuditChange[]>();
+    if (!ids.length) return byRequest;
+    const rows = await this.prisma.changeLog.findMany({
+      where: { requestId: { in: ids } },
+      orderBy: { id: 'asc' },
+      take: 1000,
+    });
+    const shopIds = [
+      ...new Set(rows.map((r) => r.barbershopId).filter((id): id is number => id != null)),
+    ];
+    const shops = shopIds.length
+      ? await this.prisma.barbershop.findMany({
+          where: { id: { in: shopIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const shopName = new Map(shops.map((s) => [s.id, s.name]));
+    for (const r of rows) {
+      if (!r.requestId) continue;
+      const list = byRequest.get(r.requestId) ?? [];
+      list.push({
+        entityType: r.entityType,
+        entityId: r.entityId,
+        entityName: r.entityName,
+        action: r.action,
+        barbershopId: r.barbershopId,
+        barbershopName: r.barbershopId != null ? shopName.get(r.barbershopId) ?? null : null,
+        fields: toChangeFields(r.changes),
+      });
+      byRequest.set(r.requestId, list);
+    }
+    return byRequest;
+  }
 }
+
+export type AuditChange = {
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  action: string;
+  barbershopId: number | null;
+  barbershopName: string | null;
+  fields: ChangeField[];
+};

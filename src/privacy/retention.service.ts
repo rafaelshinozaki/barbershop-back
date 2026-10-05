@@ -194,11 +194,17 @@ export class RetentionService {
       BATCH,
     );
 
-    // Histórico de alterações do negócio: um ano
+    // Histórico de alterações: um ano o do negócio; o que a equipe da
+    // plataforma fez acompanha o registro de ações (dois anos)
     const changeLog = await deleteInBatches(
       (take) =>
         this.prisma.changeLog.findMany({
-          where: { createdAt: { lt: changeLogBefore } },
+          where: {
+            OR: [
+              { createdAt: { lt: changeLogBefore }, NOT: { origin: 'backoffice' } },
+              { createdAt: { lt: auditBefore } },
+            ],
+          },
           select: { id: true },
           take,
         }),

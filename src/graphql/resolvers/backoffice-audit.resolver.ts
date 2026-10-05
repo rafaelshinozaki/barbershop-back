@@ -5,6 +5,34 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { Role } from '../../auth/interfaces/roles';
 import { BackofficeAuditService } from '../../backoffice/audit/backoffice-audit.service';
+import { ChangeFieldType } from './change-log.resolver';
+
+/** O que a ação mudou de fato (histórico de alterações do mesmo request) */
+@ObjectType()
+export class BackofficeAuditChangeType {
+  /** Barbershop, User, ClientAccount, Professional… */
+  @Field()
+  entityType: string;
+
+  @Field()
+  entityId: string;
+
+  @Field(() => String, { nullable: true })
+  entityName?: string | null;
+
+  /** create | update | delete */
+  @Field()
+  action: string;
+
+  @Field(() => Int, { nullable: true })
+  barbershopId?: number | null;
+
+  @Field(() => String, { nullable: true })
+  barbershopName?: string | null;
+
+  @Field(() => [ChangeFieldType])
+  fields: ChangeFieldType[];
+}
 
 @ObjectType()
 export class BackofficeAuditEntryType {
@@ -42,6 +70,10 @@ export class BackofficeAuditEntryType {
   /** Id do request (o mesmo do Sentry e da trilha) */
   @Field(() => String, { nullable: true })
   requestId?: string | null;
+
+  /** Antes → depois do que a ação mudou (vazio: leitura, erro ou tabela sem histórico) */
+  @Field(() => [BackofficeAuditChangeType])
+  changes: BackofficeAuditChangeType[];
 }
 
 @ObjectType()

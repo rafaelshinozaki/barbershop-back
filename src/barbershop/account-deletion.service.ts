@@ -182,6 +182,8 @@ export class AccountDeletionService {
         where: { actorType: 'user', actorId: userId },
         data: { actorName: null },
       }),
+      // O histórico da própria conta tem nome e e-mail antigos
+      this.prisma.changeLog.deleteMany({ where: { entityType: 'User', entityId: String(userId) } }),
       this.prisma.employeeInvite.updateMany({
         where: { acceptedByUserId: userId },
         data: { acceptedByUserId: null },
