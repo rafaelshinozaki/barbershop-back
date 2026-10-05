@@ -918,7 +918,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - resposta a avaliação.
 - **Quem vê:**
   - **Dono e gerente:** tela **Histórico** nas configurações da unidade, com filtro por pessoa, por tipo e por período. Cada item aparece como frase, ex.: "Cayo alterou o preço de *Corte masculino* de R$ 40 para R$ 45 — hoje, 14:32".
-  - **Profissional:** só o que mexeu na própria agenda e nos próprios serviços.
+  - **Profissional** (barbeiro e básico) ✅: só a própria agenda: agendamentos (o que passou dele para outro aparece para os dois), escala, folgas e o próprio cadastro. A recepção não vê o Histórico.
   - **Equipe da plataforma:** o histórico inteiro na ficha da unidade e na ficha da pessoa do backoffice (Fase 2 do Backoffice).
   - **Quando a equipe da plataforma mexe na unidade:** o dono vê "Equipe da plataforma" com o motivo, sem o nome do funcionário (decidido). O nome fica no registro interno.
 - **Dado pessoal:**
@@ -989,7 +989,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
     - **Filtros:** pessoa, tipo e período, com "mostrar mais".
     - **Valores formatados pelo campo:** dinheiro, data, sim/não, duração, dia da semana e situação.
     - **Equipe da plataforma:** aparece sem o nome. Telas em pt, en e es.
-  - Fica para depois: o profissional ver só o histórico da própria agenda.
+  - **Profissional** ✅: barbeiro e básico abrem o Histórico só com a própria agenda. Cada linha guarda de quais profissionais ela é (`barberIds`, preenchido pelo gatilho), e as linhas antigas foram preenchidas na migração.
 - **R3 — registro de ações da equipe ligado ao `ChangeLog`** e ficha da unidade no backoffice ✅.
   - **Registro ligado ao histórico:** cada ação do Registro de ações traz o que mudou de fato (as linhas do histórico do mesmo request), com a unidade afetada e um link para a ficha. O gatilho também passou a cobrir User, ClientAccount, Professional, SupportTicket e ContentReport (o que a equipe da plataforma altera). Essas linhas não aparecem no Histórico do dono.
   - **Guarda:** o histórico do que a equipe da plataforma fez fica 2 anos, como o registro. Quem exclui a conta leva junto o histórico da própria conta.

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import type { ChangeLog, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
@@ -34,6 +34,9 @@ export type ChangeLogEntry = {
 
 const MAX_LIMIT = 100;
 
+/** O que o profissional vê no histórico: o que é da agenda dele */
+export const OWN_AGENDA_ENTITIES = ['Appointment', 'BarberSchedule', 'BarberTimeOff', 'Barber'];
+
 /**
  * Como o dono vê quem fez: a equipe da plataforma vira "Equipe da
  * plataforma" com o motivo, sem o nome do funcionário (decisão de
@@ -64,7 +67,8 @@ export function presentActor(
 /**
  * Histórico de alterações da unidade (tela Histórico): o que o gatilho do
  * banco gravou para a unidade e para a rede dela (clientes e dados da rede).
- * Dono e gerente veem tudo.
+ * Dono e gerente veem tudo; o profissional (barbeiro e básico), só a própria
+ * agenda: agendamentos, escala, folgas e o próprio cadastro. A recepção não vê.
  */
 @Injectable()
 export class ChangeLogService {
@@ -73,11 +77,28 @@ export class ChangeLogService {
     private readonly barbershops: BarbershopService,
   ) {}
 
+  /** Que linhas a pessoa pode ver nesta unidade */
+  private async scope(userId: number, barbershopId: number): Promise<Prisma.ChangeLogWhereInput> {
+    const shop = await this.barbershops.ensureAccess(userId, barbershopId, 'basic');
+    if (shop.accessLevel === 'owner' || shop.accessLevel === 'manager') {
+      return { OR: [{ barbershopId }, { barbershopId: null, networkId: shop.networkId }] };
+    }
+    const own = await this.barbershops.ownAgendaBarberId(userId, shop);
+    if (own === null) {
+      throw new ForbiddenException('Seu cargo nesta unidade não permite essa ação.');
+    }
+    return {
+      barbershopId,
+      barberIds: { has: own },
+      entityType: { in: OWN_AGENDA_ENTITIES },
+    };
+  }
+
   async list(userId: number, barbershopId: number, filters: ChangeLogFilters = {}) {
-    const shop = await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    const scope = await this.scope(userId, barbershopId);
     const limit = Math.min(Math.max(filters.limit ?? 50, 1), MAX_LIMIT);
     const where: Prisma.ChangeLogWhereInput = {
-      OR: [{ barbershopId }, { barbershopId: null, networkId: shop.networkId }],
+      AND: [scope],
       ...(filters.entityType ? { entityType: filters.entityType } : {}),
       ...(filters.actorId
         ? { actorId: filters.actorId, actorType: { in: ['user', 'client'] } }
@@ -106,11 +127,11 @@ export class ChangeLogService {
 
   /** Quem aparece no histórico da unidade (filtro "pessoa"), sem a equipe da plataforma */
   async actors(userId: number, barbershopId: number) {
-    const shop = await this.barbershops.ensureAccess(userId, barbershopId, 'manager');
+    const scope = await this.scope(userId, barbershopId);
     const rows = await this.prisma.changeLog.groupBy({
       by: ['actorId', 'actorName', 'actorType'],
       where: {
-        OR: [{ barbershopId }, { barbershopId: null, networkId: shop.networkId }],
+        AND: [scope],
         actorType: { in: ['user', 'client'] },
         actorId: { not: null },
       },

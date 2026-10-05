@@ -81,7 +81,7 @@ export class ChangeLogActorType {
   kind: string;
 }
 
-/** Histórico de alterações da unidade (dono e gerente) */
+/** Histórico de alterações da unidade (dono e gerente; o profissional, só a própria agenda) */
 @Resolver()
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
