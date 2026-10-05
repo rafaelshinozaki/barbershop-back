@@ -743,6 +743,7 @@ export class BarbershopService {
       totalServicesDone: 0,
       totalProductsSold: 0,
       revenueThisMonth: 0,
+      revenueSamePeriodLastMonth: 0,
       currency,
       monthlyRevenue: [] as { month: string; monthIndex: number; year: number; total: number }[],
       recentEvents: [] as Array<{
@@ -933,8 +934,9 @@ export class BarbershopService {
   private async scopedRecentEvents(shopIds: number[], barberIds: number[] | null) {
     const barberFilter = barberIds ? { barberId: { in: barberIds } } : {};
     const [recentAppointments, recentSales] = await Promise.all([
+      // Atividade recente: o que já aconteceu (o futuro está em "Próximos horários")
       this.prisma.appointment.findMany({
-        where: { barbershopId: { in: shopIds }, ...barberFilter },
+        where: { barbershopId: { in: shopIds }, ...barberFilter, startAt: { lte: new Date() } },
         orderBy: { startAt: 'desc' },
         take: 8,
         include: {
@@ -1106,6 +1108,27 @@ export class BarbershopService {
     });
     const revenueThisMonth = Number(revenueThisMonthResult._sum.total ?? 0);
 
+    // Mesmo período do mês anterior (do dia 1 até o mesmo ponto do mês), pra
+    // comparar sem dar "-100%" no começo do mês contra o mês anterior inteiro
+    const [prevYear, prevMonth] = month === 1 ? [year - 1, 12] : [year, month - 1];
+    const prevRange = monthRangeUtc(prevYear, prevMonth, timeZone);
+    const elapsedMs = Date.now() - startOfMonth.getTime();
+    const prevUntil = new Date(
+      Math.min(prevRange.start.getTime() + elapsedMs, prevRange.end.getTime()),
+    );
+    const revenueSamePeriodLastMonth = Number(
+      (
+        await this.prisma.sale.aggregate({
+          where: {
+            barbershopId: { in: barbershopIds },
+            paymentStatus: 'PAID',
+            createdAt: { gte: prevRange.start, lt: prevUntil },
+          },
+          _sum: { total: true },
+        })
+      )._sum.total ?? 0,
+    );
+
     const revenueByShopRows = await this.prisma.sale.groupBy({
       by: ['barbershopId'],
       where: {
@@ -1151,8 +1174,9 @@ export class BarbershopService {
 
     // Últimos eventos (appointments + sales, ordenados por data)
     const [recentAppointments, recentSales] = await Promise.all([
+      // Atividade recente: o que já aconteceu (o futuro está em "Próximos horários")
       this.prisma.appointment.findMany({
-        where: { barbershopId: { in: barbershopIds } },
+        where: { barbershopId: { in: barbershopIds }, startAt: { lte: new Date() } },
         orderBy: { startAt: 'desc' },
         take: 10,
         include: {
@@ -1204,6 +1228,7 @@ export class BarbershopService {
       totalServicesDone,
       totalProductsSold,
       revenueThisMonth,
+      revenueSamePeriodLastMonth,
       currency: barbershops[0].currency,
       monthlyRevenue,
       recentEvents,
