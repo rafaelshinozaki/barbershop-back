@@ -81,7 +81,7 @@ O `MetricsService` (`src/metrics/`) fecha um minuto por instância. Cada minuto 
 Para onde vai cada minuto:
 - **Axiom:** um evento `type=metrics` no `AXIOM_METRICS_DATASET` (ou no `AXIOM_DATASET`). É barato: um evento por minuto por instância.
 - **Backoffice:** a tela **Saúde do sistema** (só o admin; consulta `systemHealth`) mostra o último minuto, mesmo sem Axiom.
-- **Alertas:** o que passa dos limites vira aviso no **Sentry** (tag `alert`, no máximo 1 a cada 15 min por tipo): `slow`, `errors`, `db-pool`, `db-down`, `redis-down`, `queue-stuck` e `queue-failed`. Os limites ficam em `ALERT_*` (ver `.env.example`).
+- **Alertas:** o que passa dos limites vira aviso no **Sentry** (tag `alert`, no máximo 1 a cada 15 min por tipo): `slow`, `errors`, `db-pool`, `db-down`, `redis-down`, `queue-stuck`, `queue-failed` e `backup-stale`. Os limites ficam em `ALERT_*` (ver `.env.example`).
 
 Para cada alerta, o que fazer está em [RUNBOOK.md](RUNBOOK.md).
 
@@ -99,6 +99,17 @@ Para cada alerta, o que fazer está em [RUNBOOK.md](RUNBOOK.md).
 ```
 
 Troque `['metrics']` pelo nome do dataset. Os alertas já saem pelo Sentry. Monitor no Axiom é opcional, para quem preferir: use as mesmas consultas com um limite, em Monitors → New.
+
+## Backup diário do Postgres
+
+- **O que é:** às 03:30 (horário de Brasília), o job `pg-backup` (fila `backup`) roda o `pg_dump` e envia o arquivo para o S3. Fica guardado por `BACKUP_RETENTION_DAYS` dias, e o mais novo nunca é apagado. É a segunda cópia: o backup automático do provedor do banco continua sendo o primeiro.
+- **Ligar:**
+  1. Crie um bucket só para o backup, sem acesso público, com versionamento e criptografia.
+  2. Dê à credencial da API `s3:PutObject`, `s3:ListBucket` e `s3:DeleteObject` na pasta.
+  3. Configure `BACKUP_ENABLED=true` e `BACKUP_S3_BUCKET`.
+  4. Confira que a imagem tem o `pg_dump` da mesma versão maior do Postgres (`PG_CLIENT` no Dockerfile; o padrão é o 16).
+- **Acompanhar:** a Saúde do sistema mostra o último backup (data, tamanho, idade) e tem "Fazer backup agora". Se passar de `BACKUP_MAX_AGE_HOURS` (26 h), dispara o alerta `backup-stale`.
+- **Restaurar:** ver `docs/RUNBOOK.md`.
 
 ## Teste de carga semanal
 

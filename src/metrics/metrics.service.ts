@@ -7,6 +7,7 @@ import { hostname } from 'os';
 import { monitorEventLoopDelay, type IntervalHistogram } from 'perf_hooks';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { BackupService } from '../backup/backup.service';
 import { axiomConfig } from '../activity/app-activity';
 import * as Q from '../queue/queue.constants';
 import {
@@ -57,6 +58,7 @@ export class MetricsService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly moduleRef: ModuleRef,
+    private readonly backups: BackupService,
   ) {}
 
   onApplicationBootstrap() {
@@ -94,10 +96,11 @@ export class MetricsService implements OnApplicationBootstrap, OnModuleDestroy {
     const mem = process.memoryUsage();
     const lagP99 = this.loop ? this.loop.percentile(99) / 1e6 : 0;
     this.loop?.reset();
-    const [db, redis, queues] = await Promise.all([
+    const [db, redis, queues, backup] = await Promise.all([
       this.dbStats(),
       this.redisStats(),
       this.queueStats(now),
+      this.backupStats(now),
     ]);
     return {
       _time: now.toISOString(),
@@ -111,7 +114,20 @@ export class MetricsService implements OnApplicationBootstrap, OnModuleDestroy {
       db,
       redis,
       queues,
+      backup,
     };
+  }
+
+  private async backupStats(now: Date): Promise<MetricsSnapshot['backup']> {
+    if (!this.backups.config.enabled) return null;
+    try {
+      const s = await this.backups.status(now);
+      return { lastAt: s.lastAt?.toISOString() ?? null, ageHours: s.ageHours, stale: s.stale };
+    } catch (err) {
+      // S3 fora ou sem permissão de listar: não dá pra saber; avisa no log
+      this.logger.warn(`Status do backup indisponível: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   private async dbStats(): Promise<MetricsSnapshot['db']> {
