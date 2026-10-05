@@ -217,9 +217,13 @@ export class NetworkDashboardStats {
   @Field(() => Float)
   revenueToday: number;
 
-  /** Esconde o card de faturamento (profissional básico não vê vendas). */
+  /** Esconde o card de faturamento (recepção e profissional básico não veem). */
   @Field(() => Boolean)
   showRevenueToday: boolean;
+
+  /** Mostra "Vender produto" (o profissional básico não vende). */
+  @Field(() => Boolean)
+  canSell: boolean;
 
   @Field(() => Int)
   walkInsWaiting: number;

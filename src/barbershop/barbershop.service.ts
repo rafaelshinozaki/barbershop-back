@@ -758,6 +758,7 @@ export class BarbershopService {
       appointmentsToday: 0,
       revenueToday: 0,
       showRevenueToday: false,
+      canSell: false,
       walkInsWaiting: 0,
       showQueue: false,
       upcomingAppointments: [] as Array<{
@@ -1012,9 +1013,12 @@ export class BarbershopService {
       return {
         ...this.emptyDashboard(shops[0].currency || 'BRL'),
         view: 'desk',
-        showRevenueToday: true,
         showQueue: true,
+        canSell: true,
         ...pulse,
+        // Recepção: o caixa do dia sim, o resumo financeiro não
+        showRevenueToday: false,
+        revenueToday: 0,
         recentEvents,
       };
     }
@@ -1037,6 +1041,7 @@ export class BarbershopService {
       view: 'mine',
       showRevenueToday: billable.length > 0,
       showQueue: billable.length > 0,
+      canSell: billable.length > 0,
       ...pulse,
       recentEvents,
     };
@@ -1204,6 +1209,7 @@ export class BarbershopService {
       recentEvents,
       showRevenueToday: true,
       showQueue: true,
+      canSell: true,
       revenueByBarbershop,
       ...pulse,
     };
