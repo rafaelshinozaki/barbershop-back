@@ -96,6 +96,13 @@ export class StripeService {
     });
   }
 
+  /** Produto de um preço (para criar o preço novo de um plano no mesmo produto) */
+  async getPriceProductId(priceId: string): Promise<string | null> {
+    const price = await this.stripe.prices.retrieve(priceId);
+    if (!price.product) return null;
+    return typeof price.product === 'string' ? price.product : price.product.id;
+  }
+
   async createPrice(
     productId: string,
     unitAmount: number,
