@@ -877,7 +877,7 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - Um segundo admin (`SystemAdmin`) para não depender de uma pessoa só? Recomendado: sim, com os dois usando duas etapas.
 - Reembolso pelo backoffice ou só pelo painel da Stripe? Recomendado: começar pelo painel da Stripe e trazer para o backoffice na Fase 2, quando o volume justificar.
 
-## Horizonte: Registros e estabilidade — 🗺️ Planejado
+## Horizonte: Registros e estabilidade — ✅ Concluído no código
 
 Registrado em 2026-09-29. Duas perguntas para responder sempre:
 1. **Quem mudou o quê?** Exemplos: "o Cayo trocou o preço do corte", "alguém editou a Green Barbershop", "a equipe da plataforma suspendeu este cliente".
@@ -1007,4 +1007,73 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 - **O dono não vê o nome do funcionário da plataforma.** No histórico dele aparece "Equipe da plataforma" com o motivo. O nome fica no registro interno do backoffice e é informado se o dono pedir pelo suporte.
 - **Guarda do histórico:** 1 ano para as alterações do negócio (`ChangeLog`) e 2 anos para o registro da equipe da plataforma. A limpeza fica na rotina de guarda de dados.
 - **O histórico é gravado por gatilho no Postgres**, não no código de cada back. Com o back principal e o backoffice-back escrevendo no mesmo banco, o gatilho pega os dois, além dos jobs e scripts. Uma operação nova não fica sem registro.
+
+## Horizonte: Jornada de cada tipo de usuário — 🗺️ Planejado
+
+Revisão de 2026-10-05: entrei no app principal como cada tipo de usuário do seed e abri todas as telas.
+- **Equipe da unidade:** dono (Cayo), gerente (Bianca), barbeiro (Minion), recepção (Julia), básico (Pedro).
+- **Fora da equipe:** dono de outra unidade no plano gratuito (Marcos), cliente final (Lucas), visitante sem login e admin do sistema.
+
+A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando, o que está errado e o que falta.
+
+### Corrigido na própria revisão
+
+- 🔴 **Cliente entrava na API da equipe como o admin do sistema.**
+  - **O defeito:** só com o cookie do cliente (`ClientAuthentication`), a consulta `me` da equipe respondia com o usuário 1, o admin do sistema. A leitura do cookie da equipe procurava `Authentication=` no cabeçalho e achava o do cliente; o token do cliente (mesmo segredo, sem `userId`) passava; e a busca do usuário com id vazio devolvia o primeiro da tabela, porque a exclusão lógica troca `findUnique` por `findFirst`.
+  - **O mesmo caminho servia ao `state` do OAuth das redes sociais**, que leva `userId` e passa pela URL do provedor.
+  - **A correção:**
+    - o cookie da equipe é lido pelo nome exato;
+    - o token só vale como sessão da equipe com `userId` e uma `ActiveSession` ativa daquele usuário;
+    - o do cliente só vale com `clientAccountId`;
+    - `findUnique` sem chave dá erro em vez de devolver o primeiro registro.
+  - **Teste:** o guard é testado contra o banco com o cookie do cliente, o `state` do OAuth, um token sem sessão e a sessão de verdade.
+
+### Boas-vindas personalizadas por cargo (pedido)
+
+- **Hoje:** há um card só, "Bem-vindo ao seu estabelecimento!".
+  - Ele aparece para quem está no plano gratuito, de qualquer cargo. Na recepção e no básico aparece com o texto do dono ("Gerencie… funcionários e vendas").
+  - O passo "Explorar Dashboard" leva para a própria tela onde a pessoa já está.
+  - Só o dono tem um passo dele ("Ver planos"), e nenhum passo ajuda a configurar o negócio.
+  - O progresso fica no navegador: troca de aparelho, volta tudo.
+- **Como deve ficar:** o card escolhido pelo cargo na unidade, e não pelo plano. Cada passo se marca sozinho quando a coisa é feita de verdade. O progresso fica no back, por pessoa e por unidade. O card some quando tudo está feito, e "Dispensar" vale em todos os aparelhos.
+  - **Dono de negócio novo:** cadastrar os serviços, o horário de funcionamento, convidar a equipe, conferir a página pública (com o link e o QR para divulgar), ligar o recebimento pelo app (opcional) e fazer o primeiro agendamento. "Ver planos" só quando chegar perto do limite do plano.
+  - **Gerente:** a agenda da equipe, a escala e as folgas, os relatórios e o caixa. Sem planos nem cobrança.
+  - **Recepção:** a agenda de todos, cadastrar um cliente, abrir o caixa do dia e a fila de espera.
+  - **Barbeiro:** a minha escala, as folgas, sincronizar com o calendário do celular, a foto e o perfil público, e os meus ganhos.
+  - **Básico:** a minha agenda, a minha escala e sincronizar com o calendário.
+  - **Profissional por conta própria:** o perfil público, onde atende e as vagas para freelancer.
+  - **Cliente final** (área do cliente): confirmar o e-mail, o telefone para os lembretes, favoritar a unidade e ligar as notificações no celular.
+
+### Sobrando: a equipe vê coisas do dono
+
+1. **Menu da conta → "Financeiro"** (histórico de pagamentos, pendências e "Meu Plano", com a compra de plano) aparece para todos os cargos. Só o dono deveria ver. As rotas `/pricing`, `/payment-history` e `/financial-issues` também abrem para a equipe.
+2. **Ícone e tela de Franquia** aparecem para a equipe. O ícone vem sem nome, e a tela diz "Cadastre uma unidade para criar sua franquia". Só o dono deveria ver; o gerente, no máximo para ler.
+3. **A recepção vê "Faturamento hoje" e o valor das vendas** em "Últimos eventos" na tela inicial. Isso contradiz a regra "recepção sem resumo financeiro" das abas.
+4. **O básico vê "Vender produto"** na tela inicial, mas não pode vender (a aba Vendas é bloqueada para ele).
+5. **O boas-vindas com o texto do dono** aparece para todos (ver acima).
+
+### Errado ou confuso
+
+1. **"Últimos eventos"** (tela inicial e visão geral) lista agendamentos futuros ("13 de out.") misturados com vendas. Deveria ser "Atividade recente", com o que já aconteceu em ordem, sem repetir "Próximos horários".
+2. **Fila do Atendimento:** o status aparece em inglês cru ("WAITING").
+3. **Caixa:** a data aparece no formato americano ("9/29/2026, 11:45:00 AM") com o app em português.
+4. **Abrir uma unidade em que a pessoa não trabalha** (pelo link) fica em "Carregando…" para sempre. Deveria dizer "Você não tem acesso a esta unidade" e oferecer voltar.
+5. **A agenda abre às 00:00.** Deveria abrir no horário de funcionamento ou na hora atual.
+6. **Barbeiro e básico:** o campo "Profissional" do novo agendamento começa vazio, mas eles só podem agendar para si. Deveria vir preenchido e travado.
+7. **Seletor de unidade no topo:** fica "Selecione uma u…" (cortado) mesmo dentro da unidade ou com uma unidade só. Deveria mostrar a unidade atual, e já escolher sozinho quando houver só uma.
+8. **"Faturamento (mês vigente)" no começo do mês** mostra "-100% em relação ao mês anterior". Deveria comparar com o mesmo período do mês anterior.
+9. **Plano gratuito:** a faixa "Você está no plano gratuito. Assine para continuar." soa como bloqueio. Deveria dizer o que o plano gratuito permite e quando é preciso assinar.
+10. **Visitante sem login que abre o endereço principal** cai no login da equipe. Deveria cair numa página inicial com "Encontrar um horário" (a busca) e "Tenho um negócio" (o cadastro).
+11. **Perfil público do profissional:** mostra "0 atendimento concluído" (no singular, e mostrando o zero). Com zero, deveria esconder a linha.
+
+### Falta
+
+1. **Teste E2E por cargo do que aparece no menu da conta e no topo** (Financeiro, Franquia, seletor de unidade), para o que é do dono não voltar a aparecer para a equipe.
+2. **"O que o meu cargo pode fazer"** no perfil da equipe (ex.: "Barbeiro: vê e mexe só na própria agenda; vê o contato só de quem já atendeu"), para ninguém achar que é defeito.
+
+### Ordem sugerida
+
+1. **Sobrando** itens 1 a 4, mais erros 2, 3 e 4: rápidos e só de tela.
+2. **Boas-vindas por cargo:** o progresso no back e os passos que se marcam sozinhos.
+3. **Erros 5 a 11** e o que falta.
 

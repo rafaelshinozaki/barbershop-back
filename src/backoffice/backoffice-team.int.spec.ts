@@ -21,6 +21,7 @@ describe('equipe do sistema e áreas do backoffice (integração)', () => {
   // Só o que o teste usa do UserService (o resto das dependências fica de fora)
   const users = Object.assign(Object.create(UserService.prototype), { prisma }) as UserService;
   const ids: Record<string, number> = {};
+  const sessions: Record<string, string> = {};
 
   const roleId = async (name: string) =>
     (
@@ -46,6 +47,19 @@ describe('equipe do sistema e áreas do backoffice (integração)', () => {
         },
       })
     ).id;
+    // Sessão de verdade: o guard exige a ActiveSession do token
+    sessions[key] = `team-${key}-${RUN}`;
+    await prisma.activeSession.create({
+      data: {
+        userId: ids[key],
+        sessionToken: sessions[key],
+        deviceType: 'desktop',
+        browser: 'test',
+        os: 'test',
+        ip: '127.0.0.1',
+        location: 'test',
+      },
+    });
   };
 
   beforeAll(async () => {
@@ -56,6 +70,7 @@ describe('equipe do sistema e áreas do backoffice (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.activeSession.deleteMany({ where: { userId: { in: Object.values(ids) } } });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
     await prisma.$disconnect();
   });
@@ -70,7 +85,7 @@ describe('equipe do sistema e áreas do backoffice (integração)', () => {
       jwt,
       { get: (k: string) => (k === 'JWT_SECRET' ? SECRET : undefined) } as never,
     );
-    const token = jwt.sign({ userId: ids[userKey] });
+    const token = jwt.sign({ userId: ids[userKey], sessionToken: sessions[userKey] });
     const req = { headers: {}, cookies: { Authentication: token } };
     const context = {
       getType: () => 'http',

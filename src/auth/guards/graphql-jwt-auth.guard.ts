@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { SmartLogger } from '@/common/logger.util';
 import { renewIfStale, type SessionPayload } from '@/auth/session-cookie';
+import { staffClaims, staffSessionToken } from '@/auth/session-claims';
 
 /** A query segue sem usuário quando não há sessão. Token inválido também não bloqueia. */
 export const OptionalAuth = () => SetMetadata('authOptional', true);
@@ -35,22 +36,8 @@ export class GraphQLJwtAuthGuard implements CanActivate {
     const gqlContext = GqlExecutionContext.create(context);
     const { req, res } = gqlContext.getContext();
 
-    // Try to get token from Authorization header first
-    let token = req.headers?.authorization?.replace('Bearer ', '');
-
-    // If no Authorization header, try cookies (multiple possible names)
-    if (!token && req.cookies) {
-      token = req.cookies.Authentication || req.cookies.token || req.cookies.access_token;
-    }
-
-    // Fallback: parse cookie header manually if req.cookies is undefined
-    if (!token && req.headers?.cookie) {
-      const cookieHeader = req.headers.cookie;
-      const match = cookieHeader.match(/(Authentication|token|access_token)=([^;]+)/);
-      if (match) {
-        token = match[2];
-      }
-    }
+    // Cabeçalho Bearer ou o cookie `Authentication` (nome exato)
+    const token = staffSessionToken(req);
 
     // Debug log
     if (!token) {
@@ -65,17 +52,13 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       }) as SessionPayload & { iat?: number };
-
-      this.logger.log('JWT decoded successfully', {
-        userId: decoded.userId,
-        email: decoded.email,
-        tokenLength: token.length,
-        decodedPayload: decoded,
-      });
+      // Só sessão da equipe: cookie do cliente ou state do OAuth não valem
+      const claims = staffClaims(decoded);
+      if (!claims) throw new UnauthorizedException('Invalid session');
 
       // Find user in database using userId from token
       const user = await this.prisma.user.findUnique({
-        where: { id: decoded.userId },
+        where: { id: claims.userId },
         include: { role: true },
       });
 
@@ -87,13 +70,11 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       // A sessão precisa ter uma ActiveSession correspondente — é isso que
       // faz "Terminar sessão"/"Sair de outras sessões" realmente revogar o
       // acesso, e não só remover uma linha decorativa da lista.
-      if (decoded.sessionToken) {
-        const activeSession = await this.prisma.activeSession.findUnique({
-          where: { sessionToken: decoded.sessionToken },
-        });
-        if (!activeSession) {
-          throw new UnauthorizedException('Session has been terminated');
-        }
+      const activeSession = await this.prisma.activeSession.findUnique({
+        where: { sessionToken: claims.sessionToken },
+      });
+      if (!activeSession || activeSession.userId !== user.id) {
+        throw new UnauthorizedException('Session has been terminated');
       }
 
       // Em uso: renova o prazo da sessão (quem usa todo dia não cai)

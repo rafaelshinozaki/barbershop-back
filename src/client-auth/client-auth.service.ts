@@ -19,6 +19,7 @@ import { appointmentReviewUrl } from '../barbershop/appointment-link';
 import { ClientAccountDTO } from './dto/client-account.dto';
 import { AccountLinkService } from './account-link.service';
 import { assertNotSuspended } from './suspension';
+import { clientClaims } from '../auth/session-claims';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -634,16 +635,18 @@ export class ClientAuthService {
     try {
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as { clientAccountId: number; v?: number };
+      });
+      const claims = clientClaims(decoded);
+      if (!claims) return undefined;
       const account = await this.prisma.clientAccount.findUnique({
-        where: { id: decoded.clientAccountId },
+        where: { id: claims.clientAccountId },
         select: { sessionVersion: true, deletedAt: true, suspendedAt: true },
       });
       return account &&
         !account.deletedAt &&
         !account.suspendedAt &&
-        (decoded.v ?? 0) === account.sessionVersion
-        ? decoded.clientAccountId
+        claims.v === account.sessionVersion
+        ? claims.clientAccountId
         : undefined;
     } catch {
       return undefined;

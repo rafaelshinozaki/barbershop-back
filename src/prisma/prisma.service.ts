@@ -39,6 +39,14 @@ const WRITE_ACTIONS = new Set([
   'deleteMany',
 ]);
 
+/** Algum campo do where (fora o filtro de apagados) tem valor? */
+function hasUniqueValue(where: unknown): boolean {
+  if (!where || typeof where !== 'object') return false;
+  return Object.entries(where as Record<string, unknown>).some(
+    ([key, value]) => key !== 'deleted_at' && value !== undefined && value !== null,
+  );
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient {
   constructor() {
@@ -54,6 +62,12 @@ export class PrismaService extends PrismaClient {
       }
 
       if (['findUnique', 'findFirst', 'findMany', 'count'].includes(params.action)) {
+        // findUnique vira findFirst (para filtrar os apagados); sem nenhuma
+        // chave preenchida, o findFirst devolveria o PRIMEIRO registro da
+        // tabela (ex.: id undefined → o usuário 1). Erro, como o Prisma faz
+        if (params.action === 'findUnique' && !hasUniqueValue(params.args?.where)) {
+          throw new Error(`${params.model}.findUnique sem chave (where vazio ou undefined)`);
+        }
         if (params.args?.withDeleted) {
           delete params.args.withDeleted;
         } else {
