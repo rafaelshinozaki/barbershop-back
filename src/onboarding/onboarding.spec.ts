@@ -1,4 +1,4 @@
-import { buildSteps, canMark, shouldShow } from './onboarding';
+import { ROLE_STEPS, buildSteps, canMark, shouldShow } from './onboarding';
 
 describe('boas-vindas por cargo (regras)', () => {
   const now = new Date('2026-10-05T12:00:00Z');
@@ -37,5 +37,18 @@ describe('boas-vindas por cargo (regras)', () => {
       ['publicPage'],
     );
     expect(shouldShow(onlyOptional, daysAgo(1), null, now)).toBe(false);
+  });
+
+  it('solo, profissional e cliente: só passos conferidos nos dados', () => {
+    for (const role of ['solo', 'professional', 'client'] as const) {
+      for (const step of ROLE_STEPS[role]) expect(canMark(role, step)).toBe(false);
+    }
+    // Cliente com tudo menos a notificação (opcional): nada a mostrar
+    const steps = buildSteps(
+      'client',
+      { verifyEmail: true, phone: true, favorite: true, push: false },
+      [],
+    );
+    expect(shouldShow(steps, new Date(), null)).toBe(false);
   });
 });

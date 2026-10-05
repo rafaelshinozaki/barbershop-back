@@ -685,6 +685,17 @@ export class ClientAuthService {
     return toDTO(account);
   }
 
+  /** O cliente muda o próprio nome e telefone (o e-mail não muda por aqui) */
+  async updateProfile(clientAccountId: number, name: string, phone?: string | null) {
+    const account = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
+    const updated = await this.prisma.clientAccount.update({
+      where: { id: clientAccountId },
+      data: { name: name.trim(), phone: phone?.trim() || null },
+    });
+    return toDTO(updated);
+  }
+
   async listFavorites(clientAccountId: number) {
     const favorites = await this.prisma.clientFavorite.findMany({
       where: { clientAccountId },

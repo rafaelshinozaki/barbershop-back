@@ -760,6 +760,8 @@ model ClientAccount {
   suspendedAt          DateTime?
   suspendedReason      String?
   suspendedByUserId    Int?
+  // "Dispensar" das boas-vindas da área do cliente
+  onboardingDismissedAt DateTime?
   supportTickets       SupportTicket[]
   pushSubscriptions    PushSubscription[]
   user                 User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)

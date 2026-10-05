@@ -1071,6 +1071,11 @@ type ClientSubscriptionType {
   usedThisCycle: Int!
 }
 
+input ClientUpdateProfileInput {
+  name: String!
+  phone: String
+}
+
 input CloseCashSessionInput {
   countedBalance: Float!
   notes: String
@@ -2236,6 +2241,7 @@ type Mutation {
   deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   disconnectSocialAccount(barbershopId: Int!): Boolean!
+  dismissClientOnboarding: Boolean!
   dismissOnboarding(barbershopId: Int): Boolean!
   enableMyProfessionalProfile(input: ProfessionalSignupInput!): ProfilePrivacyType!
   endSharedLocation(barbershopId: Int!, id: Int!): Boolean!
@@ -2378,6 +2384,7 @@ type Mutation {
   updateBarbershop(id: Int!, input: UpdateBarbershopInput!): Barbershop!
   updateBarbershopProduct(barbershopId: Int!, id: Int!, input: UpdateBarbershopProductInput!): BarbershopProductType!
   updateBarbershopService(barbershopId: Int!, id: Int!, input: UpdateBarbershopServiceInput!): BarbershopServiceType!
+  updateClientProfile(input: ClientUpdateProfileInput!): ClientAccountType!
   updateCoupon(data: UpdateCouponInput!, id: Int!): Coupon!
   updateCustomer(barbershopId: Int!, id: Int!, input: UpdateCustomerInput!): BarbershopCustomer!
   updateInventoryItem(barbershopId: Int!, input: UpdateInventoryItemInput!, productId: Int!): InventoryItemType!
@@ -3402,6 +3409,7 @@ type Query {
   myCareer: CareerOverviewType!
   myChatInbox: [ChatInboxItemType!]!
   myClientAccountLink: StaffClientLinkType!
+  myClientOnboarding: OnboardingType
   myClientSubscriptions: [ClientSubscriptionType!]!
   myConduct: CustomerConductType!
   myCoupons: [Coupon!]!

@@ -1,5 +1,5 @@
 import { InputType, Field } from '@nestjs/graphql';
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 @InputType()
 export class ClientSignupInput {
@@ -73,4 +73,22 @@ export class ClientDeleteAccountInput {
   @IsOptional()
   @IsString()
   email?: string;
+}
+
+/** Nome e telefone do próprio cliente (área do cliente) */
+@InputType()
+export class ClientUpdateProfileInput {
+  @Field()
+  @IsString()
+  @MinLength(2, { message: 'Nome muito curto' })
+  @MaxLength(120)
+  name: string;
+
+  /** Vazio apaga; só dígitos, espaço, +, -, ( e ) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  @Matches(/^[\d\s()+-]*$/, { message: 'Telefone inválido' })
+  phone?: string;
 }
