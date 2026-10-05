@@ -90,11 +90,19 @@ describe('Boas-vindas por cargo (integração)', () => {
     });
   });
 
+  const soloShops: number[] = [];
+
   afterAll(async () => {
     await prisma.onboardingProgress.deleteMany({ where: { userId: { in: users } } });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
-    await prisma.barbershopService.deleteMany({ where: { barbershopId: shopId } });
-    await prisma.barbershop.deleteMany({ where: { id: shopId } });
+    await prisma.barbershopService.deleteMany({
+      where: { barbershopId: { in: [shopId, ...soloShops] } },
+    });
+    await prisma.barbershop.deleteMany({ where: { id: { in: [shopId, ...soloShops] } } });
+    await prisma.professional.deleteMany({ where: { userId: { in: users } } });
+    await prisma.clientAccount.deleteMany({
+      where: { email: { endsWith: `-${RUN}@client.local` } },
+    });
     await prisma.network.deleteMany({ where: { id: networkId } });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
     await prisma.$disconnect();
@@ -153,5 +161,90 @@ describe('Boas-vindas por cargo (integração)', () => {
     });
     const loose = await createUser('solto', 'BarbershopEmployee');
     expect(await onboarding.forUser(loose)).toBeNull();
+  });
+
+  it('agenda própria (solo): passos de quem atende sozinho, sem equipe nem caixa', async () => {
+    const soloUser = await createUser('solo', 'BarbershopEmployee');
+    const soloShop = (
+      await prisma.barbershop.create({
+        data: {
+          name: 'Onb Solo',
+          slug: `onb-solo-${RUN}`,
+          address: 'Rua B, 2',
+          city: 'SP',
+          state: 'SP',
+          country: 'BR',
+          postalCode: '01000000',
+          phone: '11999999998',
+          email: `onb-solo-${RUN}@test.local`,
+          timezone: 'America/Sao_Paulo',
+          ownerUserId: soloUser,
+          networkId,
+          practiceKind: 'solo',
+        },
+      })
+    ).id;
+    soloShops.push(soloShop);
+    const o = await onboarding.forUser(soloUser);
+    expect(o).toMatchObject({ barbershopId: soloShop, role: 'solo' });
+    expect(o?.steps.map((s) => s.id)).toEqual([
+      'services',
+      'hours',
+      'photo',
+      'publicProfile',
+      'calendarSync',
+      'firstAppointment',
+    ]);
+    // Perfil público no ar conta sozinho
+    await prisma.professional.create({
+      data: { userId: soloUser, slug: `onb-solo-${RUN}`, visibility: 'public', isPublic: true },
+    });
+    const after = await onboarding.forUser(soloUser);
+    expect(after?.steps.find((s) => s.id === 'publicProfile')?.done).toBe(true);
+  });
+
+  it('profissional sem unidade: perfil público e foto; vagas é opcional', async () => {
+    const pro = await createUser('pro', 'BarbershopEmployee');
+    await prisma.professional.create({ data: { userId: pro } });
+    const o = await onboarding.forUser(pro);
+    expect(o).toMatchObject({ barbershopId: null, role: 'professional' });
+    expect(o?.steps).toEqual([
+      { id: 'photo', done: false, optional: false },
+      { id: 'publicProfile', done: false, optional: false },
+      { id: 'openToWork', done: false, optional: true },
+    ]);
+    // Perfil oculto não conta como publicado
+    await prisma.professional.update({ where: { userId: pro }, data: { slug: `onb-pro-${RUN}` } });
+    expect((await onboarding.forUser(pro))?.steps[1].done).toBe(false);
+    await onboarding.dismiss(pro, null);
+    expect(await onboarding.forUser(pro)).toBeNull();
+  });
+
+  it('cliente final: passos conferidos nos dados e "Dispensar" guardado na conta', async () => {
+    const client = await prisma.clientAccount.create({
+      data: { email: `onb-cliente-${RUN}@client.local`, name: 'Cliente Onb' },
+    });
+    const o = await onboarding.forClient(client.id);
+    expect(o?.role).toBe('client');
+    expect(o?.steps.map((s) => [s.id, s.done, s.optional])).toEqual([
+      ['verifyEmail', false, false],
+      ['phone', false, false],
+      ['favorite', false, false],
+      ['push', false, true],
+    ]);
+    await prisma.clientAccount.update({
+      where: { id: client.id },
+      data: { emailVerifiedAt: new Date(), phone: '11977777777' },
+    });
+    await prisma.clientFavorite.create({ data: { clientAccountId: client.id, networkId } });
+    // Só falta o opcional: o card some
+    expect(await onboarding.forClient(client.id)).toBeNull();
+
+    const other = await prisma.clientAccount.create({
+      data: { email: `onb-cliente2-${RUN}@client.local`, name: 'Cliente Onb 2' },
+    });
+    expect(await onboarding.forClient(other.id)).not.toBeNull();
+    await onboarding.dismissClient(other.id);
+    expect(await onboarding.forClient(other.id)).toBeNull();
   });
 });

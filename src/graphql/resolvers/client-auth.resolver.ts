@@ -16,6 +16,7 @@ import {
   ClientForgotPasswordInput,
   ClientResetPasswordInput,
   ClientDeleteAccountInput,
+  ClientUpdateProfileInput,
 } from '../dto/client-auth.dto';
 import {
   ThrottleAuth,
@@ -138,6 +139,15 @@ export class ClientAuthResolver {
   @Query(() => ClientAccountType)
   async clientMe(@CurrentClient() client: CurrentClientUser): Promise<ClientAccountType> {
     return this.clientAuthService.getById(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => ClientAccountType)
+  async updateClientProfile(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('input') input: ClientUpdateProfileInput,
+  ): Promise<ClientAccountType> {
+    return this.clientAuthService.updateProfile(client.id, input.name, input.phone);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)

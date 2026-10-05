@@ -3,7 +3,19 @@
  * cada cargo, quais o sistema confere sozinho e quais a pessoa marca ao abrir.
  */
 
-export type OnboardingRole = 'newOwner' | 'owner' | 'manager' | 'reception' | 'barber' | 'basic';
+export type OnboardingRole =
+  | 'newOwner'
+  | 'owner'
+  | 'manager'
+  | 'reception'
+  | 'barber'
+  | 'basic'
+  // Agenda própria (practiceKind = solo): sem equipe nem caixa
+  | 'solo'
+  // Profissional sem unidade: o perfil público e as vagas
+  | 'professional'
+  // Cliente final (área do cliente)
+  | 'client';
 
 /** Passo que o sistema confere pelos dados (o resto marca ao abrir) */
 export const AUTO_STEPS = new Set([
@@ -17,10 +29,16 @@ export const AUTO_STEPS = new Set([
   'schedule',
   'calendarSync',
   'photo',
+  'publicProfile',
+  'openToWork',
+  'verifyEmail',
+  'phone',
+  'favorite',
+  'push',
 ]);
 
 /** Passo que não conta para "tudo feito" (ex.: receber pelo app é opcional) */
-export const OPTIONAL_STEPS = new Set(['payments']);
+export const OPTIONAL_STEPS = new Set(['payments', 'openToWork', 'push']);
 
 export const ROLE_STEPS: Record<OnboardingRole, string[]> = {
   newOwner: ['createShop'],
@@ -29,6 +47,9 @@ export const ROLE_STEPS: Record<OnboardingRole, string[]> = {
   reception: ['agenda', 'newCustomer', 'cashier', 'waitlist'],
   barber: ['schedule', 'timeOff', 'calendarSync', 'photo', 'myPay'],
   basic: ['agenda', 'schedule', 'calendarSync'],
+  solo: ['services', 'hours', 'photo', 'publicProfile', 'calendarSync', 'firstAppointment'],
+  professional: ['photo', 'publicProfile', 'openToWork'],
+  client: ['verifyEmail', 'phone', 'favorite', 'push'],
 };
 
 /** Por quanto tempo depois de entrar na unidade o card aparece */

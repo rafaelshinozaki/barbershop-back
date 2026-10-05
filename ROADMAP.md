@@ -1008,7 +1008,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
 - **Guarda do histórico:** 1 ano para as alterações do negócio (`ChangeLog`) e 2 anos para o registro da equipe da plataforma. A limpeza fica na rotina de guarda de dados.
 - **O histórico é gravado por gatilho no Postgres**, não no código de cada back. Com o back principal e o backoffice-back escrevendo no mesmo banco, o gatilho pega os dois, além dos jobs e scripts. Uma operação nova não fica sem registro.
 
-## Horizonte: Jornada de cada tipo de usuário — 🚧 Em andamento
+## Horizonte: Jornada de cada tipo de usuário — ✅ Concluído
 
 Revisão de 2026-10-05: entrei no app principal como cada tipo de usuário do seed e abri todas as telas.
 - **Equipe da unidade:** dono (Cayo), gerente (Bianca), barbeiro (Minion), recepção (Julia), básico (Pedro).
@@ -1034,7 +1034,11 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
   - **Back:** consulta `myOnboarding` com os passos do cargo na unidade mais recente da pessoa. O que dá para conferir nos dados se marca sozinho: serviços, horário, equipe, recebimento pelo app, primeiro agendamento, caixa aberto pela pessoa, escala, calendário sincronizado e foto. Os passos de abrir uma tela (página pública, agenda, relatórios…) contam ao abrir, pelo `completeOnboardingStep`. O "Dispensar" e o progresso ficam na tabela `OnboardingProgress`.
   - **Quando aparece:** nos primeiros 30 dias da pessoa na unidade; o dono que ainda não cadastrou o negócio vê "Cadastrar o negócio".
   - **Front:** o card substitui o antigo, com o texto e os passos de cada cargo (pt, en, es).
-  - **Falta:** o profissional por conta própria e o cliente final (área do cliente).
+  - ✅ **Profissional por conta própria e cliente final:**
+    - **Agenda própria** (`practiceKind = solo`): passos próprios (serviços, horário, foto, perfil público, calendário e primeiro agendamento), em vez dos do dono, que pediam para convidar a equipe.
+    - **Profissional sem unidade:** foto, perfil público no ar (com endereço e visível) e, opcional, as vagas para freelancer.
+    - **Cliente final** (área do cliente): confirmar o e-mail, o telefone para os lembretes, um favorito e, opcional, a notificação no celular. Tudo conferido nos dados; o "Dispensar" fica na conta (`ClientAccount.onboardingDismissedAt`). Consultas `myClientOnboarding` e `dismissClientOnboarding`.
+    - **"Seus dados" na área do cliente:** o cliente não tinha onde pôr o telefone depois do cadastro. Agora muda nome e telefone (`updateClientProfile`).
 
 - **Hoje:** há um card só, "Bem-vindo ao seu estabelecimento!".
   - Ele aparece para quem está no plano gratuito, de qualquer cargo. Na recepção e no básico aparece com o texto do dono ("Gerencie… funcionários e vendas").
@@ -1075,7 +1079,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 ### Falta
 
 1. ✅ **Teste E2E por cargo do que aparece no menu da conta e no topo** (Financeiro, Franquia, seletor de unidade), para o que é do dono não voltar a aparecer para a equipe.
-2. **"O que o meu cargo pode fazer"** no perfil da equipe (ex.: "Barbeiro: vê e mexe só na própria agenda; vê o contato só de quem já atendeu"), para ninguém achar que é defeito.
+2. ✅ **"O que o meu cargo pode fazer"** no perfil da equipe (ex.: "Barbeiro: vê e mexe só na própria agenda; vê o contato só de quem já atendeu"), para ninguém achar que é defeito.
 
 ### Ordem sugerida
 
@@ -1091,5 +1095,8 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
    - **Visitante em "/":** página com "Encontrar um horário" (busca), entrar como cliente, "Cadastrar meu negócio" e "Já tenho conta: entrar". Link de indicação (`?pro=`) continua indo para o login.
    - **Perfil público do profissional:** esconde a linha de atendimentos quando é zero.
    - **Testes:** `roles.spec.ts` (profissional travado e seletor), `auth.spec.ts` (página do visitante) e o teste de integração do painel (sem futuro na atividade recente).
-4. **Ainda falta:** "O que o meu cargo pode fazer" no perfil da equipe e as boas-vindas do profissional por conta própria e do cliente final.
+4. ✅ **O que faltava:**
+   - **"O que o meu cargo pode fazer"** no perfil (`/profile`): por unidade, o cargo, o que ele pode e o que fica com outro cargo (dono, gerente, recepção, barbeiro, básico e agenda própria).
+   - **Boas-vindas** do profissional por conta própria e do cliente final (ver acima).
+   - **Testes:** integração no back (agenda própria, profissional sem unidade, cliente e o "Seus dados") e E2E (`client-account.spec.ts` e `roles.spec.ts`).
 

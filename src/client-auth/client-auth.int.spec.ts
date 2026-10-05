@@ -289,6 +289,13 @@ describe('Conta do cliente final (integração com o banco)', () => {
     expect(await guardAccepts(squatted)).toBe(false);
   });
 
+  it('o cliente muda o próprio nome e telefone; vazio apaga o telefone', async () => {
+    const account = await service.signup(`perfil-${RUN}@test.local`, PASSWORD, 'Antes', undefined);
+    const updated = await service.updateProfile(account.id, '  Depois  ', ' 11 98888-7777 ');
+    expect(updated).toMatchObject({ name: 'Depois', phone: '11 98888-7777' });
+    expect((await service.updateProfile(account.id, 'Depois', '')).phone).toBeNull();
+  });
+
   it('profissionais favoritos: favorita, lista com a unidade, desfavorita; inativo não entra', async () => {
     const account = await service.signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', undefined);
     const active = await prisma.barber.create({
