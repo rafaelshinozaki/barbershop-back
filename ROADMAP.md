@@ -758,7 +758,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
 | **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
 | **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção e exclusão pedidos por e-mail/suporte, com prazo de 15 dias | novas operações; exclusão reusa `AccountDeletionService` | 🆕 Fase 3 |
-| **Saúde do sistema** (`/system`) | Admin | Filas (BullMQ), Redis, último backup, links do Sentry/Axiom | nova query só leitura | 🆕 Fase 3 |
+| **Saúde do sistema** (`/health`) | Admin | Último minuto da API: requests, p95, erros, CPU, memória, banco, Redis, filas (BullMQ) e operações mais lentas | `systemHealth` | ✅ (falta: último backup e links do Sentry/Axiom) |
 
 **Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
 
@@ -870,7 +870,7 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - Ação que não volta atrás (apagar conta, reembolso acima de um valor) pede confirmação de um segundo membro com a mesma área, ou do admin.
 - Nível leitura × escrita por área (ex.: Financeiro só leitura para o contador).
 - Sessões da equipe: o admin vê onde cada pessoa está logada e derruba. Aviso por e-mail quando alguém da equipe ganha área nova.
-- Saúde do sistema (admin).
+- Saúde do sistema (admin) ✅ (`/health`; falta o último backup).
 
 ### Decisões em aberto
 
@@ -999,7 +999,7 @@ Uma tabela `ChangeLog` no Postgres, feita para gente ler. Não é log técnico.
   - **Alertas no Sentry:** lento, erro, pool esperando, banco ou Redis fora, fila parada e job com falha. No máximo 1 a cada 15 min por tipo, com limites em `ALERT_*`.
   - **Teste de carga semanal no GitHub Actions**, com p95 máximo por cenário (`scripts/load/thresholds.json`) e o resultado guardado por 90 dias.
   - **`docs/RUNBOOK.md`:** o que fazer em cada alerta. O painel no Axiom tem as consultas prontas no `docs/MONITORING.md`.
-  - Falta a tela Saúde do sistema no backoffice (a consulta já existe).
+  - **Tela Saúde do sistema** no backoffice ✅ (`/health`, só o admin): o último minuto, atualizado a cada 30 s, com os mesmos limites dos alertas em vermelho. Falta mostrar o último backup.
 
 ### Decisões tomadas (2026-09-29)
 
