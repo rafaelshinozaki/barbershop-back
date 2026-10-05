@@ -34,6 +34,9 @@ describe('Histórico de alterações (integração)', () => {
   let serviceId: number;
   let customerId: number;
   let barberId: number;
+  let anaUserId: number;
+  let beto: { userId: number; barberId: number };
+  let receptionUserId: number;
 
   const createUser = async (label: string, roleId: number) =>
     (
@@ -110,24 +113,53 @@ describe('Histórico de alterações (integração)', () => {
         data: { networkId, name: 'João Hist', phone: '11987654321' },
       })
     ).id;
+    anaUserId = await createUser('ana', roleId);
     barberId = (
       await prisma.barber.create({
-        data: { barbershopId: shopId, name: 'Ana Hist', phone: '11911111111' },
+        data: { barbershopId: shopId, name: 'Ana Hist', phone: '11911111111', userId: anaUserId },
       })
     ).id;
+    const betoUserId = await createUser('beto', roleId);
+    beto = {
+      userId: betoUserId,
+      barberId: (
+        await prisma.barber.create({
+          data: {
+            barbershopId: shopId,
+            name: 'Beto Hist',
+            phone: '11922222222',
+            staffType: 'basic',
+            userId: betoUserId,
+          },
+        })
+      ).id,
+    };
+    receptionUserId = await createUser('recepcao', roleId);
+    await prisma.barber.create({
+      data: {
+        barbershopId: shopId,
+        name: 'Rita Hist',
+        phone: '11933333333',
+        staffType: 'reception',
+        userId: receptionUserId,
+      },
+    });
   });
 
   afterAll(async () => {
     await prisma.changeLog.deleteMany({
       where: { OR: [{ barbershopId: shopId }, { networkId }] },
     });
+    await prisma.appointment.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barberSchedule.deleteMany({ where: { barberId } });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.barbershopService.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
-    await prisma.user.deleteMany({ where: { id: { in: [ownerId, strangerId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [ownerId, strangerId, anaUserId, beto.userId, receptionUserId] } },
+    });
     await prisma.changeLog.deleteMany({
       where: { OR: [{ barbershopId: shopId }, { networkId }] },
     });
@@ -266,6 +298,61 @@ describe('Histórico de alterações (integração)', () => {
     expect(await changeLog.actors(ownerId, shopId)).toEqual([
       { id: ownerId, name: 'Cayo owner', kind: 'user' },
     ]);
+  });
+
+  it('o profissional vê só a própria agenda; agendamento passado adiante aparece para os dois', async () => {
+    const appointment = await as(owner(), () =>
+      prisma.appointment.create({
+        data: {
+          barbershopId: shopId,
+          customerId,
+          barberId,
+          startAt: new Date('2030-01-07T12:00:00Z'),
+          endAt: new Date('2030-01-07T12:30:00Z'),
+        },
+      }),
+    );
+    await as(owner(), () =>
+      prisma.appointment.update({
+        where: { id: appointment.id },
+        data: { barberId: beto.barberId },
+      }),
+    );
+    const lines = await rows('Appointment', appointment.id);
+    expect(lines.map((l) => l.barberIds)).toEqual([
+      [barberId],
+      [barberId, beto.barberId].sort((a, b) => a - b),
+    ]);
+
+    // Ana (barbeiro): o agendamento criado e passado adiante, a escala e o
+    // próprio cadastro; nada de serviço, cliente ou da unidade
+    const ana = await changeLog.list(anaUserId, shopId, { limit: 100 });
+    const anaTypes = new Set(ana.items.map((i) => i.entityType));
+    expect([...anaTypes].sort()).toEqual(['Appointment', 'Barber', 'BarberSchedule']);
+    expect(ana.items.filter((i) => i.entityType === 'Appointment')).toHaveLength(2);
+    expect(
+      ana.items.some((i) => i.entityType === 'Barber' && i.entityId === String(beto.barberId)),
+    ).toBe(false);
+    expect(await changeLog.actors(anaUserId, shopId)).toEqual([
+      { id: ownerId, name: 'Cayo owner', kind: 'user' },
+    ]);
+
+    // Beto (básico): só a passagem do agendamento pra ele e o próprio cadastro
+    const betoPage = await changeLog.list(beto.userId, shopId, {});
+    expect(betoPage.items.map((i) => `${i.entityType}:${i.action}`).sort()).toEqual([
+      'Appointment:update',
+      'Barber:create',
+    ]);
+    const moved = betoPage.items.find((i) => i.entityType === 'Appointment');
+    expect(moved?.changes).toEqual([{ field: 'barberId', before: 'Ana Hist', after: 'Beto Hist' }]);
+    // O filtro por tipo não abre o que está fora da agenda dele
+    expect((await changeLog.list(beto.userId, shopId, { entityType: 'Customer' })).total).toBe(0);
+  });
+
+  it('a recepção não lê o histórico', async () => {
+    await expect(changeLog.list(receptionUserId, shopId, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('quem não é da unidade não lê o histórico', async () => {

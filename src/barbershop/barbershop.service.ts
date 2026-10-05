@@ -567,6 +567,14 @@ export class BarbershopService {
     return me?.id ?? -1;
   }
 
+  /**
+   * Profissional que só vê a própria agenda (barbeiro e básico): o cadastro
+   * dele na unidade (-1 se não tiver um ativo). null pra quem vê todas.
+   */
+  ownAgendaBarberId(userId: number, barbershop: { id: number; accessLevel: AccessLevel }) {
+    return this.ownBarberIdIfBarber(userId, barbershop);
+  }
+
   /** Barbeiro: agendamento de outro barbeiro não existe pra ele. */
   private ensureOwnAppointment(ownBarberId: number | null, appointment: { barberId: number }) {
     if (ownBarberId !== null && appointment.barberId !== ownBarberId) {

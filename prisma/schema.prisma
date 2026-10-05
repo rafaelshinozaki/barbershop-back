@@ -2269,10 +2269,13 @@ model ChangeLog {
   origin       String
   reason       String?
   requestId    String?
+  // De quais profissionais é a linha (o profissional vê só a própria agenda)
+  barberIds    Int[]    @default([])
 
   @@index([barbershopId, createdAt])
   @@index([networkId, createdAt])
   @@index([entityType, entityId])
   @@index([actorId])
   @@index([createdAt])
+  @@index([barberIds], type: Gin)
 }
