@@ -869,7 +869,13 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - Comandos `support.reply_email` (o link do pedido é assinado com segredo daqui) e `client.suspended_email`.
       - Testado de ponta a ponta com a fila real: o back recebe o comando e manda o e-mail certo, e o histórico grava a equipe como autora, com o motivo e o id do request.
       - Achado no caminho: a fila do backoffice-back usava o prefixo padrão do BullMQ (`bull`) e o back escuta `barbershop`. Os comandos da S2 (código do login, convite, senha) nunca chegariam ao back em produção. Corrigido no mesmo PR, com teste do prefixo.
-    - Próximas: Moderação (depois da decisão do S3), Usuários (editar, ações em lote, derrubar sessões), Financeiro, só do admin.
+    - **Usuários** ✅ (backoffice-back, no PR da S2):
+      - Editar conta, ações em lote (ativar, desativar, trocar plano com `finance.write`), derrubar sessões. Tudo é só dado: sem comando.
+      - Conta do sistema só o Administrador altera.
+      - Na edição só muda o que veio; gênero e ativo passaram a valer (o back ignorava).
+      - Achado no caminho (app, PR da S2): o formulário de editar mandava telefone vazio e duas etapas desligadas (a lista não traz esses campos). Salvar qualquer edição apagava o telefone e desligava as duas etapas da conta. Agora manda só o que mudou, com E2E.
+      - Continuam aqui: cargo de conta do app (`updateUserRole`), apagar conta (pede confirmação e apaga arquivos) e importar CSV (cria contas com senha).
+    - Próximas: Financeiro, só do admin, e Moderação (depois da decisão do S3).
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
