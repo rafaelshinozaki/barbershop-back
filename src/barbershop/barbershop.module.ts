@@ -1,3 +1,4 @@
+import { AppPaymentsService } from './app-payments.service';
 import { MarketingUnsubscribeController } from './marketing-unsubscribe.controller';
 import { AccountDeletionService } from './account-deletion.service';
 import { SharedLocationService } from './shared-location.service';
@@ -75,6 +76,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BullModule.registerQueue({ name: PILOT_QUEUE }),
   ],
   providers: [
+    AppPaymentsService,
     BarbershopService,
     AccountDeletionService,
     EmployeeInviteService,
@@ -120,6 +122,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   controllers: [EmployeeInviteController, MarketingUnsubscribeController, CalendarController],
   exports: [
     BarbershopService,
+    AppPaymentsService,
     JobOpeningService,
     FeaturedPaymentService,
     PilotMetricsService,

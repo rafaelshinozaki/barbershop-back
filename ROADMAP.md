@@ -755,9 +755,11 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Cupons** (`/coupons`) | Admin | Criar, editar, apagar cupons e ver o uso | `getAllCoupons`, `createCoupon`, `updateCoupon`, `deleteCoupon`, `getCouponStats` | ✅ |
 | **Planos** (`/plans`) | Admin | Criar/editar/remover plano, sincronizar com a Stripe | REST `/plans/create`, `update`, `remove`, `sync-stripe` (GraphQL `createPlan`, `updatePlan`, `removePlan`, `syncPlansWithStripe`) | ✅ |
 | **Ficha da unidade** (`/barbershops/:id`) | Usuários (leitura) | Uma unidade inteira num lugar: dono e equipe, plano, Connect, Destaque, denúncias, pedidos de suporte, histórico com nome da equipe | `adminBarbershopDossier`, `adminBarbershopChangeLog` | ✅ |
-| **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargos e unidades, plano e cobranças (se tiver Financeiro), sessões, histórico de login, pedidos de suporte | nova query só leitura | 🆕 Fase 2 |
-| **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, reembolso, disputa, taxa da plataforma recebida | novas queries (lendo Stripe/tabelas atuais) | 🆕 Fase 2 |
-| **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção e exclusão pedidos por e-mail/suporte, com prazo de 15 dias | novas operações; exclusão reusa `AccountDeletionService` | 🆕 Fase 3 |
+| **Ficha da pessoa** (`/users/:id`) | Usuários (leitura) | Conta, cargo e unidades, sessões abertas, últimos logins, pedidos de suporte; plano e cobranças com o Financeiro. Derrubar sessões e apagar conta | `adminUserDossier`, `adminRevokeUserSessions`, `adminDeleteUser` | ✅ Fase 2 |
+| **Busca do topo** | Usuários ou Suporte | E-mail, nome, unidade ou número; contas e unidades com Usuários, contas de cliente com Suporte | `backofficeSearch` | ✅ Fase 2 |
+| **Pagamentos pelo app** (`/payments`) | Financeiro | Sinal, atendimento pago e caixinha via Connect: lista, estorno com motivo, disputa (webhook `charge.dispute.*`), taxa da plataforma estimada pela tabela atual | `adminAppPayments`, `adminRefundAppPayment` | ✅ Fase 2 |
+| **Confirmações** (`/approvals`) | Todos (os próprios) / Admin confirma | Ação sem volta pedida por quem não é Administrador: apagar conta, estorno acima do limite, e-mail para mais de 1.000 pessoas | `backofficeApprovals`, `backofficeApprovalsPending`, `decideBackofficeApproval` | ✅ Fase 3 |
+| **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção, exclusão e portabilidade pedidos por e-mail/suporte, com prazo de 15 dias e resposta registrada | `privacyRequests`, `createPrivacyRequest`, `updatePrivacyRequest` | ✅ Fase 3 |
 | **Saúde do sistema** (`/health`) | Admin | Último minuto da API: requests, p95, erros, CPU, memória, banco, Redis, filas (BullMQ) e operações mais lentas | `systemHealth`, `backupStatus`, `runBackupNow` | ✅ |
 
 **Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
@@ -872,23 +874,23 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - 🚧 Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa nome, e-mail e cargo e a pessoa define a senha pelo link) (feito na S2).
 - 🚧 E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e vê "acesso negado" no resto; a API do backoffice responde 403 (feito na S2).
 
-**Fase 2 — ver tudo de um negócio sem sair do backoffice**
-- Ficha da unidade e ficha da pessoa, só leitura, com links entre elas e para as filas (suporte, moderação).
-- Busca única no topo (e-mail, nome, unidade, id), respeitando as áreas.
-- Pagamentos pelo app: lista e reembolso (Financeiro), com motivo no registro de ações.
-- Derrubar as sessões de uma pessoa (Usuários), que hoje só acontece ao desativar.
+**Fase 2 — ver tudo de um negócio sem sair do backoffice** ✅ (back; as telas entram com a S2 no app do backoffice)
+- ✅ Ficha da pessoa (`adminUserDossier`, só leitura): conta, cargo, unidades (dono ou equipe, com vínculo temporário), sessões abertas e últimos logins (sem IP), pedidos de suporte e a área do cliente ligada; plano e cobranças só para quem tem o Financeiro. Links para a ficha da unidade e para as filas de suporte e de contas de cliente. Na lista de Usuários, o nome abre a ficha.
+- ✅ Busca única no topo (`backofficeSearch`): e-mail, nome, unidade ou número; contas e unidades com Usuários, contas de cliente com Suporte. `@RequireArea` passou a aceitar mais de uma área (basta ter qualquer uma).
+- ✅ Pagamentos pelo app (`adminAppPayments`, Financeiro): sinal, atendimento pago antes e caixinha, com filtro por tipo e situação (pago, estornado em parte, estornado, em disputa), totais e a taxa da plataforma estimada pela tabela atual. Estorno (`adminRefundAppPayment`) com motivo, pelo mesmo fluxo da unidade (sinal e caixinha inteiros, atendimento em parte; conta já fechada só pelo painel da Stripe). Caixinha estornada guarda `refundedAt`. Disputas chegam pelo webhook `charge.dispute.*` (`PaymentDispute`).
+- ✅ Derrubar as sessões de uma pessoa (`adminRevokeUserSessions`, Usuários): app e área do cliente ligada.
 
-**Fase 3 — governança**
-- Pedidos do titular (LGPD) com prazo e resposta registrada.
-- Ação que não volta atrás (apagar conta, reembolso acima de um valor) pede confirmação de um segundo membro com a mesma área, ou do admin.
-- Nível leitura × escrita por área (ex.: Financeiro só leitura para o contador).
-- Sessões da equipe: o admin vê onde cada pessoa está logada e derruba. Aviso por e-mail quando alguém da equipe ganha área nova.
+**Fase 3 — governança** ✅ (back; telas com a S2)
+- ✅ Pedidos do titular (LGPD) (`PrivacyRequest`, Suporte): acesso, correção, exclusão, portabilidade; prazo de 15 dias, ligação com a conta pelo e-mail, filtro dos atrasados, resposta obrigatória para encerrar, quem registrou e quem resolveu.
+- ✅ Ação sem volta (`BackofficeApproval`): apagar conta (sempre), estorno acima de `BACKOFFICE_REFUND_APPROVAL_LIMIT` (padrão R$ 500) e e-mail para mais de 1.000 pessoas. Quem não é Administrador pede com o motivo; outro Administrador (nunca quem pediu) confirma, e a ação roda na hora (ou recusa com nota). Falha fica registrada. Apagar conta agora usa a mesma exclusão do titular (`deleteByStaff`: dados pessoais apagados, linha anônima), no lugar de apagar a linha direto; conta do sistema não sai por aqui. Para o app do backoffice de antes da S2 continuar funcionando, ficam `removeUser` (só Administrador, já pela exclusão do titular) e `sendEmailNotification` (Boolean) como antigas; o app novo usa `adminDeleteUser` e `sendBackofficeEmail`. Saem na S4.
+- ✅ Nível leitura × escrita: resolvido pelos cargos da S2 (cada cargo tem permissões de leitura e de escrita separadas, ex.: o Coordenador só vê o Financeiro).
+- ✅ Sessões da equipe (backoffice-back): o Administrador vê onde cada pessoa está logada e derruba (`/team/:id/sessions`, `/team/:id/revoke-sessions`). Cargo novo avisa a pessoa por e-mail (`staff_role_changed`).
 - Saúde do sistema (admin) ✅ (`/health`, com o último backup e links do Sentry e do Axiom).
 
 ### Decisões em aberto
 
 - Um segundo admin (`SystemAdmin`) para não depender de uma pessoa só? Recomendado: sim, com os dois usando duas etapas.
-- Reembolso pelo backoffice ou só pelo painel da Stripe? Recomendado: começar pelo painel da Stripe e trazer para o backoffice na Fase 2, quando o volume justificar.
+- ~~Reembolso pelo backoffice ou só pelo painel da Stripe?~~ Feito no backoffice (Fase 2, pedido do dono da plataforma em 2026-10-06), com limite e confirmação acima dele.
 
 ## Horizonte: Registros e estabilidade — ✅ Concluído no código
 

@@ -27,6 +27,7 @@ import { TipService } from '../barbershop/tip.service';
 import { PrepaymentService } from '../barbershop/prepayment.service';
 import { FeaturedPaymentService } from '../barbershop/featured-payment.service';
 import { JobOpeningService } from '../barbershop/job-opening.service';
+import { AppPaymentsService } from '../barbershop/app-payments.service';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -47,6 +48,7 @@ export class StripeController {
     private prepayments: PrepaymentService,
     private featured: FeaturedPaymentService,
     private jobs: JobOpeningService,
+    private appPayments: AppPaymentsService,
   ) {}
 
   @Post('webhook')
@@ -117,6 +119,12 @@ export class StripeController {
           await this.identity.handleStripeSession(
             (event.data.object as Stripe.Identity.VerificationSession).id,
           );
+          break;
+        // Disputa (chargeback) de pagamento pelo app: o Financeiro acompanha no backoffice
+        case 'charge.dispute.created':
+        case 'charge.dispute.updated':
+        case 'charge.dispute.closed':
+          await this.appPayments.recordDispute(event.data.object as Stripe.Dispute);
           break;
         // Conta de recebimento (Connect): cadastro concluído, pendência, bloqueio
         case 'account.updated': {

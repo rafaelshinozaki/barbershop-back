@@ -30,6 +30,10 @@ import { BackupModule } from '../backup/backup.module';
 import { OnboardingModule } from '../onboarding/onboarding.module';
 import { OnboardingResolver } from './resolvers/onboarding.resolver';
 import { BackofficeBarbershopResolver } from './resolvers/backoffice-barbershop.resolver';
+import { BackofficeOpsResolver } from './resolvers/backoffice-ops.resolver';
+import { BackofficeGovernanceResolver } from './resolvers/backoffice-governance.resolver';
+import { ApprovalService } from '../backoffice/approval.service';
+import { PrivacyRequestService } from '../backoffice/privacy-request.service';
 import { NotificationsResolver } from './resolvers/notifications.resolver';
 import { PaymentResolver } from './resolvers/payment.resolver';
 import { CouponsResolver } from './resolvers/coupons.resolver';
@@ -97,6 +101,10 @@ import { SocialModule } from '../social/social.module';
     BackofficeAuditResolver,
     SystemHealthResolver,
     BackofficeBarbershopResolver,
+    BackofficeOpsResolver,
+    BackofficeGovernanceResolver,
+    ApprovalService,
+    PrivacyRequestService,
     NotificationsResolver,
     PaymentResolver,
     CouponsResolver,

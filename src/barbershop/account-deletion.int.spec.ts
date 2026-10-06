@@ -301,4 +301,19 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       ForbiddenException,
     );
   });
+
+  it('pela equipe (backoffice, depois da confirmação): apaga sem a senha; conta do sistema não', async () => {
+    const target = await createUser('pela-equipe', ownerRoleId);
+    await service.deleteByStaff(target.id);
+    expect(await prisma.user.findUnique({ where: { id: target.id } })).toBeNull();
+
+    const admin = await createUser('admin-equipe', adminRoleId);
+    await expect(service.deleteByStaff(admin.id)).rejects.toBeInstanceOf(ForbiddenException);
+    const managerRoleId = (
+      (await prisma.role.findFirst({ where: { name: 'SystemManager' } })) ??
+      (await prisma.role.create({ data: { name: 'SystemManager' } }))
+    ).id;
+    const manager = await createUser('gerente-sistema', managerRoleId);
+    await expect(service.deleteByStaff(manager.id)).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });

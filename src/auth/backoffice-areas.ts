@@ -26,22 +26,28 @@ export const BACKOFFICE_AREA_KEY = 'backofficeArea';
 
 /**
  * Área da operação. Obrigatória em toda operação que aceita SystemManager (o
- * teste resolver-guards.spec confere); sem ela, a equipe é recusada.
+ * teste resolver-guards.spec confere); sem ela, a equipe é recusada. Com
+ * mais de uma, basta ter qualquer uma (ex.: a busca do topo).
  */
-export const RequireArea = (area: BackofficeArea) => SetMetadata(BACKOFFICE_AREA_KEY, area);
+export const RequireArea = (...areas: [BackofficeArea, ...BackofficeArea[]]) =>
+  SetMetadata(BACKOFFICE_AREA_KEY, areas.length === 1 ? areas[0] : areas);
 
 const isRole = (name: string | undefined, role: Role) =>
   (name ?? '').toLowerCase() === role.toLowerCase();
 
-/** A equipe do sistema (SystemManager) tem a área? O admin sempre tem. */
+/**
+ * A equipe do sistema (SystemManager) tem a área (ou, numa lista, alguma
+ * delas)? O admin sempre tem.
+ */
 export function hasBackofficeArea(
   roleName: string | undefined,
   areas: string[] | null | undefined,
-  area: string | undefined,
+  area: string | readonly string[] | undefined,
 ): boolean {
   if (isRole(roleName, Role.SYSTEM_ADMIN)) return true;
   if (!isRole(roleName, Role.SYSTEM_MANAGER)) return false;
-  return !!area && (areas ?? []).includes(area);
+  const wanted = typeof area === 'string' ? [area] : area ?? [];
+  return wanted.some((a) => (areas ?? []).includes(a));
 }
 
 export function isSystemRole(roleName: string | undefined): boolean {
