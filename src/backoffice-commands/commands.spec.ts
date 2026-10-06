@@ -3,6 +3,7 @@ import {
   parseAdminNotificationEmail,
   parseClientSuspendedEmail,
   parseEmailSend,
+  parseModerationNotifyOwner,
   parseNotificationsCreated,
   parseSupportReplyEmail,
 } from './commands';
@@ -93,6 +94,23 @@ describe('comandos de avisos e e-mails da API do backoffice', () => {
   });
 });
 
+describe('comando de aviso da moderação', () => {
+  it('moderation.notify_owner: só foto, unidade ou perfil; ocultar ou devolver', () => {
+    expect(
+      parseModerationNotifyOwner({ targetType: 'barbershop', targetId: 2, action: 'restore' }),
+    ).toEqual({ targetType: 'barbershop', targetId: 2, action: 'restore' });
+    expect(() =>
+      parseModerationNotifyOwner({ targetType: 'chat_thread', targetId: 2, action: 'hide' }),
+    ).toThrow(/tipo/);
+    expect(() =>
+      parseModerationNotifyOwner({ targetType: 'photo', targetId: 0, action: 'hide' }),
+    ).toThrow(/conteúdo/);
+    expect(() =>
+      parseModerationNotifyOwner({ targetType: 'photo', targetId: 1, action: 'dismiss' }),
+    ).toThrow(/ação/);
+  });
+});
+
 describe('processador dos comandos', () => {
   const make = () => {
     const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
@@ -102,6 +120,7 @@ describe('processador dos comandos', () => {
     const pricing = { reload: jest.fn().mockResolvedValue(undefined) };
     const realtime = { notifyUsers: jest.fn() };
     const backoffice = { sendEmailNotification: jest.fn().mockResolvedValue(true) };
+    const moderation = { notifyOwner: jest.fn().mockResolvedValue(undefined) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
@@ -110,13 +129,33 @@ describe('processador dos comandos', () => {
       pricing as never,
       realtime as never,
       backoffice as never,
+      moderation as never,
     );
-    return { processor, email, support, suspension, searchCache, pricing, realtime, backoffice };
+    return {
+      processor,
+      email,
+      support,
+      suspension,
+      searchCache,
+      pricing,
+      realtime,
+      backoffice,
+      moderation,
+    };
   };
 
   it('manda cada comando pro serviço certo', async () => {
-    const { processor, email, support, suspension, searchCache, pricing, realtime, backoffice } =
-      make();
+    const {
+      processor,
+      email,
+      support,
+      suspension,
+      searchCache,
+      pricing,
+      realtime,
+      backoffice,
+      moderation,
+    } = make();
     await processor.process({
       name: 'support.reply_email',
       data: { ticketId: 4, reply: 'Oi' },
@@ -145,6 +184,11 @@ describe('processador dos comandos', () => {
       subject: 'Oi',
       message: 'Tudo bem?',
     });
+    await processor.process({
+      name: 'moderation.notify_owner',
+      data: { targetType: 'photo', targetId: 8, action: 'hide' },
+    } as never);
+    expect(moderation.notifyOwner).toHaveBeenCalledWith('photo', 8, 'hide');
     expect(email.sendCustomerEmail).not.toHaveBeenCalled();
   });
 

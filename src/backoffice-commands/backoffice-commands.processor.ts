@@ -9,14 +9,17 @@ import { SearchCacheService } from '../barbershop/search-cache.service';
 import { PricingService } from '../pricing/pricing.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
+import { ModerationService } from '../barbershop/moderation.service';
 import {
   ADMIN_NOTIFICATION_EMAIL,
   CLIENT_SUSPENDED_EMAIL,
   EMAIL_SEND,
+  MODERATION_NOTIFY_OWNER,
   NOTIFICATIONS_CREATED,
   parseAdminNotificationEmail,
   parseClientSuspendedEmail,
   parseEmailSend,
+  parseModerationNotifyOwner,
   parseNotificationsCreated,
   parseSupportReplyEmail,
   PRICING_RELOAD,
@@ -31,7 +34,8 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
  * template permitido (email.send) e os avisos que dependem de regra daqui
  * (resposta do suporte com o link assinado, suspensão de conta de cliente,
  * cache da busca depois do Destaque, preços relidos depois de salvos, avisos
- * em tempo real e o e-mail da equipe pra contas do app).
+ * em tempo real, o e-mail da equipe pra contas do app e o aviso ao dono do
+ * que a moderação ocultou ou devolveu).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
@@ -45,6 +49,7 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly pricing: PricingService,
     private readonly realtime: RealtimeService,
     private readonly backoffice: BackofficeService,
+    private readonly moderation: ModerationService,
   ) {
     super();
   }
@@ -73,6 +78,11 @@ export class BackofficeCommandsProcessor extends WorkerHost {
       const cmd = parseAdminNotificationEmail(job.data);
       await this.backoffice.sendEmailNotification(cmd);
       this.logger.log(`${ADMIN_NOTIFICATION_EMAIL} para ${cmd.userIds.length} pessoas`);
+      return;
+    }
+    if (job.name === MODERATION_NOTIFY_OWNER) {
+      const cmd = parseModerationNotifyOwner(job.data);
+      await this.moderation.notifyOwner(cmd.targetType, cmd.targetId, cmd.action);
       return;
     }
     if (job.name === SEARCH_CACHE_BUMP) {
