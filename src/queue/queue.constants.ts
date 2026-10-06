@@ -16,6 +16,9 @@ export const PILOT_QUEUE = 'pilot';
 export const APP_ACTIVITY_QUEUE = 'app-activity';
 // Backup diário do Postgres para o S3
 export const BACKUP_QUEUE = 'backup';
+// Comandos da API do backoffice (barbershop-backoffice-back), que não tem as
+// regras do negócio: ela põe o comando aqui e o back executa (ex.: email.send)
+export const BACKOFFICE_COMMANDS_QUEUE = 'backoffice-commands';
 
 // Tentativas com espera exponencial (30s, 1min, 2min, 4min, 8min) — cobre
 // instabilidade do Mailgun/Meta sem martelar o provedor. Guarda histórico

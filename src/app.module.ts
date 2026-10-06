@@ -16,6 +16,7 @@ import { EmailModule } from './email/email.module';
 import { HealthModule } from './health/health.module';
 import { AwsModule } from './aws/aws.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { BackofficeCommandsModule } from './backoffice-commands/backoffice-commands.module';
 import { BackofficeModule } from './backoffice/backoffice.module';
 import { BarbershopModule } from './barbershop/barbershop.module';
 import { queryLimitsPlugin } from './graphql/query-limits.plugin';
@@ -213,6 +214,7 @@ import { formatGqlError } from './graphql/format-error';
     HealthModule,
     NotificationsModule,
     BackofficeModule,
+    BackofficeCommandsModule,
     ActivityModule,
     MetricsModule,
     BarbershopModule,

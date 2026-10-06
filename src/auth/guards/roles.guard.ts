@@ -18,7 +18,8 @@ import { Role } from '../interfaces/roles';
 import { PrismaService } from '@/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'crypto';
+import { gatewayAllowed } from '../gateway';
+import { staffFromHeaders, staffPrincipal } from '../staff-assertion';
 import { BACKOFFICE_AREA_KEY, hasBackofficeArea } from '../backoffice-areas';
 import { staffClaims, staffSessionToken } from '../session-claims';
 
@@ -36,16 +37,7 @@ export function isBackofficeOnly(roles: string[]): boolean {
   return roles.length > 0 && roles.every((r) => SYSTEM_ROLES.includes(String(r).toLowerCase()));
 }
 
-export function gatewayAllowed(
-  secret: string | undefined,
-  header: string | string[] | undefined,
-): boolean {
-  if (!secret) return true;
-  if (typeof header !== 'string') return false;
-  const a = Buffer.from(header);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+export { gatewayAllowed };
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -90,6 +82,36 @@ export class RolesGuard implements CanActivate {
       )
     ) {
       throw new ForbiddenException('Operação do backoffice: use o app do backoffice.');
+    }
+
+    // Equipe da plataforma vinda da API do backoffice (afirmação assinada,
+    // ver staff-assertion.ts): o cargo vira o papel e as áreas antigos
+    const staff = staffFromHeaders(
+      req?.headers as Record<string, string | string[] | undefined>,
+      this.configService.get<string>('BACKOFFICE_GATEWAY_SECRET'),
+    );
+    if (staff) {
+      const principal = staffPrincipal(staff);
+      if (!requiredRoles.some((r) => r.toLowerCase() === principal.role.name.toLowerCase())) {
+        throw new ForbiddenException('Operação indisponível para o seu cargo.');
+      }
+      if (principal.role.name.toLowerCase() === Role.SYSTEM_MANAGER.toLowerCase()) {
+        const area = this.reflector.getAllAndOverride<string>(BACKOFFICE_AREA_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!hasBackofficeArea(principal.role.name, principal.backofficeAreas, area)) {
+          throw new ForbiddenException('Sem acesso a esta área do backoffice.');
+        }
+      }
+      (req as Request & { backofficeActor?: unknown }).backofficeActor = {
+        id: principal.id,
+        email: principal.email,
+        role: staff.role,
+      };
+      // A equipe não é User: o principal só tem o que as operações de sistema usam
+      req.user = principal as unknown as Request['user'];
+      return true;
     }
 
     if (!token) {
