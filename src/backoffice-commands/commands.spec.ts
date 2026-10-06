@@ -61,16 +61,18 @@ describe('processador dos comandos', () => {
     const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
     const support = { emailReply: jest.fn().mockResolvedValue(undefined) };
     const suspension = { emailSuspended: jest.fn().mockResolvedValue(undefined) };
+    const searchCache = { bump: jest.fn().mockResolvedValue(undefined) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
       suspension as never,
+      searchCache as never,
     );
-    return { processor, email, support, suspension };
+    return { processor, email, support, suspension, searchCache };
   };
 
   it('manda cada comando pro serviço certo', async () => {
-    const { processor, email, support, suspension } = make();
+    const { processor, email, support, suspension, searchCache } = make();
     await processor.process({
       name: 'support.reply_email',
       data: { ticketId: 4, reply: 'Oi' },
@@ -81,6 +83,8 @@ describe('processador dos comandos', () => {
       data: { clientAccountId: 9 },
     } as never);
     expect(suspension.emailSuspended).toHaveBeenCalledWith(9);
+    await processor.process({ name: 'search.cache_bump', data: {} } as never);
+    expect(searchCache.bump).toHaveBeenCalledTimes(1);
     expect(email.sendCustomerEmail).not.toHaveBeenCalled();
   });
 
