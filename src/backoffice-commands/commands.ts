@@ -165,3 +165,30 @@ export function parseAdminNotificationEmail(data: unknown): AdminNotificationEma
     ...(type ? { type } : {}),
   };
 }
+
+/**
+ * A moderação (agora na API do backoffice) ocultou ou devolveu uma foto, a
+ * página de uma unidade ou o perfil de um profissional: o back avisa o dono
+ * (sininho e celular).
+ */
+export const MODERATION_NOTIFY_OWNER = 'moderation.notify_owner';
+const OWNER_TARGETS = ['photo', 'barbershop', 'professional_profile'] as const;
+export type ModerationNotifyOwnerCommand = {
+  targetType: (typeof OWNER_TARGETS)[number];
+  targetId: number;
+  action: 'hide' | 'restore';
+};
+
+export function parseModerationNotifyOwner(data: unknown): ModerationNotifyOwnerCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!OWNER_TARGETS.includes(d.targetType as ModerationNotifyOwnerCommand['targetType']))
+    throw new Error(`${MODERATION_NOTIFY_OWNER}: tipo inválido`);
+  if (!positiveInt(d.targetId)) throw new Error(`${MODERATION_NOTIFY_OWNER}: conteúdo inválido`);
+  if (d.action !== 'hide' && d.action !== 'restore')
+    throw new Error(`${MODERATION_NOTIFY_OWNER}: ação inválida`);
+  return {
+    targetType: d.targetType as ModerationNotifyOwnerCommand['targetType'],
+    targetId: d.targetId,
+    action: d.action,
+  };
+}

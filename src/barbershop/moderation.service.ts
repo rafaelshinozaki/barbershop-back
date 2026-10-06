@@ -370,9 +370,10 @@ export class ModerationService {
    * Avisa o dono (sininho e celular) quando a moderação oculta ou devolve
    * algo dele: foto da galeria e página da unidade vão para o dono e os
    * gerentes; o perfil, para o próprio profissional. Avaliação e conversa
-   * não têm um "dono" a avisar (a avaliação é do cliente).
+   * não têm um "dono" a avisar (a avaliação é do cliente). Também chamado
+   * pelo comando da API do backoffice, que agora decide a moderação.
    */
-  private async notifyOwner(type: ModeratedTarget, id: number, action: 'hide' | 'restore') {
+  async notifyOwner(type: ModeratedTarget, id: number, action: 'hide' | 'restore') {
     const hide = action === 'hide';
     let userIds: number[] = [];
     let title = '';
