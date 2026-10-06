@@ -170,6 +170,52 @@ describe('Backoffice fase 3 (integração)', () => {
     );
   });
 
+  it('confirmado pela API do backoffice: executa só o que está em execução, uma vez', async () => {
+    const ok = await approvals.request(
+      'user.delete',
+      { userId: 77 },
+      'Apagar #77',
+      'pedido do titular',
+      coord,
+    );
+    const bad = await approvals.request(
+      'user.delete',
+      { userId: 666 },
+      'Apagar #666',
+      'pedido do titular',
+      coord,
+    );
+    const pending = await approvals.request(
+      'user.delete',
+      { userId: 78 },
+      'Apagar #78',
+      'pedido do titular',
+      coord,
+    );
+    // A API do backoffice decide e marca executing; aqui só executa
+    await prisma.backofficeApproval.updateMany({
+      where: { id: { in: [ok.approvalId!, bad.approvalId!] } },
+      data: { status: 'executing', decidedByEmail: admin1.email, decidedAt: new Date() },
+    });
+    await approvals.executeConfirmed(ok.approvalId!);
+    await approvals.executeConfirmed(ok.approvalId!);
+    await approvals.executeConfirmed(bad.approvalId!);
+    await approvals.executeConfirmed(pending.approvalId!);
+    expect(executed.filter((e) => e === 'delete:77')).toHaveLength(1);
+    expect(executed).not.toContain('delete:78');
+    const status = async (id: number) =>
+      prisma.backofficeApproval.findUniqueOrThrow({
+        where: { id },
+        select: { status: true, error: true },
+      });
+    expect(await status(ok.approvalId!)).toEqual({ status: 'executed', error: null });
+    expect(await status(bad.approvalId!)).toEqual({
+      status: 'failed',
+      error: 'conta com pendência',
+    });
+    expect(await status(pending.approvalId!)).toEqual({ status: 'pending', error: null });
+  });
+
   it('LGPD: prazo de 15 dias, atrasados no filtro, encerrar exige a resposta', async () => {
     const now = new Date('2026-10-06T12:00:00Z');
     const req = await privacy.create(

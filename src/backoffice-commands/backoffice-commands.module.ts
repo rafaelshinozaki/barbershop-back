@@ -8,6 +8,7 @@ import { PricingModule } from '../pricing/pricing.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { BarbershopModule } from '../barbershop/barbershop.module';
 import { BackofficeService } from '../backoffice/backoffice.service';
+import { ApprovalService } from '../backoffice/approval.service';
 import { BACKOFFICE_COMMANDS_QUEUE, DEFAULT_JOB_OPTIONS } from '../queue/queue.constants';
 import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
 
@@ -25,7 +26,8 @@ import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
     BarbershopModule,
   ],
   // Cache da busca: estado no Redis (global); uma instância aqui basta. O
-  // BackofficeService só lê o banco e manda e-mail (sem estado)
-  providers: [BackofficeCommandsProcessor, SearchCacheService, BackofficeService],
+  // BackofficeService só lê o banco e manda e-mail, e o ApprovalService
+  // executa pedidos já confirmados (sem estado)
+  providers: [BackofficeCommandsProcessor, SearchCacheService, BackofficeService, ApprovalService],
 })
 export class BackofficeCommandsModule {}
