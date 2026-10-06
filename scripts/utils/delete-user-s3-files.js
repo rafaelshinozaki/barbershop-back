@@ -9,7 +9,8 @@ const s3Client = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME;
+// O mesmo bucket da API (S3_BUCKET); AWS_S3_BUCKET_NAME era o nome antigo
+const BUCKET_NAME = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET_NAME;
 
 /**
  * Deleta arquivos do S3 relacionados a um usuário
