@@ -2383,6 +2383,7 @@ type Mutation {
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removePushSubscription(endpoint: String!): Boolean!
+  removeUser(userId: Int!): Boolean! @deprecated(reason: "Use adminDeleteUser")
   removeUserPhoto: Boolean!
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
   replySupportTicket(body: String!, token: String!): Boolean!
@@ -2402,8 +2403,9 @@ type Mutation {
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
   runBackupNow: Boolean!
   savePushSubscription(input: PushSubscriptionInput!): Boolean!
+  sendBackofficeEmail(input: SendEmailNotificationInput!): ApprovalOutcomeType!
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
-  sendEmailNotification(input: SendEmailNotificationInput!): ApprovalOutcomeType!
+  sendEmailNotification(input: SendEmailNotificationInput!): Boolean! @deprecated(reason: "Use sendBackofficeEmail")
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBackofficeAreas(areas: [String!]!, userId: Int!): [String!]!

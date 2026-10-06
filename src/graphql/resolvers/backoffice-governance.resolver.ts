@@ -190,12 +190,50 @@ export class BackofficeGovernanceResolver {
     );
   }
 
+  /**
+   * Antiga (o app do backoffice de antes da S2): só o Administrador, e pela
+   * mesma exclusão do titular (antes apagava a linha direto). Sai na S4.
+   */
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN)
+  @Mutation(() => Boolean, { deprecationReason: 'Use adminDeleteUser' })
+  async removeUser(
+    @Args('userId', { type: () => Int }) userId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    await this.users.assertCanManageUsers(user, [userId]);
+    await this.accounts.deleteByStaff(userId);
+    return true;
+  }
+
+  /**
+   * Antiga (o app do backoffice de antes da S2): manda na hora; para mais de
+   * 1.000 pessoas, quem não é Administrador usa sendBackofficeEmail (pede
+   * confirmação). Sai na S4.
+   */
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.OPERATIONS)
+  @Mutation(() => Boolean, { deprecationReason: 'Use sendBackofficeEmail' })
+  async sendEmailNotification(
+    @Args('input') input: SendEmailNotificationInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    if (!staffActor(user).admin && input.userIds.length > MASS_EMAIL_LIMIT) {
+      throw new BadRequestException(
+        `Para mais de ${MASS_EMAIL_LIMIT} pessoas, peça a confirmação de um Administrador`,
+      );
+    }
+    await this.backoffice.sendEmailNotification(input);
+    return true;
+  }
+
   /** E-mail para usuários; para mais de 1.000 pessoas, quem não é Administrador pede confirmação */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @RequireArea(BackofficeArea.OPERATIONS)
   @Mutation(() => ApprovalOutcomeType)
-  async sendEmailNotification(
+  async sendBackofficeEmail(
     @Args('input') input: SendEmailNotificationInput,
     @CurrentUser() user: UserDTO,
   ) {

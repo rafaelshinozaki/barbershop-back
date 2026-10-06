@@ -282,7 +282,8 @@ export class BackofficeResolver {
   }
 
   // Apagar conta e e-mail para usuários ficam em backoffice-governance.resolver
-  // (pedem a confirmação de um Administrador quando quem pede não é um)
+  // (pedem a confirmação de um Administrador quando quem pede não é um; as
+  // versões antigas, removeUser e sendEmailNotification, também ficam lá)
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
