@@ -96,3 +96,9 @@ export function parseClientSuspendedEmail(data: unknown): ClientSuspendedEmailCo
  * hora. Sem dados.
  */
 export const SEARCH_CACHE_BUMP = 'search.cache_bump';
+
+/**
+ * Preços e taxas salvos pela API do backoffice: o back relê na hora (sem o
+ * comando, as instâncias releem a cada minuto). Sem dados.
+ */
+export const PRICING_RELOAD = 'pricing.reload';
