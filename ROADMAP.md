@@ -825,13 +825,16 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 - **S1 — front principal limpo.** ✅ (2026-10-06) Não depende do back. Fica só o redirecionamento de `/backoffice`.
   - **Saiu:** "Gerenciar" do menu do perfil, `utils/permissions.ts`, `services/graphql/backoffice.ts`, `recurring-payments.ts` (e os hooks de admin em `useGraphQL.ts`), a fila, a resposta e a suspensão em `support.ts`, `COUPONS_SERVICE.md`, `RECURRING_PAYMENTS_SERVICE.md` e as chaves de tradução das telas do backoffice. O front passou de 426 para 391 operações GraphQL.
   - **Ficou para depois, de propósito:** o desvio de `MainPage` para conta do sistema, que sai na S4 com os cargos de sistema (antes disso, quem entra no app com conta do sistema ficaria numa tela vazia). E os passos de admin nos E2E que cruzam os dois lados, que passam para a API do backoffice-back na S3, quando as operações mudarem de lugar.
-- **S2 — contas da equipe no backoffice-back.** 🚧 (autorizada em 2026-10-06)
+- **S2 — contas da equipe no backoffice-back.** 🚧 (autorizada em 2026-10-06; código pronto nos PRs barbershop-backoffice-back#12 e barbershop-backoffice-front#13, esperando o secret `BACKOFFICE_BACK_TOKEN` no repo do app para o CI rodar o E2E com a API do backoffice)
   - **Ponte até a S3** ✅ (back): as operações de admin ainda estão no back, e a equipe deixa de ser `User`. O backoffice-back manda, junto com o segredo do gateway, `x-backoffice-staff`: quem é (id, e-mail, nome, cargo, a conta antiga se houver) assinado com HMAC-SHA256 do `BACKOFFICE_GATEWAY_SECRET`, válido por segundos. O back só aceita com o segredo certo (sem segredo configurado, nunca), e só em operação de sistema: o cargo vira o papel e as áreas antigos (`LEGACY_ACCESS` em `src/auth/staff-assertion.ts`), e a permissão fina de cada cargo é conferida no backoffice-back. Operação da própria conta (avisos, preferências) só para conta migrada, como o `User` antigo; conta nova da equipe não toca no `User` de mesmo número. Contas novas da equipe começam no id 1.000.000.000 (não se confundem com ids de `User` nas colunas sem chave estrangeira, como o autor da resposta do suporte).
   - **Comandos** ✅ (back): fila `backoffice-commands`, comando `email.send` só com os templates `verification_code`, `staff_invite` e `password_reset` (contrato em `src/backoffice-commands/commands.ts`).
-  - Schema `backoffice`, com `StaffUser` já com os cargos da seção "Cargos dos funcionários" (junta com a Fase 1).
-  - Login com senha e código, e sessões.
-  - Migração das contas `SystemAdmin`/`SystemManager`.
-  - O backoffice-front passa a entrar por aqui.
+  - **Contas** (backoffice-back): schema `backoffice` com migrações próprias; `StaffUser` com os cargos da seção "Cargos dos funcionários", sessões, código do login e tokens de convite/senha (só o hash vai pro banco). As permissões de cada cargo e de cada operação ficam em `src/staff/roles.ts` de lá: o repasse confere o cargo por campo do GraphQL e por rota REST antes de mandar pro back (o teste garante que toda operação do app tem permissão).
+  - **Login com senha e código, e sessões**: código de 6 dígitos por e-mail (10 min, 5 tentativas), bloqueio de 15 min após 5 senhas erradas, limite por IP, cookie httpOnly/SameSite=Strict (12 h, cai após 2 h parada); senha nova, cargo novo ou conta desativada derrubam as sessões.
+  - **Tela Equipe**: convidar (nome, e-mail, cargo; link de 72 h para criar a senha), mudar cargo, reenviar convite, ativar/desativar. Só o Super admin dá ou tira Super admin e Administrador; ninguém mexe na própria conta. Tudo no Registro de ações.
+  - **Migração** (`staff:migrate-legacy`, simula sem `--apply`): mesmo id e mesma senha; SystemAdmin → Super admin; SystemManager pelas áreas (só suporte/usuários → Suporte N2, moderação → Moderador, financeiro → Financeiro, operações → Crescimento, nenhuma → Analista, misturadas → Coordenador). Contas de demonstração por cargo: `staff:seed-demo` (nunca em produção).
+  - **O backoffice-front entra por aqui**: login, código, senha esquecida e convite pela API do backoffice; menu, rotas e botões pelas permissões de `/auth/me`. E2E com um teste por cargo e o convite de ponta a ponta.
+  - **Até a S3**: conta nova da equipe (sem conta antiga) ainda não tem avisos nem preferências salvas; os cupons continuam só do papel SystemAdmin no back, então Financeiro e Crescimento abrem a tela mas não carregam a lista.
+  - **Deploy**: as duas partes juntas (a API do backoffice nova recusa o login antigo). Antes, rodar `prisma migrate deploy` e `staff:migrate-legacy --apply` no backoffice-back; `DATABASE_URL` com `?schema=backoffice` e `REDIS_URL` (o mesmo do back).
 - **S3 — operações para o backoffice-back, área por área.**
   - Primeiro as leituras (painel, piloto, análise, listas). Depois as escritas, com os comandos na fila.
   - Cada operação que muda de lugar sai do back principal e da lista de repasse no mesmo PR.
@@ -865,9 +868,9 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
   - **Remover** só tira da lista (`deleted_at`), em vez de apagar a linha que assinaturas antigas e pagamentos apontam; com assinatura ativa, não sai.
   - **Preço** não pode ser negativo; zero vale (plano gratuito). Mensagens em português.
 - ✅ Tirar as operações antigas duplicadas: `setMultipleUsersActive` e `changeMultipleUsersPlan` saíram do schema (o backoffice usa `bulkUserAction`); `removeUser`, `setUserActive` e `changeUserPlan` ficaram só no `backoffice.resolver`, que declara a área e protege as contas do sistema; `GET /stripe/test` saiu.
-- Cargos dos funcionários: permissões no lugar das áreas e `BACKOFFICE_ROLES`, já na `StaffUser` do backoffice-back (etapa S2 de "Tirar o backoffice do projeto principal"), com a migração de quem já tem áreas.
-- Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa e-mail e cargo e a pessoa define a senha pelo link). Hoje só dá para trocar o cargo de uma conta que já existe.
-- E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e toma 403 no resto.
+- 🚧 Cargos dos funcionários: permissões no lugar das áreas, na `StaffUser` do backoffice-back, com a migração de quem já tem áreas (feito na S2, nos PRs de lá; entra junto com ela).
+- 🚧 Tela Equipe: escolher o cargo e "convidar funcionário" (o admin informa nome, e-mail e cargo e a pessoa define a senha pelo link) (feito na S2).
+- 🚧 E2E por cargo: cada cargo abre só o que a tabela "Quem vê o quê" diz e vê "acesso negado" no resto; a API do backoffice responde 403 (feito na S2).
 
 **Fase 2 — ver tudo de um negócio sem sair do backoffice**
 - Ficha da unidade e ficha da pessoa, só leitura, com links entre elas e para as filas (suporte, moderação).
