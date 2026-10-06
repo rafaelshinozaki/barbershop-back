@@ -527,25 +527,6 @@ export class UserService {
     return updatedUser;
   }
 
-  async removeUser(userId: number) {
-    this.logger.log(`Removing user with ID: ${userId}`);
-    const user = await this.prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-    });
-    if (!user) {
-      this.logger.warn(`User with ID: ${userId} not found`);
-      throw new NotFoundException('User not found');
-    }
-
-    return await this.prisma.user.delete({
-      where: {
-        id: userId,
-      },
-    });
-  }
-
   async getUserByEmail(email: string, provider = 'local'): Promise<UserDTO | null> {
     return this.prisma.user.findFirst({
       where: { email, provider },
@@ -1096,6 +1077,15 @@ export class UserService {
    * ou redefinir a senha não derrubava ninguém: quem tinha roubado a conta
    * continuava logado depois que o dono trocava a senha.
    */
+  /** Derruba todas as sessões da conta (backoffice: "derrubar sessões") */
+  async revokeAllSessions(userId: number) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, deleted_at: null } });
+    if (!user) throw new NotFoundException('Conta não encontrada');
+    const count = await this.prisma.activeSession.count({ where: { userId } });
+    await this.revokeSessions(userId);
+    return count;
+  }
+
   private async revokeSessions(userId: number, keepSessionToken?: string) {
     await this.prisma.activeSession.deleteMany({
       where: {

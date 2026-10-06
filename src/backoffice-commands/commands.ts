@@ -16,6 +16,8 @@ export const BACKOFFICE_EMAIL_TEMPLATES = [
   'staff_invite',
   // Redefinir a senha da equipe
   'password_reset',
+  // Cargo da pessoa mudou (Equipe)
+  'staff_role_changed',
 ] as const;
 export type BackofficeEmailTemplate = (typeof BACKOFFICE_EMAIL_TEMPLATES)[number];
 

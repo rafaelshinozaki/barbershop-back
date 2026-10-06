@@ -31,7 +31,6 @@ import {
   UpdateUserByAdminInput,
   CompletedPaymentsFilters,
   OverduePaymentsFilters,
-  SendEmailNotificationInput,
   EmailHistoryFilters,
   PaginatedEmailHistory,
 } from '../dto/backoffice.dto';
@@ -282,27 +281,8 @@ export class BackofficeResolver {
     return true;
   }
 
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.USERS)
-  @Mutation(() => Boolean)
-  async removeUser(
-    @Args('userId', { type: () => Int }) userId: number,
-    @CurrentUser() actor: UserDTO,
-  ) {
-    await this.userService.assertCanManageUsers(actor, [userId]);
-    await this.userService.removeUser(userId);
-    return true;
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.OPERATIONS)
-  @Mutation(() => Boolean)
-  async sendEmailNotification(@Args('input') input: SendEmailNotificationInput) {
-    await this.backofficeService.sendEmailNotification(input);
-    return true;
-  }
+  // Apagar conta e e-mail para usuários ficam em backoffice-governance.resolver
+  // (pedem a confirmação de um Administrador quando quem pede não é um)
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)

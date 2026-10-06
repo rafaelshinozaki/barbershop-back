@@ -180,6 +180,40 @@ type AdvancedReportsType {
   walkIns: Int!
 }
 
+input AppPaymentFilterInput {
+  barbershopId: Int
+  from: DateTime
+  kind: String
+  limit: Int
+  offset: Int
+  status: String
+  to: DateTime
+}
+
+type AppPaymentPageType {
+  amount: Float!
+  estimatedFee: Float!
+  feePercent: Float!
+  items: [AppPaymentType!]!
+  refunded: Float!
+  total: Int!
+}
+
+type AppPaymentType {
+  amount: Float!
+  appointmentId: Int!
+  barbershopId: Int!
+  barbershopName: String!
+  currency: String!
+  disputeReason: String
+  disputeStatus: String
+  id: Int!
+  kind: String!
+  paidAt: DateTime!
+  refundedAmount: Float!
+  status: String!
+}
+
 type AppTipGivenType {
   amount: Float!
 
@@ -330,9 +364,30 @@ type AppointmentTipType {
   receivedByUnit: Boolean!
 }
 
+type ApprovalOutcomeType {
+  approvalId: Int
+  done: Boolean!
+}
+
 type AuthorizeChairRentResultType {
   clientSecret: String
   link: ChairRentType!
+}
+
+type BackofficeApprovalType {
+  action: String!
+  createdAt: DateTime!
+  decidedAt: DateTime
+  decidedByEmail: String
+  decisionNote: String
+  error: String
+  id: Int!
+  payload: String!
+  reason: String!
+  requestedByEmail: String!
+  requestedByRole: String!
+  status: String!
+  summary: String!
 }
 
 type BackofficeAuditChangeType {
@@ -385,6 +440,13 @@ type BackofficePerson {
   isActive: Boolean!
   plan: String!
   role: String!
+}
+
+type BackofficeSearchHitType {
+  id: Int!
+  kind: String!
+  subtitle: String
+  title: String!
 }
 
 type BackofficeStats {
@@ -1411,6 +1473,15 @@ input CreatePlanInput {
   stripePriceId: String
 }
 
+input CreatePrivacyRequestInput {
+  channel: String!
+  details: String!
+  kind: String!
+  requesterEmail: String!
+  requesterName: String!
+  supportTicketId: Int
+}
+
 input CreateProductCategoryInput {
   barbershopId: Int!
   color: String
@@ -2144,6 +2215,9 @@ type Mutation {
   addClientFavorite(networkId: Float!): [Network!]!
   addClientFavoriteBarber(barberId: Int!): [ClientFavoriteBarberType!]!
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
+  adminDeleteUser(reason: String!, userId: Int!): ApprovalOutcomeType!
+  adminRefundAppPayment(input: RefundAppPaymentInput!): ApprovalOutcomeType!
+  adminRevokeUserSessions(userId: Int!): Int!
   answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   applyToJobOpening(message: String, openingId: Int!): JobApplyResultType!
@@ -2214,6 +2288,7 @@ type Mutation {
   createOrUpdateReview(input: CreateReviewInput!): Boolean!
   createPaymentIntent(couponCode: String, planId: Int!): PaymentIntentResponse!
   createPlan(input: CreatePlanInput!): Plan!
+  createPrivacyRequest(input: CreatePrivacyRequestInput!): PrivacyRequestType!
   createProductCategory(barbershopId: Int!, input: CreateProductCategoryInput!): ProductCategoryType!
   createPublicAppointment(input: CreatePublicAppointmentInput!): PublicAppointmentType!
   createResource(barbershopId: Int!, input: CreateResourceInput!): ResourceType!
@@ -2227,6 +2302,7 @@ type Mutation {
   createWaitlistEntry(barbershopId: Int!, input: CreateWaitlistEntryInput!): WaitlistEntryType!
   createWalkIn(barbershopId: Int!, input: CreateWalkInInput!): WalkIn!
   debitClientPackageSession(barbershopId: Int!, id: Int!): ClientPackageType!
+  decideBackofficeApproval(approve: Boolean!, id: Int!, note: String): BackofficeApprovalType!
   deleteAppointment(barbershopId: Int!, id: Int!): Boolean!
   deleteBarber(barbershopId: Int!, id: Int!): Boolean!
   deleteBarberPayEntry(barbershopId: Int!, id: Int!): Boolean!
@@ -2307,7 +2383,6 @@ type Mutation {
   removeNetworkLogo: Boolean!
   removePlan(id: Int!): Boolean!
   removePushSubscription(endpoint: String!): Boolean!
-  removeUser(userId: Int!): Boolean!
   removeUserPhoto: Boolean!
   reorderBarbershopPhotos(barbershopId: Int!, ids: [Int!]!): [BarbershopPhotoType!]!
   replySupportTicket(body: String!, token: String!): Boolean!
@@ -2328,7 +2403,7 @@ type Mutation {
   runBackupNow: Boolean!
   savePushSubscription(input: PushSubscriptionInput!): Boolean!
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
-  sendEmailNotification(input: SendEmailNotificationInput!): Boolean!
+  sendEmailNotification(input: SendEmailNotificationInput!): ApprovalOutcomeType!
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
   setBackofficeAreas(areas: [String!]!, userId: Int!): [String!]!
@@ -2404,6 +2479,7 @@ type Mutation {
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): User!
   updatePlan(id: Int!, input: UpdatePlanInput!): Plan!
   updatePlatformPricing(input: UpdatePricingInput!): PricingType!
+  updatePrivacyRequest(input: UpdatePrivacyRequestInput!): PrivacyRequestType!
   updateProductCategory(barbershopId: Int!, id: Int!, input: UpdateProductCategoryInput!): ProductCategoryType!
   updateResource(barbershopId: Int!, id: Int!, input: UpdateResourceInput!): ResourceType!
   updateSale(barbershopId: Int!, id: Int!, input: UpdateSaleInput!): Sale!
@@ -2974,6 +3050,25 @@ type PricingValuesType {
   proPriceCents: Int!
 }
 
+type PrivacyRequestType {
+  channel: String!
+  clientAccountId: Int
+  createdAt: DateTime!
+  createdByEmail: String!
+  details: String!
+  dueAt: DateTime!
+  id: Int!
+  kind: String!
+  requesterEmail: String!
+  requesterName: String!
+  resolvedAt: DateTime
+  resolvedByEmail: String
+  response: String
+  status: String!
+  supportTicketId: Int
+  userId: Int
+}
+
 type ProReferralType {
   claimed: Boolean!
   code: String!
@@ -3303,12 +3398,14 @@ input PushSubscriptionInput {
 type Query {
   accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
+  adminAppPayments(filter: AppPaymentFilterInput): AppPaymentPageType!
   adminBarbershopChangeLog(barbershopId: Int!, limit: Int, offset: Int): ChangeLogPageType!
   adminBarbershopDossier(barbershopId: Int!): BarbershopDossierType!
   adminBarbershops(query: String): [Barbershop!]!
   adminClientAccounts(search: String): [AdminClientAccountType!]!
   adminFeaturedPurchases(limit: Int): AdminFeaturedPurchasesType!
   adminProfessionals(query: String): [AdminProfessionalType!]!
+  adminUserDossier(userId: Int!): UserDossierType!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!
@@ -3323,9 +3420,12 @@ type Query {
   appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
+  backofficeApprovals(status: String): [BackofficeApprovalType!]!
+  backofficeApprovalsPending: Int!
   backofficeAuditLog(actorId: Int, limit: Int, offset: Int, operation: String): BackofficeAuditPageType!
   backofficeDashboard: BackofficeDashboard!
   backofficePeople(limit: Int, name: String, page: Int, role: String): BackofficePeopleResponse!
+  backofficeSearch(text: String!): [BackofficeSearchHitType!]!
   backofficeStats: BackofficeStats!
   backofficeTeam: [BackofficeTeamMemberType!]!
   backupStatus: BackupStatusType!
@@ -3460,6 +3560,7 @@ type Query {
   platformPricing: PricingType!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
   previewShopImport(barbershopId: Int!, csv: String!): ShopImportResultType!
+  privacyRequests(overdue: Boolean, status: String): [PrivacyRequestType!]!
   publicAvailableSlots(barberId: Int, barbershopId: Int!, date: String!, serviceId: Int, serviceIds: [Int!]): [String!]!
   publicBarbershop(slug: String!): PublicBarbershopType!
   publicBarbershopBySubdomain(subdomain: String!): PublicBarbershopType!
@@ -3507,6 +3608,13 @@ type QueueStatsType {
 type RedisStatsType {
   ok: Boolean!
   pingMs: Int!
+}
+
+input RefundAppPaymentInput {
+  amount: Float
+  id: Int!
+  kind: String!
+  reason: String!
 }
 
 type ReportReasonCountType {
@@ -4257,6 +4365,12 @@ input UpdatePricingInput {
   proPriceCents: Int
 }
 
+input UpdatePrivacyRequestInput {
+  id: Int!
+  response: String
+  status: String!
+}
+
 input UpdateProductCategoryInput {
   color: String
   displayOrder: Int
@@ -4404,6 +4518,68 @@ input UserAddressInput {
   state: String!
   street: String!
   zipcode: String!
+}
+
+type UserDossierFinanceType {
+  currentPeriodEnd: DateTime
+  membership: String!
+  payments: [UserDossierPaymentType!]!
+  planName: String
+  proUntil: DateTime
+  subscriptionStatus: String
+}
+
+type UserDossierPaymentType {
+  amount: Float!
+  id: Int!
+  paymentDate: DateTime!
+  status: String!
+}
+
+type UserDossierSessionType {
+  browser: String!
+  createdAt: DateTime!
+  deviceType: String!
+  id: Int!
+  location: String!
+  os: String!
+}
+
+type UserDossierTicketType {
+  category: String!
+  id: Int!
+  lastActivityAt: DateTime!
+  status: String!
+  subject: String!
+}
+
+type UserDossierType {
+  clientAccountId: Int
+  clientSuspended: Boolean!
+  createdAt: DateTime!
+  email: String!
+  finance: UserDossierFinanceType
+  fullName: String!
+  id: Int!
+  isActive: Boolean!
+  logins: [UserDossierSessionType!]!
+  phone: String!
+  provider: String!
+  role: String!
+  sessions: [UserDossierSessionType!]!
+  supportTickets: [UserDossierTicketType!]!
+  twoFactorEnabled: Boolean!
+  units: [UserDossierUnitType!]!
+}
+
+type UserDossierUnitType {
+  accessEndsAt: DateTime
+  city: String!
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  relation: String!
+  staffType: String
 }
 
 type UserGrowthData {

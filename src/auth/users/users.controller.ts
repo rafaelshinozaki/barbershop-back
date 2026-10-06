@@ -87,15 +87,6 @@ export class UserController {
   // backoffice.resolver.ts, com RolesGuard). Removida em vez de corrigida.
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Remove user' })
-  @ApiResponse({ status: 200, description: 'User removed' })
-  @Post('remove')
-  removeUser(@Body('userId') userId: number) {
-    return this.userService.removeUser(userId);
-  }
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @RequireArea(BackofficeArea.USERS)
   @ApiOperation({ summary: 'List users with filters' })

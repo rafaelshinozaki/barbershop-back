@@ -104,7 +104,25 @@ export class AccountDeletionService {
     } else if ((confirm.email ?? '').trim().toLowerCase() !== user.email.toLowerCase()) {
       throw new BadRequestException('Digite o e-mail da conta pra confirmar.');
     }
+    return this.erase(user);
+  }
 
+  /**
+   * Exclusão pela equipe da plataforma (pedido do titular por outro canal ou
+   * conta irregular), depois da confirmação de um Administrador no
+   * backoffice. Mesmo apagamento da exclusão pelo próprio titular, sem a
+   * senha dele. Conta do sistema não sai por aqui.
+   */
+  async deleteByStaff(userId: number) {
+    const user = await this.loadUser(userId);
+    if (user.role?.name === Role.SYSTEM_ADMIN || user.role?.name === Role.SYSTEM_MANAGER) {
+      throw new ForbiddenException('Conta da equipe do sistema não é apagada por aqui.');
+    }
+    return this.erase(user);
+  }
+
+  private async erase(user: Awaited<ReturnType<AccountDeletionService['loadUser']>>) {
+    const userId = user.id;
     const { networkIds, shops } = await this.ownedBarbershops(userId);
     const shopIds = shops.map((s) => s.id);
 

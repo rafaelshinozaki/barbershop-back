@@ -5,6 +5,8 @@ import { BackofficeService } from './backoffice.service';
 import { BackofficeTeamService } from './backoffice-team.service';
 import { BackofficeAuditService } from './audit/backoffice-audit.service';
 import { BarbershopDossierService } from './barbershop-dossier.service';
+import { UserDossierService } from './user-dossier.service';
+import { BackofficeSearchService } from './backoffice-search.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 
@@ -32,12 +34,16 @@ import { EmailModule } from '../email/email.module';
     BackofficeTeamService,
     BackofficeAuditService,
     BarbershopDossierService,
+    UserDossierService,
+    BackofficeSearchService,
   ],
   exports: [
     BackofficeService,
     BackofficeTeamService,
     BackofficeAuditService,
     BarbershopDossierService,
+    UserDossierService,
+    BackofficeSearchService,
   ],
 })
 export class BackofficeModule {}

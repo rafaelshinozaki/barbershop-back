@@ -892,6 +892,8 @@ model AppointmentTip {
   // Caixinha pelo app (method STRIPE): cai direto na conta de recebimento
   // de quem recebe, já sem a taxa da plataforma
   stripePaymentIntentId String? @unique
+  // Caixinha pelo app devolvida (pelo backoffice, Financeiro)
+  refundedAt      DateTime?
   appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   barbershop      Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barber          Barber?     @relation(fields: [barberId], references: [id], onDelete: SetNull)
@@ -2170,6 +2172,26 @@ model JobApplication {
   @@index([userId])
 }
 
+// Disputa (chargeback) de um pagamento pelo app, vinda do webhook da
+// Stripe. Liga ao pagamento pelo PaymentIntent (sinal, atendimento pago ou
+// caixinha); o Financeiro acompanha no backoffice.
+model PaymentDispute {
+  id                    Int       @id @default(autoincrement())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  stripeDisputeId       String    @unique
+  stripePaymentIntentId String?
+  amountCents           Int
+  currency              String
+  reason                String
+  // needs_response | under_review | won | lost | ... (status da Stripe)
+  status                String
+  evidenceDueBy         DateTime?
+  closedAt              DateTime?
+
+  @@index([stripePaymentIntentId])
+}
+
 // Compra de 30 dias de "Destaque" na busca, com cartão (Stripe, receita da
 // plataforma). Cada compra paga soma 30 dias ao fim do Destaque que já vale.
 model FeaturedPurchase {
@@ -2298,4 +2320,65 @@ model OnboardingProgress {
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, barbershopId])
+}
+
+// Pedido do titular (LGPD) que chegou por e-mail ou suporte: acesso,
+// correção, exclusão ou portabilidade. Prazo de 15 dias para responder; a
+// resposta e quem resolveu ficam registradas.
+model PrivacyRequest {
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  // access | correction | deletion | portability | other
+  kind            String
+  // email | support | other
+  channel         String
+  requesterName   String
+  requesterEmail  String
+  // Conta da plataforma ou área do cliente a que o pedido se refere (se achou)
+  userId          Int?
+  clientAccountId Int?
+  supportTicketId Int?
+  details         String
+  // open | in_progress | done | rejected
+  status          String    @default("open")
+  dueAt           DateTime
+  response        String?
+  resolvedAt      DateTime?
+  // Quem da equipe registrou e quem resolveu (id da equipe, e-mail e cargo)
+  createdById     Int?
+  createdByEmail  String
+  resolvedById    Int?
+  resolvedByEmail String?
+
+  @@index([status, dueAt])
+  @@index([requesterEmail])
+}
+
+// Ação sem volta pedida por alguém da equipe que não é Administrador:
+// apagar conta, estorno acima do limite, e-mail para muita gente. Um
+// Administrador (outro, nunca quem pediu) aprova e ela é executada.
+model BackofficeApproval {
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  // user.delete | payment.refund | email.mass
+  action           String
+  payload          Json
+  // Resumo pra tela ("Apagar a conta #12 (ana@x.com)")
+  summary          String
+  reason           String
+  // pending | executed | rejected | failed
+  status           String    @default("pending")
+  requestedById    Int?
+  requestedByEmail String
+  requestedByRole  String
+  decidedById      Int?
+  decidedByEmail   String?
+  decidedAt        DateTime?
+  decisionNote     String?
+  error            String?
+
+  @@index([status, createdAt])
+  @@index([requestedByEmail])
 }
