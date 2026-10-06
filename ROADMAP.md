@@ -879,7 +879,13 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - Trocar o plano de uma conta (`finance.write`), pedidos LGPD, cupons (criar, editar, apagar), Destaque de profissional e preços e taxas (só o Super admin, mesmos limites daqui).
       - Comandos `search.cache_bump` (a busca mostra o Destaque na hora) e `pricing.reload` (este back recarrega os preços guardados em memória; sem a fila, relê a cada minuto). O E2E de preços espera o back passar a usar o preço novo.
       - Testado com a fila real: o back recarregou o preço em 2 segundos.
-      - Continuam aqui: Destaque de unidade (devolve o tipo `Barbershop` inteiro), cobrança e estorno (Stripe), avisos e e-mails da equipe, planos (sincronizam com a Stripe), confirmações e Moderação (depois da decisão do S3).
+      - (Destaque de unidade, avisos e e-mails da equipe: ver o item seguinte.)
+    - **Avisos, e-mails, Destaque de unidade e cargo** ✅ (backoffice-back, no PR da S2; comandos aqui no #191):
+      - Avisos (um e em lote; no lote, quem já recebeu o mesmo título em 5 minutos fica de fora), gravados lá; o comando `notifications.created` faz este back avisar as telas abertas.
+      - E-mail da equipe pelo comando `email.admin_notification` (este back monta no idioma de cada pessoa e guarda no histórico), em pedaços de 1.000; para mais de 1.000, quem não é Administrador cria o pedido em Confirmações (este back executa quando aprovado).
+      - Destaque de unidade (lista e ligar/tirar, com `search.cache_bump`) e cargo de conta do app (só o Super admin). Lá, os tipos `Barbershop` e `User` têm só os campos que as telas usam.
+      - Testado com a fila real: o back recebeu o comando e montou o e-mail `admin_notification` no idioma da pessoa. Lista de unidades conferida contra este back no banco de demonstração. E2E novos: aviso mandado pela tela chega no sininho; Destaque de unidade ligado e tirado pela tela.
+    - Continuam aqui (dependem de segredo ou serviço daqui): apagar conta (apaga os arquivos no S3), importar CSV (cria contas com senha), cobrança e estorno e planos (Stripe), decidir confirmações (executa a ação aprovada), backup e Moderação (depois da decisão do S3). Próximo passo possível: a decisão e o pedido ficam lá e a execução vira comando para cá.
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
