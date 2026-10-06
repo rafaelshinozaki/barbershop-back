@@ -841,12 +841,20 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
   - Primeiro as leituras (painel, piloto, análise, listas). Depois as escritas, com os comandos na fila.
   - Cada operação que muda de lugar sai do back principal e da lista de repasse no mesmo PR.
   - Ordem: Operação → Suporte → Moderação → Usuários → Financeiro → só do admin.
-  - **Operação, leituras** 🔧 (backoffice-back, no PR da S2):
-    - `backofficeStats`, `backofficeDashboard`, `geographicAnalysis` e `demographicAnalysis` são respondidas lá, lendo o schema `public` do mesmo Postgres (graphql-js com os tipos copiados daqui). Mesmas regras do `BackofficeService`, conferidas contra este back no banco de demonstração. Só os rótulos dos gráficos ganharam ordem fixa: maior primeiro.
+  - **Leituras de Operação e Suporte** 🔧 (backoffice-back, no PR da S2):
+    - Respondidas lá, lendo o schema `public` do mesmo Postgres (graphql-js com os tipos copiados daqui):
+      - Operação: painel (`backofficeDashboard`, `backofficeStats`), análise (`geographicAnalysis`, `demographicAnalysis`), piloto (`pilotMetrics`), Avisos e E-mails (`backofficePeople`, `emailHistory`, `allNotificationsWithUser`).
+      - Suporte: `supportQueue`, `adminClientAccounts`.
+    - Mesmas regras daqui, conferidas contra este back no banco de demonstração. Diferenças de propósito:
+      - Ordem fixa nos gráficos (maior primeiro).
+      - Teto nas listas de Avisos e E-mails.
+      - No histórico de e-mails, o e-mail de cliente final vem com `userId` 0 (aqui o null quebrava a lista).
+      - Na busca de contas de cliente, `%` vale como texto.
+    - As escritas (responder pedido, suspender conta, mandar aviso) continuam aqui; a avaliação das buscas do piloto também (job de 10 em 10 minutos).
     - Consulta que mistura campos de lá e daqui é recusada. `OPERATIONS_LOCAL=false` volta a repassar.
-    - As colunas lidas ficam numa lista (`public-columns.json`), e o CI de lá confere contra o `prisma/schema.prisma` daqui. Renomear coluna aqui quebra o CI de lá antes de quebrar o painel.
-    - **Exceção à regra do mesmo PR:** as quatro operações continuam aqui até a S2 entrar, porque o app do backoffice que está em `main` ainda as pede pelo repasse. Saem daqui (com `userGrowthData` e as distribuições soltas, que o app não usa) no PR seguinte ao merge da S2.
-    - Falta `pilotMetrics`, que usa os registros de busca: vai em seguida.
+    - As colunas lidas ficam numa lista (`public-columns.json`), e o CI de lá confere contra o `prisma/schema.prisma` daqui. Renomear coluna aqui quebra o CI de lá antes de quebrar a tela.
+    - **Exceção à regra do mesmo PR:** essas operações continuam aqui até a S2 entrar, porque o app do backoffice em `main` ainda as pede pelo repasse. Saem daqui (com `userGrowthData` e as distribuições soltas, que o app não usa) no PR seguinte ao merge da S2.
+  - **Moderação** ⏸️: a fila mostra as fotos denunciadas com link assinado do S3. Levar a leitura pro backoffice-back pede acesso de leitura ao bucket lá (credencial nova) ou o back gerar os links. Decidir antes de seguir.
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
