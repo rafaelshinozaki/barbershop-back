@@ -857,7 +857,7 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
     - Continuam aqui:
       - a conta da própria pessoa e os avisos dela;
       - Destaque de unidades (devolve o tipo `Barbershop` inteiro);
-      - Moderação (as fotos usam link assinado do S3: decidir se o backoffice-back ganha leitura no bucket);
+      - Moderação (as fotos usam link assinado do S3; decidido: o backoffice-back ganha leitura no bucket, ver Escritas);
       - saúde do sistema e backup;
       - todas as escritas.
     - Consulta que mistura campos de lá e daqui é recusada. `OPERATIONS_LOCAL=false` volta a repassar.
@@ -885,7 +885,12 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - E-mail da equipe pelo comando `email.admin_notification` (este back monta no idioma de cada pessoa e guarda no histórico), em pedaços de 1.000; para mais de 1.000, quem não é Administrador cria o pedido em Confirmações (este back executa quando aprovado).
       - Destaque de unidade (lista e ligar/tirar, com `search.cache_bump`) e cargo de conta do app (só o Super admin). Lá, os tipos `Barbershop` e `User` têm só os campos que as telas usam.
       - Testado com a fila real: o back recebeu o comando e montou o e-mail `admin_notification` no idioma da pessoa. Lista de unidades conferida contra este back no banco de demonstração. E2E novos: aviso mandado pela tela chega no sininho; Destaque de unidade ligado e tirado pela tela.
-    - Continuam aqui (dependem de segredo ou serviço daqui): apagar conta (apaga os arquivos no S3), importar CSV (cria contas com senha), cobrança e estorno e planos (Stripe), decidir confirmações (executa a ação aprovada), backup e Moderação (depois da decisão do S3). Próximo passo possível: a decisão e o pedido ficam lá e a execução vira comando para cá.
+    - **Moderação** ✅ (backoffice-back, no PR da S2; comando aqui no #193). Decisão: o backoffice-back ganha leitura no bucket.
+      - Fila e avaliações denunciadas lidas lá; as fotos vêm com link assinado de 1 hora, com uma credencial **só de leitura** (`s3:GetObject`) e as mesmas variáveis daqui (`S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`). Sem bucket, a fila aparece sem a imagem.
+      - Ocultar, manter e restaurar gravados lá; ocultar ou devolver foto, unidade ou perfil manda `moderation.notify_owner` (este back avisa o dono pelo sininho e pelo celular). Unidade e perfil também renovam o cache da busca (aqui não renovavam).
+      - Conferido contra este back no banco de demonstração (fila com foto, unidade e perfil; avaliações): igual, menos o link da foto (cada lado assina com a sua credencial). Testado com a fila real: o dono recebeu "Unidade fora da busca" e "Unidade de volta na busca". O E2E de Moderação passou pela API do backoffice.
+      - **Falta você:** criar no provedor uma credencial só de leitura no bucket e pôr as variáveis no backoffice-back.
+    - Continuam aqui (dependem de segredo ou serviço daqui): apagar conta (apaga os arquivos no S3), importar CSV (cria contas com senha), cobrança e estorno e planos (Stripe), decidir confirmações (executa a ação aprovada) e backup. Próximo passo possível: a decisão e o pedido ficam lá e a execução vira comando para cá.
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
