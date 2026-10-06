@@ -863,7 +863,13 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
     - Consulta que mistura campos de lá e daqui é recusada. `OPERATIONS_LOCAL=false` volta a repassar.
     - As colunas lidas (35 tabelas) ficam numa lista, e o CI de lá confere contra o `prisma/schema.prisma` daqui. Renomear coluna aqui quebra o CI de lá antes de quebrar a tela.
     - **Exceção à regra do mesmo PR:** essas operações continuam aqui até a S2 entrar, porque o app do backoffice em `main` ainda as pede pelo repasse. Saem daqui (com `userGrowthData` e as distribuições soltas, que o app não usa) no PR seguinte ao merge da S2.
-  - **Escritas** ⏳: o próximo passo. Cada uma vira um comando na fila `backoffice-commands` (como o `email.send`), com o back como consumidor, ou escrita direta quando for só um campo sem regra (status, flag, texto).
+  - **Escritas**: cada uma vira escrita direta no banco quando é só dado (situação, flag, texto), numa transação com o autor em `app.actor` pro histórico e com o Registro de ações; o que tem regra ou segredo daqui vai por comando na fila `backoffice-commands`, depois de gravar.
+    - **Suporte** ✅ (backoffice-back, no PR da S2; comandos aqui no #186):
+      - Responder pedido, mudar a situação, suspender/reativar conta de cliente.
+      - Comandos `support.reply_email` (o link do pedido é assinado com segredo daqui) e `client.suspended_email`.
+      - Testado de ponta a ponta com a fila real: o back recebe o comando e manda o e-mail certo, e o histórico grava a equipe como autora, com o motivo e o id do request.
+      - Achado no caminho: a fila do backoffice-back usava o prefixo padrão do BullMQ (`bull`) e o back escuta `barbershop`. Os comandos da S2 (código do login, convite, senha) nunca chegariam ao back em produção. Corrigido no mesmo PR, com teste do prefixo.
+    - Próximas: Moderação (depois da decisão do S3), Usuários (editar, ações em lote, derrubar sessões), Financeiro, só do admin.
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
