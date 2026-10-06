@@ -132,6 +132,36 @@ export class ApprovalService {
     }
   }
 
+  /**
+   * Pedido já confirmado pela API do backoffice (status executing): executa
+   * aqui, onde ficam a Stripe, os arquivos e os e-mails, e grava o
+   * resultado. Pedido em outro status é ignorado (comando repetido não
+   * executa de novo o que já terminou).
+   */
+  async executeConfirmed(id: number) {
+    const row = await this.prisma.backofficeApproval.findUnique({ where: { id } });
+    if (!row || row.status !== 'executing') {
+      this.logger.warn(
+        `Pedido #${id} não está esperando execução (${row?.status ?? 'não existe'})`,
+      );
+      return;
+    }
+    try {
+      await this.execute(row.action as ApprovalAction, row.payload as never);
+      await this.prisma.backofficeApproval.updateMany({
+        where: { id, status: 'executing' },
+        data: { status: 'executed' },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Pedido #${id} (${row.action}) falhou: ${message}`);
+      await this.prisma.backofficeApproval.updateMany({
+        where: { id, status: 'executing' },
+        data: { status: 'failed', error: message.slice(0, 500) },
+      });
+    }
+  }
+
   private async execute<A extends ApprovalAction>(action: A, payload: Payloads[A]) {
     if (action === 'user.delete') {
       await this.accounts.deleteByStaff((payload as Payloads['user.delete']).userId);

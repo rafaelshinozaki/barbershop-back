@@ -1,6 +1,7 @@
 import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
 import {
   parseAdminNotificationEmail,
+  parseApprovalExecute,
   parseClientSuspendedEmail,
   parseEmailSend,
   parseModerationNotifyOwner,
@@ -111,6 +112,14 @@ describe('comando de aviso da moderação', () => {
   });
 });
 
+describe('comando de execução de pedido confirmado', () => {
+  it('approval.execute: só o número do pedido', () => {
+    expect(parseApprovalExecute({ approvalId: 3, extra: 1 })).toEqual({ approvalId: 3 });
+    expect(() => parseApprovalExecute({ approvalId: '3' })).toThrow(/pedido/);
+    expect(() => parseApprovalExecute({})).toThrow(/pedido/);
+  });
+});
+
 describe('processador dos comandos', () => {
   const make = () => {
     const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
@@ -121,6 +130,7 @@ describe('processador dos comandos', () => {
     const realtime = { notifyUsers: jest.fn() };
     const backoffice = { sendEmailNotification: jest.fn().mockResolvedValue(true) };
     const moderation = { notifyOwner: jest.fn().mockResolvedValue(undefined) };
+    const approvals = { executeConfirmed: jest.fn().mockResolvedValue(undefined) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
@@ -130,6 +140,7 @@ describe('processador dos comandos', () => {
       realtime as never,
       backoffice as never,
       moderation as never,
+      approvals as never,
     );
     return {
       processor,
@@ -141,6 +152,7 @@ describe('processador dos comandos', () => {
       realtime,
       backoffice,
       moderation,
+      approvals,
     };
   };
 
@@ -155,6 +167,7 @@ describe('processador dos comandos', () => {
       realtime,
       backoffice,
       moderation,
+      approvals,
     } = make();
     await processor.process({
       name: 'support.reply_email',
@@ -189,6 +202,8 @@ describe('processador dos comandos', () => {
       data: { targetType: 'photo', targetId: 8, action: 'hide' },
     } as never);
     expect(moderation.notifyOwner).toHaveBeenCalledWith('photo', 8, 'hide');
+    await processor.process({ name: 'approval.execute', data: { approvalId: 5 } } as never);
+    expect(approvals.executeConfirmed).toHaveBeenCalledWith(5);
     expect(email.sendCustomerEmail).not.toHaveBeenCalled();
   });
 

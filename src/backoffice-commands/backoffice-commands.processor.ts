@@ -10,13 +10,16 @@ import { PricingService } from '../pricing/pricing.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
 import { ModerationService } from '../barbershop/moderation.service';
+import { ApprovalService } from '../backoffice/approval.service';
 import {
   ADMIN_NOTIFICATION_EMAIL,
+  APPROVAL_EXECUTE,
   CLIENT_SUSPENDED_EMAIL,
   EMAIL_SEND,
   MODERATION_NOTIFY_OWNER,
   NOTIFICATIONS_CREATED,
   parseAdminNotificationEmail,
+  parseApprovalExecute,
   parseClientSuspendedEmail,
   parseEmailSend,
   parseModerationNotifyOwner,
@@ -35,7 +38,8 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
  * (resposta do suporte com o link assinado, suspensão de conta de cliente,
  * cache da busca depois do Destaque, preços relidos depois de salvos, avisos
  * em tempo real, o e-mail da equipe pra contas do app e o aviso ao dono do
- * que a moderação ocultou ou devolveu).
+ * que a moderação ocultou ou devolveu, e a execução de pedido de confirmação
+ * aprovado).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
@@ -50,6 +54,7 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly realtime: RealtimeService,
     private readonly backoffice: BackofficeService,
     private readonly moderation: ModerationService,
+    private readonly approvals: ApprovalService,
   ) {
     super();
   }
@@ -78,6 +83,11 @@ export class BackofficeCommandsProcessor extends WorkerHost {
       const cmd = parseAdminNotificationEmail(job.data);
       await this.backoffice.sendEmailNotification(cmd);
       this.logger.log(`${ADMIN_NOTIFICATION_EMAIL} para ${cmd.userIds.length} pessoas`);
+      return;
+    }
+    if (job.name === APPROVAL_EXECUTE) {
+      const cmd = parseApprovalExecute(job.data);
+      await this.approvals.executeConfirmed(cmd.approvalId);
       return;
     }
     if (job.name === MODERATION_NOTIFY_OWNER) {

@@ -192,3 +192,17 @@ export function parseModerationNotifyOwner(data: unknown): ModerationNotifyOwner
     action: d.action,
   };
 }
+
+/**
+ * Pedido de confirmação aprovado pela API do backoffice (já marcado
+ * executing lá): o back executa a ação (apagar conta, estorno, e-mail em
+ * massa) e grava executed ou failed.
+ */
+export const APPROVAL_EXECUTE = 'approval.execute';
+export type ApprovalExecuteCommand = { approvalId: number };
+
+export function parseApprovalExecute(data: unknown): ApprovalExecuteCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!positiveInt(d.approvalId)) throw new Error(`${APPROVAL_EXECUTE}: pedido inválido`);
+  return { approvalId: d.approvalId };
+}
