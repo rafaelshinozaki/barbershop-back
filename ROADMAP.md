@@ -943,7 +943,10 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 
 ### Decisões em aberto
 
-- Um segundo admin (`SystemAdmin`) para não depender de uma pessoa só? Recomendado: sim, com os dois usando duas etapas.
+- ~~Um segundo admin para não depender de uma pessoa só?~~ Decidido: sim (dono da plataforma, 2026-10-06), os dois com duas etapas (obrigatórias para toda a equipe). Feito no backoffice-back e no app, nos PRs da S2:
+  - A tela Equipe avisa o Super admin quando ele é o único ativo e com o convite aceito; pela tela, ele convida o segundo (o convite e o login com código valem como para todo mundo).
+  - Recuperar o acesso: se o único Super admin perdeu a conta, quem cuida do servidor roda `pnpm staff:super-admin --email ... [--name ...]` no backoffice-back. Conta nova recebe o convite; conta que já existe vira Super admin, é reativada e desbloqueada, e as sessões caem. Fica no Registro de ações como `cli`.
+  - **Falta você:** depois da S2, convidar a segunda pessoa (o e-mail dela) pela tela Equipe.
 - ~~Reembolso pelo backoffice ou só pelo painel da Stripe?~~ Feito no backoffice (Fase 2, pedido do dono da plataforma em 2026-10-06), com limite e confirmação acima dele.
 
 ## Horizonte: Registros e estabilidade — ✅ Concluído no código
