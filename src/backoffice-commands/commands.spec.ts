@@ -1,5 +1,11 @@
 import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
-import { parseClientSuspendedEmail, parseEmailSend, parseSupportReplyEmail } from './commands';
+import {
+  parseAdminNotificationEmail,
+  parseClientSuspendedEmail,
+  parseEmailSend,
+  parseNotificationsCreated,
+  parseSupportReplyEmail,
+} from './commands';
 
 describe('comando email.send da API do backoffice', () => {
   const ok = {
@@ -56,6 +62,37 @@ describe('comandos de aviso do suporte da API do backoffice', () => {
   });
 });
 
+describe('comandos de avisos e e-mails da API do backoffice', () => {
+  it('notifications.created: pessoas (até 1.000) e título', () => {
+    expect(parseNotificationsCreated({ userIds: [1, 2], title: 'Oi', x: 1 })).toEqual({
+      userIds: [1, 2],
+      title: 'Oi',
+    });
+    expect(() => parseNotificationsCreated({ userIds: [], title: 'Oi' })).toThrow(/pessoas/);
+    expect(() => parseNotificationsCreated({ userIds: [0], title: 'Oi' })).toThrow(/pessoas/);
+    const many = Array.from({ length: 1001 }, (_, i) => i + 1);
+    expect(() => parseNotificationsCreated({ userIds: many, title: 'Oi' })).toThrow(/pessoas/);
+    expect(() => parseNotificationsCreated({ userIds: [1], title: ' ' })).toThrow(/título/);
+  });
+
+  it('email.admin_notification: assunto e mensagem obrigatórios; o resto, só se vier', () => {
+    expect(
+      parseAdminNotificationEmail({
+        userIds: [1],
+        subject: 'Oi',
+        message: 'Olá',
+        actionUrl: '/x',
+        actionText: '',
+        type: 'info',
+        extra: 'x',
+      }),
+    ).toEqual({ userIds: [1], subject: 'Oi', message: 'Olá', actionUrl: '/x', type: 'info' });
+    expect(() => parseAdminNotificationEmail({ userIds: [1], message: 'Olá' })).toThrow(/assunto/);
+    expect(() => parseAdminNotificationEmail({ userIds: [1], subject: 'Oi' })).toThrow(/mensagem/);
+    expect(() => parseAdminNotificationEmail({ subject: 'Oi', message: 'Olá' })).toThrow(/pessoas/);
+  });
+});
+
 describe('processador dos comandos', () => {
   const make = () => {
     const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
@@ -63,18 +100,23 @@ describe('processador dos comandos', () => {
     const suspension = { emailSuspended: jest.fn().mockResolvedValue(undefined) };
     const searchCache = { bump: jest.fn().mockResolvedValue(undefined) };
     const pricing = { reload: jest.fn().mockResolvedValue(undefined) };
+    const realtime = { notifyUsers: jest.fn() };
+    const backoffice = { sendEmailNotification: jest.fn().mockResolvedValue(true) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
       suspension as never,
       searchCache as never,
       pricing as never,
+      realtime as never,
+      backoffice as never,
     );
-    return { processor, email, support, suspension, searchCache, pricing };
+    return { processor, email, support, suspension, searchCache, pricing, realtime, backoffice };
   };
 
   it('manda cada comando pro serviço certo', async () => {
-    const { processor, email, support, suspension, searchCache, pricing } = make();
+    const { processor, email, support, suspension, searchCache, pricing, realtime, backoffice } =
+      make();
     await processor.process({
       name: 'support.reply_email',
       data: { ticketId: 4, reply: 'Oi' },
@@ -89,6 +131,20 @@ describe('processador dos comandos', () => {
     expect(searchCache.bump).toHaveBeenCalledTimes(1);
     await processor.process({ name: 'pricing.reload', data: {} } as never);
     expect(pricing.reload).toHaveBeenCalledTimes(1);
+    await processor.process({
+      name: 'notifications.created',
+      data: { userIds: [1, 2], title: 'Novidade' },
+    } as never);
+    expect(realtime.notifyUsers).toHaveBeenCalledWith([1, 2], 'CREATED', 'Novidade');
+    await processor.process({
+      name: 'email.admin_notification',
+      data: { userIds: [3], subject: 'Oi', message: 'Tudo bem?' },
+    } as never);
+    expect(backoffice.sendEmailNotification).toHaveBeenCalledWith({
+      userIds: [3],
+      subject: 'Oi',
+      message: 'Tudo bem?',
+    });
     expect(email.sendCustomerEmail).not.toHaveBeenCalled();
   });
 

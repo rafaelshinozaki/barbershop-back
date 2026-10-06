@@ -102,3 +102,66 @@ export const SEARCH_CACHE_BUMP = 'search.cache_bump';
  * comando, as instâncias releem a cada minuto). Sem dados.
  */
 export const PRICING_RELOAD = 'pricing.reload';
+
+/**
+ * Avisos (sininho) gravados pela API do backoffice: o back avisa as telas
+ * abertas dessas pessoas (pub/sub daqui).
+ */
+export const NOTIFICATIONS_CREATED = 'notifications.created';
+export type NotificationsCreatedCommand = { userIds: number[]; title: string };
+
+/**
+ * E-mail da equipe pra contas do app (template admin_notification): o back
+ * monta no idioma de cada pessoa, manda e guarda no histórico. A API do
+ * backoffice já conferiu a permissão e o limite (mais de 1.000 pessoas pede
+ * confirmação).
+ */
+export const ADMIN_NOTIFICATION_EMAIL = 'email.admin_notification';
+export type AdminNotificationEmailCommand = {
+  userIds: number[];
+  subject: string;
+  message: string;
+  actionUrl?: string;
+  actionText?: string;
+  type?: string;
+};
+
+/** Cada comando leva no máximo isso de pessoas (a API do backoffice manda em pedaços) */
+const MAX_IDS = 1000;
+
+function userIdsOf(name: string, v: unknown): number[] {
+  if (!Array.isArray(v) || !v.length || v.length > MAX_IDS || !v.every(positiveInt))
+    throw new Error(`${name}: pessoas inválidas`);
+  return v;
+}
+
+const text = (v: unknown, max: number) =>
+  typeof v === 'string' && v.trim() && v.length <= max ? v : undefined;
+
+export function parseNotificationsCreated(data: unknown): NotificationsCreatedCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const userIds = userIdsOf(NOTIFICATIONS_CREATED, d.userIds);
+  const title = text(d.title, 500);
+  if (!title) throw new Error(`${NOTIFICATIONS_CREATED}: título inválido`);
+  return { userIds, title };
+}
+
+export function parseAdminNotificationEmail(data: unknown): AdminNotificationEmailCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const userIds = userIdsOf(ADMIN_NOTIFICATION_EMAIL, d.userIds);
+  const subject = text(d.subject, 300);
+  if (!subject) throw new Error(`${ADMIN_NOTIFICATION_EMAIL}: assunto inválido`);
+  const message = text(d.message, 20000);
+  if (!message) throw new Error(`${ADMIN_NOTIFICATION_EMAIL}: mensagem inválida`);
+  const actionUrl = text(d.actionUrl, 2000);
+  const actionText = text(d.actionText, 200);
+  const type = text(d.type, 20);
+  return {
+    userIds,
+    subject,
+    message,
+    ...(actionUrl ? { actionUrl } : {}),
+    ...(actionText ? { actionText } : {}),
+    ...(type ? { type } : {}),
+  };
+}
