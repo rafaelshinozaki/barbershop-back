@@ -822,7 +822,9 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
 
 #### Etapas
 
-- **S1 — front principal limpo.** Não depende do back. Sai o que está listado acima e fica só o redirecionamento de `/backoffice`.
+- **S1 — front principal limpo.** ✅ (2026-10-06) Não depende do back. Fica só o redirecionamento de `/backoffice`.
+  - **Saiu:** "Gerenciar" do menu do perfil, `utils/permissions.ts`, `services/graphql/backoffice.ts`, `recurring-payments.ts` (e os hooks de admin em `useGraphQL.ts`), a fila, a resposta e a suspensão em `support.ts`, `COUPONS_SERVICE.md`, `RECURRING_PAYMENTS_SERVICE.md` e as chaves de tradução das telas do backoffice. O front passou de 426 para 391 operações GraphQL.
+  - **Ficou para depois, de propósito:** o desvio de `MainPage` para conta do sistema, que sai na S4 com os cargos de sistema (antes disso, quem entra no app com conta do sistema ficaria numa tela vazia). E os passos de admin nos E2E que cruzam os dois lados, que passam para a API do backoffice-back na S3, quando as operações mudarem de lugar.
 - **S2 — contas da equipe no backoffice-back.**
   - Schema `backoffice`, com `StaffUser` já com os cargos da seção "Cargos dos funcionários" (junta com a Fase 1).
   - Login com senha e código, e sessões.
