@@ -1,4 +1,5 @@
-import { parseEmailSend } from './commands';
+import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
+import { parseClientSuspendedEmail, parseEmailSend, parseSupportReplyEmail } from './commands';
 
 describe('comando email.send da API do backoffice', () => {
   const ok = {
@@ -28,5 +29,69 @@ describe('comando email.send da API do backoffice', () => {
       context: { FullName: 'Ana', 'bad key': 'x', Obj: { a: 1 }, N: 3, Nan: Number.NaN },
     });
     expect(cmd.context).toEqual({ FullName: 'Ana', N: 3 });
+  });
+});
+
+describe('comandos de aviso do suporte da API do backoffice', () => {
+  it('support.reply_email: pedido e resposta (sem espaço sobrando)', () => {
+    expect(parseSupportReplyEmail({ ticketId: 7, reply: '  Olá!  ' })).toEqual({
+      ticketId: 7,
+      reply: 'Olá!',
+    });
+    expect(() => parseSupportReplyEmail({ ticketId: 0, reply: 'x' })).toThrow(/pedido/);
+    expect(() => parseSupportReplyEmail({ ticketId: '7', reply: 'x' })).toThrow(/pedido/);
+    expect(() => parseSupportReplyEmail({ ticketId: 7, reply: '   ' })).toThrow(/resposta/);
+    expect(() => parseSupportReplyEmail({ ticketId: 7, reply: 'x'.repeat(5001) })).toThrow(
+      /resposta/,
+    );
+    expect(() => parseSupportReplyEmail(null)).toThrow();
+  });
+
+  it('client.suspended_email: só o número da conta', () => {
+    expect(parseClientSuspendedEmail({ clientAccountId: 3, extra: 'x' })).toEqual({
+      clientAccountId: 3,
+    });
+    expect(() => parseClientSuspendedEmail({ clientAccountId: -1 })).toThrow(/conta/);
+    expect(() => parseClientSuspendedEmail({})).toThrow(/conta/);
+  });
+});
+
+describe('processador dos comandos', () => {
+  const make = () => {
+    const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
+    const support = { emailReply: jest.fn().mockResolvedValue(undefined) };
+    const suspension = { emailSuspended: jest.fn().mockResolvedValue(undefined) };
+    const processor = new BackofficeCommandsProcessor(
+      email as never,
+      support as never,
+      suspension as never,
+    );
+    return { processor, email, support, suspension };
+  };
+
+  it('manda cada comando pro serviço certo', async () => {
+    const { processor, email, support, suspension } = make();
+    await processor.process({
+      name: 'support.reply_email',
+      data: { ticketId: 4, reply: 'Oi' },
+    } as never);
+    expect(support.emailReply).toHaveBeenCalledWith(4, 'Oi');
+    await processor.process({
+      name: 'client.suspended_email',
+      data: { clientAccountId: 9 },
+    } as never);
+    expect(suspension.emailSuspended).toHaveBeenCalledWith(9);
+    expect(email.sendCustomerEmail).not.toHaveBeenCalled();
+  });
+
+  it('comando desconhecido ou malformado falha (o job aparece como falho)', async () => {
+    const { processor, support } = make();
+    await expect(processor.process({ name: 'user.delete', data: {} } as never)).rejects.toThrow(
+      /desconhecido/,
+    );
+    await expect(
+      processor.process({ name: 'support.reply_email', data: { ticketId: 'x' } } as never),
+    ).rejects.toThrow(/pedido/);
+    expect(support.emailReply).not.toHaveBeenCalled();
   });
 });
