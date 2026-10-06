@@ -3,23 +3,47 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { EmailService } from '../email/email.service';
 import { BACKOFFICE_COMMANDS_QUEUE } from '../queue/queue.constants';
-import { EMAIL_SEND, parseEmailSend } from './commands';
+import { SupportService } from '../support/support.service';
+import { ClientSuspensionService } from '../client-auth/client-suspension.service';
+import {
+  CLIENT_SUSPENDED_EMAIL,
+  EMAIL_SEND,
+  parseClientSuspendedEmail,
+  parseEmailSend,
+  parseSupportReplyEmail,
+  SUPPORT_REPLY_EMAIL,
+} from './commands';
 
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
 
 /**
- * Executa os comandos da API do backoffice (ver commands.ts). Hoje só
- * email.send: o e-mail sai pelo mesmo envio do app, com o template daqui.
+ * Executa os comandos da API do backoffice (ver commands.ts): e-mail de
+ * template permitido (email.send) e os avisos que dependem de regra daqui
+ * (resposta do suporte com o link assinado, suspensão de conta de cliente).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
   private readonly logger = new Logger(BackofficeCommandsProcessor.name);
 
-  constructor(private readonly email: EmailService) {
+  constructor(
+    private readonly email: EmailService,
+    private readonly support: SupportService,
+    private readonly suspension: ClientSuspensionService,
+  ) {
     super();
   }
 
   async process(job: Job) {
+    if (job.name === SUPPORT_REPLY_EMAIL) {
+      const cmd = parseSupportReplyEmail(job.data);
+      await this.support.emailReply(cmd.ticketId, cmd.reply);
+      return;
+    }
+    if (job.name === CLIENT_SUSPENDED_EMAIL) {
+      const cmd = parseClientSuspendedEmail(job.data);
+      await this.suspension.emailSuspended(cmd.clientAccountId);
+      return;
+    }
     if (job.name !== EMAIL_SEND) throw new Error(`Comando desconhecido: ${job.name}`);
     const cmd = parseEmailSend(job.data);
     await this.email.sendCustomerEmail(

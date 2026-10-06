@@ -237,4 +237,30 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
       NotFoundException,
     );
   });
+
+  it('avisos pedidos pela API do backoffice (comandos da fila)', async () => {
+    // Resposta já gravada lá: daqui só sai o e-mail, com o link assinado
+    const { id } = await support.create({
+      name: 'Bia Lima',
+      email: `sup-cmd-${RUN}@test.local`,
+      category: 'other',
+      subject: 'Pelo backoffice',
+      message: 'Oi',
+      language: 'es',
+    });
+    ticketIds.push(id);
+    await support.emailReply(id, 'Resolvido pelo backoffice');
+    const reply = [...sent].reverse().find((m) => m.template === 'support_reply')!;
+    expect(reply).toMatchObject({
+      to: `sup-cmd-${RUN}@test.local`,
+      context: { FullName: 'Bia', Reply: 'Resolvido pelo backoffice', TicketId: id },
+    });
+    expect(reply.context.TicketURL).toContain('t=');
+    const before = sent.length;
+    await support.emailReply(999_999_999, 'x');
+    // Conta que não está suspensa (reativada antes do job rodar): nada a avisar
+    await suspension.emailSuspended(accountId);
+    await suspension.emailSuspended(999_999_999);
+    expect(sent).toHaveLength(before);
+  });
 });

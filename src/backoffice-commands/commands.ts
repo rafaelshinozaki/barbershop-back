@@ -60,3 +60,32 @@ export function parseEmailSend(data: unknown): EmailSendCommand {
     context,
   };
 }
+
+/**
+ * Resposta do suporte já gravada pela API do backoffice: o back manda o
+ * e-mail pra quem pediu (com o link assinado do pedido, que só o back sabe
+ * fazer).
+ */
+export const SUPPORT_REPLY_EMAIL = 'support.reply_email';
+export type SupportReplyEmailCommand = { ticketId: number; reply: string };
+
+/** Conta de cliente suspensa pela API do backoffice: o back avisa a pessoa */
+export const CLIENT_SUSPENDED_EMAIL = 'client.suspended_email';
+export type ClientSuspendedEmailCommand = { clientAccountId: number };
+
+const MAX_REPLY = 5000;
+const positiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
+
+export function parseSupportReplyEmail(data: unknown): SupportReplyEmailCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!positiveInt(d.ticketId)) throw new Error('support.reply_email: pedido inválido');
+  const reply = typeof d.reply === 'string' ? d.reply.trim() : '';
+  if (!reply || reply.length > MAX_REPLY) throw new Error('support.reply_email: resposta inválida');
+  return { ticketId: d.ticketId, reply };
+}
+
+export function parseClientSuspendedEmail(data: unknown): ClientSuspendedEmailCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!positiveInt(d.clientAccountId)) throw new Error('client.suspended_email: conta inválida');
+  return { clientAccountId: d.clientAccountId };
+}

@@ -205,6 +205,20 @@ export class SupportService {
     return true;
   }
 
+  /**
+   * E-mail da resposta pra quem pediu, quando a resposta foi gravada pela API
+   * do backoffice (comando support.reply_email). Pedido que não existe mais:
+   * nada a avisar.
+   */
+  async emailReply(ticketId: number, reply: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      this.logger.warn(`Resposta do pedido ${ticketId}: pedido não existe mais`);
+      return;
+    }
+    await this.sendRequesterEmail(ticket, 'support_reply', reply);
+  }
+
   /** Quantos esperam resposta (pro menu do backoffice) */
   openCount() {
     return this.prisma.supportTicket.count({ where: { status: 'open' } });

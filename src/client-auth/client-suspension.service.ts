@@ -83,33 +83,42 @@ export class ClientSuspensionService {
     });
     await this.prisma.pushSubscription.deleteMany({ where: { clientAccountId } });
     this.logger.log(`Conta de cliente ${clientAccountId} suspensa pelo admin ${adminUserId}`);
-    if (first) {
-      const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-      await this.email
-        .sendCustomerEmail(
-          null,
-          'account_suspended',
-          {
-            FullName: account.name.split(' ')[0],
-            Reason: text,
-            SupportURL: `${front}/support`,
-            AppName: 'Barbershop',
-            SupportEmail: 'suporte@barbershop.com.br',
-            Year: new Date().getFullYear(),
-          },
-          {
-            pt: 'Sua conta foi suspensa',
-            en: 'Your account was suspended',
-            es: 'Tu cuenta fue suspendida',
-          },
-          'account-suspended',
-          account.email,
-          normalizeLang(account.language),
-        )
-        .catch((error: unknown) =>
-          this.logger.warn(`Aviso de suspensão não enviado (conta ${clientAccountId}): ${error}`),
-        );
-    }
+    if (first) await this.emailSuspended(clientAccountId);
     return true;
+  }
+
+  /**
+   * Avisa a pessoa da suspensão, com o motivo e o caminho do suporte. Também
+   * é o comando client.suspended_email (suspensão gravada pela API do
+   * backoffice). Conta que voltou a valer ou não existe: nada a avisar.
+   */
+  async emailSuspended(clientAccountId: number) {
+    const account = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
+    if (!account?.suspendedAt || account.deletedAt) return;
+    const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    await this.email
+      .sendCustomerEmail(
+        null,
+        'account_suspended',
+        {
+          FullName: account.name.split(' ')[0],
+          Reason: account.suspendedReason,
+          SupportURL: `${front}/support`,
+          AppName: 'Barbershop',
+          SupportEmail: 'suporte@barbershop.com.br',
+          Year: new Date().getFullYear(),
+        },
+        {
+          pt: 'Sua conta foi suspensa',
+          en: 'Your account was suspended',
+          es: 'Tu cuenta fue suspendida',
+        },
+        'account-suspended',
+        account.email,
+        normalizeLang(account.language),
+      )
+      .catch((error: unknown) =>
+        this.logger.warn(`Aviso de suspensão não enviado (conta ${clientAccountId}): ${error}`),
+      );
   }
 }

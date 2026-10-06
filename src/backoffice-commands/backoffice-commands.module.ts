@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { EmailModule } from '../email/email.module';
+import { SupportModule } from '../support/support.module';
+import { ClientAuthModule } from '../client-auth/client-auth.module';
 import { BACKOFFICE_COMMANDS_QUEUE, DEFAULT_JOB_OPTIONS } from '../queue/queue.constants';
 import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
 
@@ -11,6 +13,8 @@ import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
       defaultJobOptions: DEFAULT_JOB_OPTIONS,
     }),
     EmailModule,
+    SupportModule,
+    ClientAuthModule,
   ],
   providers: [BackofficeCommandsProcessor],
 })
