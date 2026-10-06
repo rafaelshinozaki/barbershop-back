@@ -875,7 +875,11 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - Na edição só muda o que veio; gênero e ativo passaram a valer (o back ignorava).
       - Achado no caminho (app, PR da S2): o formulário de editar mandava telefone vazio e duas etapas desligadas (a lista não traz esses campos). Salvar qualquer edição apagava o telefone e desligava as duas etapas da conta. Agora manda só o que mudou, com E2E.
       - Continuam aqui: cargo de conta do app (`updateUserRole`), apagar conta (pede confirmação e apaga arquivos) e importar CSV (cria contas com senha).
-    - Próximas: Financeiro, só do admin, e Moderação (depois da decisão do S3).
+    - **Financeiro e só do admin, parte 1** ✅ (backoffice-back, no PR da S2; comandos aqui no #189):
+      - Trocar o plano de uma conta (`finance.write`), pedidos LGPD, cupons (criar, editar, apagar), Destaque de profissional e preços e taxas (só o Super admin, mesmos limites daqui).
+      - Comandos `search.cache_bump` (a busca mostra o Destaque na hora) e `pricing.reload` (este back recarrega os preços guardados em memória; sem a fila, relê a cada minuto). O E2E de preços espera o back passar a usar o preço novo.
+      - Testado com a fila real: o back recarregou o preço em 2 segundos.
+      - Continuam aqui: Destaque de unidade (devolve o tipo `Barbershop` inteiro), cobrança e estorno (Stripe), avisos e e-mails da equipe, planos (sincronizam com a Stripe), confirmações e Moderação (depois da decisão do S3).
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
