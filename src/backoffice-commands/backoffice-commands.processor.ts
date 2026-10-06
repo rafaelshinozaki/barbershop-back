@@ -7,11 +7,17 @@ import { SupportService } from '../support/support.service';
 import { ClientSuspensionService } from '../client-auth/client-suspension.service';
 import { SearchCacheService } from '../barbershop/search-cache.service';
 import { PricingService } from '../pricing/pricing.service';
+import { RealtimeService } from '../realtime/realtime.service';
+import { BackofficeService } from '../backoffice/backoffice.service';
 import {
+  ADMIN_NOTIFICATION_EMAIL,
   CLIENT_SUSPENDED_EMAIL,
   EMAIL_SEND,
+  NOTIFICATIONS_CREATED,
+  parseAdminNotificationEmail,
   parseClientSuspendedEmail,
   parseEmailSend,
+  parseNotificationsCreated,
   parseSupportReplyEmail,
   PRICING_RELOAD,
   SEARCH_CACHE_BUMP,
@@ -24,7 +30,8 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
  * Executa os comandos da API do backoffice (ver commands.ts): e-mail de
  * template permitido (email.send) e os avisos que dependem de regra daqui
  * (resposta do suporte com o link assinado, suspensão de conta de cliente,
- * cache da busca depois do Destaque, preços relidos depois de salvos).
+ * cache da busca depois do Destaque, preços relidos depois de salvos, avisos
+ * em tempo real e o e-mail da equipe pra contas do app).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
@@ -36,6 +43,8 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly suspension: ClientSuspensionService,
     private readonly searchCache: SearchCacheService,
     private readonly pricing: PricingService,
+    private readonly realtime: RealtimeService,
+    private readonly backoffice: BackofficeService,
   ) {
     super();
   }
@@ -53,6 +62,17 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     }
     if (job.name === PRICING_RELOAD) {
       await this.pricing.reload();
+      return;
+    }
+    if (job.name === NOTIFICATIONS_CREATED) {
+      const cmd = parseNotificationsCreated(job.data);
+      this.realtime.notifyUsers(cmd.userIds, 'CREATED', cmd.title);
+      return;
+    }
+    if (job.name === ADMIN_NOTIFICATION_EMAIL) {
+      const cmd = parseAdminNotificationEmail(job.data);
+      await this.backoffice.sendEmailNotification(cmd);
+      this.logger.log(`${ADMIN_NOTIFICATION_EMAIL} para ${cmd.userIds.length} pessoas`);
       return;
     }
     if (job.name === SEARCH_CACHE_BUMP) {
