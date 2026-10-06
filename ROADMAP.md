@@ -890,7 +890,11 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - Ocultar, manter e restaurar gravados lá; ocultar ou devolver foto, unidade ou perfil manda `moderation.notify_owner` (este back avisa o dono pelo sininho e pelo celular). Unidade e perfil também renovam o cache da busca (aqui não renovavam).
       - Conferido contra este back no banco de demonstração (fila com foto, unidade e perfil; avaliações): igual, menos o link da foto (cada lado assina com a sua credencial). Testado com a fila real: o dono recebeu "Unidade fora da busca" e "Unidade de volta na busca". O E2E de Moderação passou pela API do backoffice.
       - **Falta você:** criar no provedor uma credencial só de leitura no bucket e pôr as variáveis no backoffice-back.
-    - Continuam aqui (dependem de segredo ou serviço daqui): apagar conta (apaga os arquivos no S3), importar CSV (cria contas com senha), cobrança e estorno e planos (Stripe), decidir confirmações (executa a ação aprovada) e backup. Próximo passo possível: a decisão e o pedido ficam lá e a execução vira comando para cá.
+    - **Confirmações** ✅ (backoffice-back, no PR da S2; comando aqui no #195):
+      - A decisão é lá (mesmas regras: só Administrador, nunca quem pediu, dois ao mesmo tempo só um vale). Aprovado, o pedido fica "em execução" e vai `approval.execute`; este back executa (apagar conta, estorno, e-mail em massa) e grava "feito" ou "falhou". Comando repetido não executa de novo. Se a fila não aceitar o comando, o pedido fica como falha.
+      - A tela mostra "Confirmado; a ação está em execução" e o filtro ganhou "Em execução".
+      - **E2E com a fila de verdade:** no CI, a API do backoffice sobe com o Redis e `LOG_COMMANDS=true` (só fora de produção: os e-mails também vão pro log, de onde o teste lê o código). Assim este back executa os comandos no E2E: a conta confirmada some, o preço novo vale na hora.
+    - Continuam aqui, pedidos direto por quem é Administrador (resposta na hora, com o erro da Stripe ou da exclusão na tela): apagar conta, estorno, cobrança recorrente, planos (Stripe), importar CSV (cria contas com senha) e backup. O pedido de confirmação de quem não é Administrador também continua sendo criado aqui, junto dessas operações.
 - **S4 — limpar o back principal.**
   - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
   - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
