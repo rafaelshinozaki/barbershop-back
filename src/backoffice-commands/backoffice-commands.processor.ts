@@ -5,12 +5,16 @@ import { EmailService } from '../email/email.service';
 import { BACKOFFICE_COMMANDS_QUEUE } from '../queue/queue.constants';
 import { SupportService } from '../support/support.service';
 import { ClientSuspensionService } from '../client-auth/client-suspension.service';
+import { SearchCacheService } from '../barbershop/search-cache.service';
+import { PricingService } from '../pricing/pricing.service';
 import {
   CLIENT_SUSPENDED_EMAIL,
   EMAIL_SEND,
   parseClientSuspendedEmail,
   parseEmailSend,
   parseSupportReplyEmail,
+  PRICING_RELOAD,
+  SEARCH_CACHE_BUMP,
   SUPPORT_REPLY_EMAIL,
 } from './commands';
 
@@ -19,7 +23,8 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
 /**
  * Executa os comandos da API do backoffice (ver commands.ts): e-mail de
  * template permitido (email.send) e os avisos que dependem de regra daqui
- * (resposta do suporte com o link assinado, suspensão de conta de cliente).
+ * (resposta do suporte com o link assinado, suspensão de conta de cliente,
+ * cache da busca depois do Destaque, preços relidos depois de salvos).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
@@ -29,6 +34,8 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly email: EmailService,
     private readonly support: SupportService,
     private readonly suspension: ClientSuspensionService,
+    private readonly searchCache: SearchCacheService,
+    private readonly pricing: PricingService,
   ) {
     super();
   }
@@ -42,6 +49,14 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     if (job.name === CLIENT_SUSPENDED_EMAIL) {
       const cmd = parseClientSuspendedEmail(job.data);
       await this.suspension.emailSuspended(cmd.clientAccountId);
+      return;
+    }
+    if (job.name === PRICING_RELOAD) {
+      await this.pricing.reload();
+      return;
+    }
+    if (job.name === SEARCH_CACHE_BUMP) {
+      await this.searchCache.bump();
       return;
     }
     if (job.name !== EMAIL_SEND) throw new Error(`Comando desconhecido: ${job.name}`);

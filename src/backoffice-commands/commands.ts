@@ -89,3 +89,16 @@ export function parseClientSuspendedEmail(data: unknown): ClientSuspendedEmailCo
   if (!positiveInt(d.clientAccountId)) throw new Error('client.suspended_email: conta inválida');
   return { clientAccountId: d.clientAccountId };
 }
+
+/**
+ * Destaque de profissional mudado pela API do backoffice: a busca guarda
+ * resultados em cache (Redis); o back renova pra o selo e a ordem valerem na
+ * hora. Sem dados.
+ */
+export const SEARCH_CACHE_BUMP = 'search.cache_bump';
+
+/**
+ * Preços e taxas salvos pela API do backoffice: o back relê na hora (sem o
+ * comando, as instâncias releem a cada minuto). Sem dados.
+ */
+export const PRICING_RELOAD = 'pricing.reload';
