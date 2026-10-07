@@ -146,17 +146,21 @@ export class ApprovalService {
       );
       return;
     }
+    // Marca como feito antes de executar, num passo só: se o job for
+    // entregue de novo (o processo caiu no meio), a ação não roda duas vezes
+    // (no máximo uma: apagar conta, estorno e e-mail em massa não têm volta)
+    const claimed = await this.prisma.backofficeApproval.updateMany({
+      where: { id, status: 'executing' },
+      data: { status: 'executed' },
+    });
+    if (claimed.count !== 1) return;
     try {
       await this.execute(row.action as ApprovalAction, row.payload as never);
-      await this.prisma.backofficeApproval.updateMany({
-        where: { id, status: 'executing' },
-        data: { status: 'executed' },
-      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Pedido #${id} (${row.action}) falhou: ${message}`);
-      await this.prisma.backofficeApproval.updateMany({
-        where: { id, status: 'executing' },
+      await this.prisma.backofficeApproval.update({
+        where: { id },
         data: { status: 'failed', error: message.slice(0, 500) },
       });
     }

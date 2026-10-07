@@ -281,6 +281,9 @@ describe('Backoffice fase 2 (integração)', () => {
       /já foi estornado/,
     );
     await payments.refund('prepaid', prepaid, 30, 'serviço trocado');
+    // O limite sem confirmação vale pela soma dos estornos em partes
+    expect(await payments.refundedSoFar('prepaid', prepaid)).toBe(30);
+    expect(await payments.refundedSoFar('deposit', deposit)).toBe(0);
     await expect(payments.refund('prepaid', closedPrepaid, null, 'cliente pediu')).rejects.toThrow(
       /conta deste horário já foi fechada/,
     );

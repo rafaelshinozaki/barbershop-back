@@ -33,6 +33,7 @@ type Cacheable = {
 
 /** Posição arredondada (2 casas, ~1 km) pra quem está perto dividir a chave */
 const roundCoord = (v: number) => Math.round(v * 100) / 100;
+const ROUNDING_SLACK_KM = 1;
 
 /**
  * Chave do cache: a busca normalizada (textos sem caixa nem espaço nas
@@ -47,7 +48,14 @@ export function searchCacheKey<T extends SearchInput>(
   const rounded: T = {
     ...input,
     ...(input.lat != null && input.lng != null
-      ? { lat: roundCoord(input.lat), lng: roundCoord(input.lng) }
+      ? {
+          lat: roundCoord(input.lat),
+          lng: roundCoord(input.lng),
+          // O ponto arredondado fica a até ~0,8 km do exato: o banco busca 1 km
+          // a mais, e o raio pedido é conferido de novo com o ponto exato
+          // (repositionResults). Sem isso, unidade na borda do raio sumia
+          radiusKm: clampRadius(input.radiusKm ?? undefined) + ROUNDING_SLACK_KM,
+        }
       : {}),
   };
   const fields = rounded as unknown as Record<string, unknown>;

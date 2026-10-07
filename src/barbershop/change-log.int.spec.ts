@@ -295,6 +295,14 @@ describe('Histórico de alterações (integração)', () => {
     expect(onlyServices.items.every((i) => i.entityType === 'BarbershopService')).toBe(true);
     const byOwner = await changeLog.list(ownerId, shopId, { actorId: ownerId });
     expect(byOwner.items.every((i) => i.actorId === ownerId)).toBe(true);
+    const byOwnerKind = await changeLog.list(ownerId, shopId, {
+      actorId: ownerId,
+      actorKind: 'user',
+    });
+    expect(byOwnerKind.total).toBe(byOwner.total);
+    expect(
+      (await changeLog.list(ownerId, shopId, { actorId: ownerId, actorKind: 'client' })).total,
+    ).toBe(0);
     expect(await changeLog.actors(ownerId, shopId)).toEqual([
       { id: ownerId, name: 'Cayo owner', kind: 'user' },
     ]);

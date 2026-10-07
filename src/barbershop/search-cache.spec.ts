@@ -27,6 +27,10 @@ describe('cache da busca pública', () => {
     expect(a.key).not.toBe(c.key);
     expect(d.key).toBe(e.key);
     expect(a.rounded).toMatchObject({ lat: -23.18, lng: -45.89 });
+    // O banco busca 1 km a mais (o ponto arredondado se afasta do exato)
+    expect(
+      searchCacheKey('barbershops', { lat: -23.18, lng: -45.88, radiusKm: 10 }).rounded,
+    ).toMatchObject({ radiusKm: 11 });
     expect(searchCacheKey('professionals', { city: 'x' }).key).not.toBe(
       searchCacheKey('barbershops', { city: 'x' }).key,
     );

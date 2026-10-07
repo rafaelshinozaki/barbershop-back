@@ -262,7 +262,8 @@ export class BackofficeGovernanceResolver {
   ) {
     const actor = staffActor(user);
     const value = await this.payments.refundValue(input.kind, input.id, input.amount);
-    if (!actor.admin && value > refundApprovalLimit()) {
+    const total = value + (await this.payments.refundedSoFar(input.kind, input.id));
+    if (!actor.admin && total > refundApprovalLimit()) {
       return this.approvals.request(
         'payment.refund',
         { kind: input.kind, id: input.id, amount: input.amount ?? null, reason: input.reason },

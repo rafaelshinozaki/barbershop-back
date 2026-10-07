@@ -564,6 +564,9 @@ export class ClientAuthService {
       await this.prisma.customer.findMany({ where: { clientAccountId }, select: { id: true } })
     ).map((c) => c.id);
     await this.prisma.$transaction([
+      // Antes de tudo: apagar avaliações e pedidos de suporte não grava
+      // histórico (o assunto do pedido é texto livre, com dado pessoal)
+      this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
       this.prisma.chatThread.deleteMany({ where: { customerId: { in: customerIds } } }),
       this.prisma.clientSubscription.updateMany({
         where: { clientAccountId, status: { not: 'CANCELED' } },
@@ -597,7 +600,6 @@ export class ClientAuthService {
       }),
       // O histórico da própria conta tem nome e e-mail antigos (e esta
       // exclusão não grava um novo)
-      this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
       this.prisma.changeLog.deleteMany({
         where: { entityType: 'ClientAccount', entityId: String(clientAccountId) },
       }),

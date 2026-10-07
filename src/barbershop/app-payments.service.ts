@@ -171,6 +171,19 @@ export class AppPaymentsService {
   }
 
   /**
+   * Quanto já voltou desse pagamento. Só o atendimento pago volta em partes:
+   * o limite sem confirmação vale pela soma, senão bastaria estornar em pedaços.
+   */
+  async refundedSoFar(kind: AppPaymentKind, id: number): Promise<number> {
+    if (kind !== 'prepaid') return 0;
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id },
+      select: { prepaidRefundedAmount: true },
+    });
+    return Number(appt?.prepaidRefundedAmount ?? 0);
+  }
+
+  /**
    * Estorno pela equipe do Financeiro. Sinal e caixinha voltam inteiros; o
    * atendimento pago pode voltar em parte. O motivo é obrigatório (vai pro
    * registro de ações junto com a operação).
