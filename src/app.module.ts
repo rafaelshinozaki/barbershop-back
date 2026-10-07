@@ -47,6 +47,7 @@ import { LocationsModule } from './locations/locations.module';
 import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
 import { formatGqlError } from './graphql/format-error';
+import { rejectNonSubscription } from './common/ws-subscriptions-only';
 
 @Module({
   imports: [
@@ -183,6 +184,8 @@ import { formatGqlError } from './graphql/format-error';
               isAllowedOrigin(origin, process.env.FRONTEND_URL, process.env.TENANT_ROOT_DOMAIN)
             );
           },
+          // Query/mutation só pelo HTTP (ver ws-subscriptions-only.ts)
+          onSubscribe: (_ctx, _id, payload) => rejectNonSubscription(payload.query),
         },
       },
       // Sem texto interno do banco na resposta (ver format-error.ts)

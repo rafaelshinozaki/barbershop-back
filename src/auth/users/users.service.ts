@@ -2086,6 +2086,8 @@ export class UserService {
         id: {
           in: userIds,
         },
+        // Conta apagada (LGPD) não volta a ficar ativa pelo lote
+        deleted_at: null,
       },
       data: {
         isActive: active,
