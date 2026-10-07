@@ -1072,11 +1072,6 @@ export class UserService {
     });
   }
 
-  /**
-   * Derruba as sessões abertas da conta (menos a atual, se informada). Trocar
-   * ou redefinir a senha não derrubava ninguém: quem tinha roubado a conta
-   * continuava logado depois que o dono trocava a senha.
-   */
   /** Derruba todas as sessões da conta (backoffice: "derrubar sessões") */
   async revokeAllSessions(userId: number) {
     const user = await this.prisma.user.findFirst({ where: { id: userId, deleted_at: null } });
@@ -1086,6 +1081,11 @@ export class UserService {
     return count;
   }
 
+  /**
+   * Derruba as sessões abertas da conta (menos a atual, se informada). Trocar
+   * ou redefinir a senha não derrubava ninguém: quem tinha roubado a conta
+   * continuava logado depois que o dono trocava a senha.
+   */
   private async revokeSessions(userId: number, keepSessionToken?: string) {
     await this.prisma.activeSession.deleteMany({
       where: {

@@ -26,7 +26,15 @@ function scrubSpan(span: SpanFields | undefined) {
 const DROPPED_INTEGRATIONS = ['Express', 'LocalVariables', 'LocalVariablesAsync', 'Console'];
 
 /** Cabeçalhos que nunca saem pro Sentry */
-const SECRET_HEADERS = ['cookie', 'authorization', 'x-backoffice-gateway', 'set-cookie'];
+// x-backoffice-staff: quem da equipe pediu (e-mail e nome), assinado e
+// reaproveitável até vencer
+const SECRET_HEADERS = [
+  'cookie',
+  'authorization',
+  'x-backoffice-gateway',
+  'x-backoffice-staff',
+  'set-cookie',
+];
 
 /** Span enviado em streaming (padrão do Sentry 11): sai sem o texto do comando */
 export function scrubStreamedSpan<T extends { attributes?: Record<string, unknown> }>(span: T): T {

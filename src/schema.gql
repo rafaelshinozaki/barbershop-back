@@ -3439,7 +3439,7 @@ type Query {
   barbershop(id: Int!): Barbershop
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
-  barbershopChangeLog(actorId: Int, barbershopId: Int!, entityType: String, from: DateTime, limit: Int, offset: Int, to: DateTime): ChangeLogPageType!
+  barbershopChangeLog(actorId: Int, actorKind: String, barbershopId: Int!, entityType: String, from: DateTime, limit: Int, offset: Int, to: DateTime): ChangeLogPageType!
   barbershopChangeLogActors(barbershopId: Int!): [ChangeLogActorType!]!
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!

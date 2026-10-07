@@ -136,7 +136,8 @@ export class UserDossierService {
       orderBy: { startSubDate: 'desc' },
       take: 5,
     });
-    const current = subs.find((s) => s.status !== 'canceled') ?? subs[0];
+    // Status só tem ACTIVE/INACTIVE: a ativa mais recente, senão a mais recente
+    const current = subs.find((s) => s.status === 'ACTIVE') ?? subs[0];
     return {
       membership: user.membership,
       proUntil: user.proUntil,

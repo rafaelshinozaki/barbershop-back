@@ -9,6 +9,8 @@ export { toChangeFields, type ChangeField };
 export type ChangeLogFilters = {
   entityType?: string | null;
   actorId?: number | null;
+  /** user | client: os ids são de tabelas diferentes e podem coincidir */
+  actorKind?: string | null;
   from?: Date | null;
   to?: Date | null;
   limit?: number | null;
@@ -101,7 +103,13 @@ export class ChangeLogService {
       AND: [scope],
       ...(filters.entityType ? { entityType: filters.entityType } : {}),
       ...(filters.actorId
-        ? { actorId: filters.actorId, actorType: { in: ['user', 'client'] } }
+        ? {
+            actorId: filters.actorId,
+            actorType:
+              filters.actorKind === 'user' || filters.actorKind === 'client'
+                ? filters.actorKind
+                : { in: ['user', 'client'] },
+          }
         : {}),
       ...(filters.from || filters.to
         ? {
@@ -137,12 +145,14 @@ export class ChangeLogService {
       },
       _max: { createdAt: true },
     });
-    const byId = new Map<number, { id: number; name: string | null; kind: string }>();
+    // Conta da equipe e cliente podem ter o mesmo id: a chave leva o tipo
+    const byKey = new Map<string, { id: number; name: string | null; kind: string }>();
     for (const r of rows) {
-      if (r.actorId == null || byId.has(r.actorId)) continue;
-      byId.set(r.actorId, { id: r.actorId, name: r.actorName, kind: r.actorType });
+      const key = `${r.actorType}:${r.actorId}`;
+      if (r.actorId == null || byKey.has(key)) continue;
+      byKey.set(key, { id: r.actorId, name: r.actorName, kind: r.actorType });
     }
-    return [...byId.values()].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+    return [...byKey.values()].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
   }
 
   /**

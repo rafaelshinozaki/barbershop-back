@@ -94,6 +94,7 @@ export class ChangeLogResolver {
     @CurrentUser() user: UserDTO,
     @Args('entityType', { type: () => String, nullable: true }) entityType?: string,
     @Args('actorId', { type: () => Int, nullable: true }) actorId?: number,
+    @Args('actorKind', { type: () => String, nullable: true }) actorKind?: string,
     @Args('from', { type: () => Date, nullable: true }) from?: Date,
     @Args('to', { type: () => Date, nullable: true }) to?: Date,
     @Args('limit', { type: () => Int, nullable: true }) limit?: number,
@@ -102,6 +103,7 @@ export class ChangeLogResolver {
     return this.changeLog.list(user.id, barbershopId, {
       entityType,
       actorId,
+      actorKind,
       from,
       to,
       limit,
