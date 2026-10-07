@@ -1173,3 +1173,30 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
    - **Boas-vindas** do profissional por conta própria e do cliente final (ver acima).
    - **Testes:** integração no back (agenda própria, profissional sem unidade, cliente e o "Seus dados") e E2E (`client-account.spec.ts` e `roles.spec.ts`).
 
+
+## Bugs encontrados na revisão (2026-10-07) — 🆕 a fazer
+
+Achados numa revisão de código; ainda **não corrigidos**. Ordem: segurança e LGPD primeiro.
+
+### Segurança e LGPD
+
+1. 🆕 **Chat do profissional depois de sair da unidade** (`chat.service.ts`): o acesso ao chat do atendimento confere só se `appt.barber.userId` é quem está logado. Não olha se o `Barber` ainda está ativo nem se está dentro de `accessStartsAt`/`accessEndsAt`. Um barbeiro removido ou freelancer com acesso vencido continua lendo e mandando mensagens, e o `notifyStaff` continua avisando ele. **Fazer:** usar a mesma checagem de acesso da unidade (`getMyAccessLevel` ou equivalente) e tirar do aviso quem não tem mais acesso.
+2. 🆕 **Push com SSRF** (`push.service.ts`): o endpoint de push só é validado pelo prefixo `https://`. Dá para cadastrar `https://10.0.0.5/...` e fazer o servidor chamar a rede interna. **Fazer:** lista de hosts de push conhecidos (FCM, Mozilla, Apple, WNS) e/ou bloquear IPs privados e de loopback depois de resolver o DNS.
+3. 🆕 **Selo de identidade verificada sobrevive à troca de nome** (`user.resolver.ts`, `updateUserProfile`): trocar o `fullName` não limpa `identityVerifiedAt`. O profissional verificado troca o nome e continua com o selo. **Fazer:** limpar `identityVerifiedAt` (ou travar a troca de nome) quando o nome muda depois da verificação.
+4. 🆕 **Perfil público fica no ar depois da exclusão da conta** (`account-deletion.service.ts`, `erase()`): não apaga nem esconde o `Professional` nem a `PaymentAccount` do profissional. O `/p/:slug` continua na busca e no sitemap depois de um pedido de exclusão (LGPD). **Fazer:** apagar ou anonimizar o `Professional` e desligar a conta de recebimento na exclusão; teste de integração cobrindo a busca e o sitemap.
+5. 🆕 **Link de gestão do agendamento passa por cima da suspensão** (`chat.service.ts`): o `manageToken` dá acesso ao chat do cliente mesmo com a `ClientAccount` suspensa ou excluída. **Fazer:** quando o agendamento tem conta de cliente ligada, recusar se ela estiver suspensa ou excluída.
+6. 🆕 **"Fale com o suporte" vira disparador de spam** (`support.service.ts`, `contactSupport`): sem login, manda o e-mail `support_received` para qualquer endereço, com nome e assunto escolhidos por quem envia, e ainda dispara push para todos os admins do suporte. **Fazer:** não ecoar texto livre no e-mail de confirmação (ou só confirmar depois de verificar o e-mail), limite por IP e por destinatário, e captcha.
+
+### Regras e dados errados
+
+7. 🆕 **Chamados abertos antigos somem da fila** (`support.service.ts`, `queue()`): pega os 200 mais recentes por `lastActivityAt` e só depois põe os abertos na frente. Um chamado aberto antigo some da fila padrão. **Fazer:** filtrar e ordenar por status no banco antes do `take`, ou paginar.
+8. 🆕 **Candidaturas presas em "pendente"** (`job-opening.service.ts`): quando as vagas enchem, as candidaturas que sobraram ficam pendentes para sempre, sem aviso, e contam no limite `MAX_PENDING_PER_USER = 20`. **Fazer:** ao preencher a última vaga (ou fechar a vaga), recusar as pendentes e avisar quem se candidatou.
+9. 🆕 **Pacotes e planos aceitam valores zerados ou negativos** (`barbershop.service.ts`): pacotes de serviço e planos de assinatura não validam `totalSessions`, `sessionsPerCycle` nem preço. Dá para criar um plano que cobra todo mês e nunca pode ser usado. **Fazer:** validar no DTO e no service (sessões ≥ 1, preço ≥ 0) e testar.
+10. 🆕 **Venda editada não acerta estoque nem pontos** (`updateSale`): mudar itens ou o status do pagamento não devolve nem baixa estoque e não ajusta os pontos de fidelidade. **Fazer:** recalcular a diferença de itens e pontos dentro da mesma transação.
+
+### Idioma, fuso e desempenho
+
+11. 🆕 **Avisos fixos em português e no fuso de São Paulo** (`featured-payment.service.ts`, `JobOpeningService.notify`): textos em português e datas em pt-BR no fuso `America/Sao_Paulo`, ignorando o idioma do usuário e o fuso da unidade. **Fazer:** usar os templates com i18n e o fuso da unidade, como nos outros avisos.
+12. 🆕 **Agenda da franquia sempre de 8h às 20h**: a agenda da franquia usa o horário padrão em vez do horário de funcionamento das unidades. **Fazer:** usar o menor início e o maior fim entre as unidades mostradas.
+13. 🆕 **"Próximo horário livre" faz milhares de consultas** (`getPublicNextAvailableSlot`): calcula dia a dia e profissional a profissional, com consultas em laço. **Fazer:** buscar agendamentos, bloqueios e horários do período de uma vez e calcular em memória.
+14. 🆕 **Backoffice: transação interativa por escrita** (`barbershop-backoffice-back`): cada escrita abre uma transação interativa do Prisma, o que pesa no pool de conexões. **Fazer:** usar transação só onde há mais de uma escrita, ou `$transaction([...])` em lote.
