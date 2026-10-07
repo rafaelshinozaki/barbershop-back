@@ -269,6 +269,10 @@ export class Barbershop {
   @Field({ nullable: true })
   onlineDeposit?: boolean;
 
+  /** O profissional registra a caixinha recebida pela unidade (senão, só a recepção pra cima) */
+  @Field({ nullable: true })
+  staffRecordsUnitTips?: boolean;
+
   @Field()
   address: string;
 

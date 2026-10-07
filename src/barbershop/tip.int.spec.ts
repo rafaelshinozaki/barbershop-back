@@ -183,15 +183,27 @@ describe('Caixinha do atendimento (integração)', () => {
       amount: 5,
     });
     expect(pix.receivedByUnit).toBe(false);
-    // Mas não lança pra si o que a unidade teria recebido (vira dívida da unidade)
+    // Unidade sem recepção: ele mesmo registra a que caiu no cartão da unidade
+    const onCard = await tips.add(users.pro, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CARD',
+      amount: 3,
+    });
+    expect(onCard.receivedByUnit).toBe(true);
+    await tips.remove(users.pro, shopId, onCard.id);
+    // O dono desliga: essa só a recepção pra cima registra
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: { staffRecordsUnitTips: false },
+    });
     await expect(
       tips.add(users.pro, shopId, appt.id, {
         destination: 'professional',
-        method: 'CASH',
-        amount: 500,
-        receivedByUnit: true,
+        method: 'CARD',
+        amount: 3,
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    await prisma.barbershop.update({ where: { id: shopId }, data: { staffRecordsUnitTips: true } });
     // Dinheiro deixado no balcão pro profissional: a unidade repassa
     await tips.add(users.dono, shopId, appt.id, {
       destination: 'professional',

@@ -95,11 +95,11 @@ export class TipService {
     // A mais no cartão cai sempre na maquininha da unidade
     const receivedByUnit =
       destination === 'professional' && (method === 'CARD' || Boolean(input.receivedByUnit));
-    // Recebida pela unidade vira valor que a unidade deve ao profissional:
-    // só a recepção pra cima lança (o próprio profissional lançava pra si)
-    if (receivedByUnit && !desk) {
+    // Recebida pela unidade vira valor que a unidade repassa: o dono/gerente
+    // escolhe se o profissional registra (unidade sem recepção) ou só a recepção
+    if (receivedByUnit && !desk && !appt.barbershop.staffRecordsUnitTips) {
       throw new ForbiddenException(
-        'Caixinha recebida pela unidade (cartão ou maquininha) é lançada pela recepção',
+        'Nesta unidade, a caixinha recebida pela unidade (cartão, maquininha) é registrada pela recepção',
       );
     }
     const amount = new Decimal(round2(input.amount));
@@ -351,7 +351,9 @@ export class TipService {
         barberId: true,
         barber: { select: { userId: true } },
         customer: { select: { name: true } },
-        barbershop: { select: { id: true, currency: true, practiceKind: true } },
+        barbershop: {
+          select: { id: true, currency: true, practiceKind: true, staffRecordsUnitTips: true },
+        },
       },
     });
     if (!appt) throw new NotFoundException('Agendamento não encontrado');
@@ -360,10 +362,9 @@ export class TipService {
 
   /** Recepção pra cima, ou o profissional que atendeu */
   /**
-   * Quem pode mexer na caixinha deste atendimento. Devolve se é da recepção
-   * pra cima (o profissional mexe só na do próprio atendimento, e só
-   * enquanto trabalha na unidade). Antes o profissional entrava mesmo
-   * desligado da unidade
+   * Quem pode mexer na caixinha deste atendimento: da recepção pra cima, ou o
+   * profissional que atendeu, só enquanto trabalha na unidade (antes entrava
+   * mesmo desligado). Devolve se é da recepção pra cima
    */
   private async ensureCanManage(
     userId: number,
