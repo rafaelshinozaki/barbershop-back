@@ -338,5 +338,10 @@ describe('Backoffice fase 2 (integração)', () => {
       where: { stripeDisputeId: `dp_${RUN}` },
     });
     expect(saved?.closedAt).not.toBeNull();
+    // Evento atrasado ("ainda precisa de resposta") não reabre a disputa ganha
+    await payments.recordDispute(dispute('needs_response'));
+    expect(
+      await prisma.paymentDispute.findUnique({ where: { stripeDisputeId: `dp_${RUN}` } }),
+    ).toMatchObject({ status: 'won', closedAt: saved?.closedAt });
   });
 });

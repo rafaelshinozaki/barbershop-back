@@ -2,6 +2,7 @@ import { Injectable, ExecutionContext, NotFoundException } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Observable } from 'rxjs';
+import { assertOAuthState, oauthStateOptions } from '../oauth-state';
 
 @Injectable()
 export class ClientFacebookAuthGuard extends AuthGuard('facebook-client') {
@@ -13,6 +14,11 @@ export class ClientFacebookAuthGuard extends AuthGuard('facebook-client') {
     if (!this.configService.get<boolean>('ENABLE_FACEBOOK_AUTH')) {
       throw new NotFoundException();
     }
+    assertOAuthState(context);
     return super.canActivate(context);
+  }
+
+  getAuthenticateOptions(context: ExecutionContext) {
+    return oauthStateOptions(context);
   }
 }

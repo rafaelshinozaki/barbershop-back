@@ -305,6 +305,36 @@ export class ChairRentService {
           }
           return { link, clientSecret: null as string | null, event: null };
         }
+        // Primeira cobrança parada na confirmação do cartão (3D Secure, aba
+        // fechada): retoma a confirmação; se expirou, começa de novo. Antes o
+        // vínculo ficava INCOMPLETE pra sempre e o aluguel nunca era cobrado
+        if (link.rentStripeSubscriptionId && link.rentStatus === 'INCOMPLETE') {
+          const pending = await this.stripe.getSubscription(link.rentStripeSubscriptionId, {
+            expand: ['latest_invoice.payment_intent'],
+          });
+          if (pending.status === 'incomplete') {
+            const invoice = pending.latest_invoice as Stripe.Invoice | null;
+            const intent = invoice?.payment_intent as Stripe.PaymentIntent | null;
+            return { link, clientSecret: intent?.client_secret ?? null, event: null };
+          }
+          if (pending.status === 'active') {
+            await tx.sharedLocationMember.update({
+              where: { id: link.id },
+              data: {
+                rentStatus: 'ACTIVE',
+                rentPaidUntil: new Date(pending.current_period_end * 1000),
+              },
+            });
+            return { link, clientSecret: null, event: null };
+          }
+          // incomplete_expired / canceled: cobrança nova
+          await tx.sharedLocationMember.update({
+            where: { id: link.id },
+            data: { rentStripeSubscriptionId: null, rentStatus: 'AWAITING_PAYMENT' },
+          });
+          link.rentStripeSubscriptionId = null;
+          link.rentStatus = 'AWAITING_PAYMENT';
+        }
         if (link.rentStatus !== 'AWAITING_PAYMENT' || !link.rentAmount) {
           throw new BadRequestException(
             link.rentStatus === 'NONE'
@@ -319,7 +349,10 @@ export class ChairRentService {
             Math.round(Number(link.rentAmount) * 100),
             link.rentCurrency ?? 'BRL',
           );
-          await tx.sharedLocationMember.update({
+          // Fora da transação: se ela desfizer depois da Stripe, o preço fica
+          // salvo e a próxima tentativa usa a mesma chave (a Stripe devolve a
+          // assinatura já criada em vez de cobrar duas vezes)
+          await this.prisma.sharedLocationMember.update({
             where: { id: link.id },
             data: { rentStripePriceId: priceId },
           });

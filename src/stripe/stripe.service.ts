@@ -149,8 +149,8 @@ export class StripeService {
     );
   }
 
-  async getSubscription(subscriptionId: string) {
-    return await this.stripe.subscriptions.retrieve(subscriptionId);
+  async getSubscription(subscriptionId: string, params?: Stripe.SubscriptionRetrieveParams) {
+    return await this.stripe.subscriptions.retrieve(subscriptionId, params);
   }
 
   async updateSubscription(subscriptionId: string, data: Stripe.SubscriptionUpdateParams) {

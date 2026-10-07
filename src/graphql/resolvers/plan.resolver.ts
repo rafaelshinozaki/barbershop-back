@@ -1,9 +1,9 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
-import { Logger, UseGuards } from '@nestjs/common';
+import { UseGuards } from '@nestjs/common';
 import { PlanService } from '../../plan/plan.service';
-import { Plan, Subscription, CreateSubscriptionResponse } from '../types/plan.type';
+import { Plan, Subscription } from '../types/plan.type';
 import { Payment } from '../types/payment.type';
-import { CreatePlanInput, UpdatePlanInput, CreateSubscriptionInput } from '../dto/plan.dto';
+import { CreatePlanInput, UpdatePlanInput } from '../dto/plan.dto';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
@@ -159,127 +159,6 @@ export class PlanResolver {
       createdAt: payment.createdAt.toISOString(),
       updatedAt: payment.updatedAt.toISOString(),
     }));
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard)
-  @Mutation(() => CreateSubscriptionResponse)
-  async createSubscription(
-    @Args('input') input: CreateSubscriptionInput,
-    @CurrentUser() user: UserDTO,
-  ) {
-    try {
-      // Buscar o plano
-      const plan = await this.prisma.plan.findUnique({
-        where: { id: input.planId },
-      });
-
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      // Verificar se o plano tem um stripePriceId válido
-      if (!plan.stripePriceId) {
-        throw new Error(
-          'Plano não está configurado corretamente no Stripe. Entre em contato com o suporte.',
-        );
-      }
-
-      // Verificar se o usuário já tem uma assinatura ativa e cancelar automaticamente
-      const existingSubscription = await this.prisma.subscription.findFirst({
-        where: {
-          userId: user.id,
-          status: PLANO_STATUS.ACTIVE,
-        },
-      });
-
-      if (existingSubscription) {
-        // Cancelar assinatura anterior no Stripe se tiver stripeSubscriptionId
-        if (existingSubscription.stripeSubscriptionId) {
-          try {
-            await this.stripeService.cancelSubscription(existingSubscription.stripeSubscriptionId);
-          } catch (stripeError) {
-            new Logger(PlanResolver.name).warn(
-              `Erro ao cancelar assinatura no Stripe: ${stripeError}`,
-            );
-            // Continuar mesmo se falhar no Stripe, pois vamos cancelar no banco
-          }
-        }
-
-        // Atualizar status no banco
-        await this.prisma.subscription.update({
-          where: { id: existingSubscription.id },
-          data: {
-            status: PLANO_STATUS.INACTIVE,
-            cancelationDate: new Date(),
-          },
-        });
-      }
-
-      // Buscar ou criar customer no Stripe
-      let stripeCustomerId = user.stripeCustomerId;
-      if (!stripeCustomerId) {
-        const customer = await this.stripeService.createCustomer(
-          user.email,
-          user.fullName || user.email,
-        );
-        stripeCustomerId = customer.id;
-
-        // Atualizar usuário com stripeCustomerId
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: { stripeCustomerId },
-        });
-      }
-
-      // Criar assinatura no Stripe
-      const stripeSubscription = await this.stripeService.createSubscription(
-        stripeCustomerId,
-        plan.stripePriceId,
-        {
-          userId: user.id.toString(),
-          planId: plan.id.toString(),
-        },
-      );
-
-      // Criar assinatura no banco
-      const subscription = await this.prisma.subscription.create({
-        data: {
-          userId: user.id,
-          planId: plan.id,
-          startSubDate: new Date(),
-          status: PLANO_STATUS.ACTIVE,
-          stripeCustomerId,
-          stripeSubscriptionId: stripeSubscription.id,
-        },
-        include: {
-          plan: true,
-        },
-      });
-
-      return {
-        success: true,
-        subscription: {
-          ...subscription,
-          startSubDate: subscription.startSubDate.toISOString(),
-          cancelationDate: subscription.cancelationDate?.toISOString(),
-          createdAt: subscription.createdAt.toISOString(),
-          updatedAt: subscription.updatedAt.toISOString(),
-          plan: {
-            ...subscription.plan,
-            price: Number(subscription.plan.price),
-            createdAt: subscription.plan.createdAt?.toISOString() || new Date().toISOString(),
-            updatedAt: subscription.plan.updatedAt?.toISOString() || new Date().toISOString(),
-          },
-        },
-        clientSecret:
-          typeof stripeSubscription.latest_invoice === 'object' &&
-          stripeSubscription.latest_invoice?.payment_intent
-            ? (stripeSubscription.latest_invoice.payment_intent as any).client_secret
-            : undefined,
-      };
-    } catch (error) {
-      throw new Error(`Erro ao criar assinatura: ${error.message}`);
-    }
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

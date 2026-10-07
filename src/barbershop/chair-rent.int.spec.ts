@@ -51,10 +51,14 @@ describe('Aluguel da cadeira (integração)', () => {
         latest_invoice: { id: `in_first_${id}`, payment_intent: { client_secret: 'pi_secret' } },
       };
     },
-    getSubscription: async (id: string) => ({
+    getSubscription: async (id: string, params?: { expand?: string[] }) => ({
       id,
+      status: subs.get(id)?.status ?? 'active',
+      current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
       items: { data: [{ id: `si_${id}` }] },
-      latest_invoice: `in_open_${id}`,
+      latest_invoice: params?.expand
+        ? { id: `in_open_${id}`, payment_intent: { client_secret: 'pi_secret' } }
+        : `in_open_${id}`,
     }),
     updateSubscription: async (id: string, data: any) => {
       calls.push(`update:${id}:${JSON.stringify(data)}`);
@@ -225,9 +229,11 @@ describe('Aluguel da cadeira (integração)', () => {
       rent.authorize(member.ownerId, linkId, member.shopId, 'pm_member_1'),
       rent.authorize(member.ownerId, linkId, member.shopId, 'pm_member_1'),
     ]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    const ok = results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>;
-    expect(ok.value.clientSecret).toBe('pi_secret'); // primeira cobrança pede confirmação
+    // O segundo clique retoma a mesma confirmação (3D Secure); cobrança é uma só
+    for (const r of results) {
+      expect(r.status).toBe('fulfilled');
+      expect((r as PromiseFulfilledResult<any>).value.clientSecret).toBe('pi_secret');
+    }
     expect(calls.filter((c) => c.startsWith('subscribe:'))).toHaveLength(1);
     expect(calls.filter((c) => c.startsWith('price:'))).toEqual(['price:50000']);
 

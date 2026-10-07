@@ -155,6 +155,19 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
     expect(active!.payments[0].appliedCouponId).toBe(coupon.id);
   });
 
+  it('1 mês grátis em vários checkouts ao mesmo tempo: vale uma vez só', async () => {
+    const coupon = await newCoupon(COUPON_TYPE.FREE_MONTH, 0);
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () =>
+        payments.createPaymentIntentForCheckout(userId, planId, coupon.code),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const after = await prisma.coupon.findUnique({ where: { id: coupon.id } });
+    expect(after!.usedCount).toBe(1);
+    expect(await prisma.payment.count({ where: { appliedCouponId: coupon.id } })).toBe(1);
+  });
+
   it('cupom de valor fixo maior que o preço não gera valor negativo', async () => {
     const coupon = await newCoupon(COUPON_TYPE.FIXED_AMOUNT, 150);
     const result = await payments.createPaymentIntentForCheckout(userId, planId, coupon.code);
