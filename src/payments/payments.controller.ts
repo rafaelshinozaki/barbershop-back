@@ -30,21 +30,16 @@ export class PaymentsController {
 
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Create subscription' })
-  @ApiResponse({ status: 201, description: 'Subscription created' })
-  @Post()
-  newSubscription(@Req() req: Request, @Body() body: any) {
-    const userId = (req as any).user.userId;
-    return this.paymentsService.newSubscription(userId, body);
-  }
+  // Assinar um plano é pelo checkout (create-payment-intent + confirmar o
+  // pagamento). O antigo POST /payments ativava o plano pago antes de
+  // qualquer pagamento confirmado e saiu.
 
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get user invoices' })
   @ApiResponse({ status: 200, description: 'List of invoices' })
   @Get()
   getPayments(@Req() req: Request) {
-    return this.paymentsService.getInvoices((req as any).user.userId);
+    return this.paymentsService.getInvoices((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -52,7 +47,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Latest invoice' })
   @Get('latest')
   getLatestInvoice(@Req() req: Request) {
-    return this.paymentsService.getLatestPendingInvoice((req as any).user.userId);
+    return this.paymentsService.getLatestPendingInvoice((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -60,7 +55,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Subscriptions list' })
   @Get('subscriptions')
   getAll(@Req() req: Request) {
-    return this.paymentsService.getAll((req as any).user.userId);
+    return this.paymentsService.getAll((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -68,7 +63,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Payment methods list' })
   @Get('payment-methods/list')
   getPaymentMethods(@Req() req: Request) {
-    return this.paymentsService.getPaymentMethods((req as any).user.userId);
+    return this.paymentsService.getPaymentMethods((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -76,7 +71,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Invoice data' })
   @Get(':id')
   getOne(@Param('id') id: string, @Req() req: Request) {
-    return this.paymentsService.getOne((req as any).user.userId, +id);
+    return this.paymentsService.getOne((req as any).user.id, +id);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -84,7 +79,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Payment method updated' })
   @Put()
   updatePaymentMethod(@Req() req: Request, @Body() body: any) {
-    return this.paymentsService.updatePaymentMethod((req as any).user.userId, body.paymentMethodId);
+    return this.paymentsService.updatePaymentMethod((req as any).user.id, body.paymentMethodId);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -92,7 +87,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Plan changed' })
   @Patch('change-plan')
   changePlan(@Req() req: Request, @Body() body: any) {
-    return this.paymentsService.changePlan((req as any).user.userId, body.planId);
+    return this.paymentsService.changePlan((req as any).user.id, body.planId);
   }
 
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
@@ -100,7 +95,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Subscription canceled' })
   @Delete()
   unsubscribe(@Req() req: Request) {
-    return this.paymentsService.unsubscribe((req as any).user.userId);
+    return this.paymentsService.unsubscribe((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -118,7 +113,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'Setup intent created' })
   @Post('setup-intent')
   createSetupIntent(@Req() req: Request) {
-    return this.paymentsService.createSetupIntent((req as any).user.userId);
+    return this.paymentsService.createSetupIntent((req as any).user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -126,7 +121,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'PaymentIntent created' })
   @Post('create-payment-intent')
   async createPaymentIntent(@Req() req: Request, @Body() body: { planId: number }) {
-    const userId = (req as any).user.userId;
+    const userId = (req as any).user.id;
     return this.paymentsService.createPaymentIntentForCheckout(userId, body.planId);
   }
 
@@ -135,10 +130,7 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'PaymentIntent confirmed' })
   @Post('confirm-payment-intent')
   async confirmPaymentIntent(@Req() req: Request, @Body() body: { paymentIntentId: string }) {
-    return this.paymentsService.confirmPaymentIntent(
-      (req as any).user.userId,
-      body.paymentIntentId,
-    );
+    return this.paymentsService.confirmPaymentIntent((req as any).user.id, body.paymentIntentId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -149,7 +141,7 @@ export class PaymentsController {
     @Req() req: Request,
     @Param('paymentMethodId') paymentMethodId: string,
   ) {
-    return this.paymentsService.deletePaymentMethod((req as any).user.userId, paymentMethodId);
+    return this.paymentsService.deletePaymentMethod((req as any).user.id, paymentMethodId);
   }
 
   // Operação do sistema (cobra/lista pagamentos de todos): só admin

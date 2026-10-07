@@ -187,6 +187,33 @@ export class CouponsService {
   }
 
   /** Marca o cupom como usado por este usuário e soma um uso no cupom. */
+  /**
+   * Registra o uso dentro da transação de quem ativa o plano, com trava por
+   * cupom: checkouts ao mesmo tempo passavam todos pela validação (uso único
+   * por pessoa, limite de usos) e o cupom valia várias vezes. Devolve false
+   * se o uso não cabe mais.
+   */
+  async claimUse(tx: Prisma.TransactionClient, couponId: number, userId: number) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'coupon:' + couponId}))`;
+    const coupon = await tx.coupon.findUnique({
+      where: { id: couponId },
+      select: { maxUses: true, usedCount: true },
+    });
+    if (!coupon || (coupon.maxUses && coupon.usedCount >= coupon.maxUses)) return false;
+    const used = await tx.userCoupon.findUnique({
+      where: { userId_couponId: { userId, couponId } },
+      select: { usedAt: true },
+    });
+    if (used?.usedAt) return false;
+    await tx.userCoupon.upsert({
+      where: { userId_couponId: { userId, couponId } },
+      update: { usedAt: new Date() },
+      create: { userId, couponId, usedAt: new Date() },
+    });
+    await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
+    return true;
+  }
+
   async registerUse(couponId: number, userId: number) {
     await this.prisma.userCoupon.upsert({
       where: { userId_couponId: { userId, couponId } },

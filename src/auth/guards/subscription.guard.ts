@@ -18,7 +18,7 @@ export class SubscriptionGuard implements CanActivate {
     }
 
     const sub = await this.prisma.subscription.findFirst({
-      where: { userId: user.userId, status: PLANO_STATUS.ACTIVE },
+      where: { userId: user.id, status: PLANO_STATUS.ACTIVE },
     });
 
     return !!sub;

@@ -74,165 +74,6 @@ export class PaymentsService {
     private readonly couponsService: CouponsService,
   ) {}
 
-  async newSubscription(userId: number, body: any) {
-    this.logger.log(`Creating new subscription for user ${userId}`);
-
-    const plan = await this.prisma.plan.findFirst({
-      where: { id: body.planId },
-    });
-
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
-    }
-
-    if (!plan.stripePriceId) {
-      throw new BadRequestException('Plan does not have a Stripe price ID configured');
-    }
-
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Verificar se já existe uma assinatura ativa
-    const lastActiveSub = await this.prisma.subscription.findFirst({
-      where: { userId, AND: { status: PLANO_STATUS.ACTIVE } },
-    });
-
-    // Criar ou recuperar cliente Stripe
-    let customer: Stripe.Customer;
-    if (user.stripeCustomerId) {
-      try {
-        const customerResponse = await this.stripeService.getCustomer(user.stripeCustomerId);
-        if (customerResponse.deleted) {
-          throw new Error('Customer was deleted');
-        }
-        customer = customerResponse as Stripe.Customer;
-      } catch (error) {
-        this.logger.warn(`Stripe customer ${user.stripeCustomerId} not found, creating new one`);
-        customer = await this.stripeService.createCustomer(user.email, user.fullName, {
-          userId: userId.toString(),
-        });
-        await this.prisma.user.update({
-          where: { id: userId },
-          data: { stripeCustomerId: customer.id },
-        });
-      }
-    } else {
-      customer = await this.stripeService.createCustomer(user.email, user.fullName, {
-        userId: userId.toString(),
-      });
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { stripeCustomerId: customer.id },
-      });
-    }
-
-    // Criar assinatura no Stripe
-    const stripeSubscription = await this.stripeService.createSubscription(
-      customer.id,
-      plan.stripePriceId,
-      {
-        userId: userId.toString(),
-        planId: plan.id.toString(),
-      },
-    );
-
-    // Extrair payment intent com proteção
-    let paymentIntent: Stripe.PaymentIntent | null = null;
-    try {
-      paymentIntent = (stripeSubscription as any).latest_invoice
-        ?.payment_intent as Stripe.PaymentIntent;
-    } catch (error) {
-      this.logger.warn('Could not extract payment intent from subscription:', error);
-    }
-
-    if (!paymentIntent) {
-      this.logger.warn('No payment intent found in subscription, creating one manually');
-      // Criar payment intent manualmente se necessário
-      paymentIntent = await this.stripeService.createPaymentIntent(
-        Math.floor(Number(plan.price) * 100 + 0.5),
-        'brl',
-        customer.id,
-      );
-    }
-
-    if (!lastActiveSub) {
-      this.logger.log('No active subscription found, creating new one');
-
-      const subscription = await this.prisma.subscription.create({
-        data: {
-          userId,
-          planId: body.planId,
-          startSubDate: new Date(),
-          status: PLANO_STATUS.ACTIVE,
-          stripeCustomerId: customer.id,
-          stripeSubscriptionId: stripeSubscription.id,
-        } as any,
-      });
-
-      await this.prisma.payment.create({
-        data: {
-          subscriptionId: subscription.id,
-          amount: new Prisma.Decimal(plan.price),
-          nextPaymentDate:
-            plan.billingCycle === 'YEARLY' ? addYears(new Date(), 1) : addDays(new Date(), 30),
-          paymentDate: new Date(),
-          paymentMethod: 'stripe',
-          transactionId: paymentIntent.id,
-          status: PAGAMENTO_STATUS.COMPLETED,
-        },
-      });
-
-      return { subscription, paymentIntent };
-    }
-
-    this.logger.log(`Updating current subscription for user ${userId}`);
-
-    // Cancelar assinatura anterior
-    const startDay = format(lastActiveSub.startSubDate, 'd');
-    await this.prisma.subscription.update({
-      where: { id: lastActiveSub.id },
-      data: {
-        status: PLANO_STATUS.INACTIVE,
-        cancelationDate: addDays(
-          new Date(new Date().getFullYear(), new Date().getMonth(), +startDay + 1),
-          +30,
-        ),
-      },
-    });
-
-    // Criar nova assinatura
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        userId,
-        planId: body.planId,
-        startSubDate: addDays(
-          new Date(new Date().getFullYear(), new Date().getMonth(), +startDay + 1),
-          +30,
-        ),
-        status: PLANO_STATUS.ACTIVE,
-        stripeCustomerId: customer.id,
-        stripeSubscriptionId: stripeSubscription.id,
-      } as any,
-    });
-
-    await this.prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount: new Prisma.Decimal(plan.price),
-        nextPaymentDate:
-          plan.billingCycle === 'YEARLY' ? addYears(new Date(), 1) : addDays(new Date(), 30),
-        paymentDate: new Date(),
-        paymentMethod: 'stripe',
-        transactionId: paymentIntent.id,
-        status: PAGAMENTO_STATUS.COMPLETED,
-      },
-    });
-
-    return { subscription, paymentIntent };
-  }
-
   async getAll(userId: number) {
     this.logger.log(`Getting all payments for userId: ${userId}`);
     return this.prisma.subscription.findMany({
@@ -335,7 +176,7 @@ export class PaymentsService {
         if (invoice.due_date && invoice.due_date * 1000 < Date.now()) {
           await this.prisma.user.update({
             where: { id: userId },
-            data: { membership: MEMBERSHIP_STATUS.PAST_DUE, isActive: false },
+            data: { membership: MEMBERSHIP_STATUS.PAST_DUE },
           });
         }
 
@@ -411,8 +252,13 @@ export class PaymentsService {
     // Atualizar assinatura no Stripe com proration_behavior: 'none' para não cobrar imediatamente
     if (subscription.stripeSubscriptionId) {
       try {
+        // O item a trocar é o si_… da assinatura (o sub_… dava "No such
+        // subscription item" e a troca de plano sempre falhava)
+        const current = await this.stripeService.getSubscription(subscription.stripeSubscriptionId);
+        const itemId = current.items.data[0]?.id;
+        if (!itemId) throw new Error('Assinatura sem item no Stripe');
         await this.stripeService.updateSubscription(subscription.stripeSubscriptionId, {
-          items: [{ id: subscription.stripeSubscriptionId, price: newPlan.stripePriceId }],
+          items: [{ id: itemId, price: newPlan.stripePriceId }],
           proration_behavior: 'none', // Não cobra imediatamente, apenas no próximo vencimento
         });
       } catch (error) {
@@ -468,7 +314,7 @@ export class PaymentsService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { membership: MEMBERSHIP_STATUS.FREE, isActive: false },
+      data: { membership: MEMBERSHIP_STATUS.FREE },
     });
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -814,6 +660,14 @@ export class PaymentsService {
         if (existing?.subscription) return { subscription: existing.subscription, created: false };
       }
 
+      // Cupom: o uso é registrado aqui, com trava. Sem cobrança (plano
+      // grátis pelo cupom), uso que não cabe mais não ativa nada; já pago, o
+      // plano vale e só fica no log
+      if (coupon && !(await this.couponsService.claimUse(tx, coupon.couponId, userId))) {
+        if (!paymentIntentId) throw new BadRequestException('Cupom já foi utilizado');
+        this.logger.warn(`Cupom ${coupon.couponId} usado de novo pelo user ${userId} (já pago)`);
+      }
+
       // A assinatura anterior (ex.: o Free) é encerrada
       await tx.subscription.updateMany({
         where: { userId, status: PLANO_STATUS.ACTIVE },
@@ -856,7 +710,6 @@ export class PaymentsService {
     });
 
     if (result.created) {
-      if (coupon) await this.couponsService.registerUse(coupon.couponId, userId);
       // O cartão usado vira o padrão: é ele que a renovação cobra
       if (paymentMethodId && user.stripeCustomerId) {
         await this.stripeService

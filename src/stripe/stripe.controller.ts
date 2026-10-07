@@ -161,27 +161,30 @@ export class StripeController {
       return;
     }
 
-    const memberRole = await this.prisma.role.findFirst({
-      where: { name: Role.BARBERSHOP_OWNER },
-    });
+    // Evento atrasado ou repetido (o Stripe tenta de novo por dias) não
+    // reativa assinatura que já foi cancelada: vale o estado de agora no Stripe
+    const live = await this.stripeService.getSubscription(subscriptionId).catch(() => null);
+    if (!live || live.status === 'active') {
+      const memberRole = await this.prisma.role.findFirst({
+        where: { name: Role.BARBERSHOP_OWNER },
+      });
 
-    // Atualizar status do usuário
-    await this.prisma.user.update({
-      where: { id: subscription.userId },
-      data: {
-        membership: MEMBERSHIP_STATUS.PAID,
-        isActive: true,
-        role: memberRole ? { connect: { id: memberRole.id } } : undefined,
-      },
-    });
+      // Plano pago; a conta suspensa pela equipe (isActive) continua como está
+      await this.prisma.user.update({
+        where: { id: subscription.userId },
+        data: {
+          membership: MEMBERSHIP_STATUS.PAID,
+          role: memberRole ? { connect: { id: memberRole.id } } : undefined,
+        },
+      });
 
-    // Atualizar status da assinatura
-    await this.prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        status: PLANO_STATUS.ACTIVE,
-      },
-    });
+      await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: {
+          status: PLANO_STATUS.ACTIVE,
+        },
+      });
+    }
 
     // Registro do pagamento — uma vez só por fatura: o Stripe pode entregar
     // o mesmo evento mais de uma vez (antes duplicava pagamento e e-mail)
@@ -355,31 +358,19 @@ export class StripeController {
       return;
     }
 
-    // Atualizar status baseado no status do Stripe
+    // Atualizar status baseado no status do Stripe. Só o plano muda: a conta
+    // (isActive) fica ativa, senão quem atrasou nem entrava pra trocar o cartão
     let membershipStatus = MEMBERSHIP_STATUS.FREE;
-    let isActive = false;
     let planStatus = PLANO_STATUS.INACTIVE;
 
     switch (subscription.status) {
       case 'active':
         membershipStatus = MEMBERSHIP_STATUS.PAID;
-        isActive = true;
         planStatus = PLANO_STATUS.ACTIVE;
         break;
       case 'past_due':
-        membershipStatus = MEMBERSHIP_STATUS.PAST_DUE;
-        isActive = false;
-        planStatus = PLANO_STATUS.INACTIVE;
-        break;
-      case 'canceled':
-        membershipStatus = MEMBERSHIP_STATUS.FREE;
-        isActive = false;
-        planStatus = PLANO_STATUS.INACTIVE;
-        break;
       case 'unpaid':
         membershipStatus = MEMBERSHIP_STATUS.PAST_DUE;
-        isActive = false;
-        planStatus = PLANO_STATUS.INACTIVE;
         break;
     }
 
@@ -387,7 +378,6 @@ export class StripeController {
       where: { id: dbSubscription.userId },
       data: {
         membership: membershipStatus,
-        isActive,
       },
     });
 
@@ -414,12 +404,11 @@ export class StripeController {
       return;
     }
 
-    // Atualizar status do usuário para FREE
+    // Plano volta pro gratuito; a conta continua entrando
     await this.prisma.user.update({
       where: { id: dbSubscription.userId },
       data: {
         membership: MEMBERSHIP_STATUS.FREE,
-        isActive: false,
       },
     });
 

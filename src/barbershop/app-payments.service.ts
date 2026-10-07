@@ -299,6 +299,13 @@ export class AppPaymentsService {
         : null,
       closedAt: closed ? new Date() : null,
     };
+    // A Stripe não garante a ordem dos eventos: disputa já encerrada (ganha,
+    // perdida) não volta a ficar aberta por um "updated" que chegou atrasado
+    const existing = await this.prisma.paymentDispute.findUnique({
+      where: { stripeDisputeId: dispute.id },
+      select: { closedAt: true },
+    });
+    if (existing?.closedAt) return;
     await this.prisma.paymentDispute.upsert({
       where: { stripeDisputeId: dispute.id },
       create: { stripeDisputeId: dispute.id, ...data },

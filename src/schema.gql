@@ -1557,23 +1557,11 @@ input CreateSocialPostInput {
   scheduledFor: String!
 }
 
-input CreateSubscriptionInput {
-  planId: Int!
-}
-
 input CreateSubscriptionPlanInput {
   name: String!
   price: Float!
   serviceId: Int!
   sessionsPerCycle: Int
-}
-
-type CreateSubscriptionResponse {
-  checkoutUrl: String
-  clientSecret: String
-  message: String
-  subscription: PlanSubscription
-  success: Boolean!
 }
 
 input CreateUserInput {
@@ -2296,7 +2284,6 @@ type Mutation {
   createServicePackage(barbershopId: Int!, input: CreateServicePackageInput!): ServicePackageType!
   createSetupIntent: SetupIntent!
   createSocialPost(barbershopId: Int!, input: CreateSocialPostInput!): SocialPostType!
-  createSubscription(input: CreateSubscriptionInput!): CreateSubscriptionResponse!
   createSubscriptionPlan(barbershopId: Int!, input: CreateSubscriptionPlanInput!): ClientSubscriptionPlanType!
   createUser(input: CreateUserInput!): User!
   createWaitlistEntry(barbershopId: Int!, input: CreateWaitlistEntryInput!): WaitlistEntryType!
