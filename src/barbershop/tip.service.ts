@@ -86,7 +86,7 @@ export class TipService {
     if (appt.status !== 'COMPLETED') {
       throw new BadRequestException('Só dá pra registrar caixinha de atendimento concluído');
     }
-    await this.ensureCanManage(userId, appt);
+    const { desk } = await this.ensureCanManage(userId, appt);
     const destination = input.destination as TipDestination;
     const method = input.method as TipMethod;
     if (destination === 'unit' && appt.barbershop.practiceKind === 'solo') {
@@ -95,6 +95,13 @@ export class TipService {
     // A mais no cartão cai sempre na maquininha da unidade
     const receivedByUnit =
       destination === 'professional' && (method === 'CARD' || Boolean(input.receivedByUnit));
+    // Recebida pela unidade vira valor que a unidade deve ao profissional:
+    // só a recepção pra cima lança (o próprio profissional lançava pra si)
+    if (receivedByUnit && !desk) {
+      throw new ForbiddenException(
+        'Caixinha recebida pela unidade (cartão ou maquininha) é lançada pela recepção',
+      );
+    }
     const amount = new Decimal(round2(input.amount));
 
     const tip = await this.prisma.$transaction(async (tx) => {
@@ -352,14 +359,19 @@ export class TipService {
   }
 
   /** Recepção pra cima, ou o profissional que atendeu */
+  /**
+   * Quem pode mexer na caixinha deste atendimento. Devolve se é da recepção
+   * pra cima (o profissional mexe só na do próprio atendimento, e só
+   * enquanto trabalha na unidade). Antes o profissional entrava mesmo
+   * desligado da unidade
+   */
   private async ensureCanManage(
     userId: number,
     appt: { barber: { userId: number | null }; barbershop: { id: number } },
-  ) {
-    if (appt.barber.userId === userId) return;
+  ): Promise<{ desk: boolean }> {
     const level = await this.barbershops.getMyAccessLevel(userId, appt.barbershop.id);
-    if (!level || !DESK_LEVELS.includes(level)) {
-      throw new ForbiddenException('Você não pode registrar caixinha deste atendimento');
-    }
+    if (level && DESK_LEVELS.includes(level)) return { desk: true };
+    if (level && appt.barber.userId === userId) return { desk: false };
+    throw new ForbiddenException('Você não pode registrar caixinha deste atendimento');
   }
 }

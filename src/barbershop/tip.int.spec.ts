@@ -183,6 +183,15 @@ describe('Caixinha do atendimento (integração)', () => {
       amount: 5,
     });
     expect(pix.receivedByUnit).toBe(false);
+    // Mas não lança pra si o que a unidade teria recebido (vira dívida da unidade)
+    await expect(
+      tips.add(users.pro, shopId, appt.id, {
+        destination: 'professional',
+        method: 'CASH',
+        amount: 500,
+        receivedByUnit: true,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     // Dinheiro deixado no balcão pro profissional: a unidade repassa
     await tips.add(users.dono, shopId, appt.id, {
       destination: 'professional',
