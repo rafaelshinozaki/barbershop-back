@@ -219,16 +219,23 @@ export class BackofficeGovernanceResolver {
     @Args('input') input: SendEmailNotificationInput,
     @CurrentUser() user: UserDTO,
   ) {
-    if (!staffActor(user).admin && input.userIds.length > MASS_EMAIL_LIMIT) {
+    const actor = staffActor(user);
+    const reserved = actor.admin
+      ? null
+      : await this.approvals.reserveDirectEmail(actor, input.userIds.length);
+    if (!actor.admin && reserved == null) {
       throw new BadRequestException(
-        `Para mais de ${MASS_EMAIL_LIMIT} pessoas, peça a confirmação de um Administrador`,
+        `Para mais de ${MASS_EMAIL_LIMIT} pessoas em 24 h, peça a confirmação de um Administrador`,
       );
     }
-    await this.backoffice.sendEmailNotification(input);
+    await this.sendDirect(input, reserved);
     return true;
   }
 
-  /** E-mail para usuários; para mais de 1.000 pessoas, quem não é Administrador pede confirmação */
+  /**
+   * E-mail para usuários; para mais de 1.000 pessoas (somando as últimas
+   * 24 h), quem não é Administrador pede confirmação
+   */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @RequireArea(BackofficeArea.OPERATIONS)
@@ -238,7 +245,10 @@ export class BackofficeGovernanceResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const actor = staffActor(user);
-    if (!actor.admin && input.userIds.length > MASS_EMAIL_LIMIT) {
+    const reserved = actor.admin
+      ? null
+      : await this.approvals.reserveDirectEmail(actor, input.userIds.length);
+    if (!actor.admin && reserved == null) {
       return this.approvals.request(
         'email.mass',
         { ...input },
@@ -247,8 +257,18 @@ export class BackofficeGovernanceResolver {
         actor,
       );
     }
-    await this.backoffice.sendEmailNotification(input);
+    await this.sendDirect(input, reserved);
     return { done: true, approvalId: null };
+  }
+
+  /** Manda na hora; se der erro, o envio anotado sai do limite de 24 h */
+  private async sendDirect(input: SendEmailNotificationInput, reserved: number | null) {
+    try {
+      await this.backoffice.sendEmailNotification(input);
+    } catch (err) {
+      if (reserved != null) await this.approvals.releaseDirectEmail(reserved);
+      throw err;
+    }
   }
 
   /** Estorno pelo Financeiro; acima do limite, quem não é Administrador pede confirmação */

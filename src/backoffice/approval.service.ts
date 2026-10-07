@@ -15,8 +15,9 @@ import type { StaffActor } from './actor';
 export const APPROVAL_ACTIONS = ['user.delete', 'payment.refund', 'email.mass'] as const;
 export type ApprovalAction = (typeof APPROVAL_ACTIONS)[number];
 
-/** E-mail para mais gente que isso pede confirmação */
+/** E-mail para mais gente que isso (somando as últimas 24 h) pede confirmação */
 export const MASS_EMAIL_LIMIT = 1000;
+const MASS_EMAIL_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Estorno acima disso (em reais) pede confirmação. Padrão R$ 500 */
 export function refundApprovalLimit(env: NodeJS.ProcessEnv = process.env): number {
@@ -55,6 +56,35 @@ export class ApprovalService {
     private readonly payments: AppPaymentsService,
     private readonly backoffice: BackofficeService,
   ) {}
+
+  /**
+   * Envio direto de e-mail por quem não é Administrador: cabe no limite se a
+   * soma das últimas 24 h (com este) não passar de 1.000 pessoas. Cabendo,
+   * já fica anotado; um envio por vez por pessoa (trava), pra dois pedaços
+   * ao mesmo tempo não passarem juntos. Retorna o id da anotação, ou null se
+   * precisa de confirmação.
+   */
+  async reserveDirectEmail(actor: StaffActor, recipients: number): Promise<number | null> {
+    if (recipients > MASS_EMAIL_LIMIT) return null;
+    const since = new Date(Date.now() - MASS_EMAIL_WINDOW_MS);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`email-send:${actor.email}`}))`;
+      const sent = await tx.backofficeEmailSend.aggregate({
+        where: { requestedByEmail: actor.email, createdAt: { gte: since } },
+        _sum: { recipients: true },
+      });
+      if ((sent._sum.recipients ?? 0) + recipients > MASS_EMAIL_LIMIT) return null;
+      const row = await tx.backofficeEmailSend.create({
+        data: { requestedByEmail: actor.email, recipients },
+      });
+      return row.id;
+    });
+  }
+
+  /** O envio falhou: a anotação sai e não conta no limite */
+  async releaseDirectEmail(id: number) {
+    await this.prisma.backofficeEmailSend.deleteMany({ where: { id } });
+  }
 
   async request<A extends ApprovalAction>(
     action: A,
