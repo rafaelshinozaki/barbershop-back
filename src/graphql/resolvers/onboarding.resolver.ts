@@ -20,6 +20,10 @@ export class OnboardingStepType {
   /** Não conta para "tudo feito" (ex.: receber pelo app) */
   @Field()
   optional: boolean;
+
+  /** O sistema confere pelos dados; os outros contam ao abrir a tela (completeOnboardingStep) */
+  @Field()
+  auto: boolean;
 }
 
 @ObjectType()

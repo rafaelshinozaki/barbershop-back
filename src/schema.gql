@@ -2732,6 +2732,7 @@ type NotificationWithUser {
 }
 
 type OnboardingStepType {
+  auto: Boolean!
   done: Boolean!
   id: String!
   optional: Boolean!

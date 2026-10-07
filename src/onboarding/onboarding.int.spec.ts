@@ -209,9 +209,9 @@ describe('Boas-vindas por cargo (integração)', () => {
     const o = await onboarding.forUser(pro);
     expect(o).toMatchObject({ barbershopId: null, role: 'professional' });
     expect(o?.steps).toEqual([
-      { id: 'photo', done: false, optional: false },
-      { id: 'publicProfile', done: false, optional: false },
-      { id: 'openToWork', done: false, optional: true },
+      { id: 'photo', done: false, optional: false, auto: true },
+      { id: 'publicProfile', done: false, optional: false, auto: true },
+      { id: 'openToWork', done: false, optional: true, auto: true },
     ]);
     // Perfil oculto não conta como publicado
     await prisma.professional.update({ where: { userId: pro }, data: { slug: `onb-pro-${RUN}` } });

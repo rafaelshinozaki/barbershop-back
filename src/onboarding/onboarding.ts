@@ -55,7 +55,7 @@ export const ROLE_STEPS: Record<OnboardingRole, string[]> = {
 /** Por quanto tempo depois de entrar na unidade o card aparece */
 export const ONBOARDING_DAYS = 30;
 
-export type OnboardingStep = { id: string; done: boolean; optional: boolean };
+export type OnboardingStep = { id: string; done: boolean; optional: boolean; auto: boolean };
 
 /** Passos do cargo com o que já está feito (pelos dados ou marcado) */
 export function buildSteps(
@@ -67,6 +67,7 @@ export function buildSteps(
     id,
     done: AUTO_STEPS.has(id) ? Boolean(auto[id]) : marked.includes(id),
     optional: OPTIONAL_STEPS.has(id),
+    auto: AUTO_STEPS.has(id),
   }));
 }
 
