@@ -298,6 +298,16 @@ function checkSaleAmounts(data: {
 
 const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
+/** Situações que a equipe pode pôr num agendamento (PENDING_PAYMENT é do sinal online) */
+const STAFF_APPOINTMENT_STATUSES = [
+  'DRAFT',
+  'CONFIRMED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CANCELLED',
+  'NO_SHOW',
+];
+
 @Injectable()
 export class BarbershopService {
   private readonly logger = new Logger(BarbershopService.name);
@@ -2872,6 +2882,30 @@ export class BarbershopService {
     }
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    if (
+      data.status != null &&
+      data.status !== appointment.status &&
+      !STAFF_APPOINTMENT_STATUSES.includes(data.status)
+    ) {
+      throw new BadRequestException('Situação do agendamento inválida');
+    }
+    // Mudou só o início: mantém a duração (antes o fim ficava o antigo e o
+    // atendimento podia terminar antes de começar, escapando da checagem
+    // de conflito)
+    if (data.startAt && !data.endAt) {
+      const duration = appointment.endAt.getTime() - appointment.startAt.getTime();
+      data = { ...data, endAt: new Date(new Date(data.startAt).getTime() + duration) };
+    }
+    const newStart = new Date(data.startAt ?? appointment.startAt);
+    const newEnd = new Date(data.endAt ?? appointment.endAt);
+    if (newEnd <= newStart) throw new BadRequestException('O fim tem que ser depois do início');
+    // Horário novo: o lembrete vale pra ele (o do horário antigo já foi)
+    if (
+      newStart.getTime() !== appointment.startAt.getTime() &&
+      appointment.reminderSentAt != null
+    ) {
+      data = { ...data, reminderSentAt: null } as typeof data;
+    }
     const barberId = data.barberId ?? appointment.barberId;
     const resourceId = data.resourceId ?? appointment.resourceId ?? undefined;
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -3290,6 +3324,29 @@ export class BarbershopService {
     data: { customerId: number; barberId?: number; serviceId?: number; date: Date; notes?: string },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    // Cliente da rede, profissional e serviço desta unidade (antes ia qualquer
+    // id: dava pra pôr cliente de outra rede na fila e avisá-lo em nome daqui)
+    const [customer, barber, service] = await Promise.all([
+      this.prisma.customer.findFirst({
+        where: { id: data.customerId, networkId: barbershop.networkId },
+        select: { id: true },
+      }),
+      data.barberId
+        ? this.prisma.barber.findFirst({
+            where: { id: data.barberId, barbershopId },
+            select: { id: true },
+          })
+        : true,
+      data.serviceId
+        ? this.prisma.barbershopService.findFirst({
+            where: { id: data.serviceId, barbershopId },
+            select: { id: true },
+          })
+        : true,
+    ]);
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (!barber) throw new NotFoundException('Profissional não encontrado');
+    if (!service) throw new NotFoundException('Serviço não encontrado');
     const entry = await this.prisma.waitlistEntry.create({
       data: { ...data, barbershopId },
       include: { customer: true, barber: true, service: true },
@@ -3517,13 +3574,21 @@ export class BarbershopService {
       include: { customer: true, barbershop: true },
       orderBy: { createdAt: 'asc' },
     });
-    const match = candidates.find((c) => c.serviceId == null || serviceIds.includes(c.serviceId));
+    // Dois horários liberados juntos no mesmo dia: cada um avisa um da fila
+    // (marca só se ainda estava esperando; quem perdeu vai pro próximo)
+    let match: (typeof candidates)[number] | undefined;
+    for (const c of candidates) {
+      if (c.serviceId != null && !serviceIds.includes(c.serviceId)) continue;
+      const claimed = await this.prisma.waitlistEntry.updateMany({
+        where: { id: c.id, status: 'WAITING' },
+        data: { status: 'NOTIFIED', notifiedAt: new Date() },
+      });
+      if (claimed.count === 1) {
+        match = c;
+        break;
+      }
+    }
     if (!match) return;
-
-    await this.prisma.waitlistEntry.update({
-      where: { id: match.id },
-      data: { status: 'NOTIFIED', notifiedAt: new Date() },
-    });
     // Quem está na tela da lista de espera vê a entrada virar "avisado"
     this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
     await this.sendWaitlistNotice(match, appointment.startAt, localDate);
@@ -4394,6 +4459,18 @@ export class BarbershopService {
         throw new BadRequestException('Horário cai no intervalo do profissional');
       }
     }
+    // Folga/férias: a lista de horários já tira, mas o horário chega do
+    // navegador (lista antiga ou montado à mão) e passava aqui
+    const person = await this.prisma.barber.findUnique({
+      where: { id: barberId },
+      select: { userId: true, professionalId: true },
+    });
+    const barberIds = await this.samePersonBarberIds(barberId, person);
+    const off = await this.prisma.barberTimeOff.findFirst({
+      where: { barberId: { in: barberIds }, startAt: { lt: endAt }, endAt: { gt: startAt } },
+      select: { id: true },
+    });
+    if (off) throw new BadRequestException('Profissional de folga nesse horário');
     return { startAt, endAt };
   }
 
@@ -4803,7 +4880,9 @@ export class BarbershopService {
       canChange,
       changeDeadline: changeDeadline.toISOString(),
       cancellationWindowHours: windowHours,
-      customerName: appt.customer.name,
+      // Só o primeiro nome: a ficha é achada pelo telefone (não confirmado) e
+      // quem agenda com o telefone de outra pessoa via o nome completo dela
+      customerName: appt.customer.name.trim().split(/\s+/)[0] ?? '',
       barbershopId: shop.id,
       barbershopName: shop.name,
       barbershopSlug: shop.slug,
@@ -5431,10 +5510,13 @@ export class BarbershopService {
       throw new BadRequestException('A nota deve ser um número inteiro entre 1 e 5.');
     }
     await this.ensureVerifiedCustomer(clientAccountId, barbershopId);
+    // Mesmo limite da avaliação pelo link (sem limite, um texto enorme ia
+    // pra página pública da unidade)
+    const text = comment?.trim().slice(0, 1000) || null;
     return this.prisma.review.upsert({
       where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
-      create: { barbershopId, clientAccountId, rating, comment },
-      update: { rating, comment },
+      create: { barbershopId, clientAccountId, rating, comment: text },
+      update: { rating, comment: text },
     });
   }
 
