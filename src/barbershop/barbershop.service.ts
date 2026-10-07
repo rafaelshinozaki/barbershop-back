@@ -1404,6 +1404,7 @@ export class BarbershopService {
       isActive: boolean;
       subdomain: string;
       businessType: string;
+      staffRecordsUnitTips: boolean;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id, 'manager');

@@ -63,6 +63,12 @@ export class UpdateBarbershopInput {
   })
   businessType?: string;
 
+  @Field({
+    nullable: true,
+    description: 'O profissional registra a caixinha recebida pela unidade (dono/gerente decide)',
+  })
+  staffRecordsUnitTips?: boolean;
+
   @Field({ nullable: true })
   name?: string;
 

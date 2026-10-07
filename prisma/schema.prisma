@@ -517,6 +517,10 @@ model Barbershop {
   // Sinal pago online (cartão, Stripe) ao agendar pela página pública: o
   // horário fica reservado até pagar. Desligado, a equipe marca o sinal na mão
   onlineDeposit  Boolean   @default(false)
+  // O profissional registra a caixinha recebida pela unidade (cartão,
+  // maquininha, balcão), que a unidade repassa no fechamento. Desligado, só a
+  // recepção pra cima. Ligado por padrão: muita unidade não tem recepção
+  staffRecordsUnitTips Boolean @default(true)
   // Tipo de estabelecimento (src/barbershop/business-types.ts): barbershop,
   // beauty_salon, nail_salon... Define o catálogo sugerido e o texto da página
   businessType   String    @default("barbershop")

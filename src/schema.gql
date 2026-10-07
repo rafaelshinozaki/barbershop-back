@@ -612,6 +612,7 @@ type Barbershop {
   postalCode: String!
   practiceKind: String!
   slug: String!
+  staffRecordsUnitTips: Boolean
   state: String!
   subdomain: String
   timezone: String!
@@ -4234,6 +4235,11 @@ input UpdateBarbershopInput {
   name: String
   phone: String
   postalCode: String
+
+  """
+  O profissional registra a caixinha recebida pela unidade (dono/gerente decide)
+  """
+  staffRecordsUnitTips: Boolean
   state: String
   subdomain: String
   timezone: String
