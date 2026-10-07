@@ -216,6 +216,30 @@ describe('Backoffice fase 3 (integração)', () => {
     expect(await status(pending.approvalId!)).toEqual({ status: 'pending', error: null });
   });
 
+  it('e-mail direto: o limite de 1.000 pessoas vale pela soma de 24 h; falha libera', async () => {
+    const who: StaffActor = { ...coord, email: `pedacos-${RUN}@eq.test` };
+    const first = await approvals.reserveDirectEmail(who, 600);
+    expect(first).not.toBeNull();
+    // Dois pedaços ao mesmo tempo: só um cabe
+    const both = await Promise.all([
+      approvals.reserveDirectEmail(who, 300),
+      approvals.reserveDirectEmail(who, 300),
+    ]);
+    expect(both.filter((r) => r != null)).toHaveLength(1);
+    expect(await approvals.reserveDirectEmail(who, 101)).toBeNull();
+    expect(await approvals.reserveDirectEmail(who, 1001)).toBeNull();
+    // Envio que falhou não conta
+    await approvals.releaseDirectEmail(first!);
+    expect(await approvals.reserveDirectEmail(who, 600)).not.toBeNull();
+    // Mais de 24 h atrás não conta
+    await prisma.backofficeEmailSend.updateMany({
+      where: { requestedByEmail: who.email },
+      data: { createdAt: new Date(Date.now() - 25 * 60 * 60_000) },
+    });
+    expect(await approvals.reserveDirectEmail(who, 1000)).not.toBeNull();
+    await prisma.backofficeEmailSend.deleteMany({ where: { requestedByEmail: who.email } });
+  });
+
   it('LGPD: prazo de 15 dias, atrasados no filtro, encerrar exige a resposta', async () => {
     const now = new Date('2026-10-06T12:00:00Z');
     const req = await privacy.create(

@@ -2,7 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nes
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { Observable } from 'rxjs';
 import { isSystemRole } from '../auth/backoffice-areas';
-import { gatewayAllowed } from '../auth/guards/roles.guard';
+import { gatewayAllowed } from '../auth/gateway';
 import { requestContext, type ChangeActor } from './request-context';
 
 type ActorReq = {

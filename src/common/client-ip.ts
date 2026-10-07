@@ -1,4 +1,4 @@
-import { gatewayAllowed } from '../auth/guards/roles.guard';
+import { gatewayAllowed } from '../auth/gateway';
 
 type IpRequest = {
   ip?: string;

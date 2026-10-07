@@ -2358,6 +2358,18 @@ model PrivacyRequest {
 // Ação sem volta pedida por alguém da equipe que não é Administrador:
 // apagar conta, estorno acima do limite, e-mail para muita gente. Um
 // Administrador (outro, nunca quem pediu) aprova e ela é executada.
+/// E-mails que a equipe mandou direto, sem confirmação. O limite de 1.000
+/// pessoas vale pela soma das últimas 24 h de quem pediu (senão bastava
+/// mandar em pedaços). Gravado pelo back e pelo backoffice-back.
+model BackofficeEmailSend {
+  id               Int      @id @default(autoincrement())
+  createdAt        DateTime @default(now())
+  requestedByEmail String
+  recipients       Int
+
+  @@index([requestedByEmail, createdAt])
+}
+
 model BackofficeApproval {
   id               Int       @id @default(autoincrement())
   createdAt        DateTime  @default(now())
