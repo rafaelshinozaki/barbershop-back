@@ -147,6 +147,19 @@ export class PrepaymentService {
     return this.finalize(await this.stripe.retrievePaymentIntent(appt.prepaidPaymentIntentId));
   }
 
+  /**
+   * Segundo pagamento aprovado pro mesmo atendimento (o primeiro já vale):
+   * devolve inteiro, com o repasse e a taxa. Antes ficava cobrado e sem
+   * registro. Chave fixa: tela e webhook juntos estornam uma vez só
+   */
+  private async refundExtra(intent: Stripe.PaymentIntent) {
+    this.logger.warn(`Pagamento ${intent.id} a mais no atendimento; estornando`);
+    await this.stripe
+      .createRefund(intent.id, undefined, 'duplicate', `prepaid-extra:${intent.id}`, true)
+      .catch((err) => this.logger.error(`Erro ao estornar o pagamento a mais ${intent.id}:`, err));
+    return false;
+  }
+
   /** Pagamento aprovado (tela ou webhook). Idempotente; cancelado no meio, estorna */
   async finalize(intent: Stripe.PaymentIntent): Promise<boolean> {
     if (intent.status !== 'succeeded') return false;
@@ -159,7 +172,10 @@ export class PrepaymentService {
       this.logger.warn(`Pagamento ${intent.id} sem agendamento`);
       return false;
     }
-    if (appt.prepaidAt) return appt.prepaidPaymentIntentId === intent.id;
+    if (appt.prepaidAt) {
+      if (appt.prepaidPaymentIntentId === intent.id) return true;
+      return this.refundExtra(intent);
+    }
     const recorded = await this.prisma.appointment.updateMany({
       where: { id: appt.id, prepaidAt: null },
       data: {
@@ -169,7 +185,15 @@ export class PrepaymentService {
         prepaidStripeAccountId: (intent.transfer_data?.destination as string) ?? null,
       },
     });
-    if (recorded.count === 0) return true;
+    if (recorded.count === 0) {
+      // Outro pagamento do mesmo atendimento chegou antes (duas abas, valor
+      // mudou no meio): este é cobrança a mais
+      const now = await this.prisma.appointment.findUnique({
+        where: { id: appt.id },
+        select: { prepaidPaymentIntentId: true },
+      });
+      return now?.prepaidPaymentIntentId === intent.id || this.refundExtra(intent);
+    }
     // Pagou depois de o horário ser cancelado: devolve na hora
     if (appt.status === 'CANCELLED') {
       await this.barbershops

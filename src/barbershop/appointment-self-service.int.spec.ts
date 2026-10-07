@@ -319,4 +319,56 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     await new Promise((r) => setTimeout(r, 100));
     expect(emails.length).toBe(before);
   });
+  it('equipe: mudar só o início mantém a duração e o lembrete vale pro horário novo; situação inválida não', async () => {
+    const customer = await prisma.customer.create({
+      data: { networkId, name: 'Equipe Move', phone: `11${RUN}9`.slice(0, 14) },
+    });
+    const appt = await service.createAppointment(ownerId, shopId, {
+      customerId: customer.id,
+      barberId,
+      startAt: new Date(at('07:00')),
+      endAt: new Date(new Date(at('07:00')).getTime() + 30 * 60000),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await prisma.appointment.update({
+      where: { id: appt!.id },
+      data: { reminderSentAt: new Date() },
+    });
+    await service.updateAppointment(ownerId, shopId, appt!.id, {
+      startAt: new Date(at('07:30')),
+    });
+    const moved = await prisma.appointment.findUniqueOrThrow({ where: { id: appt!.id } });
+    expect(moved.endAt.getTime() - moved.startAt.getTime()).toBe(30 * 60000);
+    expect(moved.reminderSentAt).toBeNull();
+    await expect(
+      service.updateAppointment(ownerId, shopId, appt!.id, { status: 'QUALQUER' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.updateAppointment(ownerId, shopId, appt!.id, {
+        startAt: new Date(at('17:00')),
+        endAt: new Date(at('16:00')),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // Lista de espera: cliente que não é da rede não entra
+    await expect(
+      service.createWaitlistEntry(ownerId, shopId, {
+        customerId: 999_999_999,
+        date: new Date(`${DAY}T00:00:00Z`),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('profissional de folga: a página pública não agenda, mesmo com o horário montado à mão', async () => {
+    await prisma.barberTimeOff.create({
+      data: {
+        barberId,
+        reason: 'Médico',
+        startAt: new Date(at('17:00')),
+        endAt: new Date(new Date(at('17:00')).getTime() + 60 * 60000),
+      },
+    });
+    await expect(book('17:00', `11${RUN}8`.slice(0, 14))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
 });

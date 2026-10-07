@@ -17,5 +17,8 @@ export const ThrottleEmail = () => NestThrottle({ default: { limit: 10, ttl: 360
 export const ThrottlePublicBooking = () => NestThrottle({ default: { limit: 5, ttl: 600000 } }); // 5 agendamentos por IP a cada 10 minutos
 // Consultas públicas que varrem vários dias da agenda (próximo horário livre)
 export const ThrottleSlotSearch = () => NestThrottle({ default: { limit: 30, ttl: 60000 } }); // 30 por minuto
+// Horários de um dia na página pública: cada troca de dia é uma consulta e
+// cada uma percorre a agenda de todos os profissionais
+export const ThrottleSlotList = () => NestThrottle({ default: { limit: 60, ttl: 60000 } }); // 60 por minuto
 // Denúncia de conteúdo público (sem login)
 export const ThrottleReport = () => NestThrottle({ default: { limit: 10, ttl: 3600000 } }); // 10 por hora

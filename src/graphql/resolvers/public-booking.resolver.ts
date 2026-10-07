@@ -1,7 +1,7 @@
 import { SearchCacheService } from '../../barbershop/search-cache.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
-import { NotFoundException, UseGuards, UseFilters } from '@nestjs/common';
+import { NotFoundException, UseGuards, UseFilters, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
@@ -44,6 +44,7 @@ import {
 import {
   ThrottleAuth,
   ThrottlePublicBooking,
+  ThrottleSlotList,
   ThrottleSlotSearch,
 } from '@/common/decorators/throttle.decorator';
 import { TreatmentCategory } from '../types/enums';
@@ -60,6 +61,8 @@ import { clientClaims } from '../../auth/session-claims';
 @Resolver()
 @UseFilters(GqlHttpExceptionFilter)
 export class PublicBookingResolver {
+  private readonly logger = new Logger(PublicBookingResolver.name);
+
   constructor(
     private readonly barbershopService: BarbershopService,
     private readonly jwtService: JwtService,
@@ -127,6 +130,7 @@ export class PublicBookingResolver {
   }
 
   @Query(() => [String])
+  @ThrottleSlotList()
   async publicAvailableSlots(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('date') date: string,
@@ -274,10 +278,16 @@ export class PublicBookingResolver {
   @Mutation(() => ManagedAppointmentType)
   async cancelManagedAppointment(@Args('token') token: string) {
     const { id, barbershopId } = await this.barbershopService.cancelManagedAppointment(token);
-    // Cancelou dentro do prazo: o sinal pago online volta pro cartão
-    await this.deposits.refundOnClientCancel(id);
-    // Pago antes pelo app: volta inteiro
-    await this.barbershopService.refundPrepayment(id).catch(() => undefined);
+    // Cancelou dentro do prazo: o sinal pago online volta pro cartão; pago
+    // antes pelo app, volta inteiro. O cancelamento já está gravado: erro da
+    // Stripe num estorno não pode impedir o outro nem a resposta (o cliente
+    // não tem como cancelar de novo); fica no log e o Financeiro estorna
+    await this.deposits
+      .refundOnClientCancel(id)
+      .catch((err) => this.logger.error(`Estorno do sinal falhou no cancelamento ${id}`, err));
+    await this.barbershopService
+      .refundPrepayment(id)
+      .catch((err) => this.logger.error(`Estorno do pago antes falhou no cancelamento ${id}`, err));
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     void this.activity.appointmentStatusChanged(id, 'CANCELLED', null);
     return this.barbershopService.getManagedAppointment(token);

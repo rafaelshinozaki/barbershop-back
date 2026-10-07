@@ -678,6 +678,15 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect(await prepayments.confirm(a.token)).toBe(true);
     // Webhook depois: não duplica
     expect(await prepayments.finalize(intents.get(piA) as never)).toBe(true);
+    // Segundo pagamento aprovado pro mesmo atendimento (outra aba): volta inteiro
+    const extra = {
+      ...(intents.get(piA) as object),
+      id: `pi_extra_${RUN}`,
+      status: 'succeeded',
+    };
+    expect(await prepayments.finalize(extra as never)).toBe(false);
+    expect(refunds).toContain(`pi_extra_${RUN}`);
+    expect(connectedRefunds).toContain(`pi_extra_${RUN}`);
     expect(await prepayments.status(a.token)).toMatchObject({
       paid: true,
       paidAmount: 60,
