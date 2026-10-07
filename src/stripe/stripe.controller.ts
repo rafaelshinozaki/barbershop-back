@@ -28,6 +28,7 @@ import { PrepaymentService } from '../barbershop/prepayment.service';
 import { FeaturedPaymentService } from '../barbershop/featured-payment.service';
 import { JobOpeningService } from '../barbershop/job-opening.service';
 import { AppPaymentsService } from '../barbershop/app-payments.service';
+import { currentPricing } from '../pricing/pricing';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -324,6 +325,7 @@ export class StripeController {
           subscriptionId: subscription.id,
           stripeInvoiceId: invoice.id,
           amount: new Prisma.Decimal(invoice.amount_paid / 100),
+          platformFeePercent: new Prisma.Decimal(currentPricing().platformFeePercent),
           status: 'SUCCEEDED',
           periodStart: new Date(stripeSubscription.current_period_start * 1000),
           periodEnd: new Date(stripeSubscription.current_period_end * 1000),

@@ -679,6 +679,39 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(Number(after?.remainingValue)).toBe(0);
     });
 
+    it('apagar a venda devolve o saldo do cartão-presente; caixa aberto é um só', async () => {
+      const card = await prisma.giftCard.create({
+        data: {
+          networkId: A.networkId,
+          code: `INT${RUN}D`,
+          initialValue: new Decimal(40),
+          remainingValue: new Decimal(40),
+        },
+      });
+      const s = await sale({ giftCardCode: card.code });
+      expect(Number(s.giftCardAmountApplied)).toBe(40);
+      await service.deleteSale(A.ownerId, A.shopId, s.id);
+      const after = await prisma.giftCard.findUnique({ where: { id: card.id } });
+      expect(Number(after?.remainingValue)).toBe(40);
+
+      // Dois cliques em "Abrir caixa": um caixa só
+      await prisma.cashSession.updateMany({
+        where: { barbershopId: A.shopId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      const opened = await Promise.allSettled([
+        service.openCashSession(A.ownerId, A.shopId, 0),
+        service.openCashSession(A.ownerId, A.shopId, 0),
+      ]);
+      expect(opened.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(
+        await prisma.cashSession.count({ where: { barbershopId: A.shopId, status: 'OPEN' } }),
+      ).toBe(1);
+      await expect(
+        service.setCommissionRule(A.ownerId, A.shopId, { percentage: 500 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('cartão-presente de outra franquia não vale', async () => {
       const card = await prisma.giftCard.create({
         data: {

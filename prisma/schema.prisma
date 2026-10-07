@@ -1673,6 +1673,9 @@ model ClientSubscriptionPayment {
   subscriptionId  Int
   stripeInvoiceId String    @unique
   amount          Decimal
+  // Taxa da plataforma (%) quando foi pago: o relatório de repasse não muda
+  // se a taxa mudar depois (vazio = pagamento de antes desta coluna)
+  platformFeePercent Decimal?
   status          String // SUCCEEDED, FAILED
   periodStart     DateTime?
   periodEnd       DateTime?

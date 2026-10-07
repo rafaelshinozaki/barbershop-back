@@ -298,6 +298,9 @@ function checkSaleAmounts(data: {
 
 const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
+/** Centavos certos (soma de float deixava 26,999999…) */
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
 /** Situações que a equipe pode pôr num agendamento (PENDING_PAYMENT é do sinal online) */
 const STAFF_APPOINTMENT_STATUSES = [
   'DRAFT',
@@ -5971,14 +5974,24 @@ export class BarbershopService {
         createdAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
       },
     });
-    const grossAmount = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const platformFeeAmount = grossAmount * (currentPricing().platformFeePercent / 100);
+    // Cada pagamento com a taxa de quando foi pago (mudar a taxa hoje não
+    // muda o repasse de meses passados); centavos arredondados
+    const current = currentPricing().platformFeePercent;
+    const grossAmount = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
+    const platformFeeAmount = round2(
+      payments.reduce(
+        (sum, p) => sum + (Number(p.amount) * Number(p.platformFeePercent ?? current)) / 100,
+        0,
+      ),
+    );
     return {
       paymentsCount: payments.length,
       grossAmount,
-      platformFeePercentage: currentPricing().platformFeePercent,
+      // Taxa efetiva do período (média ponderada quando a taxa mudou no meio)
+      platformFeePercentage:
+        grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
       platformFeeAmount,
-      netOwedToBarbershop: grossAmount - platformFeeAmount,
+      netOwedToBarbershop: round2(grossAmount - platformFeeAmount),
     };
   }
 
@@ -6381,7 +6394,6 @@ export class BarbershopService {
     let giftCardAmountApplied = 0;
     if (data.giftCardCode) {
       giftCard = await this.validateGiftCard(barbershopId, data.giftCardCode);
-      giftCardAmountApplied = Math.min(Number(giftCard.remainingValue), data.total);
     }
 
     let loyaltyDiscountAmount = 0;
@@ -6396,14 +6408,33 @@ export class BarbershopService {
       if (customerForRedemption.loyaltyPoints < data.loyaltyPointsRedeemed) {
         throw new BadRequestException('Cliente não tem pontos de fidelidade suficientes');
       }
-      const pointValue = barbershop?.network.loyaltyPointValue ?? 0;
-      loyaltyDiscountAmount = data.loyaltyPointsRedeemed * pointValue;
     }
 
-    const afterDiscounts = Math.max(0, data.total - giftCardAmountApplied - loyaltyDiscountAmount);
-    const depositApplied = Math.min(depositPaidOnAppointment, afterDiscounts);
-    const prepaidApplied = Math.min(prepaidOnAppointment, afterDiscounts - depositApplied);
-    const finalTotal = Math.round((afterDiscounts - depositApplied - prepaidApplied) * 100) / 100;
+    // Ordem: o que o cliente já pagou (sinal, pago pelo app) sai primeiro;
+    // cartão-presente e pontos cobrem só o que ainda falta. Antes o cartão
+    // era debitado de um atendimento já pago e os pontos saíam todos mesmo
+    // sem ter o que descontar
+    const total = Math.max(0, data.total);
+    const depositApplied = Math.min(depositPaidOnAppointment, total);
+    const prepaidApplied = Math.min(prepaidOnAppointment, total - depositApplied);
+    let remaining = round2(total - depositApplied - prepaidApplied);
+    if (giftCard) {
+      giftCardAmountApplied = round2(Math.min(Number(giftCard.remainingValue), remaining));
+      remaining = round2(remaining - giftCardAmountApplied);
+    }
+    let loyaltyPointsRedeemed = 0;
+    if (data.loyaltyPointsRedeemed && data.loyaltyPointsRedeemed > 0) {
+      const pointValue = barbershop?.network.loyaltyPointValue ?? 0;
+      // Só os pontos que cabem no que falta (arredondado pra cima: o último
+      // ponto pode cobrir menos que o valor dele)
+      loyaltyPointsRedeemed =
+        pointValue > 0
+          ? Math.min(data.loyaltyPointsRedeemed, Math.ceil(remaining / pointValue))
+          : 0;
+      loyaltyDiscountAmount = round2(Math.min(loyaltyPointsRedeemed * pointValue, remaining));
+      remaining = round2(remaining - loyaltyDiscountAmount);
+    }
+    const finalTotal = remaining;
 
     // Vincula a venda ao caixa aberto no momento, se houver um — é o que
     // permite reconciliar o fechamento de caixa depois (ver
@@ -6431,7 +6462,7 @@ export class BarbershopService {
           paidAt: data.paymentStatus === 'PAID' ? new Date() : null,
           giftCardId: giftCard?.id,
           giftCardAmountApplied: giftCard ? new Decimal(giftCardAmountApplied) : null,
-          loyaltyPointsRedeemed: data.loyaltyPointsRedeemed || null,
+          loyaltyPointsRedeemed: loyaltyPointsRedeemed || null,
           loyaltyDiscountAmount:
             loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
           depositApplied: depositApplied > 0 ? new Decimal(depositApplied) : null,
@@ -6461,10 +6492,10 @@ export class BarbershopService {
           );
         }
       }
-      if (data.loyaltyPointsRedeemed && data.customerId) {
+      if (loyaltyPointsRedeemed && data.customerId) {
         const debited = await tx.customer.updateMany({
-          where: { id: data.customerId, loyaltyPoints: { gte: data.loyaltyPointsRedeemed } },
-          data: { loyaltyPoints: { decrement: data.loyaltyPointsRedeemed } },
+          where: { id: data.customerId, loyaltyPoints: { gte: loyaltyPointsRedeemed } },
+          data: { loyaltyPoints: { decrement: loyaltyPointsRedeemed } },
         });
         if (debited.count === 0) {
           throw new BadRequestException('Cliente não tem pontos de fidelidade suficientes');
@@ -6504,20 +6535,18 @@ export class BarbershopService {
           where: { referredId: data.customerId },
         });
         if (referral && !referral.completedAt) {
-          const paidSalesCount = await tx.sale.count({
-            where: { customerId: data.customerId, paymentStatus: 'PAID' },
+          // Marca primeiro, só se ainda está pendente: duas vendas pagas ao
+          // mesmo tempo davam o bônus duas vezes (cada uma contava "1 venda
+          // paga"); e venda criada pendente e paga depois nunca dava
+          const bonusPoints = barbershop.network.referralBonusPoints;
+          const claimed = await tx.customerReferral.updateMany({
+            where: { id: referral.id, completedAt: null },
+            data: { completedAt: new Date(), pointsAwarded: bonusPoints },
           });
-          if (paidSalesCount === 1) {
-            const bonusPoints = barbershop.network.referralBonusPoints;
-            if (bonusPoints > 0) {
-              await tx.customer.update({
-                where: { id: referral.referrerId },
-                data: { loyaltyPoints: { increment: bonusPoints } },
-              });
-            }
-            await tx.customerReferral.update({
-              where: { id: referral.id },
-              data: { completedAt: new Date(), pointsAwarded: bonusPoints },
+          if (claimed.count === 1 && bonusPoints > 0) {
+            await tx.customer.update({
+              where: { id: referral.referrerId },
+              data: { loyaltyPoints: { increment: bonusPoints } },
             });
           }
         }
@@ -6747,7 +6776,48 @@ export class BarbershopService {
       where: { id: saleId, barbershopId },
     });
     if (!existing) throw new BadRequestException('Venda não encontrada');
-    await this.prisma.sale.delete({ where: { id: saleId } });
+    // Apagar desfaz o que a venda mexeu fora dela: antes o cartão-presente
+    // ficava sem o saldo, o cliente perdia os pontos resgatados (e mantinha
+    // os ganhos) e o estoque continuava baixado
+    await this.prisma.$transaction(async (tx) => {
+      if (existing.giftCardId && existing.giftCardAmountApplied) {
+        await tx.giftCard.update({
+          where: { id: existing.giftCardId },
+          data: { remainingValue: { increment: existing.giftCardAmountApplied } },
+        });
+      }
+      const points = (existing.loyaltyPointsRedeemed ?? 0) - (existing.loyaltyPointsEarned ?? 0);
+      if (existing.customerId && points !== 0) {
+        await tx.customer.update({
+          where: { id: existing.customerId },
+          data: { loyaltyPoints: { increment: points } },
+        });
+      }
+      const movements = await tx.inventoryMovement.findMany({
+        where: { referenceType: 'SALE', referenceId: String(saleId), movementType: 'SALE' },
+      });
+      for (const m of movements) {
+        const item = await tx.inventoryItem.update({
+          where: { id: m.inventoryItemId },
+          data: { quantity: { decrement: m.quantityChange } },
+        });
+        const after = Number(item.quantity);
+        const change = -Number(m.quantityChange);
+        await tx.inventoryMovement.create({
+          data: {
+            inventoryItemId: m.inventoryItemId,
+            movementType: 'ADJUSTMENT',
+            quantityChange: change,
+            quantityBefore: after - change,
+            quantityAfter: after,
+            referenceType: 'SALE_DELETED',
+            referenceId: String(saleId),
+            notes: 'Venda apagada: estoque devolvido',
+          },
+        });
+      }
+      await tx.sale.delete({ where: { id: saleId } });
+    });
     return true;
   }
 
@@ -6776,19 +6846,24 @@ export class BarbershopService {
   async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     checkMoney('Troco inicial', openingBalance);
-    const existing = await this.prisma.cashSession.findFirst({
-      where: { barbershopId, status: 'OPEN' },
-    });
-    if (existing) {
-      throw new BadRequestException('Já existe um caixa aberto para esta unidade');
-    }
-    const session = await this.prisma.cashSession.create({
-      data: {
-        barbershopId,
-        openedByUserId: userId,
-        openingBalance: new Decimal(openingBalance),
-      },
-      include: { openedBy: true, closedBy: true },
+    // Um caixa aberto por unidade: dois cliques juntos abriam dois (a
+    // checagem e a criação eram passos separados)
+    const session = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cash:${barbershopId}`}))`;
+      const existing = await tx.cashSession.findFirst({
+        where: { barbershopId, status: 'OPEN' },
+      });
+      if (existing) {
+        throw new BadRequestException('Já existe um caixa aberto para esta unidade');
+      }
+      return tx.cashSession.create({
+        data: {
+          barbershopId,
+          openedByUserId: userId,
+          openingBalance: new Decimal(openingBalance),
+        },
+        include: { openedBy: true, closedBy: true },
+      });
     });
     return this.toCashSessionResult(session);
   }
@@ -6835,8 +6910,9 @@ export class BarbershopService {
     const cashOut = Number(cashExpenses._sum.amount ?? 0);
     const expectedBalance = openingBalance + cashIn - cashOut;
     const difference = data.countedBalance - expectedBalance;
-    const updated = await this.prisma.cashSession.update({
-      where: { id: session.id },
+    // Fecha só se ainda está aberto (dois fechamentos juntos: vale o primeiro)
+    const closed = await this.prisma.cashSession.updateMany({
+      where: { id: session.id, status: 'OPEN' },
       data: {
         closedByUserId: userId,
         closedAt: new Date(),
@@ -6846,6 +6922,10 @@ export class BarbershopService {
         status: 'CLOSED',
         notes: data.notes,
       },
+    });
+    if (closed.count === 0) throw new BadRequestException('Este caixa já foi fechado');
+    const updated = await this.prisma.cashSession.findUniqueOrThrow({
+      where: { id: session.id },
       include: { openedBy: true, closedBy: true },
     });
     return this.toCashSessionResult(updated);
@@ -7285,11 +7365,15 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const itemType = data.itemType ?? 'ALL';
+    if (!Number.isFinite(data.percentage) || data.percentage < 0 || data.percentage > 100) {
+      throw new BadRequestException('A comissão tem que ser de 0% a 100%');
+    }
     if (data.barberId) {
       const barber = await this.prisma.barber.findFirst({
         where: { id: data.barberId, barbershopId },
       });
       if (!barber) throw new NotFoundException('Profissional não encontrado');
+      await this.ensureNotOwnCommission(userId, barbershopId, barber.userId);
     }
     // Upsert manual: a chave única usa barberId nullable, que o Prisma não aceita
     // direto em upsert.where com null — resolvemos com findFirst + create/update.
@@ -7316,10 +7400,29 @@ export class BarbershopService {
 
   async deleteCommissionRule(userId: number, barbershopId: number, id: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
-    const rule = await this.prisma.commissionRule.findFirst({ where: { id, barbershopId } });
+    const rule = await this.prisma.commissionRule.findFirst({
+      where: { id, barbershopId },
+      include: { barber: { select: { userId: true } } },
+    });
     if (!rule) throw new NotFoundException('Regra de comissão não encontrada');
+    if (rule.barber) await this.ensureNotOwnCommission(userId, barbershopId, rule.barber.userId);
     await this.prisma.commissionRule.delete({ where: { id } });
     return true;
+  }
+
+  /**
+   * Gerente que também atende não mexe na própria comissão (definia 500% pra
+   * si e pagava no fechamento); quem decide é o dono
+   */
+  private async ensureNotOwnCommission(
+    userId: number,
+    barbershopId: number,
+    barberUserId: number | null,
+  ) {
+    if (barberUserId !== userId) return;
+    if ((await this.getMyAccessLevel(userId, barbershopId)) !== 'owner') {
+      throw new ForbiddenException('A sua comissão é definida pelo dono');
+    }
   }
 
   async getCommissionReport(userId: number, barbershopId: number, from: Date, to: Date) {
@@ -7341,7 +7444,12 @@ export class BarbershopService {
           barbershopId,
           paymentStatus: 'PAID',
           barberId: { not: null },
-          createdAt: { gte: from, lte: to },
+          // Pela data em que foi paga: venda criada pendente e paga depois do
+          // fechamento daquele mês não entrava em nenhum fechamento
+          OR: [
+            { paidAt: { gte: from, lte: to } },
+            { paidAt: null, createdAt: { gte: from, lte: to } },
+          ],
         },
         include: { items: true },
       }),
@@ -7386,8 +7494,13 @@ export class BarbershopService {
         byBarber.set(barberId, acc);
       }
       acc.salesCount++;
+      // O desconto dado na venda reduz a base da comissão na proporção de
+      // cada item (antes contava o preço cheio dos itens)
+      const itemsSum = sale.items.reduce((sum, i) => sum + Number(i.totalPrice), 0);
+      const discount = Number(sale.discountAmount ?? 0);
+      const factor = itemsSum > 0 ? Math.max(0, itemsSum - discount) / itemsSum : 0;
       for (const item of sale.items) {
-        const total = Number(item.totalPrice);
+        const total = Number(item.totalPrice) * factor;
         const pct = resolvePercentage(barberId, item.itemType);
         if (item.itemType === 'PRODUCT') {
           acc.totalProductSales += total;

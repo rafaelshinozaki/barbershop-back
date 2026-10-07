@@ -8,6 +8,43 @@ import { BarbershopService } from './barbershop.service';
 export const PAY_TYPES = ['COMMISSION', 'FIXED', 'FIXED_PLUS_COMMISSION', 'GREATER_OF'] as const;
 export type PayType = (typeof PAY_TYPES)[number];
 export const PAY_PERIODS = ['MONTHLY', 'BIWEEKLY', 'WEEKLY'] as const;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Quantos "períodos de pagamento" cabem entre start e end (dias inteiros).
+ * Mensal conta mês a mês (agosto inteiro = 1; 15 dias de um mês de 30 = 0,5);
+ * semanal e quinzenal, pelos dias.
+ */
+export function periodShare(start: Date, end: Date, period: string): number {
+  // Meio-dia do dia de início e do de fim (as bordas vêm no fuso da unidade)
+  const first = new Date(start.getTime() + DAY_MS / 2);
+  const last = new Date(end.getTime() - DAY_MS / 2);
+  const days = Math.max(1, Math.round((last.getTime() - first.getTime()) / DAY_MS) + 1);
+  if (period === 'WEEKLY') return days / 7;
+  if (period === 'BIWEEKLY') return days / 14;
+  let share = 0;
+  let y = first.getUTCFullYear();
+  let m = first.getUTCMonth();
+  for (;;) {
+    const monthStart = Date.UTC(y, m, 1);
+    // Último dia do mês (o dia 0 do mês seguinte)
+    const monthEnd = Date.UTC(y, m + 1, 0);
+    const daysInMonth = Math.round((monthEnd - monthStart) / DAY_MS) + 1;
+    const firstMonth = y === first.getUTCFullYear() && m === first.getUTCMonth();
+    const from = firstMonth ? Date.UTC(y, m, first.getUTCDate()) : monthStart;
+    const lastDay = Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate());
+    const to = Math.min(monthEnd, lastDay);
+    if (to >= from) share += (Math.round((to - from) / DAY_MS) + 1) / daysInMonth;
+    if (lastDay <= monthEnd) break;
+    m += 1;
+    if (m === 12) {
+      m = 0;
+      y += 1;
+    }
+  }
+  return share;
+}
 export const ENTRY_TYPES = ['TIP', 'ADVANCE', 'BONUS', 'DEDUCTION'] as const;
 export type EntryType = (typeof ENTRY_TYPES)[number];
 export const PAY_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
@@ -286,7 +323,10 @@ export class PayrollService {
     const c = this.configView(barberId, config);
     const row = commissions.rows.find((r) => r.barberId === barberId);
     const commission = round2(row?.totalCommission ?? 0);
-    const fixed = c.payType === 'COMMISSION' ? 0 : c.fixedAmount ?? 0;
+    // Fixo proporcional ao período fechado (antes entrava inteiro em todo
+    // fechamento: fechar o mês dia a dia pagava 30 salários)
+    const fixed =
+      c.payType === 'COMMISSION' ? 0 : (c.fixedAmount ?? 0) * periodShare(start, end, c.payPeriod);
     const base =
       c.payType === 'FIXED'
         ? fixed
