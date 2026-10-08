@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–22 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–24 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1234,11 +1234,11 @@ Achados numa revisão de código. Itens 1–22 corrigidos. O restante segue 🆕
 **Avaliações e redes sociais**
 
 22. ✅ **Editar a avaliação mantém a resposta antiga** (`ReviewRequestService.submitReview`): o cliente troca a nota e o texto pelo link, e a resposta pública da unidade continua lá, respondendo a um texto que não existe mais. Também não volta para moderação se tinha sido denunciada. **Feito:** quando o texto muda (pelo link ou logado), `reportedAt` sai e a resposta fica `replyStale` — a página e a lista da unidade dizem que ela foi escrita para o texto anterior. Uma resposta nova limpa a marca. Só mudar a nota não mexe na denúncia.
-23. 🆕 **Conectar o Facebook pega sempre a primeira Página** (`SocialService.handleOAuthCallback`): quem administra várias Páginas não escolhe qual, e o post pode sair na Página errada. A volta do OAuth também não confere se a pessoa ainda é gerente da unidade. **Fazer:** tela para escolher a Página e conferir o acesso na volta.
+23. ✅ **Conectar o Facebook pega sempre a primeira Página** (`SocialService.handleOAuthCallback`): quem administra várias Páginas não escolhe qual, e o post pode sair na Página errada. A volta do OAuth também não confere se a pessoa ainda é gerente da unidade. **Feito:** na volta, quem não administra mais a unidade não conecta. Uma Página só segue conectando na hora. Várias Páginas voltam para a tela de redes sociais, onde a pessoa escolhe; o token de usuário fica cifrado por 15 minutos e a Página escolhida é a que fica salva.
 
 **Limpeza**
 
-24. 🆕 **Checagens mortas no login** (`jwt.strategy.ts`): `validate(payload, req)` espera o request, mas a estratégia não liga `passReqToCallback`. Então `req.cookies` nunca existe e a lista negra de tokens (`isTokenInvalidated`) e a checagem por `updatedAt` nunca rodam. Hoje quem revoga é a `ActiveSession`, então nada quebra. Mas ligar `passReqToCallback` sem cuidado faria qualquer `user.update` derrubar todas as sessões, inclusive a atual. **Fazer:** apagar o código morto (e a tabela `InvalidatedToken`, se não tiver outro uso) ou trocar por um campo próprio (`sessionsRevokedAt`).
+24. ✅ **Checagens mortas no login** (`jwt.strategy.ts`): `validate(payload, req)` espera o request, mas a estratégia não liga `passReqToCallback`. Então `req.cookies` nunca existe e a lista negra de tokens (`isTokenInvalidated`) e a checagem por `updatedAt` nunca rodam. Hoje quem revoga é a `ActiveSession`, então nada quebra. Mas ligar `passReqToCallback` sem cuidado faria qualquer `user.update` derrubar todas as sessões, inclusive a atual. **Feito:** saíram a lista negra e a comparação com `updatedAt`. A sessão continua valendo só com `ActiveSession`. A tabela `InvalidatedToken` foi removida.
 
 ### Terceira rodada (2026-10-08)
 

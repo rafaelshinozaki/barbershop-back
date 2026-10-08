@@ -31,8 +31,6 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly ipLocationService: IpLocationService,
   ) {
-    // Iniciar limpeza automática de tokens expirados
-    this.scheduleTokenCleanup();
     // Iniciar limpeza de cache a cada hora
     this.scheduleCacheCleanup();
   }
@@ -140,104 +138,17 @@ export class AuthService {
   }
 
   async logoutOtherSessions(user: UserDTO, _req: Request) {
-    // Buscar todas as sessões ativas do usuário exceto a atual (por
-    // sessionToken, não por IP — várias sessões podem compartilhar IP)
-    const otherSessions = await (this.prisma as any).activeSession?.findMany({
+    // A sessão some da ActiveSession: o login deixa de aceitar o token.
+    // sessionToken, não IP — várias sessões podem compartilhar o mesmo IP.
+    const removed = await this.prisma.activeSession.deleteMany({
       where: {
         userId: user.id,
         NOT: { sessionToken: user.sessionToken },
       },
     });
-
-    // Invalidar tokens de outras sessões
-    if (otherSessions.length > 0) {
-      // Armazenar um indicador de invalidação para o usuário — usamos o
-      // campo updatedAt; ver JwtStrategy.validate() para onde isso é checado
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          updatedAt: new Date(),
-        },
-      });
-
-      // Limpar as sessões ativas de outros dispositivos
-      await (this.prisma as any).activeSession?.deleteMany({
-        where: {
-          userId: user.id,
-          NOT: { sessionToken: user.sessionToken },
-        },
-      });
-
-      // Log da ação
-      this.logger.log(`Invalidated ${otherSessions.length} sessions for user ${user.id}`);
+    if (removed.count > 0) {
+      this.logger.log(`Invalidated ${removed.count} sessions for user ${user.id}`);
     }
-  }
-
-  async isTokenInvalidated(token: string, userId: number): Promise<boolean> {
-    // Verificar se o token está na blacklist
-    const invalidatedToken = await (this.prisma as any).invalidatedToken?.findFirst({
-      where: {
-        token,
-        userId,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
-    });
-
-    return !!invalidatedToken;
-  }
-
-  async invalidateToken(token: string, userId: number): Promise<void> {
-    // Decodificar o token para obter a data de expiração
-    try {
-      const decoded = this.jwtService.decode(token) as any;
-      const expiresAt = new Date(decoded.exp * 1000);
-
-      // Adicionar o token à blacklist
-      await (this.prisma as any).invalidatedToken?.create({
-        data: {
-          token,
-          userId,
-          expiresAt,
-        },
-      });
-    } catch (error) {
-      // Se não conseguir decodificar o token, usar uma expiração padrão
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 24); // 24 horas
-
-      await (this.prisma as any).invalidatedToken?.create({
-        data: {
-          token,
-          userId,
-          expiresAt,
-        },
-      });
-    }
-  }
-
-  async cleanupExpiredTokens(): Promise<void> {
-    // Remover tokens expirados da blacklist
-    await (this.prisma as any).invalidatedToken?.deleteMany({
-      where: {
-        expiresAt: {
-          lt: new Date(),
-        },
-      },
-    });
-  }
-
-  // Método para agendar limpeza de tokens expirados
-  scheduleTokenCleanup(): void {
-    // Limpar tokens expirados a cada hora
-    setInterval(async () => {
-      try {
-        await this.cleanupExpiredTokens();
-      } catch (error) {
-        this.logger.error(`Error cleaning up expired tokens: ${error}`);
-      }
-    }, 60 * 60 * 1000); // 1 hora
   }
 
   // Método para agendar limpeza de cache
@@ -251,14 +162,6 @@ export class AuthService {
         }
       }
     }, 60 * 60 * 1000); // 1 hora
-  }
-
-  decodeToken(token: string): any {
-    try {
-      return this.jwtService.decode(token);
-    } catch (error) {
-      return null;
-    }
   }
 
   private parseUserAgent(ua: string) {

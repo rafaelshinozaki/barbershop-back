@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { isSealed, openSecret, sealSecret } from '@/common/secret-box';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 
@@ -11,6 +11,10 @@ interface OAuthStatePayload {
   barbershopId: number;
   userId: number;
 }
+
+type FbPage = { id: string; name: string; access_token: string };
+
+const PAGE_CHOICE_MS = 15 * 60 * 1000;
 
 // Publica posts agendados no Instagram/Facebook via Graph API — chamadas
 // diretas com fetch, sem SDK, mesmo padrão do WhatsappService. Diferente do
@@ -100,16 +104,16 @@ export class SocialService {
     return `https://www.facebook.com/${this.apiVersion()}/dialog/oauth?${params.toString()}`;
   }
 
-  // Troca o code pelo token, resolve a Página e a conta do Instagram
-  // vinculada, e salva a conexão. Retorna o barbershopId (pra montar o
-  // redirect de volta ao frontend) e uma mensagem de erro amigável, se
-  // algo falhar no meio do caminho — não deixa exceção estourar até o
-  // controller porque o usuário está no meio de um redirect do navegador,
-  // não numa chamada GraphQL que ele veria o erro estruturado.
+  // Troca o code pelo token e lista as Páginas. Com uma só, conecta na hora.
+  // Com várias, guarda o token cifrado e devolve um código pra tela escolher.
+  // Confere de novo se a pessoa ainda administra a unidade: o link do state
+  // foi emitido minutos antes. Retorna o barbershopId (pra montar o redirect)
+  // e uma mensagem amigável se falhar — o usuário está num redirect, não
+  // numa chamada GraphQL.
   async handleOAuthCallback(
     code: string,
     state: string,
-  ): Promise<{ barbershopId: number; error?: string }> {
+  ): Promise<{ barbershopId: number; error?: string; pick?: string }> {
     let payload: OAuthStatePayload;
     try {
       payload = this.jwtService.verify(state, { secret: this.config.get<string>('JWT_SECRET') });
@@ -118,7 +122,16 @@ export class SocialService {
         'Link de conexão expirado ou inválido. Tente conectar de novo.',
       );
     }
-    const { barbershopId } = payload;
+    const { barbershopId, userId } = payload;
+
+    try {
+      await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    } catch {
+      return {
+        barbershopId,
+        error: 'Você não pode mais conectar as redes desta unidade.',
+      };
+    }
 
     try {
       const redirectUri = this.config.get<string>('META_OAUTH_REDIRECT_URI') ?? '';
@@ -152,50 +165,29 @@ export class SocialService {
       );
       const longLived = await longLivedRes.json();
       const userToken = longLived.access_token || shortLived.access_token;
-
-      const pagesRes = await fetch(
-        this.graphUrl('/me/accounts') + `?${new URLSearchParams({ access_token: userToken })}`,
-      );
-      const pagesData = await pagesRes.json();
-      const page = pagesData.data?.[0];
-      if (!page) {
+      const pages = await this.listPages(userToken);
+      if (!pages.length) {
         throw new Error(
           'Nenhuma Página do Facebook encontrada nessa conta. Você precisa ser admin de uma Página pra conectar.',
         );
       }
+      if (pages.length === 1) {
+        await this.savePage(barbershopId, userId, pages[0]);
+        return { barbershopId };
+      }
 
-      const igRes = await fetch(
-        this.graphUrl(`/${page.id}`) +
-          `?${new URLSearchParams({
-            fields: 'instagram_business_account{id,username}',
-            access_token: page.access_token,
-          })}`,
-      );
-      const igData = await igRes.json();
-      const igAccount = igData.instagram_business_account;
-
-      await this.prisma.socialConnection.upsert({
-        where: { barbershopId },
-        create: {
+      const token = randomBytes(24).toString('base64url');
+      await this.prisma.socialPageChoice.deleteMany({ where: { barbershopId, userId } });
+      await this.prisma.socialPageChoice.create({
+        data: {
+          token,
           barbershopId,
-          facebookPageId: page.id,
-          facebookPageName: page.name,
-          facebookAccessToken: this.sealToken(page.access_token),
-          instagramBusinessAccountId: igAccount?.id ?? null,
-          instagramUsername: igAccount?.username ?? null,
-          connectedByUserId: payload.userId,
-        },
-        update: {
-          facebookPageId: page.id,
-          facebookPageName: page.name,
-          facebookAccessToken: this.sealToken(page.access_token),
-          instagramBusinessAccountId: igAccount?.id ?? null,
-          instagramUsername: igAccount?.username ?? null,
-          connectedByUserId: payload.userId,
+          userId,
+          userToken: this.sealToken(userToken),
+          expiresAt: new Date(Date.now() + PAGE_CHOICE_MS),
         },
       });
-
-      return { barbershopId };
+      return { barbershopId, pick: token };
     } catch (err) {
       this.logger.error(`Erro ao conectar rede social da unidade #${barbershopId}:`, err);
       return {
@@ -203,6 +195,90 @@ export class SocialService {
         error: err instanceof Error ? err.message : 'Erro ao conectar conta.',
       };
     }
+  }
+
+  /** Páginas que a pessoa pode conectar com o código da volta do Facebook. */
+  async pendingSocialPages(userId: number, token: string) {
+    const choice = await this.loadPageChoice(userId, token);
+    const pages = await this.listPages(openSecret(choice.userToken, this.tokenSecret()));
+    return pages.map((page) => ({ id: page.id, name: page.name }));
+  }
+
+  /** Grava a Página escolhida e apaga o código pendente. */
+  async chooseSocialPage(userId: number, token: string, pageId: string) {
+    const choice = await this.loadPageChoice(userId, token);
+    const pages = await this.listPages(openSecret(choice.userToken, this.tokenSecret()));
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) throw new BadRequestException('Essa Página não está mais disponível.');
+    await this.savePage(choice.barbershopId, userId, page);
+    await this.prisma.socialPageChoice.delete({ where: { token } });
+    const connection = await this.getConnection(userId, choice.barbershopId);
+    if (!connection) throw new NotFoundException('Conta não conectada');
+    return connection;
+  }
+
+  private async loadPageChoice(userId: number, token: string) {
+    const choice = await this.prisma.socialPageChoice.findUnique({ where: { token } });
+    if (!choice || choice.userId !== userId || choice.expiresAt < new Date()) {
+      if (choice?.expiresAt && choice.expiresAt < new Date()) {
+        await this.prisma.socialPageChoice.delete({ where: { token } }).catch(() => undefined);
+      }
+      throw new BadRequestException('A escolha da Página expirou. Conecte de novo.');
+    }
+    await this.barbershopService.ensureAccess(userId, choice.barbershopId, 'manager');
+    return choice;
+  }
+
+  private async listPages(userToken: string): Promise<FbPage[]> {
+    const pages: FbPage[] = [];
+    let url: string | null =
+      this.graphUrl('/me/accounts') +
+      `?${new URLSearchParams({
+        access_token: userToken,
+        fields: 'id,name,access_token',
+        limit: '50',
+      })}`;
+    for (let i = 0; url && i < 5; i++) {
+      const res = await fetch(url);
+      const data = await res.json();
+      for (const page of data.data ?? []) {
+        if (page?.id && page?.access_token) pages.push(page);
+      }
+      url = typeof data.paging?.next === 'string' ? data.paging.next : null;
+    }
+    return pages;
+  }
+
+  private async savePage(barbershopId: number, userId: number, page: FbPage) {
+    const igRes = await fetch(
+      this.graphUrl(`/${page.id}`) +
+        `?${new URLSearchParams({
+          fields: 'instagram_business_account{id,username}',
+          access_token: page.access_token,
+        })}`,
+    );
+    const igData = await igRes.json();
+    const igAccount = igData.instagram_business_account;
+    await this.prisma.socialConnection.upsert({
+      where: { barbershopId },
+      create: {
+        barbershopId,
+        facebookPageId: page.id,
+        facebookPageName: page.name,
+        facebookAccessToken: this.sealToken(page.access_token),
+        instagramBusinessAccountId: igAccount?.id ?? null,
+        instagramUsername: igAccount?.username ?? null,
+        connectedByUserId: userId,
+      },
+      update: {
+        facebookPageId: page.id,
+        facebookPageName: page.name,
+        facebookAccessToken: this.sealToken(page.access_token),
+        instagramBusinessAccountId: igAccount?.id ?? null,
+        instagramUsername: igAccount?.username ?? null,
+        connectedByUserId: userId,
+      },
+    });
   }
 
   async getConnection(userId: number, barbershopId: number) {

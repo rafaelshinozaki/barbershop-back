@@ -41,10 +41,10 @@ export class SocialController {
     if (!code || !state) {
       return res.redirect(`${frontendUrl}/barbershops?socialError=1`);
     }
-    const { barbershopId, error } = await this.socialService.handleOAuthCallback(code, state);
+    const { barbershopId, error, pick } = await this.socialService.handleOAuthCallback(code, state);
     const target = `${frontendUrl}/barbershops/${barbershopId}/social`;
-    return res.redirect(
-      error ? `${target}?socialError=${encodeURIComponent(error)}` : `${target}?socialConnected=1`,
-    );
+    if (error) return res.redirect(`${target}?socialError=${encodeURIComponent(error)}`);
+    if (pick) return res.redirect(`${target}?socialPick=${encodeURIComponent(pick)}`);
+    return res.redirect(`${target}?socialConnected=1`);
   }
 }

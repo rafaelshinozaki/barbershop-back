@@ -48,7 +48,6 @@ model User {
   sentInvites         FriendInvite[]     @relation("Inviter")
   proReferralsSent    ProReferral[]      @relation("ProReferralInviter")
   proReferralReceived ProReferral?       @relation("ProReferralInvited")
-  invalidatedTokens   InvalidatedToken[]
   LoginHistory        LoginHistory[]
   subscriptions       Subscription[]
   role                Role               @relation(fields: [roleId], references: [id])
@@ -353,15 +352,6 @@ model UserNotification {
   @@index([createdAt])
 }
 
-model InvalidatedToken {
-  id        Int      @id @default(autoincrement())
-  token     String   @unique
-  userId    Int
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-}
-
 model FriendInvite {
   id               Int      @id @default(autoincrement())
   createdAt        DateTime @default(now())
@@ -596,6 +586,7 @@ model Barbershop {
   clientSubscriptionPlans ClientSubscriptionPlan[]
   clientSubscriptions     ClientSubscription[]
   socialConnection        SocialConnection?
+  socialPageChoices       SocialPageChoice[]
   socialPosts             SocialPost[]
 
   jobOpenings JobOpening[]
@@ -1343,6 +1334,20 @@ model SocialConnection {
   barbershop                  Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId])
+}
+
+// A conta administra várias Páginas: o token de usuário fica cifrado aqui
+// até a pessoa escolher qual Página conectar (no máximo 15 minutos).
+model SocialPageChoice {
+  token        String   @id
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  barbershopId Int
+  userId       Int
+  userToken    String
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 // Post agendado pra publicar no Instagram e/ou Facebook. status: SCHEDULED

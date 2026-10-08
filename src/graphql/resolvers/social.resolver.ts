@@ -5,7 +5,7 @@ import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { SocialService } from '@/social/social.service';
-import { SocialConnectionType, SocialPostType } from '../types/social.type';
+import { SocialConnectionType, SocialPageOptionType, SocialPostType } from '../types/social.type';
 import { CreateSocialPostInput } from '../dto/social.dto';
 
 @Resolver()
@@ -19,6 +19,22 @@ export class SocialResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.socialService.getConnection(user.id, barbershopId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [SocialPageOptionType])
+  async pendingSocialPages(@Args('token') token: string, @CurrentUser() user: UserDTO) {
+    return this.socialService.pendingSocialPages(user.id, token);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => SocialConnectionType)
+  async chooseSocialPage(
+    @Args('token') token: string,
+    @Args('pageId') pageId: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.socialService.chooseSocialPage(user.id, token, pageId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

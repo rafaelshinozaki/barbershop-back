@@ -2317,6 +2317,7 @@ type Mutation {
   deleteReview(barbershopId: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
   deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
+  chooseSocialPage(pageId: String!, token: String!): SocialConnectionType!
   deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   disconnectSocialAccount(barbershopId: Int!): Boolean!
@@ -3573,6 +3574,7 @@ type Query {
   searchProfessionals(input: SearchProfessionalsInput!): [PublicProfessionalSearchResultType!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   sharedLocation(barbershopId: Int!): SharedLocationOverviewType!
+  pendingSocialPages(token: String!): [SocialPageOptionType!]!
   socialConnection(barbershopId: Int!): SocialConnectionType
   socialPosts(barbershopId: Int!): [SocialPostType!]!
   statusDistribution: StatusDistribution!
@@ -3924,6 +3926,11 @@ type ShopRevenueItem {
 
 input SignConsentFormInput {
   signatureName: String!
+}
+
+type SocialPageOptionType {
+  id: String!
+  name: String!
 }
 
 type SocialConnectionType {

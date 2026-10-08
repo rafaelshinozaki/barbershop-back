@@ -179,7 +179,6 @@ export class AccountDeletionService {
       this.prisma.loginHistory.deleteMany({ where: { userId } }),
       this.prisma.verificationCode.deleteMany({ where: { userId } }),
       this.prisma.passwordResetToken.deleteMany({ where: { userId } }),
-      this.prisma.invalidatedToken.deleteMany({ where: { userId } }),
       this.prisma.linkedSocialAccount.deleteMany({ where: { userId } }),
       this.prisma.userNotification.deleteMany({ where: { userId } }),
       this.prisma.notificationPreference.deleteMany({ where: { userId } }),

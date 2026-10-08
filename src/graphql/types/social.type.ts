@@ -13,6 +13,15 @@ export class SocialConnectionType {
 }
 
 @ObjectType()
+export class SocialPageOptionType {
+  @Field()
+  id: string;
+
+  @Field()
+  name: string;
+}
+
+@ObjectType()
 export class SocialPostType {
   @Field(() => Int)
   id: number;
