@@ -6,7 +6,9 @@ import { ensureProfessional } from './professional';
 import {
   proPriceCents,
   PRO_REFERRAL_MONTHS,
+  PRO_REFERRAL_MAX_MONTHS,
   extendProUntil,
+  isNewProAccount,
   isProActive,
   proPriceLabel,
 } from './pro';
@@ -64,10 +66,34 @@ export class ProReferralService {
     if (!inviter.professional) {
       throw new BadRequestException('Esse código ainda não é de um profissional.');
     }
-    await ensureProfessional(this.prisma, userId);
     const now = new Date();
+    const claimant = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { createdAt: true },
+    });
+    if (!claimant || !isNewProAccount(claimant.createdAt, now)) {
+      throw new BadRequestException('Só uma conta nova pode usar um código de indicação.');
+    }
+    await ensureProfessional(this.prisma, userId);
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Trava os dois, do menor id para o maior, pra duas indicações
+        // cruzadas ao mesmo tempo não passarem juntas.
+        await this.lockProUntil(tx, [inviter.id, userId]);
+        const crossed = await tx.proReferral.findFirst({
+          where: { inviterUserId: userId, invitedUserId: inviter.id },
+          select: { id: true },
+        });
+        if (crossed) {
+          throw new BadRequestException('Vocês já se indicaram. Não dá para indicar de volta.');
+        }
+        const earned = await tx.proReferral.aggregate({
+          where: { inviterUserId: inviter.id },
+          _sum: { months: true },
+        });
+        if ((earned._sum.months ?? 0) + PRO_REFERRAL_MONTHS > PRO_REFERRAL_MAX_MONTHS) {
+          throw new BadRequestException('Este código já atingiu o limite de meses de indicação.');
+        }
         await tx.proReferral.create({
           data: { inviterUserId: inviter.id, invitedUserId: userId, months: PRO_REFERRAL_MONTHS },
         });
@@ -101,11 +127,20 @@ export class ProReferralService {
     };
   }
 
+  private async lockProUntil(tx: Prisma.TransactionClient, userIds: number[]) {
+    for (const userId of [...userIds].sort((a, b) => a - b)) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pro-until:${userId}`}))`;
+    }
+  }
+
+  /** Lê e grava o fim do Pro com a linha travada, pra dois usos ao mesmo tempo somarem os dois meses. */
   private async grant(tx: Prisma.TransactionClient, userId: number, now: Date) {
-    const user = await tx.user.findUnique({ where: { id: userId }, select: { proUntil: true } });
+    const rows = await tx.$queryRaw<{ proUntil: Date | null }[]>`
+      SELECT "proUntil" FROM "User" WHERE id = ${userId} FOR UPDATE
+    `;
     await tx.user.update({
       where: { id: userId },
-      data: { proUntil: extendProUntil(user?.proUntil, PRO_REFERRAL_MONTHS, now) },
+      data: { proUntil: extendProUntil(rows[0]?.proUntil, PRO_REFERRAL_MONTHS, now) },
     });
   }
 

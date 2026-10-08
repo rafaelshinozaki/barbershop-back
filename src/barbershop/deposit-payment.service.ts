@@ -291,50 +291,64 @@ export class DepositPaymentService {
   async expireHolds(now = new Date()) {
     const due = await this.prisma.appointment.findMany({
       where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now } },
+      select: { id: true },
+      take: 200,
+    });
+    let released = 0;
+    for (const appt of due) {
+      if (await this.releaseUnpaidHold(appt.id)) released++;
+    }
+    if (released) this.logger.log(`Horários liberados sem o sinal: ${released}`);
+    return released;
+  }
+
+  /**
+   * Solta uma reserva de sinal que ainda não foi paga. Se o pagamento já
+   * tinha sido aprovado, confirma o horário em vez de cancelar. Com a
+   * unidade fechando, notifyWaitlist fica falso: o horário não voltou a abrir.
+   */
+  async releaseUnpaidHold(id: number, notifyWaitlist = true): Promise<boolean> {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id },
       select: {
         id: true,
+        status: true,
         barbershopId: true,
         barberId: true,
         startAt: true,
         depositPaymentIntentId: true,
         services: { select: { serviceId: true } },
       },
-      take: 200,
     });
-    let released = 0;
-    for (const appt of due) {
-      if (appt.depositPaymentIntentId) {
-        try {
-          const intent = await this.stripe.retrievePaymentIntent(appt.depositPaymentIntentId);
-          if (intent.status === 'succeeded') {
-            await this.finalize(intent);
-            continue;
-          }
-          if (intent.status !== 'canceled') {
-            await this.stripe.cancelPaymentIntent(intent.id).catch(() => undefined);
-          }
-        } catch (err) {
-          // Stripe fora: tenta de novo na próxima (não libera sem saber)
-          this.logger.error(`Erro ao conferir o sinal do agendamento #${appt.id}:`, err);
-          continue;
+    if (!appt || appt.status !== 'PENDING_PAYMENT') return false;
+    if (appt.depositPaymentIntentId) {
+      try {
+        const intent = await this.stripe.retrievePaymentIntent(appt.depositPaymentIntentId);
+        if (intent.status === 'succeeded') {
+          await this.finalize(intent);
+          return false;
         }
-      }
-      const res = await this.prisma.appointment.updateMany({
-        where: { id: appt.id, status: 'PENDING_PAYMENT' },
-        data: { status: 'CANCELLED', holdExpiresAt: null },
-      });
-      released += res.count;
-      // O horário voltou a ficar livre: pode ser a vaga de alguém da lista de espera
-      if (res.count) {
-        this.barbershopService
-          .checkWaitlistOnCancellation(appt.barbershopId, appt)
-          .catch((err) =>
-            this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
-          );
+        if (intent.status !== 'canceled') {
+          await this.stripe.cancelPaymentIntent(intent.id).catch(() => undefined);
+        }
+      } catch (err) {
+        // Stripe fora: não libera sem saber se o pagamento passou
+        this.logger.error(`Erro ao conferir o sinal do agendamento #${appt.id}:`, err);
+        return false;
       }
     }
-    if (released) this.logger.log(`Horários liberados sem o sinal: ${released}`);
-    return released;
+    const res = await this.prisma.appointment.updateMany({
+      where: { id: appt.id, status: 'PENDING_PAYMENT' },
+      data: { status: 'CANCELLED', holdExpiresAt: null },
+    });
+    if (res.count && notifyWaitlist) {
+      this.barbershopService
+        .checkWaitlistOnCancellation(appt.barbershopId, appt)
+        .catch((err) =>
+          this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
+        );
+    }
+    return res.count === 1;
   }
 
   /**

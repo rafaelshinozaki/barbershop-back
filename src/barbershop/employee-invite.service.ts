@@ -11,6 +11,7 @@ import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional } from './professional';
+import { normalizeEmail } from '../common/email';
 import { canonicalIdDoc, idDocLookupDigits } from '../common/id-doc';
 import { assertSoloSinglePerson } from './solo';
 
@@ -75,14 +76,16 @@ export class EmployeeInviteService {
     await this.barbershopService.ensureAccess(userId, input.barbershopId, 'manager');
     await assertSoloSinglePerson(this.prisma, input.barbershopId);
 
-    const email = input.email.toLowerCase().trim();
+    const email = normalizeEmail(input.email);
     if (!email) {
       throw new BadRequestException('Email é obrigatório para enviar o convite');
     }
 
     // Profissional que já tem conta (trabalha em outra unidade, é freelancer
     // ou dono de outra barbearia) aceita o convite com a conta dele
-    const existingUser = await this.prisma.user.findFirst({ where: { email } });
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
     if (existingUser) {
       const alreadyInTeam = await this.prisma.barber.findFirst({
         where: { barbershopId: input.barbershopId, userId: existingUser.id, isActive: true },
@@ -213,7 +216,7 @@ export class EmployeeInviteService {
     }
 
     const existingAccount = await this.prisma.user.findFirst({
-      where: { email: invite.email },
+      where: { email: { equals: normalizeEmail(invite.email), mode: 'insensitive' } },
       select: { id: true },
     });
     return {
@@ -257,7 +260,10 @@ export class EmployeeInviteService {
     }
 
     const existingUser = await this.prisma.user.findFirst({
-      where: { email: invite.email, provider: 'local' },
+      where: {
+        email: { equals: normalizeEmail(invite.email), mode: 'insensitive' },
+        provider: 'local',
+      },
     });
 
     // Mesma checagem de documento duplicado do signup principal (ver
@@ -295,7 +301,7 @@ export class EmployeeInviteService {
       }
       const user = await tx.user.create({
         data: {
-          email: invite.email,
+          email: normalizeEmail(invite.email),
           password: hashedPassword,
           fullName: data.fullName.trim(),
           idDocNumber: documentNumber,

@@ -200,7 +200,10 @@ export class ImportService {
       return `Linha ${row.line}: cliente sem telefone conhecido.`;
     const service = catalog.get(sheetKey(row.serviceName));
     if (!service) return `Linha ${row.line}: serviço "${row.serviceName}" não encontrado.`;
-    const barber = this.matchBarber(row.barberName, bookable);
+    const barber = matchImportedBarber(row.barberName, bookable);
+    if (barber === 'ambiguous') {
+      return `Linha ${row.line}: mais de um profissional combina com "${row.barberName}".`;
+    }
     if (!barber) {
       return bookable.length > 1
         ? `Linha ${row.line}: informe o profissional.`
@@ -228,15 +231,25 @@ export class ImportService {
     }
   }
 
-  private matchBarber(name: string | undefined, bookable: Array<{ id: number; name: string }>) {
-    if (bookable.length === 0) return null;
-    if (!name) return bookable.length === 1 ? bookable[0] : null;
-    const wanted = sheetKey(name);
-    return (
-      bookable.find((barber) => {
-        const current = sheetKey(barber.name);
-        return current.includes(wanted) || wanted.includes(current);
-      }) ?? null
-    );
-  }
+}
+
+/** Nome da planilha → profissional. Igualdade primeiro; "contém" só com um candidato. */
+export function matchImportedBarber(
+  name: string | undefined,
+  bookable: Array<{ id: number; name: string }>,
+): { id: number; name: string } | 'ambiguous' | null {
+  if (bookable.length === 0) return null;
+  if (!name?.trim()) return bookable.length === 1 ? bookable[0] : null;
+  const wanted = sheetKey(name);
+  if (!wanted) return bookable.length === 1 ? bookable[0] : null;
+  const exact = bookable.filter((barber) => sheetKey(barber.name) === wanted);
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return 'ambiguous';
+  const partial = bookable.filter((barber) => {
+    const current = sheetKey(barber.name);
+    return current.includes(wanted) || wanted.includes(current);
+  });
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) return 'ambiguous';
+  return null;
 }

@@ -8,6 +8,17 @@ export function proPriceCents() {
 /** Meses de Pro que cada lado ganha quando a indicação é aceita. */
 export const PRO_REFERRAL_MONTHS = 1;
 
+/** Só quem criou a conta dentro desta janela pode usar um código. */
+export const PRO_REFERRAL_NEW_ACCOUNT_DAYS = 30;
+
+/** Meses de Pro que um indicador pode acumular com códigos aceitos. */
+export const PRO_REFERRAL_MAX_MONTHS = 12;
+
+export function isNewProAccount(createdAt: Date, now: Date) {
+  const limit = createdAt.getTime() + PRO_REFERRAL_NEW_ACCOUNT_DAYS * 24 * 60 * 60 * 1000;
+  return now.getTime() <= limit;
+}
+
 export function proPriceLabel(cents = proPriceCents()) {
   const amount = (cents / 100).toFixed(2).replace('.', ',');
   return `R$ ${amount}`;

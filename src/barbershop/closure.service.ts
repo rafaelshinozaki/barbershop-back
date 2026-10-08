@@ -8,6 +8,7 @@ import {
   zonedTimeToUtc,
 } from '../common/timezone.util';
 import { BarbershopService } from './barbershop.service';
+import { DepositPaymentService } from './deposit-payment.service';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -30,6 +31,28 @@ const toMinutes = (hhmm: string) => {
 };
 
 /**
+ * O fechamento pega este horário. Confirmado que já começou fica: não
+ * cancela (nem estorna) o que já aconteceu. Reserva de sinal entra mesmo
+ * que o horário já tenha passado, pra não dar pra pagar um dia fechado.
+ */
+export function closureAffectsAppointment(
+  status: 'CONFIRMED' | 'PENDING_PAYMENT',
+  startAt: Date,
+  endAt: Date,
+  now: Date,
+  timeZone: string,
+  openTime: string | null,
+  closeTime: string | null,
+) {
+  if (status === 'CONFIRMED' && startAt.getTime() < now.getTime()) return false;
+  if (!openTime || !closeTime) return true;
+  const start = toZonedParts(startAt, timeZone);
+  const end = toZonedParts(endAt, timeZone);
+  const endMin = end.dateStr === start.dateStr ? end.minutesOfDay : 24 * 60;
+  return start.minutesOfDay < toMinutes(openTime) || endMin > toMinutes(closeTime);
+}
+
+/**
  * Feriados e fechamentos da unidade: dia fechado ou com horário especial.
  * A página pública deixa de oferecer esses horários (ver
  * BarbershopService.getWorkingWindowOn); aqui a equipe cadastra, vê quem
@@ -42,6 +65,7 @@ export class ClosureService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly barbershopService: BarbershopService,
+    private readonly deposits: DepositPaymentService,
   ) {}
 
   private async shopTimeZone(barbershopId: number) {
@@ -107,13 +131,43 @@ export class ClosureService {
       },
       orderBy: { startAt: 'asc' },
     });
-    return appts.filter((a) => {
-      if (!openTime || !closeTime) return true;
-      const start = toZonedParts(a.startAt, timeZone);
-      const end = toZonedParts(a.endAt, timeZone);
-      const endMin = end.dateStr === start.dateStr ? end.minutesOfDay : 24 * 60;
-      return start.minutesOfDay < toMinutes(openTime) || endMin > toMinutes(closeTime);
+    const now = new Date();
+    return appts.filter((a) =>
+      closureAffectsAppointment('CONFIRMED', a.startAt, a.endAt, now, timeZone, openTime, closeTime),
+    );
+  }
+
+  /** Reservas de sinal que ficaram num horário que não existe mais. */
+  private async held(
+    barbershopId: number,
+    timeZone: string,
+    dates: string[],
+    openTime: string | null,
+    closeTime: string | null,
+  ) {
+    const appts = await this.prisma.appointment.findMany({
+      where: {
+        barbershopId,
+        status: 'PENDING_PAYMENT',
+        startAt: {
+          gte: zonedTimeToUtc(dates[0], 0, timeZone),
+          lt: zonedTimeToUtc(nextDateStr(dates[dates.length - 1]), 0, timeZone),
+        },
+      },
+      select: { id: true, startAt: true, endAt: true },
     });
+    const now = new Date();
+    return appts.filter((a) =>
+      closureAffectsAppointment(
+        'PENDING_PAYMENT',
+        a.startAt,
+        a.endAt,
+        now,
+        timeZone,
+        openTime,
+        closeTime,
+      ),
+    );
   }
 
   async list(userId: number, barbershopId: number) {
@@ -160,15 +214,28 @@ export class ClosureService {
       input,
       toZonedParts(new Date(), timeZone).dateStr,
     );
-    await this.prisma.$transaction(
-      dates.map((date) =>
-        this.prisma.barbershopClosure.upsert({
-          where: { barbershopId_date: { barbershopId, date } },
-          create: { barbershopId, date, openTime, closeTime, reason, createdByUserId: userId },
-          update: { openTime, closeTime, reason, createdByUserId: userId },
-        }),
-      ),
+    // Horário que aumentou (fechado o dia → horário especial, ou janela maior)
+    // avisa a lista de espera. Fechar mais não abre vaga, então não avisa.
+    await this.barbershopService.withWaitlistOpening(
+      barbershopId,
+      { from: dates[0], to: dates[dates.length - 1] },
+      () =>
+        this.prisma.$transaction(
+          dates.map((date) =>
+            this.prisma.barbershopClosure.upsert({
+              where: { barbershopId_date: { barbershopId, date } },
+              create: { barbershopId, date, openTime, closeTime, reason, createdByUserId: userId },
+              update: { openTime, closeTime, reason, createdByUserId: userId },
+            }),
+          ),
+        ),
     );
+    const holds = await this.held(barbershopId, timeZone, dates, openTime, closeTime);
+    for (const hold of holds) {
+      await this.deposits.releaseUnpaidHold(hold.id, false).catch((err) =>
+        this.logger.error(`Erro ao liberar a reserva de sinal #${hold.id}:`, err),
+      );
+    }
     const affected = await this.affected(barbershopId, timeZone, dates, openTime, closeTime);
     let cancelled = 0;
     if (input.cancelAffected) {

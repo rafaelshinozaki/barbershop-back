@@ -35,7 +35,9 @@ describe('Feriados e fechamentos (integração)', () => {
     { email: async (job: any) => void emails.push(job), whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const closures = new ClosureService(prisma, barbershops);
+  const closures = new ClosureService(prisma, barbershops, {
+    releaseUnpaidHold: async () => false,
+  } as never);
 
   const monday = mondayAhead();
   const sunday = addDays(monday, 6);

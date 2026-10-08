@@ -21,6 +21,7 @@ import * as bcrypt from 'bcryptjs';
 import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
+import { normalizeEmail } from '@/common/email';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -209,12 +210,13 @@ export class UserService {
   }
 
   async createUser(userData: NewUserSchema) {
-    this.logger.log(`Creating user with email: ${userData.email}`);
+    const email = normalizeEmail(userData.email);
+    this.logger.log(`Creating user with email: ${email}`);
 
     try {
-      // Verificar se o usuário já existe
+      // Verificar se o usuário já existe (maiúsculas não criam outra conta)
       const existingUser = await this.prisma.user.findFirst({
-        where: { email: userData.email, provider: 'local' },
+        where: { email: { equals: email, mode: 'insensitive' }, provider: 'local' },
       });
 
       // Verificar documento duplicado (CPF/SSN/etc.) — nem todo país tem um
@@ -263,7 +265,7 @@ export class UserService {
       // Criar usuário
       const newUser = await this.prisma.user.create({
         data: {
-          email: userData.email,
+          email,
           password: hashedPassword,
           fullName: userData.fullName,
           idDocNumber: userData.idDocNumber,
@@ -529,7 +531,7 @@ export class UserService {
 
   async getUserByEmail(email: string, provider = 'local'): Promise<UserDTO | null> {
     return this.prisma.user.findFirst({
-      where: { email, provider },
+      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider },
       select: {
         id: true,
         email: true,
@@ -693,8 +695,9 @@ export class UserService {
     ok: boolean;
     reason?: 'already_linked_elsewhere' | 'email_belongs_to_another_account';
   }> {
-    const existingLink = await this.prisma.linkedSocialAccount.findUnique({
-      where: { provider_providerEmail: { provider, providerEmail: email } },
+    email = normalizeEmail(email);
+    const existingLink = await this.prisma.linkedSocialAccount.findFirst({
+      where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
     });
     if (existingLink) {
       if (existingLink.userId === userId) return { ok: true };
@@ -702,7 +705,7 @@ export class UserService {
     }
 
     const otherUserWithEmail = await this.prisma.user.findFirst({
-      where: { email, NOT: { id: userId } },
+      where: { email: { equals: email, mode: 'insensitive' }, NOT: { id: userId } },
     });
     if (otherUserWithEmail) {
       return { ok: false, reason: 'email_belongs_to_another_account' };
@@ -717,9 +720,10 @@ export class UserService {
   }
 
   async findOrCreateSocialUser(email: string, name: string, provider: string): Promise<UserDTO> {
+    email = normalizeEmail(email);
     // 1. Esse provider+email já está linkado a uma conta? Login direto nela.
-    const existingLink = await this.prisma.linkedSocialAccount.findUnique({
-      where: { provider_providerEmail: { provider, providerEmail: email } },
+    const existingLink = await this.prisma.linkedSocialAccount.findFirst({
+      where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
     });
 
     let user = existingLink
@@ -728,7 +732,7 @@ export class UserService {
           select: this.socialUserSelect,
         })
       : await this.prisma.user.findFirst({
-          where: { email },
+          where: { email: { equals: email, mode: 'insensitive' } },
           orderBy: { createdAt: 'asc' },
           select: this.socialUserSelect,
         });
@@ -1006,7 +1010,7 @@ export class UserService {
   async forgotPass(forgotPass: any) {
     this.logger.log('Password reset requested');
 
-    const email = String(forgotPass.email ?? '').trim();
+    const email = normalizeEmail(forgotPass.email);
     const user = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: 'insensitive' }, provider: 'local' },
     });
@@ -1270,13 +1274,14 @@ export class UserService {
   }
 
   async verifyUser(email: string, password: string) {
+    email = normalizeEmail(email);
     this.logger.log(`Verifying user with email: ${email}`);
     if (await this.isLoginBlocked(email)) {
       throw new UnauthorizedException('Too many login attempts. Please try again later.');
     }
     const user = await this.prisma.user.findFirst({
       where: {
-        email,
+        email: { equals: email, mode: 'insensitive' },
         provider: 'local',
       },
       select: {
@@ -1402,8 +1407,9 @@ export class UserService {
   }
 
   async isPasswordValid(email: string, password: string): Promise<boolean> {
+    email = normalizeEmail(email);
     const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
+      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider: 'local' },
     });
     if (!user) {
       return false;
@@ -1608,8 +1614,9 @@ export class UserService {
   }
 
   async sendChangePasswordCode(email: string) {
+    email = normalizeEmail(email);
     const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
+      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider: 'local' },
     });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -1715,7 +1722,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    if (user.email !== email) {
+    if (normalizeEmail(user.email) !== normalizeEmail(email)) {
       throw new UnauthorizedException('Invalid email');
     }
 
@@ -1819,8 +1826,9 @@ export class UserService {
   }
 
   async verifyTwoFactorCode(email: string, code: string) {
+    email = normalizeEmail(email);
     const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
+      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider: 'local' },
     });
     // del devolve 1 só pra quem consumiu o código (uso único)
     const consumed =
@@ -1922,7 +1930,7 @@ export class UserService {
     await this.redis.client.del(UserService.KEY.codeByUser(entry.email)).catch(() => undefined);
     const { email } = entry;
     const user = await this.prisma.user.findFirst({
-      where: { email, provider: 'local' },
+      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider: 'local' },
       include: {
         subscriptions: {
           where: { status: PLANO_STATUS.ACTIVE },
@@ -2241,9 +2249,10 @@ export class UserService {
 
       try {
         // Validar se o email já existe
+        const email = normalizeEmail(userData.email);
         const existingUser = await this.prisma.user.findFirst({
           where: {
-            email: userData.email,
+            email: { equals: email, mode: 'insensitive' },
             provider: 'local',
           },
         });
@@ -2321,7 +2330,7 @@ export class UserService {
         const newUser = await this.prisma.user.create({
           data: {
             provider: 'local',
-            email: userData.email,
+            email,
             roleId: userRole.id,
             password: await bcrypt.hash(userData.password, 10),
             fullName: userData.fullName,

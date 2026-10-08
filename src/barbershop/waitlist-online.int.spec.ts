@@ -46,7 +46,9 @@ describe('Lista de espera online (integração)', () => {
     { notify: () => undefined } as never,
   );
   const monday = mondayAhead();
-  const closures = new ClosureService(prisma, barbershops);
+  const closures = new ClosureService(prisma, barbershops, {
+    releaseUnpaidHold: async () => false,
+  } as never);
 
   let ownerId: number;
   let staffUserId: number;

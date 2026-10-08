@@ -68,6 +68,10 @@ export class StripeService {
     return await this.stripe.paymentIntents.retrieve(id);
   }
 
+  async retrieveCharge(id: string) {
+    return await this.stripe.charges.retrieve(id);
+  }
+
   async createCustomer(email: string, name?: string, metadata?: Record<string, string>) {
     const params: Stripe.CustomerCreateParams = {
       email,

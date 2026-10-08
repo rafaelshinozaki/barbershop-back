@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–30 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–36 corrigidos.
 
 ### Segurança e LGPD
 
@@ -1259,20 +1259,20 @@ Achados numa revisão de código. Itens 1–30 corrigidos. O restante segue 🆕
 
 ### Quarta rodada (2026-10-08)
 
-31. 🆕 **E-mail diferencia maiúsculas no cadastro e no login** (`UserService.createUser` e `verifyUser`):
+31. ✅ **E-mail diferencia maiúsculas no cadastro e no login** (`UserService.createUser` e `verifyUser`):
     - O e-mail é gravado e procurado do jeito que foi digitado. A unicidade (`@@unique([email, provider])`) diferencia maiúsculas no Postgres.
     - `Fulano@x.com` e `fulano@x.com` viram duas contas. Quem se cadastrou com maiúscula não entra digitando minúscula.
     - Os fluxos que já usam minúscula (convite da equipe, ligação com a conta de cliente, convite de amigo) não acham a conta com maiúscula. O convite da equipe acaba criando uma segunda conta.
-    - **Fazer:** normalizar (`trim().toLowerCase()`) no cadastro, no login, no "esqueci a senha" e no OAuth. Migrar os e-mails existentes, depois de juntar as duplicadas, e trocar o índice por um que ignore maiúsculas (`citext` ou índice em `lower(email)`).
-32. 🆕 **Indicação de profissional perde meses e vira fábrica de meses grátis** (`ProReferralService.claim`):
+    - **Fazer:** normalizar (`trim().toLowerCase()`) no cadastro, no login, no "esqueci a senha" e no OAuth. Migrar os e-mails existentes, depois de juntar as duplicadas, e trocar o índice por um que ignore maiúsculas (`citext` ou índice em `lower(email)`). **Feito:** cadastro, login, esqueci a senha, troca de senha, 2FA e OAuth gravam e procuram o e-mail em minúsculas. A migration `20261124140000_user_email_case` deixa a conta ativa mais antiga com o endereço e desativa a duplicata (e-mail com `+dup<id>`, sem misturar agenda e venda). Um índice em `lower(email)` impede a repetição.
+32. ✅ **Indicação de profissional perde meses e vira fábrica de meses grátis** (`ProReferralService.claim`):
     - O `grant` lê `proUntil` e grava a soma depois. Dois indicados usando o mesmo código ao mesmo tempo fazem o indicador ganhar só uma das extensões.
     - Qualquer conta, até antiga, pode usar um código. A e B podem usar o código um do outro. E não há teto para o indicador.
-    - **Fazer:** soma atômica no banco (ou trava por usuário), só conta nova pode usar código, sem indicação cruzada, e teto de meses por indicador.
-33. 🆕 **Estorno feito direto na Stripe não chega ao app** (`stripe.controller.ts`): não há tratamento de `charge.refunded`. Um estorno pelo painel da Stripe (ou por suporte) deixa o sinal como pago, a caixinha somando no pagamento da equipe e o atendimento como "pago pelo app". **Fazer:** tratar `charge.refunded` e `refund.updated` com a mesma lógica dos estornos feitos pelo app.
-34. 🆕 **Fechar o dia cancela o que já aconteceu e esquece quem está pagando o sinal** (`ClosureService.set`):
+    - **Fazer:** soma atômica no banco (ou trava por usuário), só conta nova pode usar código, sem indicação cruzada, e teto de meses por indicador. **Feito:** o fim do Pro é lido com a linha travada e os dois usuários entram num lock em ordem de id. Só conta criada nos últimos 30 dias usa código, indicação de volta é recusada, e o indicador para nos 12 meses.
+33. ✅ **Estorno feito direto na Stripe não chega ao app** (`stripe.controller.ts`): não há tratamento de `charge.refunded`. Um estorno pelo painel da Stripe (ou por suporte) deixa o sinal como pago, a caixinha somando no pagamento da equipe e o atendimento como "pago pelo app". **Fazer:** tratar `charge.refunded` e `refund.updated` com a mesma lógica dos estornos feitos pelo app. **Feito:** `charge.refunded` e `refund.updated` (quando o estorno confirma) marcam sinal, caixinha e atendimento pago. Estorno parcial do atendimento guarda o valor. Evento repetido não desfaz o que o app já registrou, e a Stripe não é chamada de novo.
+34. ✅ **Fechar o dia cancela o que já aconteceu e esquece quem está pagando o sinal** (`ClosureService.set`):
     - Fechar o dia de hoje cancela (e estorna) também os atendimentos de mais cedo que ainda estão `CONFIRMED`.
     - Os horários `PENDING_PAYMENT` (cliente no meio do pagamento do sinal) ficam de fora e podem ser pagos para um dia fechado.
     - Trocar o fechamento por um horário especial maior (via `set`) não avisa a lista de espera. Só o `remove` avisa.
-    - **Fazer:** cancelar só do horário atual para frente, incluir `PENDING_PAYMENT` (expirando a reserva) e avisar a lista de espera quando o horário aumenta.
-35. 🆕 **Importação de planilha escolhe o profissional errado** (`ImportService.matchBarber`): compara nomes com "contém" nos dois sentidos e fica com o primeiro que bater. "Ana" na planilha cai na "Mariana", e "Jo" em qualquer "João" ou "Jorge". **Fazer:** igualdade exata (sem acento e maiúsculas) primeiro, "contém" só se houver um único candidato, e erro na linha quando ficar ambíguo.
-36. 🆕 **Aceite do convite da equipe com e-mail em maiúscula** (efeito do item 31 em `EmployeeInviteService.acceptInvite`): o convite guarda o e-mail em minúscula e procura a conta exatamente assim. Quem já tem conta com maiúscula ganha uma segunda conta em vez de entrar com a sua. Resolve junto com o item 31.
+    - **Fazer:** cancelar só do horário atual para frente, incluir `PENDING_PAYMENT` (expirando a reserva) e avisar a lista de espera quando o horário aumenta. **Feito:** atendimento confirmado que já começou fica. Reserva de sinal no horário fechado é liberada (se o pagamento já tinha passado, o horário confirma). Salvar o fechamento usa o mesmo aviso da lista de espera de quando o dia reabre, então aumentar o horário especial avisa.
+35. ✅ **Importação de planilha escolhe o profissional errado** (`ImportService.matchBarber`): compara nomes com "contém" nos dois sentidos e fica com o primeiro que bater. "Ana" na planilha cai na "Mariana", e "Jo" em qualquer "João" ou "Jorge". **Fazer:** igualdade exata (sem acento e maiúsculas) primeiro, "contém" só se houver um único candidato, e erro na linha quando ficar ambíguo. **Feito:** o nome igual ganha. "Contém" só quando uma pessoa combina. Se mais de uma combina, a linha volta com erro em vez de escolher a primeira.
+36. ✅ **Aceite do convite da equipe com e-mail em maiúscula** (efeito do item 31 em `EmployeeInviteService.acceptInvite`): o convite guarda o e-mail em minúscula e procura a conta exatamente assim. Quem já tem conta com maiúscula ganha uma segunda conta em vez de entrar com a sua. Resolve junto com o item 31. **Feito:** criar, validar e aceitar o convite procuram a conta sem diferenciar maiúsculas, então a conta que já existe é reaproveitada.

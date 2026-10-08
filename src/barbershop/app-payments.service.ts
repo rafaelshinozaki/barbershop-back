@@ -312,4 +312,89 @@ export class AppPaymentsService {
       update: data,
     });
   }
+
+  /**
+   * Estorno que nasceu na Stripe (painel ou reembolso que confirmou depois).
+   * Marca sinal, atendimento pago e caixinha do mesmo jeito que o estorno
+   * feito aqui, sem chamar a Stripe de novo. Evento repetido não desfaz.
+   */
+  async syncStripeRefund(charge: Stripe.Charge) {
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id ?? null;
+    const amountRefundedCents = charge.amount_refunded ?? 0;
+    if (!paymentIntentId || amountRefundedCents <= 0) return;
+    const now = new Date();
+    await this.syncDepositRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
+    await this.syncPrepaidRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
+    await this.syncTipRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
+  }
+
+  private async syncDepositRefund(
+    paymentIntentId: string,
+    amountRefundedCents: number,
+    fullyRefunded: boolean,
+    now: Date,
+  ) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { depositPaymentIntentId: paymentIntentId },
+      select: { id: true, depositAmount: true, depositRefundedAt: true },
+    });
+    if (!appt || appt.depositRefundedAt) return;
+    const depositCents = Math.round(Number(appt.depositAmount ?? 0) * 100);
+    if (!fullyRefunded && amountRefundedCents < depositCents) return;
+    await this.prisma.appointment.updateMany({
+      where: { id: appt.id, depositRefundedAt: null },
+      data: { depositPaid: false, depositRefundedAt: now },
+    });
+  }
+
+  private async syncPrepaidRefund(
+    paymentIntentId: string,
+    amountRefundedCents: number,
+    fullyRefunded: boolean,
+    now: Date,
+  ) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { prepaidPaymentIntentId: paymentIntentId },
+      select: {
+        id: true,
+        prepaidAt: true,
+        prepaidAmount: true,
+        prepaidRefundedAt: true,
+        prepaidRefundedAmount: true,
+      },
+    });
+    if (!appt?.prepaidAt || appt.prepaidRefundedAt) return;
+    const paid = Number(appt.prepaidAmount ?? 0);
+    const before = Number(appt.prepaidRefundedAmount ?? 0);
+    const fromStripe = Math.round(amountRefundedCents) / 100;
+    const next = Math.min(paid, Math.max(before, fromStripe));
+    const full = fullyRefunded || (paid > 0 && next >= paid);
+    if (next === before && !full) return;
+    await this.prisma.appointment.updateMany({
+      where: { id: appt.id, prepaidRefundedAt: null },
+      data: { prepaidRefundedAmount: next, prepaidRefundedAt: full ? now : null },
+    });
+  }
+
+  private async syncTipRefund(
+    paymentIntentId: string,
+    amountRefundedCents: number,
+    fullyRefunded: boolean,
+    now: Date,
+  ) {
+    const tip = await this.prisma.appointmentTip.findFirst({
+      where: { stripePaymentIntentId: paymentIntentId },
+      select: { id: true, amount: true, refundedAt: true },
+    });
+    if (!tip || tip.refundedAt) return;
+    const tipCents = Math.round(Number(tip.amount) * 100);
+    if (!fullyRefunded && amountRefundedCents < tipCents) return;
+    await this.prisma.appointmentTip.updateMany({
+      where: { id: tip.id, refundedAt: null },
+      data: { refundedAt: now },
+    });
+  }
 }

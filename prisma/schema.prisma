@@ -14,6 +14,8 @@ model User {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   deleted_at          DateTime?
+  // Gravado em minúsculas. A unicidade de verdade ignora maiúsculas
+  // (índice em lower(email), provider): Fulano@x.com e fulano@x.com são a mesma conta.
   email               String
   provider            String             @default("local")
   password            String
@@ -75,6 +77,8 @@ model User {
   pushSubscriptions      PushSubscription[]
 
   jobApplications JobApplication[]
+  // Além deste, a migration 20261124140000 cria um índice único em
+  // (lower(email), provider): maiúsculas diferentes não viram duas contas.
   @@unique([email, provider])
   calendarFeeds       CalendarFeed[]
   onboardingProgress  OnboardingProgress[]
