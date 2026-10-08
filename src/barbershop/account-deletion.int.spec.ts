@@ -8,6 +8,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountDeletionService } from './account-deletion.service';
 import { BarbershopService } from './barbershop.service';
+import { SitemapService } from '../seo/sitemap.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const PASSWORD = 'Senha#Forte1';
@@ -300,6 +301,58 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     await expect(service.deleteAccount(admin.id, { password: PASSWORD })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it('perfil público some da busca e do sitemap e a conta de recebimento desliga', async () => {
+    const person = await createUser('perfil', ownerRoleId);
+    const fullName = `Perfil Público ${RUN}`;
+    await prisma.user.update({
+      where: { id: person.id },
+      data: { photoKey: null, fullName },
+    });
+    const slug = `perfil-${RUN}`;
+    const professional = await prisma.professional.create({
+      data: {
+        userId: person.id,
+        slug,
+        visibility: 'public',
+        isPublic: true,
+        cities: ['São Paulo'],
+      },
+    });
+    const account = await prisma.paymentAccount.create({
+      data: {
+        ownerType: 'professional',
+        ownerId: professional.id,
+        provider: 'fake',
+        stripeAccountId: `acct_perfil_${RUN}`,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+      },
+    });
+
+    const before = await barbershopService.searchPublicProfessionals({ query: fullName });
+    expect(before.map((p) => p.slug)).toContain(slug);
+    const sitemap = new SitemapService(prisma);
+    expect(await sitemap.sitemapXml(1)).toContain(`/p/${slug}`);
+
+    await service.deleteAccount(person.id, { password: PASSWORD });
+
+    const after = await barbershopService.searchPublicProfessionals({ query: fullName });
+    expect(after.map((p) => p.slug)).not.toContain(slug);
+    expect(await sitemap.sitemapXml(1 + 4_000_000)).not.toContain(`/p/${slug}`);
+    expect(await prisma.professional.findUnique({ where: { id: professional.id } })).toMatchObject({
+      visibility: 'hidden',
+      isPublic: false,
+      slug: null,
+    });
+    expect(await prisma.paymentAccount.findUnique({ where: { id: account.id } })).toMatchObject({
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      disabledReason: 'account_deleted',
+    });
+    await prisma.paymentAccount.delete({ where: { id: account.id } });
   });
 
   it('pela equipe (backoffice, depois da confirmação): apaga sem a senha; conta do sistema não', async () => {

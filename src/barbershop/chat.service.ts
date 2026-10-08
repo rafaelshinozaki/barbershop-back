@@ -10,7 +10,7 @@ import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { langForCountry, LOCALE, normalizeLang } from '../email/language';
 import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
-import { BarbershopService, type AccessLevel } from './barbershop.service';
+import { BarbershopService, currentEngagement, type AccessLevel } from './barbershop.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ModerationService } from './moderation.service';
 import { PushService } from '../push/push.service';
@@ -94,7 +94,14 @@ export class ChatService {
             clientAccountId: true,
             blockedAt: true,
             clientAccount: {
-              select: { id: true, email: true, name: true, language: true, deletedAt: true },
+              select: {
+                id: true,
+                email: true,
+                name: true,
+                language: true,
+                deletedAt: true,
+                suspendedAt: true,
+              },
             },
           },
         },
@@ -111,17 +118,22 @@ export class ChatService {
   private async allowedKinds(appt: Appt, viewer: ChatViewer): Promise<ChatKind[]> {
     const kinds = this.kindsOf(appt);
     if (viewer.side === 'client') {
+      const account = appt.customer.clientAccount;
+      // Conta ligada suspensa ou excluída: o link do e-mail também não entra
+      if (account && (account.deletedAt || account.suspendedAt)) return [];
       const byToken = viewer.manageToken && verifyAppointmentToken(viewer.manageToken) === appt.id;
       const byAccount =
         !!viewer.clientAccountId && appt.customer.clientAccountId === viewer.clientAccountId;
       return byToken || byAccount ? kinds : [];
     }
     const out: ChatKind[] = [];
-    if (kinds.includes('unit')) {
-      const level = await this.barbershops.getMyAccessLevel(viewer.userId, appt.barbershop.id);
-      if (level && DESK_LEVELS.includes(level)) out.push('unit');
-    }
-    if (appt.barber.userId === viewer.userId) out.push('professional');
+    const needsLevel = kinds.includes('unit') || appt.barber.userId === viewer.userId;
+    const level = needsLevel
+      ? await this.barbershops.getMyAccessLevel(viewer.userId, appt.barbershop.id)
+      : null;
+    if (kinds.includes('unit') && level && DESK_LEVELS.includes(level)) out.push('unit');
+    // Quem saiu da unidade (ou freelancer fora do período) não lê a conversa
+    if (appt.barber.userId === viewer.userId && level) out.push('professional');
     return out;
   }
 
@@ -254,12 +266,16 @@ export class ChatService {
   private async notifyStaff(appt: Appt, kind: ChatKind) {
     let userIds: number[];
     if (kind === 'professional') {
-      userIds = appt.barber.userId ? [appt.barber.userId] : [];
+      const userId = appt.barber.userId;
+      const level = userId
+        ? await this.barbershops.getMyAccessLevel(userId, appt.barbershop.id)
+        : null;
+      userIds = userId && level ? [userId] : [];
     } else {
       const desk = await this.prisma.barber.findMany({
         where: {
           barbershopId: appt.barbershop.id,
-          isActive: true,
+          ...currentEngagement(),
           userId: { not: null },
           staffType: { in: ['reception', 'manager'] },
         },
@@ -398,7 +414,7 @@ export class ChatService {
   /** Caixa de entrada da equipe: as conversas de que a pessoa participa, mais recentes primeiro */
   async staffInbox(userId: number) {
     const shops = await this.prisma.barber.findMany({
-      where: { userId, isActive: true },
+      where: { userId, ...currentEngagement() },
       select: { id: true, barbershopId: true },
     });
     const owned = await this.prisma.barbershop.findMany({

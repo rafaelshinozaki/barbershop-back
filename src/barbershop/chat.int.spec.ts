@@ -349,7 +349,7 @@ describe('Chat do atendimento (integração)', () => {
     expect(
       (
         await prisma.chatThread.findUniqueOrThrow({ where: { id: thread.id } })
-      ).retainUntil!.getFullYear(),
+      ).retainUntil!.getUTCFullYear(),
     ).toBe(2100);
 
     const item = (await moderation.queue()).find(
@@ -426,6 +426,69 @@ describe('Chat do atendimento (integração)', () => {
     await expect(book({ customerPhone: customer.phone })).rejects.not.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it('profissional que saiu ou com acesso vencido não lê nem é avisado', async () => {
+    const gone = await user('saiu');
+    const barber = await prisma.barber.create({
+      data: {
+        barbershopId: shopIds[0],
+        name: 'Saiu',
+        phone: '115',
+        userId: gone,
+        isActive: false,
+      },
+    });
+    const customer = await prisma.customer.findFirstOrThrow({
+      where: { email: `chat-ficha-${RUN}@test.local` },
+    });
+    const id = await appointment(shopIds[0], barber.id, customer.id);
+    await expect(chat.threads(id, staff(gone))).rejects.toBeInstanceOf(NotFoundException);
+
+    const freelancer = await user('free');
+    const freeBarber = await prisma.barber.create({
+      data: {
+        barbershopId: shopIds[0],
+        name: 'Free',
+        phone: '114',
+        userId: freelancer,
+        accessEndsAt: new Date(Date.now() - HOUR),
+      },
+    });
+    const freeAppt = await appointment(shopIds[0], freeBarber.id, customer.id);
+    await expect(chat.threads(freeAppt, staff(freelancer))).rejects.toBeInstanceOf(NotFoundException);
+
+    const before = pings.length;
+    await chat.send(freeAppt, 'professional', 'oi', {
+      side: 'client',
+      manageToken: createAppointmentToken(freeAppt),
+    });
+    expect(pings.slice(before)).not.toContain(freelancer);
+  });
+
+  it('conta de cliente suspensa ou excluída não entra nem pelo link', async () => {
+    const link = { side: 'client' as const, manageToken: createAppointmentToken(apptId) };
+    try {
+      await prisma.clientAccount.update({
+        where: { id: accountId },
+        data: { suspendedAt: new Date() },
+      });
+      await expect(chat.threads(apptId, link)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        chat.threads(apptId, { side: 'client', clientAccountId: accountId }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await prisma.clientAccount.update({
+        where: { id: accountId },
+        data: { suspendedAt: null, deletedAt: new Date() },
+      });
+      await expect(chat.threads(apptId, link)).rejects.toBeInstanceOf(NotFoundException);
+    } finally {
+      await prisma.clientAccount.update({
+        where: { id: accountId },
+        data: { suspendedAt: null, deletedAt: null },
+      });
+    }
+    expect((await chat.threads(apptId, link)).length).toBe(2);
   });
 
   it('guarda: sai 12 meses depois da última mensagem, salvo se segurada', async () => {

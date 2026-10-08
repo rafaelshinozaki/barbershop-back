@@ -159,7 +159,7 @@ const BOOKABLE_STAFF = {
  * Vínculo valendo agora: ativo e dentro do período (freelancer com data de
  * início/fim). Fora dele a pessoa não entra na unidade nem aparece pra agendar.
  */
-function currentEngagement(now = new Date()): Prisma.BarberWhereInput {
+export function currentEngagement(now = new Date()): Prisma.BarberWhereInput {
   return {
     isActive: true,
     AND: [

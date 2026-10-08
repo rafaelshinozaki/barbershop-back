@@ -155,6 +155,11 @@ export class AccountDeletionService {
     // Documento e selfie da verificação de identidade: apagados no Stripe
     await this.identity.forgetUser(userId);
 
+    const professional = await this.prisma.professional.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
     const now = new Date();
     await this.prisma.$transaction([
       // O negócio sai inteiro: sem uma linha de histórico por item apagado
@@ -216,6 +221,40 @@ export class AccountDeletionService {
       this.prisma.barber.updateMany({
         where: { userId },
         data: { userId: null, professionalId: null },
+      }),
+      // Página pública e recebimento: somem junto com a conta (LGPD)
+      ...(professional
+        ? [
+            this.prisma.professional.update({
+              where: { id: professional.id },
+              data: {
+                visibility: 'hidden',
+                isPublic: false,
+                slug: null,
+                openToWork: false,
+                acceptingClients: false,
+                showContact: false,
+                cities: [],
+                offersHomeService: false,
+              },
+            }),
+            this.prisma.paymentAccount.updateMany({
+              where: { ownerType: 'professional', ownerId: professional.id },
+              data: {
+                chargesEnabled: false,
+                payoutsEnabled: false,
+                disabledReason: 'account_deleted',
+              },
+            }),
+          ]
+        : []),
+      this.prisma.paymentAccount.updateMany({
+        where: { ownerType: 'barbershop', ownerId: { in: shopIds } },
+        data: {
+          chargesEnabled: false,
+          payoutsEnabled: false,
+          disabledReason: 'account_deleted',
+        },
       }),
       this.prisma.user.update({
         where: { id: userId },

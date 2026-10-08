@@ -133,7 +133,9 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
     ticketIds.push(id);
     const to = `sup-a-${RUN}@test.local`;
     const mail = sent.find((m) => m.to === to && m.template === 'support_received');
-    expect(mail?.context).toMatchObject({ TicketId: id, Subject: 'Não consigo remarcar' });
+    expect(mail?.context.TicketId).toBe(id);
+    expect(mail?.context.Subject).toBeUndefined();
+    expect(mail?.context.FullName).toBeUndefined();
     expect(pings).toContain(adminId);
     const bell = await prisma.userNotification.findFirstOrThrow({ where: { userId: adminId } });
     // Valor do enum do sininho (outro valor quebra a lista)
@@ -236,6 +238,42 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
     await expect(suspension.setSuspended(adminId, 999_999_999, true)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('não repete nome nem assunto na confirmação e limita o mesmo e-mail', async () => {
+    const email = `sup-limite-${RUN}@test.local`;
+    for (let i = 0; i < 3; i++) {
+      const { id } = await support.create({ ...input('limite'), email });
+      ticketIds.push(id);
+    }
+    const mail = sent.find((m) => m.to === email && m.template === 'support_received');
+    expect(mail?.context.FullName).toBeUndefined();
+    expect(mail?.context.Subject).toBeUndefined();
+    await expect(support.create({ ...input('limite'), email })).rejects.toMatchObject({
+      status: 429,
+    });
+  });
+
+  it('chamado aberto antigo continua na fila mesmo com muitos recentes fechados', async () => {
+    const { id } = await support.create(input('antigo-aberto'));
+    ticketIds.push(id);
+    await prisma.supportTicket.update({
+      where: { id },
+      data: { lastActivityAt: new Date('2020-01-01') },
+    });
+    await prisma.supportTicket.createMany({
+      data: Array.from({ length: 200 }, (_, i) => ({
+        name: 'Fechado',
+        email: `sup-flood-${i}-${RUN}@test.local`,
+        category: 'other',
+        subject: 'já resolvido',
+        status: 'closed',
+        lastActivityAt: new Date(),
+      })),
+    });
+    const queue = await support.queue();
+    expect(queue.some((t) => t.id === id)).toBe(true);
+    expect(queue.find((t) => t.id === id)?.status).toBe('open');
   });
 
   it('avisos pedidos pela API do backoffice (comandos da fila)', async () => {

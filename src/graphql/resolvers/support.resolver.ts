@@ -26,6 +26,8 @@ import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
 // Responder pelo link do e-mail: 20 por hora por IP/navegador
 const ThrottleSupportReply = () => Throttle({ default: { limit: 20, ttl: 3600000 } });
+// Abrir pedido sem login: 5 por hora por IP (o teto por e-mail fica no service)
+const ThrottleSupportCreate = () => Throttle({ default: { limit: 5, ttl: 3600000 } });
 
 @InputType()
 export class ContactSupportInput {
@@ -46,6 +48,9 @@ export class ContactSupportInput {
 
   @Field({ nullable: true })
   language?: string;
+
+  @Field({ nullable: true, description: 'Token do reCAPTCHA, quando o servidor exige' })
+  captchaToken?: string;
 }
 
 @ObjectType()
@@ -155,7 +160,7 @@ export class SupportResolver {
   ) {}
 
   /** Visitante ou cliente (logado, o pedido fica ligado à conta) */
-  @ThrottleEmail()
+  @ThrottleSupportCreate()
   @Mutation(() => SupportTicketCreatedType)
   async contactSupport(@Args('input') input: ContactSupportInput, @Context() context: any) {
     const clientAccountId = await this.clientAuth.optionalClientAccountId(context.req);

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as webpush from 'web-push';
 import { PrismaService } from '@/prisma/prisma.service';
 import { type Lang, normalizeLang } from '@/email/language';
+import { assertPushEndpoint } from './push-endpoint';
 
 export type PushPayload = {
   title: string;
@@ -52,7 +53,12 @@ export class PushService {
     meta: { userAgent?: string | null; language?: string | null } = {},
   ) {
     const endpoint = sub.endpoint?.trim();
-    if (!endpoint || !/^https:\/\//.test(endpoint) || endpoint.length > 1000) {
+    if (!endpoint || endpoint.length > 1000) {
+      throw new BadRequestException('Inscrição inválida');
+    }
+    try {
+      await assertPushEndpoint(endpoint);
+    } catch {
       throw new BadRequestException('Inscrição inválida');
     }
     if (!sub.p256dh || !sub.auth || sub.p256dh.length > 200 || sub.auth.length > 100) {

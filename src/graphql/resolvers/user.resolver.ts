@@ -151,7 +151,20 @@ export class UserResolver {
     const updateData: any = {};
 
     // Campos básicos do usuário
-    if (input.fullName !== undefined) updateData.fullName = input.fullName;
+    if (input.fullName !== undefined) {
+      updateData.fullName = input.fullName;
+      // O selo vale para o nome do documento: outro nome, verifica de novo
+      const current = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { fullName: true, identityVerifiedAt: true },
+      });
+      if (
+        current?.identityVerifiedAt &&
+        input.fullName.trim() !== current.fullName.trim()
+      ) {
+        updateData.identityVerifiedAt = null;
+      }
+    }
     if (input.phone !== undefined) updateData.phone = input.phone;
     if (input.gender !== undefined) updateData.gender = input.gender;
     if (input.birthdate !== undefined && input.birthdate.trim() !== '') {

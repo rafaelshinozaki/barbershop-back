@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
@@ -9,6 +16,7 @@ import { BackofficeArea } from '../auth/backoffice-areas';
 import { Role } from '@/auth/interfaces/roles';
 import { supportTicketUrl, verifySupportToken } from '@/barbershop/appointment-link';
 import { backofficeUrl } from '../common/cors-origins';
+import { assertCaptcha } from '../common/captcha';
 
 export const SUPPORT_CATEGORIES = ['account', 'booking', 'payment', 'safety', 'other'] as const;
 export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
@@ -18,11 +26,15 @@ export type SupportStatus = (typeof SUPPORT_STATUSES)[number];
 const MAX_SUBJECT = 150;
 const MAX_BODY = 5000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Pedidos anônimos para o mesmo e-mail: o formulário não vira disparo em massa */
+const PUBLIC_TICKETS_PER_EMAIL = 3;
+const PUBLIC_TICKET_WINDOW_MS = 24 * 60 * 60 * 1000;
+const QUEUE_SIZE = 200;
 
 const ADMIN_TEXT = {
-  pt: { title: 'Novo pedido de suporte', message: (s: string) => `"${s}" espera resposta.` },
-  en: { title: 'New support request', message: (s: string) => `"${s}" is waiting for a reply.` },
-  es: { title: 'Nueva solicitud de soporte', message: (s: string) => `"${s}" espera respuesta.` },
+  pt: { title: 'Novo pedido de suporte', message: 'Há um pedido novo na fila.' },
+  en: { title: 'New support request', message: 'There is a new request in the queue.' },
+  es: { title: 'Nueva solicitud de soporte', message: 'Hay una solicitud nueva en la fila.' },
 };
 
 export type SupportRequester = { userId?: number | null; clientAccountId?: number | null };
@@ -59,6 +71,7 @@ export class SupportService {
       subject: string;
       message: string;
       language?: string | null;
+      captchaToken?: string | null;
     },
     requester: SupportRequester = {},
   ) {
@@ -70,6 +83,11 @@ export class SupportService {
     }
     const subject = this.text(input.subject, MAX_SUBJECT, 'Título');
     const body = this.text(input.message, MAX_BODY, 'Mensagem');
+    // Sem conta da equipe: captcha (se configurado) e teto por destinatário
+    if (!requester.userId) {
+      await assertCaptcha(input.captchaToken);
+      await this.assertPublicRecipientLimit(email);
+    }
     const ticket = await this.prisma.supportTicket.create({
       data: {
         name,
@@ -83,8 +101,22 @@ export class SupportService {
       },
     });
     await this.sendRequesterEmail(ticket, 'support_received', null);
-    await this.notifyAdmins(subject);
+    await this.notifyAdmins();
     return { id: ticket.id };
+  }
+
+  /** Mesmo endereço não recebe vários e-mails de confirmação no mesmo dia */
+  private async assertPublicRecipientLimit(email: string) {
+    const since = new Date(Date.now() - PUBLIC_TICKET_WINDOW_MS);
+    const count = await this.prisma.supportTicket.count({
+      where: { email, userId: null, createdAt: { gte: since } },
+    });
+    if (count >= PUBLIC_TICKETS_PER_EMAIL) {
+      throw new HttpException(
+        'Muitos pedidos para este e-mail. Tente novamente amanhã.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   // ---- quem pediu (pelo link do e-mail) ----
@@ -132,46 +164,89 @@ export class SupportService {
         messages: { create: { side: 'requester', body: text } },
       },
     });
-    await this.notifyAdmins(t.subject);
+    await this.notifyAdmins();
     return true;
   }
 
   // ---- equipe da plataforma ----
 
   async queue(status?: string | null) {
-    const where = status && SUPPORT_STATUSES.includes(status as SupportStatus) ? { status } : {};
-    const tickets = await this.prisma.supportTicket.findMany({
-      where,
+    const include = {
+      messages: { orderBy: { createdAt: 'asc' as const } },
+      clientAccount: { select: { id: true as const, suspendedAt: true as const } },
+    };
+    const filtered =
+      status && SUPPORT_STATUSES.includes(status as SupportStatus) ? status : null;
+    // Sem filtro, os abertos entram antes do take: um chamado antigo esperando
+    // resposta não some atrás de 200 fechados recentes
+    const tickets = filtered
+      ? await this.prisma.supportTicket.findMany({
+          where: { status: filtered },
+          orderBy: { lastActivityAt: 'desc' },
+          take: QUEUE_SIZE,
+          include,
+        })
+      : await this.openFirst(include);
+    return tickets.map((t) => this.presentTicket(t));
+  }
+
+  private async openFirst(include: {
+    messages: { orderBy: { createdAt: 'asc' } };
+    clientAccount: { select: { id: true; suspendedAt: true } };
+  }) {
+    const open = await this.prisma.supportTicket.findMany({
+      where: { status: 'open' },
       orderBy: { lastActivityAt: 'desc' },
-      take: 200,
-      include: {
-        messages: { orderBy: { createdAt: 'asc' } },
-        clientAccount: { select: { id: true, suspendedAt: true } },
-      },
+      take: QUEUE_SIZE,
+      include,
     });
-    // Esperando resposta primeiro
-    const order: Record<string, number> = { open: 0, answered: 1, closed: 2 };
-    return tickets
-      .sort((a, b) => order[a.status] - order[b.status])
-      .map((t) => ({
-        id: t.id,
-        createdAt: t.createdAt,
-        lastActivityAt: t.lastActivityAt,
-        status: t.status,
-        category: t.category,
-        subject: t.subject,
-        name: t.name,
-        email: t.email,
-        fromStaff: t.userId != null,
-        clientAccountId: t.clientAccount?.id ?? null,
-        clientSuspended: !!t.clientAccount?.suspendedAt,
-        messages: t.messages.map((m) => ({
-          id: m.id,
-          createdAt: m.createdAt,
-          side: m.side,
-          body: m.body,
-        })),
-      }));
+    const restTake = QUEUE_SIZE - open.length;
+    if (restTake <= 0) return open;
+    const rest = await this.prisma.supportTicket.findMany({
+      where: { status: { in: ['answered', 'closed'] } },
+      orderBy: { lastActivityAt: 'desc' },
+      take: restTake,
+      include,
+    });
+    const rank: Record<string, number> = { answered: 0, closed: 1 };
+    rest.sort(
+      (a, b) => rank[a.status] - rank[b.status] || b.lastActivityAt.getTime() - a.lastActivityAt.getTime(),
+    );
+    return [...open, ...rest];
+  }
+
+  private presentTicket(t: {
+    id: number;
+    createdAt: Date;
+    lastActivityAt: Date;
+    status: string;
+    category: string;
+    subject: string;
+    name: string;
+    email: string;
+    userId: number | null;
+    clientAccount: { id: number; suspendedAt: Date | null } | null;
+    messages: { id: number; createdAt: Date; side: string; body: string }[];
+  }) {
+    return {
+      id: t.id,
+      createdAt: t.createdAt,
+      lastActivityAt: t.lastActivityAt,
+      status: t.status,
+      category: t.category,
+      subject: t.subject,
+      name: t.name,
+      email: t.email,
+      fromStaff: t.userId != null,
+      clientAccountId: t.clientAccount?.id ?? null,
+      clientSuspended: !!t.clientAccount?.suspendedAt,
+      messages: t.messages.map((m) => ({
+        id: m.id,
+        createdAt: m.createdAt,
+        side: m.side,
+        body: m.body,
+      })),
+    };
   }
 
   async answer(adminUserId: number, ticketId: number, body: string, close = false) {
@@ -235,8 +310,10 @@ export class SupportService {
         null,
         template,
         {
-          FullName: ticket.name.split(' ')[0],
-          Subject: ticket.subject,
+          // Confirmação não repete nome nem assunto: quem manda escolhe os dois,
+          // e o e-mail ia para qualquer endereço
+          FullName: received ? undefined : ticket.name.split(' ')[0],
+          Subject: received ? undefined : ticket.subject,
           Reply: reply,
           TicketURL: supportTicketUrl(ticket.id),
           TicketId: ticket.id,
@@ -265,7 +342,7 @@ export class SupportService {
   }
 
   /** Sininho da equipe da plataforma (admin e quem da equipe tem a área Suporte) */
-  private async notifyAdmins(subject: string) {
+  private async notifyAdmins() {
     const admins = await this.prisma.user.findMany({
       where: {
         isActive: true,
@@ -285,7 +362,7 @@ export class SupportService {
       return {
         userId: u.id,
         title: text.title,
-        message: text.message(subject.slice(0, 80)),
+        message: text.message,
         type: NotificationType.INFO,
         actionUrl: `${backofficeUrl()}/support`,
       };
@@ -297,7 +374,7 @@ export class SupportService {
         admins.map((u) => u.id),
         (lang) => ({
           title: ADMIN_TEXT[lang].title,
-          body: ADMIN_TEXT[lang].message(subject.slice(0, 80)),
+          body: ADMIN_TEXT[lang].message,
           url: `${backofficeUrl()}/support`,
           tag: 'support',
         }),

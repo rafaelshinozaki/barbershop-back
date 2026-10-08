@@ -35,7 +35,7 @@ describe('Notificação no celular (integração)', () => {
 
   let userId: number;
   let clientId: number;
-  const endpoint = (label: string) => `https://push.example.com/${RUN}/${label}`;
+  const endpoint = (label: string) => `https://fcm.googleapis.com/fcm/send/${RUN}/${label}`;
   const sub = (label: string) => ({
     endpoint: endpoint(label),
     p256dh: 'p'.repeat(87),
@@ -89,6 +89,12 @@ describe('Notificação no celular (integração)', () => {
   it('inscreve por aparelho, no idioma do aparelho; expirada sai', async () => {
     await expect(
       push.subscribe({ userId }, { ...sub('x'), endpoint: 'http://inseguro' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      push.subscribe({ userId }, { ...sub('x'), endpoint: 'https://10.0.0.5/push' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      push.subscribe({ userId }, { ...sub('x'), endpoint: 'https://evil.example/push' }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await push.subscribe({ userId }, sub('pt'), { language: 'pt-BR' });
     await push.subscribe({ userId }, sub('en'), { language: 'en' });
