@@ -1200,3 +1200,42 @@ Achados numa revisão de código; ainda **não corrigidos**. Ordem: segurança e
 12. 🆕 **Agenda da franquia sempre de 8h às 20h**: a agenda da franquia usa o horário padrão em vez do horário de funcionamento das unidades. **Fazer:** usar o menor início e o maior fim entre as unidades mostradas.
 13. 🆕 **"Próximo horário livre" faz milhares de consultas** (`getPublicNextAvailableSlot`): calcula dia a dia e profissional a profissional, com consultas em laço. **Fazer:** buscar agendamentos, bloqueios e horários do período de uma vez e calcular em memória.
 14. 🆕 **Backoffice: transação interativa por escrita** (`barbershop-backoffice-back`): cada escrita abre uma transação interativa do Prisma, o que pesa no pool de conexões. **Fazer:** usar transação só onde há mais de uma escrita, ou `$transaction([...])` em lote.
+
+### Segunda rodada (2026-10-08)
+
+**Dinheiro e segurança**
+
+15. 🆕 **Aplicar cupom num pagamento pendente** (`PaymentsService.applyCouponToPayment` e `CouponsService.applyCoupon`, mutation `applyCoupon`):
+    - Muda só o valor no banco. A cobrança na Stripe continua com o valor cheio.
+    - Usa `registerUse`, sem a trava de `claimUse`. Cliques ao mesmo tempo passam do limite de usos e do "um por pessoa".
+    - Aceita outro cupom no mesmo pagamento. O desconto é calculado em cima do valor já descontado e `originalAmount` é sobrescrito.
+    - Com valor final 0, só marca o pagamento como pago, sem passar pelo fluxo que ativa ou renova o plano.
+    - **Fazer:** aplicar o cupom no checkout da Stripe (ou desativar a mutation), com `claimUse`, recusando pagamento que já tem `appliedCouponId`.
+16. 🆕 **Cancelar "este e os próximos" da série passa por cima do cargo** (`AppointmentSeriesService.cancelFromHere`): confere a permissão só para o profissional do horário clicado. Se um horário seguinte da série foi passado para outro profissional, um barbeiro cancela também o horário do colega. **Fazer:** filtrar os alvos pelos profissionais que a pessoa pode mexer, ou conferir cada um.
+17. 🆕 **Links de gerenciar e de avaliar não vencem** (`appointment-link.ts`): o token é só o id assinado, sem validade e sem como revogar. Um e-mail antigo encaminhado dá acesso ao chat do atendimento e deixa mudar a avaliação anos depois. **Fazer:** colocar validade (ex.: chat até X dias depois do atendimento, avaliação até 30 dias) e uma versão para invalidar.
+18. 🆕 **Token da Página do Facebook em texto puro** (`SocialConnection.facebookAccessToken`): fica legível no banco e em backups. **Fazer:** criptografar em repouso, como os outros segredos.
+
+**Equipe e convites**
+
+19. 🆕 **Remover da equipe não cancela o convite pendente** (`BarbershopService.deleteBarber`):
+    - Só faz `isActive: false`.
+    - O convite continua `PENDING`: convidar a mesma pessoa de novo esbarra em "Já existe um convite pendente". E o link antigo ainda é aceito, ligando a conta a um vínculo desativado.
+    - Os horários futuros do profissional removido ficam na agenda sem aviso a ninguém.
+    - **Fazer:** cancelar os convites pendentes do vínculo ao remover, recusar convite cujo `Barber` está inativo e avisar (ou pedir para remanejar) os horários futuros.
+20. 🆕 **Documento no aceite do convite** (`EmployeeInviteService.acceptInvite`):
+    - Aplica a máscara de CPF em qualquer país.
+    - A checagem de duplicado compara o número cru com o salvo (que no convite fica com máscara e no cadastro normal fica como foi digitado). Então o mesmo CPF passa duas vezes.
+    - **Fazer:** normalizar o documento (só dígitos, por país) num lugar só, para salvar e para comparar.
+21. 🆕 **Aceite do convite fora de transação e em português fixo** (`acceptInvite`):
+    - Cria usuário, endereço, configuração, preferências e o vínculo em passos separados. Se um passo falha no meio, a conta fica criada e o convite pendente; tentar de novo dá "Já existe uma conta com estes dados".
+    - O idioma da conta nova é sempre `pt`, mesmo em unidade do México ou dos EUA.
+    - **Fazer:** uma transação e o idioma pelo país da unidade (`langForCountry`).
+
+**Avaliações e redes sociais**
+
+22. 🆕 **Editar a avaliação mantém a resposta antiga** (`ReviewRequestService.submitReview`): o cliente troca a nota e o texto pelo link, e a resposta pública da unidade continua lá, respondendo a um texto que não existe mais. Também não volta para moderação se tinha sido denunciada. **Fazer:** ao mudar o texto, limpar `reportedAt` e marcar a resposta como "respondeu à versão anterior" (ou avisar a unidade).
+23. 🆕 **Conectar o Facebook pega sempre a primeira Página** (`SocialService.handleOAuthCallback`): quem administra várias Páginas não escolhe qual, e o post pode sair na Página errada. A volta do OAuth também não confere se a pessoa ainda é gerente da unidade. **Fazer:** tela para escolher a Página e conferir o acesso na volta.
+
+**Limpeza**
+
+24. 🆕 **Checagens mortas no login** (`jwt.strategy.ts`): `validate(payload, req)` espera o request, mas a estratégia não liga `passReqToCallback`. Então `req.cookies` nunca existe e a lista negra de tokens (`isTokenInvalidated`) e a checagem por `updatedAt` nunca rodam. Hoje quem revoga é a `ActiveSession`, então nada quebra. Mas ligar `passReqToCallback` sem cuidado faria qualquer `user.update` derrubar todas as sessões, inclusive a atual. **Fazer:** apagar o código morto (e a tabela `InvalidatedToken`, se não tiver outro uso) ou trocar por um campo próprio (`sessionsRevokedAt`).
