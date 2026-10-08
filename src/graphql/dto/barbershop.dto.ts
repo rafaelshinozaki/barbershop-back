@@ -1,4 +1,5 @@
 import { InputType, Field, Int, Float } from '@nestjs/graphql';
+import { IsInt, IsOptional, Min } from 'class-validator';
 import { TreatmentCategory } from '../types/enums';
 
 // ============ Barbershop ============
@@ -841,9 +842,12 @@ export class CreateServicePackageInput {
   name: string;
 
   @Field(() => Int)
+  @IsInt()
+  @Min(1)
   totalSessions: number;
 
   @Field(() => Float)
+  @Min(0)
   price: number;
 }
 
@@ -853,9 +857,14 @@ export class UpdateServicePackageInput {
   name?: string;
 
   @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   totalSessions?: number;
 
   @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @Min(0)
   price?: number;
 
   @Field({ nullable: true })
@@ -881,9 +890,13 @@ export class CreateSubscriptionPlanInput {
   name: string;
 
   @Field(() => Float)
+  @Min(0)
   price: number;
 
   @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   sessionsPerCycle?: number;
 }
 
@@ -893,9 +906,14 @@ export class UpdateSubscriptionPlanInput {
   name?: string;
 
   @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @Min(0)
   price?: number;
 
   @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   sessionsPerCycle?: number;
 
   @Field({ nullable: true })

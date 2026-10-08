@@ -297,6 +297,83 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.sale.delete({ where: { id: own.id } });
     });
 
+    it('pacote e plano recusam sessão zero ou preço negativo', async () => {
+      await expect(
+        service.createServicePackage(A.ownerId, A.shopId, {
+          serviceId: A.serviceId,
+          name: 'Pacote vazio',
+          totalSessions: 0,
+          price: 10,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.createSubscriptionPlan(A.ownerId, A.shopId, {
+          serviceId: A.serviceId,
+          name: 'Plano negativo',
+          price: -5,
+          sessionsPerCycle: 0,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('editar a venda acerta estoque e pontos', async () => {
+      const product = await prisma.barbershopProduct.create({
+        data: {
+          barbershopId: A.shopId,
+          name: `Pomada ${RUN}`,
+          salePrice: new Decimal(20),
+        },
+      });
+      await prisma.inventoryItem.create({
+        data: { barbershopId: A.shopId, productId: product.id, quantity: 10 },
+      });
+      const before = (
+        await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } })
+      ).loyaltyPoints;
+      const item = (quantity: number, total: number) => ({
+        itemType: 'PRODUCT',
+        productId: product.id,
+        quantity,
+        unitPrice: 20,
+        totalPrice: total,
+      });
+      const sale = await service.createSale(A.ownerId, A.shopId, {
+        customerId: A.customerId,
+        saleType: 'PRODUCT',
+        items: [item(2, 40)],
+        subtotal: 40,
+        total: 40,
+        paymentStatus: 'PAID',
+      });
+      expect(Number((await stock()).quantity)).toBe(8);
+      expect(await points()).toBe(before + 40);
+
+      await service.updateSale(A.ownerId, A.shopId, sale.id, {
+        items: [item(1, 20)],
+        subtotal: 20,
+        total: 20,
+      });
+      expect(Number((await stock()).quantity)).toBe(9);
+      expect(await points()).toBe(before + 20);
+      expect(
+        (await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } })).loyaltyPointsEarned,
+      ).toBe(20);
+
+      await service.updateSale(A.ownerId, A.shopId, sale.id, { paymentStatus: 'PENDING' });
+      expect(await points()).toBe(before);
+      expect(Number((await stock()).quantity)).toBe(9);
+
+      async function stock() {
+        return prisma.inventoryItem.findUniqueOrThrow({
+          where: { barbershopId_productId: { barbershopId: A.shopId, productId: product.id } },
+        });
+      }
+      async function points() {
+        return (await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } }))
+          .loyaltyPoints;
+      }
+    });
+
     it('fila de espera: não põe cliente de outra franquia nem mexe na fila de outra unidade', async () => {
       const walkIn = (customerId: number, barberId?: number) =>
         service.createWalkIn(A.ownerId, A.shopId, {

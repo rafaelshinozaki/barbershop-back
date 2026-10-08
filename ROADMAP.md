@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–7 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–10 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1190,9 +1190,9 @@ Achados numa revisão de código. Itens 1–7 corrigidos. O restante segue 🆕.
 ### Regras e dados errados
 
 7. ✅ **Chamados abertos antigos somem da fila** (`support.service.ts`, `queue()`): pega os 200 mais recentes por `lastActivityAt` e só depois põe os abertos na frente. Um chamado aberto antigo some da fila padrão. **Feito:** a fila padrão busca os abertos no banco antes de completar com respondidos e fechados.
-8. 🆕 **Candidaturas presas em "pendente"** (`job-opening.service.ts`): quando as vagas enchem, as candidaturas que sobraram ficam pendentes para sempre, sem aviso, e contam no limite `MAX_PENDING_PER_USER = 20`. **Fazer:** ao preencher a última vaga (ou fechar a vaga), recusar as pendentes e avisar quem se candidatou.
-9. 🆕 **Pacotes e planos aceitam valores zerados ou negativos** (`barbershop.service.ts`): pacotes de serviço e planos de assinatura não validam `totalSessions`, `sessionsPerCycle` nem preço. Dá para criar um plano que cobra todo mês e nunca pode ser usado. **Fazer:** validar no DTO e no service (sessões ≥ 1, preço ≥ 0) e testar.
-10. 🆕 **Venda editada não acerta estoque nem pontos** (`updateSale`): mudar itens ou o status do pagamento não devolve nem baixa estoque e não ajusta os pontos de fidelidade. **Fazer:** recalcular a diferença de itens e pontos dentro da mesma transação.
+8. ✅ **Candidaturas presas em "pendente"** (`job-opening.service.ts`): quando as vagas enchem, as candidaturas que sobraram ficam pendentes para sempre, sem aviso, e contam no limite `MAX_PENDING_PER_USER = 20`. **Feito:** ao preencher a última vaga, as pendentes são recusadas e quem se candidatou é avisado. Encerrar a vaga já fazia isso.
+9. ✅ **Pacotes e planos aceitam valores zerados ou negativos** (`barbershop.service.ts`): pacotes de serviço e planos de assinatura não validam `totalSessions`, `sessionsPerCycle` nem preço. Dá para criar um plano que cobra todo mês e nunca pode ser usado. **Feito:** sessões pelo menos 1 e preço a partir de zero, no DTO e no service.
+10. ✅ **Venda editada não acerta estoque nem pontos** (`updateSale`): mudar itens ou o status do pagamento não devolve nem baixa estoque e não ajusta os pontos de fidelidade. **Feito:** na mesma transação, a diferença de produtos mexe no estoque e os pontos acompanham o total, o cliente e se a venda está paga.
 
 ### Idioma, fuso e desempenho
 

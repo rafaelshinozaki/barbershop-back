@@ -271,6 +271,36 @@ function checkMoney(label: string, value: number | null | undefined) {
     throw new BadRequestException(`${label} inválido`);
   }
 }
+/** Sessões de pacote ou de plano: pelo menos 1. Zero cobraria sem poder usar. */
+function checkSessionCount(label: string, value: number | null | undefined) {
+  if (value == null) return;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new BadRequestException(`${label} precisa ser pelo menos 1`);
+  }
+}
+
+function productQuantities(
+  items: Array<{ itemType: string; productId?: number | null; quantity: number }>,
+) {
+  const qty = new Map<number, number>();
+  for (const item of items) {
+    if (item.itemType !== 'PRODUCT' || !item.productId) continue;
+    qty.set(item.productId, (qty.get(item.productId) ?? 0) + item.quantity);
+  }
+  return qty;
+}
+
+function loyaltyEarnedFor(
+  network: { loyaltyEnabled: boolean; loyaltyPointsPerCurrencyUnit: number | null },
+  paymentStatus: string,
+  total: number,
+  customerId: number | null,
+) {
+  if (paymentStatus !== 'PAID' || !customerId || !network.loyaltyEnabled) return 0;
+  const perUnit = network.loyaltyPointsPerCurrencyUnit ?? 0;
+  if (perUnit <= 0) return 0;
+  return Math.floor(total * perUnit);
+}
 function checkSaleAmounts(data: {
   subtotal?: number;
   discountAmount?: number;
@@ -5868,6 +5898,8 @@ export class BarbershopService {
     data: { serviceId: number; name: string; price: number; sessionsPerCycle?: number },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkMoney('Preço', data.price);
+    checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
     await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
@@ -5911,6 +5943,8 @@ export class BarbershopService {
       where: { id, barbershopId },
     });
     if (!plan) throw new NotFoundException('Plano não encontrado');
+    checkMoney('Preço', data.price);
+    checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
 
     let stripePriceId = plan.stripePriceId;
     // Stripe Price é imutável — se o valor mudou, cria um Price novo e
@@ -6671,6 +6705,58 @@ export class BarbershopService {
     }));
   }
 
+  /**
+   * Diferença de produtos entre a venda antiga e a nova. Vender mais baixa
+   * o estoque; tirar item devolve. O movimento fica ligado à mesma venda.
+   */
+  private async applySaleStockDelta(
+    tx: Prisma.TransactionClient,
+    barbershopId: number,
+    saleId: number,
+    before: Array<{ itemType: string; productId: number | null; quantity: number }>,
+    after: Array<{ itemType: string; productId?: number; quantity: number }>,
+  ) {
+    const oldQty = productQuantities(before);
+    const newQty = productQuantities(after);
+    for (const productId of new Set([...oldQty.keys(), ...newQty.keys()])) {
+      const deltaSold = (newQty.get(productId) ?? 0) - (oldQty.get(productId) ?? 0);
+      if (deltaSold === 0) continue;
+      const product = await tx.barbershopProduct.findUnique({ where: { id: productId } });
+      if (!product) continue;
+      const existing = await tx.inventoryItem.findUnique({
+        where: { barbershopId_productId: { barbershopId, productId } },
+      });
+      const quantityBefore = existing ? Number(existing.quantity) : 0;
+      const quantityChange = -deltaSold;
+      const quantityAfter = quantityBefore + quantityChange;
+      const inventoryItem = existing
+        ? await tx.inventoryItem.update({
+            where: { id: existing.id },
+            data: { quantity: quantityAfter },
+          })
+        : await tx.inventoryItem.create({
+            data: {
+              barbershopId,
+              productId,
+              quantity: quantityAfter,
+              unit: product.unit,
+            },
+          });
+      await tx.inventoryMovement.create({
+        data: {
+          inventoryItemId: inventoryItem.id,
+          movementType: 'SALE',
+          quantityChange,
+          quantityBefore,
+          quantityAfter,
+          referenceType: 'SALE',
+          referenceId: String(saleId),
+          notes: 'Venda editada',
+        },
+      });
+    }
+  }
+
   async updateSale(
     userId: number,
     barbershopId: number,
@@ -6745,9 +6831,43 @@ export class BarbershopService {
       }
       if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
 
+      const nextStatus = data.paymentStatus ?? existing.paymentStatus;
+      const nextTotal = data.total !== undefined ? data.total : Number(existing.total);
+      const nextCustomerId =
+        data.customerId !== undefined ? data.customerId : existing.customerId;
+      const nextEarned = loyaltyEarnedFor(
+        barbershop.network,
+        nextStatus,
+        nextTotal,
+        nextCustomerId,
+      );
+      const prevEarned = existing.loyaltyPointsEarned ?? 0;
+      updateData.loyaltyPointsEarned = nextEarned || null;
+
       await tx.sale.update({ where: { id: saleId }, data: updateData });
 
+      if (existing.customerId && existing.customerId !== nextCustomerId && prevEarned) {
+        await tx.customer.update({
+          where: { id: existing.customerId },
+          data: { loyaltyPoints: { decrement: prevEarned } },
+        });
+      }
+      if (nextCustomerId) {
+        const delta =
+          nextCustomerId === existing.customerId ? nextEarned - prevEarned : nextEarned;
+        if (delta !== 0) {
+          await tx.customer.update({
+            where: { id: nextCustomerId },
+            data: { loyaltyPoints: { increment: delta } },
+          });
+        }
+      }
+
       if (data.items) {
+        const previous = await tx.saleItem.findMany({
+          where: { saleId },
+          select: { itemType: true, productId: true, quantity: true },
+        });
         await tx.saleItem.deleteMany({ where: { saleId } });
         await tx.saleItem.createMany({
           data: data.items.map((item) => ({
@@ -6762,6 +6882,7 @@ export class BarbershopService {
             notes: item.notes,
           })),
         });
+        await this.applySaleStockDelta(tx, barbershopId, saleId, previous, data.items);
       }
 
       return tx.sale.findUnique({
@@ -7144,6 +7265,8 @@ export class BarbershopService {
     data: { serviceId: number; name: string; totalSessions: number; price: number },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkMoney('Preço', data.price);
+    checkSessionCount('Sessões', data.totalSessions);
     await this.ensureModuleAccess(barbershopId, 'packages');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
@@ -7171,6 +7294,8 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
+    checkMoney('Preço', data.price);
+    checkSessionCount('Sessões', data.totalSessions);
     const { price, ...rest } = data;
     const updated = await this.prisma.servicePackage.update({
       where: { id },

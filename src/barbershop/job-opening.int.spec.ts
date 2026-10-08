@@ -215,6 +215,21 @@ describe('Vagas para freelancer (integração)', () => {
     expect((await jobs.myApplications(proId))[0]).toMatchObject({ status: 'accepted' });
   });
 
+  it('preencher a última vaga recusa quem ainda esperava e avisa', async () => {
+    const job = await opening({ title: 'Uma vaga só', slots: 1 });
+    const winner = await jobs.apply(pro2Id, job.id);
+    const leftover = await jobs.apply(pro3Id, job.id);
+    const after = await jobs.accept(ownerId, shopId, winner.id);
+    expect(after.status).toBe('filled');
+    expect(
+      (await prisma.jobApplication.findUniqueOrThrow({ where: { id: leftover.id } })).status,
+    ).toBe('rejected');
+    expect((await notificationsOf(pro3Id)).map((n) => n.title)).toContain('Vaga preenchida');
+    expect((await jobs.myApplications(pro3Id)).find((a) => a.id === leftover.id)?.status).toBe(
+      'rejected',
+    );
+  });
+
   it('desistir e se candidatar de novo; recusar avisa; encerrar recusa quem esperava', async () => {
     const job = await opening({ title: 'Manicure para a semana', category: null, slots: 2 });
     const a = await jobs.apply(pro2Id, job.id);

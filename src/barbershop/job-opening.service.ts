@@ -470,6 +470,11 @@ export class JobOpeningService {
         where: { id: opening.id },
         data: { status: 'filled' },
       });
+      await this.rejectPending(
+        opening.id,
+        'Vaga preenchida',
+        `A vaga "${opening.title}" foi preenchida.`,
+      );
     }
     await this.notify(
       [application.userId],
@@ -653,6 +658,25 @@ export class JobOpeningService {
       ...(shop?.barbers.map((b) => b.userId) ?? []),
     ].filter((id): id is number => typeof id === 'number');
     return [...new Set(ids)];
+  }
+
+  /** Quem ainda esperava resposta: recusa e avisa (vaga preenchida ou encerrada). */
+  private async rejectPending(openingId: number, title: string, message: string) {
+    const pending = await this.prisma.jobApplication.findMany({
+      where: { jobOpeningId: openingId, status: 'pending' },
+      select: { userId: true },
+    });
+    if (!pending.length) return;
+    await this.prisma.jobApplication.updateMany({
+      where: { jobOpeningId: openingId, status: 'pending' },
+      data: { status: 'rejected', decidedAt: new Date() },
+    });
+    await this.notify(
+      pending.map((a) => a.userId),
+      title,
+      message,
+      '/jobs',
+    );
   }
 
   private async notify(userIds: number[], title: string, message: string, actionUrl: string) {
