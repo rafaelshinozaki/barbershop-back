@@ -1239,3 +1239,20 @@ Achados numa revisão de código; ainda **não corrigidos**. Ordem: segurança e
 **Limpeza**
 
 24. 🆕 **Checagens mortas no login** (`jwt.strategy.ts`): `validate(payload, req)` espera o request, mas a estratégia não liga `passReqToCallback`. Então `req.cookies` nunca existe e a lista negra de tokens (`isTokenInvalidated`) e a checagem por `updatedAt` nunca rodam. Hoje quem revoga é a `ActiveSession`, então nada quebra. Mas ligar `passReqToCallback` sem cuidado faria qualquer `user.update` derrubar todas as sessões, inclusive a atual. **Fazer:** apagar o código morto (e a tabela `InvalidatedToken`, se não tiver outro uso) ou trocar por um campo próprio (`sessionsRevokedAt`).
+
+### Terceira rodada (2026-10-08)
+
+**Convite de amigos (1 mês grátis)**
+
+25. 🆕 **O cupom de "1 mês grátis" não funciona para quem foi convidado** (`FriendInviteService.createFriendInviteCoupon`):
+    - O cupom é criado com `minSubscriptionMonths: 1`. Quem acabou de criar a conta não tem assinatura, e o `validateCoupon` recusa com "Cupom requer assinatura prévia".
+    - O cupom não fica ligado a ninguém: o `_userId` é ignorado e não se cria `UserCoupon`. Ele não aparece em "seus cupons" (`getCouponsForUser`), e qualquer um com o código usa.
+    - **Fazer:** tirar o mínimo de meses do cupom do amigo, criar o `UserCoupon` de cada um e só aceitar o código pela conta dona.
+26. 🆕 **Aceitar o convite duas vezes ao mesmo tempo** (`FriendInviteService.acceptInvite`): confere `status === 'PENDING'` e só grava depois. Dois cliques geram quatro cupons. **Fazer:** atualização condicional (`updateMany` com `status: 'PENDING'`) antes de criar os cupons, tudo numa transação.
+27. 🆕 **Convite de amigo como disparador de e-mail** (`POST /friend-invites`): sem limite próprio (só o geral de 300 por minuto por IP). O e-mail leva o nome da conta, que quem envia escolhe, para qualquer endereço. Também dá para criar contas em série e ganhar meses grátis. **Fazer:** limite por conta e por dia, só para conta com e-mail confirmado, e teto de recompensas por pessoa.
+
+**Privacidade e moderação**
+
+28. 🆕 **O profissional vê a nota que cada cliente deu a ele** (`CustomerRatingService.visitFeedback`): a lista mostra, atendimento por atendimento, as estrelas que o cliente deu ao profissional. Ao mesmo tempo, o profissional avalia o cliente. Dá para revidar uma nota baixa e o cliente perde a confiança de avaliar com sinceridade. **Fazer:** mostrar ao profissional só a média (ou só depois de os dois lados avaliarem, como no Airbnb), nunca a nota de cada cliente.
+29. 🆕 **Conta desativada continua com perfil público** (`CareerService.publicProfile`): só esconde se `Professional.suspendedAt`. O usuário desativado pela plataforma (`User.isActive = false`) continua com `/p/:slug` no ar, e provavelmente na busca. **Fazer:** tratar conta inativa como suspensa na página, na busca e no sitemap.
+30. 🆕 **Fila da moderação perde denúncias antigas** (`ModerationService.queue`): pega as últimas `QUEUE_REPORTS` denúncias de tudo e só depois agrupa. Um item com denúncia aberta antiga some da fila. Um item oculto cujas denúncias saíram da janela não aparece mais para ser restaurado. É o mesmo padrão do item 7 (fila do suporte). **Fazer:** buscar primeiro os itens com denúncia aberta ou ocultos (agrupando no banco) e paginar.
