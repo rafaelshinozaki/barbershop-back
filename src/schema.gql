@@ -180,40 +180,6 @@ type AdvancedReportsType {
   walkIns: Int!
 }
 
-input AppPaymentFilterInput {
-  barbershopId: Int
-  from: DateTime
-  kind: String
-  limit: Int
-  offset: Int
-  status: String
-  to: DateTime
-}
-
-type AppPaymentPageType {
-  amount: Float!
-  estimatedFee: Float!
-  feePercent: Float!
-  items: [AppPaymentType!]!
-  refunded: Float!
-  total: Int!
-}
-
-type AppPaymentType {
-  amount: Float!
-  appointmentId: Int!
-  barbershopId: Int!
-  barbershopName: String!
-  currency: String!
-  disputeReason: String
-  disputeStatus: String
-  id: Int!
-  kind: String!
-  paidAt: DateTime!
-  refundedAmount: Float!
-  status: String!
-}
-
 type AppTipGivenType {
   amount: Float!
 
@@ -390,36 +356,6 @@ type BackofficeApprovalType {
   summary: String!
 }
 
-type BackofficeAuditChangeType {
-  action: String!
-  barbershopId: Int
-  barbershopName: String
-  entityId: String!
-  entityName: String
-  entityType: String!
-  fields: [ChangeFieldType!]!
-}
-
-type BackofficeAuditEntryType {
-  actorEmail: String!
-  actorId: Int
-  actorRole: String!
-  area: String
-  args: String
-  changes: [BackofficeAuditChangeType!]!
-  createdAt: DateTime!
-  error: String
-  id: Int!
-  operation: String!
-  requestId: String
-  success: Boolean!
-}
-
-type BackofficeAuditPageType {
-  items: [BackofficeAuditEntryType!]!
-  total: Int!
-}
-
 type BackofficeDashboard {
   marketplaceMetrics: MarketplaceMetrics!
   planDistribution: PlanDistribution!
@@ -442,13 +378,6 @@ type BackofficePerson {
   role: String!
 }
 
-type BackofficeSearchHitType {
-  id: Int!
-  kind: String!
-  subtitle: String
-  title: String!
-}
-
 type BackofficeStats {
   activeUsers: Int!
   appointmentsToday: Int!
@@ -456,16 +385,6 @@ type BackofficeStats {
   revenue: Float!
   totalBarbershops: Int!
   totalUsers: Int!
-}
-
-type BackofficeTeamMemberType {
-  backofficeAreas: [String!]!
-  email: String!
-  fullName: String!
-  id: Int!
-  isActive: Boolean!
-  role: String!
-  twoFactorEnabled: Boolean!
 }
 
 type BackupStatusType {
@@ -636,35 +555,6 @@ type BarbershopCustomer {
   notes: String
   phone: String!
   updatedAt: String!
-}
-
-type BarbershopDossierType {
-  activeServices: Int!
-  appointments30d: Int!
-  businessType: String!
-  cancelled30d: Int!
-  city: String!
-  completed30d: Int!
-  createdAt: DateTime!
-  customers: Int!
-  featuredUntil: DateTime
-  hiddenFromSearch: Boolean!
-  id: Int!
-  isActive: Boolean!
-  name: String!
-  networkName: String
-  noShow30d: Int!
-  onlineDeposit: Boolean!
-  openReports: Int!
-  openSupportTickets: Int!
-  owner: DossierOwnerType
-  payments: DossierPaymentsType!
-  practiceKind: String!
-  reviewAverage: Float
-  reviewCount: Int!
-  slug: String!
-  state: String!
-  team: [DossierTeamMemberType!]!
 }
 
 type BarbershopPhotoType {
@@ -1270,6 +1160,9 @@ type ConsentFormType {
 }
 
 input ContactSupportInput {
+  """Token do reCAPTCHA, quando o servidor exige"""
+  captchaToken: String
+
   """account | booking | payment | safety | other"""
   category: String!
   email: String!
@@ -1730,29 +1623,6 @@ type DetailedUsersResponse {
   totalPages: Int!
 }
 
-type DossierOwnerType {
-  email: String!
-  fullName: String!
-  id: Int!
-  isActive: Boolean!
-  membership: String!
-  proUntil: DateTime
-}
-
-type DossierPaymentsType {
-  chargesEnabled: Boolean!
-  connected: Boolean!
-  payoutsEnabled: Boolean!
-}
-
-type DossierTeamMemberType {
-  hasAccount: Boolean!
-  id: Int!
-  isActive: Boolean!
-  name: String!
-  staffType: String
-}
-
 input EmailHistoryFilters {
   dateFrom: String
   dateTo: String
@@ -2209,7 +2079,6 @@ type Mutation {
   adjustInventory(barbershopId: Int!, input: AdjustInventoryInput!): InventoryItemType!
   adminDeleteUser(reason: String!, userId: Int!): ApprovalOutcomeType!
   adminRefundAppPayment(input: RefundAppPaymentInput!): ApprovalOutcomeType!
-  adminRevokeUserSessions(userId: Int!): Int!
   answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   applyToJobOpening(message: String, openingId: Int!): JobApplyResultType!
@@ -2228,6 +2097,7 @@ type Mutation {
   changePlan(planId: Int!): ChangePlanResponse!
   changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
+  chooseSocialPage(pageId: String!, token: String!): SocialConnectionType!
   claimProReferral(code: String!): ProReferralType!
   clientDeleteAccount(input: ClientDeleteAccountInput!): Boolean!
   clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
@@ -2317,7 +2187,6 @@ type Mutation {
   deleteReview(barbershopId: Int!): Boolean!
   deleteSale(barbershopId: Int!, id: Int!): Boolean!
   deleteServicePackage(barbershopId: Int!, id: Int!): Boolean!
-  chooseSocialPage(pageId: String!, token: String!): SocialConnectionType!
   deleteSocialPost(barbershopId: Int!, id: Int!): Boolean!
   deleteSubscriptionPlan(barbershopId: Int!, id: Int!): Boolean!
   disconnectSocialAccount(barbershopId: Int!): Boolean!
@@ -2400,7 +2269,6 @@ type Mutation {
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean! @deprecated(reason: "Use sendBackofficeEmail")
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
   setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
-  setBackofficeAreas(areas: [String!]!, userId: Int!): [String!]!
   setBarberAvatar(barberId: Int!, key: String): String
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
   setBarberWeeklySchedule(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [WeeklyScheduleDayType!]!
@@ -2930,27 +2798,6 @@ type PendingCustomerRatingType {
   startAt: DateTime!
 }
 
-type PilotCategoryMetricsType {
-  category: String!
-  evaluated: Int!
-  foundRate: Float
-  foundWithin48h: Int!
-  searches: Int!
-}
-
-type PilotMetricsType {
-  byCategory: [PilotCategoryMetricsType!]!
-  city: String
-  days: Int!
-  directBookings: Int!
-  evaluated: Int!
-  foundRate: Float
-  foundWithin48h: Int!
-  marketplaceBookings: Int!
-  marketplaceNewClients: Int!
-  searches: Int!
-}
-
 type Plan {
   billingCycle: String!
   createdAt: String!
@@ -3393,14 +3240,10 @@ input PushSubscriptionInput {
 type Query {
   accountDeletionPreview: AccountDeletionPreviewType!
   activeSessions(limit: Int! = 10, page: Int! = 1): PaginatedActiveSessions!
-  adminAppPayments(filter: AppPaymentFilterInput): AppPaymentPageType!
-  adminBarbershopChangeLog(barbershopId: Int!, limit: Int, offset: Int): ChangeLogPageType!
-  adminBarbershopDossier(barbershopId: Int!): BarbershopDossierType!
   adminBarbershops(query: String): [Barbershop!]!
   adminClientAccounts(search: String): [AdminClientAccountType!]!
   adminFeaturedPurchases(limit: Int): AdminFeaturedPurchasesType!
   adminProfessionals(query: String): [AdminProfessionalType!]!
-  adminUserDossier(userId: Int!): UserDossierType!
   advancedReports(barbershopId: Int!, from: String!, to: String!): AdvancedReportsType!
   allCompletedPayments(filters: CompletedPaymentsFilters!): PaginatedCompletedPayments!
   allCoupons: [Coupon!]!
@@ -3417,12 +3260,9 @@ type Query {
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
   backofficeApprovals(status: String): [BackofficeApprovalType!]!
   backofficeApprovalsPending: Int!
-  backofficeAuditLog(actorId: Int, limit: Int, offset: Int, operation: String): BackofficeAuditPageType!
   backofficeDashboard: BackofficeDashboard!
   backofficePeople(limit: Int, name: String, page: Int, role: String): BackofficePeopleResponse!
-  backofficeSearch(text: String!): [BackofficeSearchHitType!]!
   backofficeStats: BackofficeStats!
-  backofficeTeam: [BackofficeTeamMemberType!]!
   backupStatus: BackupStatusType!
   barberPayPreview(barberId: Int!, barbershopId: Int!, from: String!, to: String!): PayrollPreviewType!
   barberPayStatement(barberId: Int, barbershopId: Int!): BarberPayStatementType!
@@ -3550,7 +3390,7 @@ type Query {
   openJobOpenings(category: TreatmentCategory, city: String): [JobOpeningType!]!
   overduePayments: [Payment!]!
   payrollOverview(barbershopId: Int!, from: String!, to: String!): PayrollOverviewType!
-  pilotMetrics(city: String, days: Int): PilotMetricsType!
+  pendingSocialPages(token: String!): [SocialPageOptionType!]!
   planDistribution: PlanDistribution!
   platformPricing: PricingType!
   previewMarketingSegment(barbershopId: Int!, inactiveDays: Int, segment: String!): MarketingSegmentPreviewType!
@@ -3574,7 +3414,6 @@ type Query {
   searchProfessionals(input: SearchProfessionalsInput!): [PublicProfessionalSearchResultType!]!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   sharedLocation(barbershopId: Int!): SharedLocationOverviewType!
-  pendingSocialPages(token: String!): [SocialPageOptionType!]!
   socialConnection(barbershopId: Int!): SocialConnectionType
   socialPosts(barbershopId: Int!): [SocialPostType!]!
   statusDistribution: StatusDistribution!
@@ -3928,15 +3767,15 @@ input SignConsentFormInput {
   signatureName: String!
 }
 
-type SocialPageOptionType {
-  id: String!
-  name: String!
-}
-
 type SocialConnectionType {
   connectedAt: String!
   facebookPageName: String!
   instagramUsername: String
+}
+
+type SocialPageOptionType {
+  id: String!
+  name: String!
 }
 
 type SocialPostType {
@@ -4527,68 +4366,6 @@ input UserAddressInput {
   state: String!
   street: String!
   zipcode: String!
-}
-
-type UserDossierFinanceType {
-  currentPeriodEnd: DateTime
-  membership: String!
-  payments: [UserDossierPaymentType!]!
-  planName: String
-  proUntil: DateTime
-  subscriptionStatus: String
-}
-
-type UserDossierPaymentType {
-  amount: Float!
-  id: Int!
-  paymentDate: DateTime!
-  status: String!
-}
-
-type UserDossierSessionType {
-  browser: String!
-  createdAt: DateTime!
-  deviceType: String!
-  id: Int!
-  location: String!
-  os: String!
-}
-
-type UserDossierTicketType {
-  category: String!
-  id: Int!
-  lastActivityAt: DateTime!
-  status: String!
-  subject: String!
-}
-
-type UserDossierType {
-  clientAccountId: Int
-  clientSuspended: Boolean!
-  createdAt: DateTime!
-  email: String!
-  finance: UserDossierFinanceType
-  fullName: String!
-  id: Int!
-  isActive: Boolean!
-  logins: [UserDossierSessionType!]!
-  phone: String!
-  provider: String!
-  role: String!
-  sessions: [UserDossierSessionType!]!
-  supportTickets: [UserDossierTicketType!]!
-  twoFactorEnabled: Boolean!
-  units: [UserDossierUnitType!]!
-}
-
-type UserDossierUnitType {
-  accessEndsAt: DateTime
-  city: String!
-  id: Int!
-  isActive: Boolean!
-  name: String!
-  relation: String!
-  staffType: String
 }
 
 type UserGrowthData {

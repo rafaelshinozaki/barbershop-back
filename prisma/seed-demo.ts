@@ -11,6 +11,7 @@ import { Prisma, PrismaClient, TreatmentCategory } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import * as bcrypt from 'bcryptjs';
 import { DEFAULT_PRICING, PLATFORM_CURRENCY } from '../src/pricing/pricing';
+import { extendProUntil } from '../src/barbershop/pro';
 import { must } from '../src/common/must';
 
 const SEED_PASSWORD = bcrypt.hashSync('pwned', 10);
@@ -452,7 +453,14 @@ async function ensureClientAccounts(prisma: PrismaClient) {
     let account = await prisma.clientAccount.findUnique({ where: { email: c.email } });
     if (!account) {
       console.log(`Creating client account ${c.email}...`);
-      account = await prisma.clientAccount.create({ data: { ...c, password: SEED_PASSWORD } });
+      account = await prisma.clientAccount.create({
+        data: { ...c, password: SEED_PASSWORD, emailVerifiedAt: new Date() },
+      });
+    } else if (!account.emailVerifiedAt) {
+      account = await prisma.clientAccount.update({
+        where: { id: account.id },
+        data: { emailVerifiedAt: new Date() },
+      });
     }
     accounts.push(account);
   }
@@ -2325,7 +2333,7 @@ async function ensureNewFeatures(prisma: PrismaClient) {
       });
     }
     const spammer = await prisma.customer.findFirst({
-      where: { networkId: green.networkId },
+      where: { networkId: green.networkId, reviews: { none: { barbershopId: shopId } } },
       orderBy: { id: 'desc' },
     });
     if (spammer) {
@@ -2587,6 +2595,605 @@ async function ensureMarketplace(prisma: PrismaClient) {
   }
 }
 
+// Conversas presas ao atendimento: cliente–unidade (dono, gerência e recepção)
+// e cliente–profissional (só quem atende). Idempotente: se a unidade já tem
+// alguma conversa, não cria de novo.
+async function ensureChats(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green?.ownerUserId) return;
+  if (await prisma.chatThread.count({ where: { barbershopId: green.id } })) return;
+
+  // A operação da unidade pode ter sido semeada antes das contas de cliente.
+  // Liga pelo nome pra a área do cliente achar a conversa.
+  for (const c of CLIENT_ACCOUNTS) {
+    const account = await prisma.clientAccount.findUnique({ where: { email: c.email } });
+    if (!account) continue;
+    await prisma.customer.updateMany({
+      where: { networkId: green.networkId, name: c.name, clientAccountId: null },
+      data: { clientAccountId: account.id },
+    });
+  }
+
+  const pick = async (customerName: string, barberName?: string) => {
+    const where = {
+      barbershopId: green.id,
+      status: { in: ['CONFIRMED', 'COMPLETED'] },
+      customer: {
+        networkId: green.networkId,
+        name: customerName,
+        clientAccountId: { not: null },
+      },
+      barber: barberName ? { name: barberName, userId: { not: null } } : { userId: { not: null } },
+    };
+    return (
+      (await prisma.appointment.findFirst({
+        where: { ...where, startAt: { gte: new Date() } },
+        orderBy: { startAt: 'asc' },
+        include: { barber: true, customer: true },
+      })) ??
+      (await prisma.appointment.findFirst({
+        where,
+        orderBy: { startAt: 'desc' },
+        include: { barber: true, customer: true },
+      }))
+    );
+  };
+
+  const lucas = await pick('Lucas Ferreira', 'Cayo Carlos');
+  const mariana =
+    (await pick('Mariana Costa', 'Minion Cayo')) ?? (await pick('Lucas Ferreira', 'Minion Cayo'));
+  if (!lucas && !mariana) {
+    console.log('Chats: no appointment with a client account, skipping...');
+    return;
+  }
+
+  console.log('Chats: unit and professional threads...');
+  const open = async (
+    appt: NonNullable<typeof lucas>,
+    kind: 'unit' | 'professional',
+    staffReadAt: Date | null,
+    clientReadAt: Date | null,
+    messages: { side: 'client' | 'staff'; at: Date; body: string }[],
+  ) => {
+    const last = messages[messages.length - 1];
+    await prisma.chatThread.create({
+      data: {
+        appointmentId: appt.id,
+        kind,
+        barbershopId: green.id,
+        customerId: appt.customerId,
+        barberId: kind === 'professional' ? appt.barberId : null,
+        lastMessageAt: last.at,
+        staffReadAt,
+        clientReadAt,
+        messages: {
+          create: messages.map((m) => ({
+            createdAt: m.at,
+            senderSide: m.side,
+            senderUserId: m.side === 'staff' ? (kind === 'professional' ? appt.barber.userId : green.ownerUserId) : null,
+            body: m.body,
+          })),
+        },
+      },
+    });
+  };
+
+  if (lucas) {
+    const asked = atBrt(-1, 16, 10);
+    const answered = atBrt(-1, 16, 25);
+    const onTheWay = atBrt(0, 9, 5);
+    await open(lucas, 'unit', answered, onTheWay, [
+      { side: 'client', at: asked, body: 'Oi, consigo chegar uns 10 minutos antes?' },
+      { side: 'staff', at: answered, body: 'Pode sim, a cadeira está livre nesse horário.' },
+      { side: 'client', at: onTheWay, body: 'Beleza, já saí de casa.' },
+    ]);
+    const wanted = atBrt(-2, 19);
+    const noted = atBrt(-2, 19, 20);
+    await open(lucas, 'professional', noted, wanted, [
+      { side: 'client', at: wanted, body: 'Queria o degradê mais baixo nas laterais, como da última vez.' },
+      { side: 'staff', at: noted, body: 'Fechado. Deixo a tesoura no topo e a máquina baixa na lateral.' },
+    ]);
+  }
+
+  if (mariana && mariana.id !== lucas?.id) {
+    const asked = atBrt(-1, 11);
+    const answered = atBrt(-1, 11, 40);
+    await open(mariana, 'professional', answered, asked, [
+      { side: 'client', at: asked, body: 'Hoje pode ser só a barba?' },
+      { side: 'staff', at: answered, body: 'Pode. Chega no horário que está marcado.' },
+    ]);
+    const parking = atBrt(0, 8, 20);
+    await open(mariana, 'unit', null, parking, [
+      { side: 'client', at: parking, body: 'Tem estacionamento na porta?' },
+    ]);
+  }
+}
+
+// Avaliação dos dois lados num atendimento concluído: o cliente nota o
+// profissional (texto e, numa delas, resposta) e a equipe nota o cliente
+// (pontualidade e trato, sem texto). Idempotente.
+async function ensureMutualRatings(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green?.ownerUserId) return;
+  if (await prisma.professionalReview.count({ where: { barbershopId: green.id } })) return;
+
+  const samples: {
+    customer: string;
+    barber: string;
+    rating: number;
+    comment: string;
+    reply?: string;
+    punctuality: number;
+    treatment: number;
+  }[] = [
+    {
+      customer: 'Lucas Ferreira',
+      barber: 'Cayo Carlos',
+      rating: 5,
+      comment: 'Corte exatamente como pedi. O degradê ficou baixo na medida.',
+      reply: 'Valeu, Lucas! Semana que vem a gente mantém esse desenho.',
+      punctuality: 5,
+      treatment: 5,
+    },
+    {
+      customer: 'Mariana Costa',
+      barber: 'Minion Cayo',
+      rating: 4,
+      comment: 'Barba bem feita, só achei que demorou um pouco pra chamar.',
+      punctuality: 4,
+      treatment: 5,
+    },
+    {
+      customer: 'Lucas Ferreira',
+      barber: 'Minion Cayo',
+      rating: 5,
+      comment: 'Atendimento calmo e o acabamento da barba ficou ótimo.',
+      punctuality: 3,
+      treatment: 5,
+    },
+  ];
+
+  let created = 0;
+  for (const sample of samples) {
+    const appt = await prisma.appointment.findFirst({
+      where: {
+        barbershopId: green.id,
+        status: 'COMPLETED',
+        customer: { networkId: green.networkId, name: sample.customer },
+        barber: { name: sample.barber, userId: { not: null } },
+      },
+      orderBy: { startAt: 'desc' },
+      include: { barber: true },
+    });
+    const raterUserId = appt?.barber.userId;
+    if (!appt || !raterUserId) continue;
+    const at = addMinutes(appt.endAt, 40);
+    await prisma.professionalReview.create({
+      data: {
+        appointmentId: appt.id,
+        barberId: appt.barberId,
+        barbershopId: green.id,
+        professionalId: appt.barber.professionalId,
+        customerId: appt.customerId,
+        rating: sample.rating,
+        comment: sample.comment,
+        createdAt: at,
+        ...(sample.reply
+          ? { reply: sample.reply, repliedAt: addMinutes(at, 180) }
+          : {}),
+      },
+    });
+    await prisma.customerRating.createMany({
+      data: [
+        {
+          appointmentId: appt.id,
+          side: 'professional',
+          barbershopId: green.id,
+          customerId: appt.customerId,
+          raterUserId,
+          punctuality: sample.punctuality,
+          treatment: sample.treatment,
+          createdAt: addMinutes(at, 5),
+        },
+        {
+          appointmentId: appt.id,
+          side: 'unit',
+          barbershopId: green.id,
+          customerId: appt.customerId,
+          raterUserId: green.ownerUserId,
+          punctuality: sample.punctuality,
+          treatment: sample.treatment,
+          createdAt: addMinutes(at, 10),
+        },
+      ],
+    });
+    created += 1;
+  }
+  if (created) console.log(`Ratings: ${created} completed visits rated both ways...`);
+}
+
+// O que a operação da unidade não cobre: caixinha, convites, cupom, suporte,
+// denúncia, pedido de dados, confirmação pendente, cliente bloqueado e uma
+// indicação Pro já usada. Cada bloco só grava se ainda não existe.
+async function ensureOpenScreens(prisma: PrismaClient) {
+  const green = await prisma.barbershop.findUnique({ where: { slug: 'green-barbershop' } });
+  if (!green?.ownerUserId) return;
+  const ownerId = green.ownerUserId;
+  console.log('Open screens: tips, invites, coupons, support, reports...');
+
+  if (!(await prisma.appointmentTip.count({ where: { barbershopId: green.id } }))) {
+    const visits = [
+      { customer: 'Lucas Ferreira', barber: 'Cayo Carlos', destination: 'professional', method: 'CASH', amount: 15 },
+      { customer: 'Mariana Costa', barber: 'Minion Cayo', destination: 'unit', method: 'PIX', amount: 10 },
+    ];
+    for (const v of visits) {
+      const appt = await prisma.appointment.findFirst({
+        where: {
+          barbershopId: green.id,
+          status: 'COMPLETED',
+          customer: { networkId: green.networkId, name: v.customer },
+          barber: { name: v.barber },
+        },
+        orderBy: { startAt: 'desc' },
+      });
+      if (!appt) continue;
+      await prisma.appointmentTip.create({
+        data: {
+          appointmentId: appt.id,
+          barbershopId: green.id,
+          barberId: v.destination === 'professional' ? appt.barberId : null,
+          destination: v.destination,
+          method: v.method,
+          amount: v.amount,
+          currency: PLATFORM_CURRENCY,
+          receivedByUnit: v.destination === 'professional',
+          createdByUserId: ownerId,
+          createdAt: addMinutes(appt.endAt, 20),
+        },
+      });
+    }
+  }
+
+  const blocked = await prisma.customer.findFirst({
+    where: { networkId: green.networkId, name: 'Diego Araújo' },
+  });
+  if (blocked && !blocked.blockedAt) {
+    await prisma.customer.update({
+      where: { id: blocked.id },
+      data: {
+        blockedAt: atBrt(-3, 11),
+        blockedReason: 'Faltou três vezes seguidas sem avisar.',
+        blockedByUserId: ownerId,
+      },
+    });
+  }
+
+  if (!(await prisma.employeeInvite.count({ where: { barbershopId: green.id, status: 'PENDING' } }))) {
+    const email = 'andre.lima@email.com';
+    const barber =
+      (await prisma.barber.findFirst({ where: { barbershopId: green.id, email } })) ??
+      (await prisma.barber.create({
+        data: {
+          barbershopId: green.id,
+          name: 'André Lima',
+          phone: '(12) 99700-1099',
+          email,
+          staffType: 'barber',
+          specialization: 'Corte masculino',
+          specialties: ['HAIR'],
+        },
+      }));
+    await prisma.employeeInvite.create({
+      data: {
+        inviterId: ownerId,
+        barbershopId: green.id,
+        barberId: barber.id,
+        email,
+        inviteToken: 'demo-employee-andre-lima',
+        role: 'BarbershopEmployee',
+        status: 'PENDING',
+        expiresAt: atBrt(20, 23),
+      },
+    });
+  }
+
+  if (!(await prisma.friendInvite.count({ where: { inviterId: ownerId } }))) {
+    const pedro = await prisma.user.findFirst({
+      where: { email: 'pedro.basico@barbershop.com', provider: 'local' },
+    });
+    const pendingUntil = atBrt(15, 23);
+    await prisma.friendInvite.create({
+      data: {
+        inviterId: ownerId,
+        friendEmail: 'renata.souza@email.com',
+        inviteToken: 'demo-friend-pending',
+        status: 'PENDING',
+        expiresAt: pendingUntil,
+        sentVia: 'email',
+        createdAt: atBrt(-2, 14),
+      },
+    });
+    await prisma.friendInvite.create({
+      data: {
+        inviterId: ownerId,
+        friendEmail: 'carlos.dias@email.com',
+        inviteToken: 'demo-friend-expired',
+        status: 'EXPIRED',
+        expiresAt: atBrt(-1, 23),
+        sentVia: 'email',
+        createdAt: atBrt(-20, 10),
+      },
+    });
+    if (pedro) {
+      const inviterCoupon = await prisma.coupon.create({
+        data: {
+          code: 'DEMO_FRIEND_INVITER',
+          name: 'Convite aceito - 1 mês grátis',
+          description: 'Mês grátis porque o Pedro aceitou o convite.',
+          type: 'FREE_MONTH',
+          value: 1,
+          maxUses: 1,
+          validUntil: atBrt(300, 23),
+        },
+      });
+      const friendCoupon = await prisma.coupon.create({
+        data: {
+          code: 'DEMO_FRIEND_FRIEND',
+          name: 'Convite de amigo - 1 mês grátis',
+          description: 'Mês grátis por aceitar o convite do Cayo.',
+          type: 'FREE_MONTH',
+          value: 1,
+          maxUses: 1,
+          validUntil: atBrt(300, 23),
+        },
+      });
+      await prisma.userCoupon.createMany({
+        data: [
+          { userId: ownerId, couponId: inviterCoupon.id },
+          { userId: pedro.id, couponId: friendCoupon.id },
+        ],
+      });
+      await prisma.friendInvite.create({
+        data: {
+          inviterId: ownerId,
+          friendEmail: pedro.email,
+          inviteToken: 'demo-friend-accepted',
+          status: 'ACCEPTED',
+          expiresAt: atBrt(300, 23),
+          acceptedByUserId: pedro.id,
+          inviterCouponId: inviterCoupon.id,
+          friendCouponId: friendCoupon.id,
+          sentVia: 'email',
+          createdAt: atBrt(-12, 16),
+        },
+      });
+    }
+  }
+
+  if (!(await prisma.coupon.count({ where: { code: 'BEMVINDO20' } }))) {
+    await prisma.coupon.createMany({
+      data: [
+        {
+          code: 'BEMVINDO20',
+          name: 'Boas-vindas',
+          description: '20% na primeira assinatura da plataforma.',
+          type: 'PERCENTAGE',
+          value: 20,
+          maxUses: 100,
+          usedCount: 3,
+          validUntil: atBrt(120, 23),
+        },
+        {
+          code: 'FIXO15',
+          name: 'Desconto fixo',
+          description: 'R$ 15 em qualquer plano.',
+          type: 'FIXED_AMOUNT',
+          value: 15,
+          maxUses: 50,
+          isActive: false,
+          validUntil: atBrt(-2, 23),
+        },
+      ],
+    });
+  }
+
+  if (!(await prisma.supportTicket.count({ where: { subject: 'Não consigo remarcar pelo link' } }))) {
+    const mariana = await prisma.clientAccount.findUnique({
+      where: { email: 'mariana.costa@cliente.com' },
+    });
+    const lucas = await prisma.clientAccount.findUnique({
+      where: { email: 'lucas.ferreira@cliente.com' },
+    });
+    await prisma.supportTicket.create({
+      data: {
+        status: 'open',
+        category: 'booking',
+        subject: 'Não consigo remarcar pelo link',
+        name: 'Mariana Costa',
+        email: 'mariana.costa@cliente.com',
+        language: 'pt',
+        clientAccountId: mariana?.id,
+        lastActivityAt: atBrt(-1, 9, 40),
+        createdAt: atBrt(-1, 9),
+        messages: {
+          create: [
+            {
+              side: 'requester',
+              body: 'O link do e-mail abre o horário, mas o botão de remarcar não responde.',
+              createdAt: atBrt(-1, 9),
+            },
+          ],
+        },
+      },
+    });
+    await prisma.supportTicket.create({
+      data: {
+        status: 'answered',
+        category: 'payment',
+        subject: 'Sinal cobrado duas vezes',
+        name: 'Lucas Ferreira',
+        email: 'lucas.ferreira@cliente.com',
+        language: 'pt',
+        clientAccountId: lucas?.id,
+        lastActivityAt: atBrt(-4, 15),
+        createdAt: atBrt(-4, 11),
+        messages: {
+          create: [
+            {
+              side: 'requester',
+              body: 'Paguei o sinal e o aplicativo cobrou de novo no mesmo cartão.',
+              createdAt: atBrt(-4, 11),
+            },
+            {
+              side: 'support',
+              body: 'Conferimos: só uma cobrança foi concluída. A outra foi recusada pelo banco e não vai para a fatura.',
+              createdAt: atBrt(-4, 15),
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  if (!(await prisma.privacyRequest.count({ where: { requesterEmail: 'lucas.ferreira@cliente.com' } }))) {
+    const lucas = await prisma.clientAccount.findUnique({
+      where: { email: 'lucas.ferreira@cliente.com' },
+    });
+    await prisma.privacyRequest.create({
+      data: {
+        kind: 'access',
+        channel: 'email',
+        requesterName: 'Lucas Ferreira',
+        requesterEmail: 'lucas.ferreira@cliente.com',
+        clientAccountId: lucas?.id,
+        details: 'Quero uma cópia dos agendamentos e das avaliações ligados ao meu e-mail.',
+        status: 'open',
+        dueAt: atBrt(12, 18),
+        createdByEmail: 'super-admin@backoffice.demo',
+        createdAt: atBrt(-3, 10),
+      },
+    });
+  }
+
+  if (!(await prisma.backofficeApproval.count({ where: { summary: { startsWith: 'Estorno de demonstração' } } }))) {
+    await prisma.backofficeApproval.create({
+      data: {
+        action: 'payment.refund',
+        payload: { kind: 'deposit', id: 0, amount: null, reason: 'Cobrança de demonstração, conferir antes de estornar.' },
+        summary: 'Estorno de demonstração de um sinal que não existe (id 0)',
+        reason: 'Pedido de exemplo para a fila de confirmações. Aprovar não estorna nada: o pagamento não existe.',
+        status: 'pending',
+        requestedByEmail: 'finance@backoffice.demo',
+        requestedByRole: 'finance',
+        createdAt: atBrt(-1, 16),
+      },
+    });
+  }
+
+  if (!(await prisma.proReferral.count())) {
+    const marcos = await prisma.user.findFirst({
+      where: { email: 'marcos.andrade@barbershop.com', provider: 'local' },
+    });
+    const tiago = await prisma.user.findFirst({
+      where: { email: 'tiago.moura@barbershop.com', provider: 'local' },
+    });
+    if (marcos && tiago) {
+      const now = new Date();
+      await prisma.user.update({
+        where: { id: marcos.id },
+        data: {
+          proReferralCode: marcos.proReferralCode ?? 'MARCS7K2',
+          proUntil: extendProUntil(marcos.proUntil, 1, now),
+        },
+      });
+      await prisma.user.update({
+        where: { id: tiago.id },
+        data: { proUntil: extendProUntil(tiago.proUntil, 1, now) },
+      });
+      await prisma.proReferral.create({
+        data: { inviterUserId: marcos.id, invitedUserId: tiago.id, months: 1, createdAt: atBrt(-6, 13) },
+      });
+    }
+  }
+
+  if (!(await prisma.review.count({ where: { barbershopId: green.id, reportedAt: { not: null } } }))) {
+    const customer = await prisma.customer.findFirst({
+      where: {
+        networkId: green.networkId,
+        name: { notIn: ['Lucas Ferreira', 'Mariana Costa', 'Diego Araújo'] },
+        reviews: { none: { barbershopId: green.id } },
+      },
+      orderBy: { id: 'desc' },
+    });
+    if (customer) {
+      await prisma.review.create({
+        data: {
+          barbershopId: green.id,
+          customerId: customer.id,
+          rating: 1,
+          comment: 'Promoção imperdível! Corte grátis na barbearia do lado, é só chamar no zap.',
+          createdAt: atBrt(-1, 10),
+          reportedAt: atBrt(-1, 12),
+          reportReason: 'Propaganda de outra barbearia, a pessoa nunca foi atendida aqui.',
+        },
+      });
+    }
+  }
+
+  if (!(await prisma.contentReport.count({ where: { reporterKey: 'seed-demo' } }))) {
+    const review = await prisma.professionalReview.findFirst({
+      where: { barbershopId: green.id, comment: { contains: 'demorou' } },
+    });
+    const profile = await prisma.professional.findFirst({ where: { slug: 'tiago-moura' } });
+    const vintage = await prisma.barbershop.findUnique({ where: { slug: 'barbearia-vintage' } });
+    const thread = await prisma.chatThread.findFirst({
+      where: { barbershopId: green.id, messages: { some: { body: 'Tem estacionamento na porta?' } } },
+    });
+    const reports: { targetType: string; targetId: number; reason: string; details: string }[] = [];
+    if (review) {
+      reports.push({
+        targetType: 'professional_review',
+        targetId: review.id,
+        reason: 'other',
+        details: 'O texto reclama da espera. Conferir se passa do atendimento.',
+      });
+    }
+    if (profile) {
+      reports.push({
+        targetType: 'professional_profile',
+        targetId: profile.id,
+        reason: 'impersonation',
+        details: 'O nome parece o de outro profissional da cidade.',
+      });
+    }
+    if (vintage) {
+      reports.push({
+        targetType: 'barbershop',
+        targetId: vintage.id,
+        reason: 'spam',
+        details: 'A descrição da página publica telefone de outra unidade.',
+      });
+    }
+    if (thread) {
+      reports.push({
+        targetType: 'chat_thread',
+        targetId: thread.id,
+        reason: 'spam',
+        details: 'A equipe pediu para olhar a conversa antes de responder.',
+      });
+      await prisma.chatThread.update({
+        where: { id: thread.id },
+        data: { retainUntil: new Date('2100-01-01T00:00:00Z') },
+      });
+    }
+    if (reports.length) {
+      await prisma.contentReport.createMany({
+        data: reports.map((r) => ({ ...r, reporterKey: 'seed-demo', status: 'open' })),
+      });
+    }
+  }
+}
+
 export async function seedDemoData(prisma: PrismaClient) {
   faker.locale = 'pt_BR';
   await fixSeedUserProfiles(prisma);
@@ -2627,6 +3234,9 @@ export async function seedDemoData(prisma: PrismaClient) {
   await ensureChairRent(prisma);
   await ensurePayroll(prisma);
   await ensureNewFeatures(prisma);
+  await ensureChats(prisma);
+  await ensureMutualRatings(prisma);
   await ensureMarketplace(prisma);
+  await ensureOpenScreens(prisma);
   await seedNotifications(prisma, green.id);
 }

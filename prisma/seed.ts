@@ -116,7 +116,7 @@ async function createRandomUser() {
   const lastName = faker.name.lastName();
   return {
     fullName: `${firstName} ${lastName}`,
-    email: faker.internet.email(firstName, lastName, 'barbershop.com'),
+    email: faker.internet.email(firstName, lastName, 'barbershop.com').toLowerCase(),
     provider: 'local',
     phone: faker.phone.number('+55129########'),
     gender: faker.helpers.arrayElement([Sex.Male, Sex.Female]),
@@ -231,7 +231,7 @@ const SEED_USER_EMAILS = [
 // variáveis estiverem definidas e ainda não houver nenhum SystemAdmin — nunca
 // altera um admin existente.
 async function ensureProductionAdmin(rs: { id: number; name: string }[]) {
-  const email = process.env.SEED_ADMIN_EMAIL?.trim();
+  const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD;
   if (!email || !password) {
     console.log('SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD not set - no admin bootstrap.');
