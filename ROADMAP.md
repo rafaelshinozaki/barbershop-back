@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–10 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–16 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1196,22 +1196,22 @@ Achados numa revisão de código. Itens 1–10 corrigidos. O restante segue 🆕
 
 ### Idioma, fuso e desempenho
 
-11. 🆕 **Avisos fixos em português e no fuso de São Paulo** (`featured-payment.service.ts`, `JobOpeningService.notify`): textos em português e datas em pt-BR no fuso `America/Sao_Paulo`, ignorando o idioma do usuário e o fuso da unidade. **Fazer:** usar os templates com i18n e o fuso da unidade, como nos outros avisos.
-12. 🆕 **Agenda da franquia sempre de 8h às 20h**: a agenda da franquia usa o horário padrão em vez do horário de funcionamento das unidades. **Fazer:** usar o menor início e o maior fim entre as unidades mostradas.
-13. 🆕 **"Próximo horário livre" faz milhares de consultas** (`getPublicNextAvailableSlot`): calcula dia a dia e profissional a profissional, com consultas em laço. **Fazer:** buscar agendamentos, bloqueios e horários do período de uma vez e calcular em memória.
-14. 🆕 **Backoffice: transação interativa por escrita** (`barbershop-backoffice-back`): cada escrita abre uma transação interativa do Prisma, o que pesa no pool de conexões. **Fazer:** usar transação só onde há mais de uma escrita, ou `$transaction([...])` em lote.
+11. ✅ **Avisos fixos em português e no fuso de São Paulo** (`featured-payment.service.ts`, `JobOpeningService.notify`): textos em português e datas em pt-BR no fuso `America/Sao_Paulo`, ignorando o idioma do usuário e o fuso da unidade. **Feito:** o sininho sai no idioma da conta (pt/en/es) e a data do Destaque no fuso da unidade; a lista de vagas filtra o “hoje” pelo fuso de cada unidade.
+12. ✅ **Agenda da franquia sempre de 8h às 20h**: a agenda da franquia usa o horário padrão em vez do horário de funcionamento das unidades. **Feito:** a faixa usa o menor início e o maior fim entre as unidades que estão na tela (filtro e legenda). Sem horário configurado, vale o expediente padrão (9h–18h).
+13. ✅ **"Próximo horário livre" faz milhares de consultas** (`getPublicNextAvailableSlot`): calcula dia a dia e profissional a profissional, com consultas em laço. **Feito:** escala, fechamentos, horários e folgas do período inteiro vêm numa leva e o primeiro horário livre é calculado em memória.
+14. ✅ **Backoffice: transação interativa por escrita** (`barbershop-backoffice-back`): cada escrita abre uma transação interativa do Prisma, o que pesa no pool de conexões. **Feito:** escrita única ou várias já montadas usam `$transaction([...])` em lote (`asActorBatch`). A transação interativa fica onde a próxima escrita depende da anterior (trava, preço, privacidade, suspensão, edição de conta).
 
 ### Segunda rodada (2026-10-08)
 
 **Dinheiro e segurança**
 
-15. 🆕 **Aplicar cupom num pagamento pendente** (`PaymentsService.applyCouponToPayment` e `CouponsService.applyCoupon`, mutation `applyCoupon`):
+15. ✅ **Aplicar cupom num pagamento pendente** (`PaymentsService.applyCouponToPayment` e `CouponsService.applyCoupon`, mutation `applyCoupon`):
     - Muda só o valor no banco. A cobrança na Stripe continua com o valor cheio.
     - Usa `registerUse`, sem a trava de `claimUse`. Cliques ao mesmo tempo passam do limite de usos e do "um por pessoa".
     - Aceita outro cupom no mesmo pagamento. O desconto é calculado em cima do valor já descontado e `originalAmount` é sobrescrito.
     - Com valor final 0, só marca o pagamento como pago, sem passar pelo fluxo que ativa ou renova o plano.
-    - **Fazer:** aplicar o cupom no checkout da Stripe (ou desativar a mutation), com `claimUse`, recusando pagamento que já tem `appliedCouponId`.
-16. 🆕 **Cancelar "este e os próximos" da série passa por cima do cargo** (`AppointmentSeriesService.cancelFromHere`): confere a permissão só para o profissional do horário clicado. Se um horário seguinte da série foi passado para outro profissional, um barbeiro cancela também o horário do colega. **Fazer:** filtrar os alvos pelos profissionais que a pessoa pode mexer, ou conferir cada um.
+    - **Feito:** a mutation e o `POST /apply/:paymentId` recusam. O cupom continua no checkout (`createPaymentIntentForCheckout`), que já manda o valor certo pra Stripe e registra o uso com `claimUse`.
+16. ✅ **Cancelar "este e os próximos" da série passa por cima do cargo** (`AppointmentSeriesService.cancelFromHere`): confere a permissão só para o profissional do horário clicado. Se um horário seguinte da série foi passado para outro profissional, um barbeiro cancela também o horário do colega. **Feito:** cada horário seguinte passa pela mesma checagem de agenda; o de outro profissional fica de fora quando o cargo não permite.
 17. 🆕 **Links de gerenciar e de avaliar não vencem** (`appointment-link.ts`): o token é só o id assinado, sem validade e sem como revogar. Um e-mail antigo encaminhado dá acesso ao chat do atendimento e deixa mudar a avaliação anos depois. **Fazer:** colocar validade (ex.: chat até X dias depois do atendimento, avaliação até 30 dias) e uma versão para invalidar.
 18. 🆕 **Token da Página do Facebook em texto puro** (`SocialConnection.facebookAccessToken`): fica legível no banco e em backups. **Fazer:** criptografar em repouso, como os outros segredos.
 

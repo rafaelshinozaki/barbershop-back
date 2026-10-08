@@ -1208,38 +1208,11 @@ export class PaymentsService {
       throw new BadRequestException('Pagamento já foi realizado');
     }
 
-    // Validar cupom
-    const validation = await this.couponsService.validateCoupon(
-      couponCode,
-      userId,
-      payment.subscription.plan.id,
-      Number(payment.amount),
-    );
-
-    if (!validation.isValid) {
-      throw new BadRequestException(validation.error);
-    }
-
-    // Aplicar cupom
-    const result = await this.couponsService.applyCoupon(validation.coupon.id, userId, paymentId);
-
-    // Se o valor final for 0, marcar como pago
-    if (result.finalAmount === 0) {
-      await this.prisma.payment.update({
-        where: { id: paymentId },
-        data: {
-          status: PAGAMENTO_STATUS.COMPLETED,
-          paymentDate: new Date(),
-        },
-      });
-    }
-
-    return {
-      success: true,
-      finalAmount: result.finalAmount,
-      discountAmount: result.discountAmount,
-      coupon: validation.coupon,
-    };
+    // O desconto entra na hora de criar a cobrança (createPaymentIntentForCheckout),
+    // com claimUse. Mudar o valor deste pagamento no banco não muda a Stripe,
+    // aceita um segundo cupom em cima do desconto e, com valor 0, marca pago
+    // sem ativar o plano.
+    throw new BadRequestException('O cupom entra no checkout, não num pagamento já criado');
   }
 
   async getAvailableCoupons(userId: number) {

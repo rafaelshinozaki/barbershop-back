@@ -4343,7 +4343,7 @@ export class BarbershopService {
     const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
-      select: { timezone: true },
+      select: { timezone: true, businessHours: true },
     });
     if (!shop) throw new NotFoundException('Unidade não encontrada');
     const timeZone = safeTimeZone(shop.timezone);
@@ -4367,18 +4367,172 @@ export class BarbershopService {
     // Data no passado vira hoje; muito longe não varre o ano inteiro
     const start =
       valid && fromDate > today && fromDate <= addDaysStr(today, 365) ? fromDate : today;
+
+    // Expediente, fechamentos, horários e folgas do período inteiro, de uma vez.
+    const week =
+      parseBusinessHours(shop.businessHours) ??
+      WEEKDAY_KEYS.map((_, i) => DEFAULT_WORKING_HOURS[i]);
+    const professionalIds = [
+      ...new Set(
+        barbers.map((b) => b.professionalId).filter((id): id is number => id != null),
+      ),
+    ];
+    const userIds = [
+      ...new Set(
+        barbers
+          .filter((b) => b.professionalId == null && b.userId != null)
+          .map((b) => b.userId as number),
+      ),
+    ];
+    const rangeStart = zonedTimeToUtc(start, 0, timeZone);
+    const rangeEnd = zonedTimeToUtc(addDaysStr(start, maxDays), 0, timeZone);
+    const barberIds = barbers.map((b) => b.id);
+
+    const [schedules, closures, links] = await Promise.all([
+      this.prisma.barberSchedule.findMany({ where: { barberId: { in: barberIds } } }),
+      this.prisma.barbershopClosure.findMany({
+        where: { barbershopId, date: { gte: start, lt: addDaysStr(start, maxDays) } },
+      }),
+      professionalIds.length || userIds.length
+        ? this.prisma.barber.findMany({
+            where: {
+              OR: [
+                ...(professionalIds.length ? [{ professionalId: { in: professionalIds } }] : []),
+                ...(userIds.length ? [{ userId: { in: userIds } }] : []),
+              ],
+            },
+            select: { id: true, professionalId: true, userId: true },
+          })
+        : Promise.resolve(
+            [] as { id: number; professionalId: number | null; userId: number | null }[],
+          ),
+    ]);
+
+    const personIds = new Map<number, number[]>();
+    for (const b of barbers) {
+      const extra = b.professionalId
+        ? links.filter((l) => l.professionalId === b.professionalId).map((l) => l.id)
+        : b.userId
+          ? links.filter((l) => l.userId === b.userId).map((l) => l.id)
+          : [];
+      personIds.set(b.id, [...new Set([b.id, ...extra])]);
+    }
+    const allBarberIds = [...new Set([...personIds.values()].flat())];
+
+    const [appointments, timeOffs] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          barberId: { in: allBarberIds },
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+          startAt: { lt: rangeEnd },
+          endAt: { gt: rangeStart },
+        },
+        select: { barberId: true, startAt: true, endAt: true },
+      }),
+      this.prisma.barberTimeOff.findMany({
+        where: {
+          barberId: { in: allBarberIds },
+          startAt: { lt: rangeEnd },
+          endAt: { gt: rangeStart },
+        },
+        select: { barberId: true, startAt: true, endAt: true },
+      }),
+    ]);
+
+    const busyByBarber = new Map<number, { start: number; end: number }[]>();
+    for (const row of [...appointments, ...timeOffs]) {
+      const list = busyByBarber.get(row.barberId) ?? [];
+      list.push({ start: row.startAt.getTime(), end: row.endAt.getTime() });
+      busyByBarber.set(row.barberId, list);
+    }
+    const schedulesByBarber = new Map<number, typeof schedules>();
+    for (const row of schedules) {
+      const list = schedulesByBarber.get(row.barberId) ?? [];
+      list.push(row);
+      schedulesByBarber.set(row.barberId, list);
+    }
+    const closureByDate = new Map(closures.map((c) => [c.date, c]));
+
     for (let i = 0; i < maxDays; i++) {
       const date = addDaysStr(start, i);
-      const perBarber = await Promise.all(
-        barbers.map((b) => this.slotsForBarber(barbershopId, b, durationMinutes, date, timeZone)),
-      );
-      const earliest = perBarber
-        .map((slots) => slots[0])
-        .filter(Boolean)
-        .sort()[0];
+      const dayStart = zonedTimeToUtc(date, 0, timeZone).getTime();
+      const dayEnd = zonedTimeToUtc(nextDateStr(date), 0, timeZone).getTime();
+      const closure = closureByDate.get(date) ?? null;
+      let earliest: string | undefined;
+      for (const b of barbers) {
+        const window = this.windowOnDate(
+          schedulesByBarber.get(b.id) ?? [],
+          week,
+          closure,
+          date,
+        );
+        const busy: { start: number; end: number }[] = [];
+        for (const id of personIds.get(b.id) ?? [b.id]) {
+          for (const range of busyByBarber.get(id) ?? []) {
+            if (range.start < dayEnd && range.end > dayStart) busy.push(range);
+          }
+        }
+        const slot = this.computeSlots(b, durationMinutes, date, timeZone, window, busy, true)[0];
+        if (slot && (!earliest || slot < earliest)) earliest = slot;
+      }
       if (earliest) return { date, startAt: earliest };
     }
     return null;
+  }
+
+  /**
+   * Expediente de um dia a partir da escala, do horário da unidade e do
+   * fechamento já carregados — mesma regra de getWorkingWindowOn.
+   */
+  private windowOnDate(
+    schedules: {
+      dayOfWeek: number;
+      isActive: boolean;
+      startTime: string;
+      endTime: string;
+      breakStart: string | null;
+      breakEnd: string | null;
+    }[],
+    week: ({ start: string; end: string } | null)[],
+    closure: { openTime: string | null; closeTime: string | null } | null,
+    dateStr: string,
+  ) {
+    const dayOfWeek = dayOfWeekOf(dateStr);
+    const schedule = schedules.find((s) => s.dayOfWeek === dayOfWeek);
+    let window: {
+      start: string;
+      end: string;
+      breakStart?: string | null;
+      breakEnd?: string | null;
+    } | null = null;
+    if (schedule) {
+      if (schedule.isActive) {
+        window = {
+          start: schedule.startTime,
+          end: schedule.endTime,
+          breakStart: schedule.breakStart,
+          breakEnd: schedule.breakEnd,
+        };
+      }
+    } else {
+      const dayHours = week[dayOfWeek];
+      if (dayHours) window = { start: dayHours.start, end: dayHours.end };
+    }
+    if (!closure) return window;
+    if (!closure.openTime || !closure.closeTime) return null;
+    if (!window) {
+      // Folga marcada nesse dia da semana continua sendo folga
+      if (schedule) return null;
+      return { start: closure.openTime, end: closure.closeTime, breakStart: null, breakEnd: null };
+    }
+    const open = this.toMinutes(closure.openTime);
+    const close = this.toMinutes(closure.closeTime);
+    const startMin = Math.max(this.toMinutes(window.start), open);
+    const endMin = Math.min(this.toMinutes(window.end), close);
+    if (startMin >= endMin) return null;
+    const hhmm = (m: number) =>
+      `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return { ...window, start: hhmm(startMin), end: hhmm(endMin) };
   }
 
   private async slotsForBarber(
@@ -4422,7 +4576,25 @@ export class BarbershopService {
       start: r.startAt.getTime(),
       end: r.endAt.getTime(),
     }));
+    return this.computeSlots(barber, duration, dateStr, timeZone, window, busyRanges);
+  }
 
+  /** Horários livres de um expediente já resolvido. `firstOnly` para no primeiro. */
+  private computeSlots(
+    barber: { accessStartsAt: Date | null; accessEndsAt: Date | null },
+    duration: number,
+    dateStr: string,
+    timeZone: string,
+    window: {
+      start: string;
+      end: string;
+      breakStart?: string | null;
+      breakEnd?: string | null;
+    } | null,
+    busyRanges: { start: number; end: number }[],
+    firstOnly = false,
+  ) {
+    if (!window) return [];
     const windowStartMin = this.toMinutes(window.start);
     const windowEndMin = this.toMinutes(window.end);
     const breakStartMin = window.breakStart ? this.toMinutes(window.breakStart) : null;
@@ -4454,6 +4626,7 @@ export class BarbershopService {
       if (overlapsBusy) continue;
 
       slots.push(slotStart.toISOString());
+      if (firstOnly) return slots;
     }
 
     return slots;

@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { addDaysStr, safeTimeZone, toZonedParts, zonedTimeToUtc } from '../common/timezone.util';
@@ -255,12 +261,27 @@ export class AppointmentSeriesService {
       },
       orderBy: { startAt: 'asc' },
     });
-    if (targets.length === 0) return { cancelledCount: 0 };
+    // Um horário da série pode ter ido para outro profissional. Quem só mexe
+    // na própria agenda não cancela o do colega.
+    const allowed: typeof targets = [];
+    for (const target of targets) {
+      if (target.barberId === appt.barberId) {
+        allowed.push(target);
+        continue;
+      }
+      try {
+        await this.barbershopService.ensureCanBookForBarber(userId, barbershopId, target.barberId);
+        allowed.push(target);
+      } catch (err) {
+        if (!(err instanceof ForbiddenException)) throw err;
+      }
+    }
+    if (allowed.length === 0) return { cancelledCount: 0 };
     await this.prisma.appointment.updateMany({
-      where: { id: { in: targets.map((t) => t.id) }, status: 'CONFIRMED' },
+      where: { id: { in: allowed.map((t) => t.id) }, status: 'CONFIRMED' },
       data: { status: 'CANCELLED' },
     });
-    for (const t of targets) {
+    for (const t of allowed) {
       // Cada data liberada pode ser a vaga de alguém da lista de espera
       this.barbershopService
         .checkWaitlistOnCancellation(barbershopId, t)
@@ -276,22 +297,22 @@ export class AppointmentSeriesService {
         .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${t.id}:`, err));
     }
     const email = await this.customerEmail(appt.customerId);
-    if (email && targets[0].startAt > new Date()) {
+    if (email && allowed[0].startAt > new Date()) {
       const { timeZone, country } = await this.shop(barbershopId);
       this.barbershopService
         .notifyAppointmentCancelled(
-          targets[0].id,
+          allowed[0].id,
           email,
           null,
           this.formatDates(
-            targets.map((t) => t.startAt),
+            allowed.map((t) => t.startAt),
             timeZone,
             country,
           ),
         )
         .catch((err) => this.logger.error(`Erro ao avisar cancelamento da série:`, err));
     }
-    return { cancelledCount: targets.length };
+    return { cancelledCount: allowed.length };
   }
 
   private async customerEmail(customerId: number) {

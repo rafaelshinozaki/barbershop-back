@@ -21,6 +21,8 @@ import { BarbershopService } from './barbershop.service';
 import { SearchCacheService } from './search-cache.service';
 import { stripeConfigured } from './stripe-configured';
 import { PLATFORM_CURRENCY, currentPricing } from '../pricing/pricing';
+import { LOCALE, normalizeLang, type Lang } from '../email/language';
+import { DEFAULT_TIMEZONE, safeTimeZone } from '../common/timezone.util';
 
 /**
  * Preço e dias do Destaque: vêm de "Preços e taxas" (src/pricing/pricing.ts),
@@ -268,6 +270,7 @@ export class FeaturedPaymentService {
       select: {
         id: true,
         name: true,
+        timezone: true,
         featuredUntil: true,
         featuredRemindedUntil: true,
         ownerUserId: true,
@@ -291,13 +294,30 @@ export class FeaturedPaymentService {
         shop.network?.ownerUserId,
         ...shop.barbers.map((b) => b.userId),
       ].filter((u): u is number => typeof u === 'number');
-      await this.notifyExpiring(users, shop.name, until, `/barbershops/${shop.id}/public-page`);
+      await this.notifyExpiring(
+        users,
+        shop.name,
+        until,
+        `/barbershops/${shop.id}/public-page`,
+        shop.timezone,
+      );
       sent++;
     }
 
     const pros = await this.prisma.professional.findMany({
       where: { featuredUntil: window },
-      select: { id: true, userId: true, featuredUntil: true, featuredRemindedUntil: true },
+      select: {
+        id: true,
+        userId: true,
+        featuredUntil: true,
+        featuredRemindedUntil: true,
+        barbers: {
+          where: { isActive: true },
+          select: { barbershop: { select: { timezone: true } } },
+          orderBy: { id: 'asc' },
+          take: 1,
+        },
+      },
     });
     for (const pro of pros) {
       const until = pro.featuredUntil;
@@ -307,10 +327,43 @@ export class FeaturedPaymentService {
         data: { featuredRemindedUntil: until },
       });
       if (claimed.count === 0) continue;
-      await this.notifyExpiring([pro.userId], null, until, '/profile-privacy');
+      await this.notifyExpiring(
+        [pro.userId],
+        null,
+        until,
+        '/profile-privacy',
+        pro.barbers[0]?.barbershop.timezone ?? DEFAULT_TIMEZONE,
+      );
       sent++;
     }
     return sent;
+  }
+
+  /** Título e texto no idioma de quem recebe; a data sai no fuso da unidade. */
+  private featuredCopy(shopName: string | null, until: Date, timeZone: string) {
+    const tz = safeTimeZone(timeZone);
+    const date = (lang: Lang) => until.toLocaleDateString(LOCALE[lang], { timeZone: tz });
+    const d = { pt: date('pt'), en: date('en'), es: date('es') };
+    return {
+      pt: {
+        title: 'Destaque vence em breve',
+        message: shopName
+          ? `O Destaque de ${shopName} na busca vence em ${d.pt}. Estenda para continuar no topo.`
+          : `Seu Destaque na busca vence em ${d.pt}. Estenda para continuar no topo.`,
+      },
+      en: {
+        title: 'Featured placement expires soon',
+        message: shopName
+          ? `${shopName}'s featured placement expires on ${d.en}. Extend it to stay at the top.`
+          : `Your featured placement expires on ${d.en}. Extend it to stay at the top.`,
+      },
+      es: {
+        title: 'El destacado vence pronto',
+        message: shopName
+          ? `El destacado de ${shopName} en la búsqueda vence el ${d.es}. Extiéndelo para seguir arriba.`
+          : `Tu destacado en la búsqueda vence el ${d.es}. Extiéndelo para seguir arriba.`,
+      },
+    } satisfies Record<Lang, { title: string; message: string }>;
   }
 
   private async notifyExpiring(
@@ -318,30 +371,38 @@ export class FeaturedPaymentService {
     shopName: string | null,
     until: Date,
     actionUrl: string,
+    timeZone: string,
   ) {
     const ids = [...new Set(userIds)];
     if (!ids.length) return;
-    const date = until.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    const title = 'Destaque vence em breve';
-    const message = shopName
-      ? `O Destaque de ${shopName} na busca vence em ${date}. Estenda para continuar no topo.`
-      : `Seu Destaque na busca vence em ${date}. Estenda para continuar no topo.`;
+    const copy = this.featuredCopy(shopName, until, timeZone);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userSystemConfig: { select: { language: true } } },
+    });
+    if (!users.length) return;
     try {
       await this.prisma.userNotification.createMany({
-        data: ids.map((userId) => ({
-          userId,
-          title,
-          message,
-          type: NotificationType.INFO,
-          actionUrl,
-        })),
+        data: users.map((user) => {
+          const text = copy[normalizeLang(user.userSystemConfig?.language)];
+          return {
+            userId: user.id,
+            title: text.title,
+            message: text.message,
+            type: NotificationType.INFO,
+            actionUrl,
+          };
+        }),
       });
-      await this.push?.sendToUsers(ids, () => ({
-        title,
-        body: message,
-        url: actionUrl,
-        tag: 'featured',
-      }));
+      await this.push?.sendToUsers(
+        users.map((user) => user.id),
+        (lang) => ({
+          title: copy[lang].title,
+          body: copy[lang].message,
+          url: actionUrl,
+          tag: 'featured',
+        }),
+      );
     } catch (err) {
       this.logger.warn(`Aviso de Destaque vencendo não enviado: ${err}`);
     }

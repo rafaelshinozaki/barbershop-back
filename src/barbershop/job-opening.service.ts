@@ -25,6 +25,9 @@ import { EmployeeInviteService } from './employee-invite.service';
 import { StripeService } from '@/stripe/stripe.service';
 import { stripeConfigured } from './stripe-configured';
 import { PLATFORM_CURRENCY, currentPricing } from '@/pricing/pricing';
+import { normalizeLang, type Lang } from '@/email/language';
+
+type Notice = Record<Lang, { title: string; message: string }>;
 
 const FEE_KIND = 'job_fill_fee';
 
@@ -241,8 +244,20 @@ export class JobOpeningService {
       ]);
       await this.notify(
         opening.applications.map((a) => a.userId),
-        'Vaga encerrada',
-        `A vaga "${opening.title}" foi encerrada pela unidade.`,
+        {
+          pt: {
+            title: 'Vaga encerrada',
+            message: `A vaga "${opening.title}" foi encerrada pela unidade.`,
+          },
+          en: {
+            title: 'Opening closed',
+            message: `The opening "${opening.title}" was closed by the location.`,
+          },
+          es: {
+            title: 'Vacante cerrada',
+            message: `La vacante "${opening.title}" fue cerrada por el local.`,
+          },
+        },
         '/jobs',
       );
     }
@@ -470,16 +485,37 @@ export class JobOpeningService {
         where: { id: opening.id },
         data: { status: 'filled' },
       });
-      await this.rejectPending(
-        opening.id,
-        'Vaga preenchida',
-        `A vaga "${opening.title}" foi preenchida.`,
-      );
+      await this.rejectPending(opening.id, {
+        pt: {
+          title: 'Vaga preenchida',
+          message: `A vaga "${opening.title}" foi preenchida.`,
+        },
+        en: {
+          title: 'Position filled',
+          message: `The opening "${opening.title}" has been filled.`,
+        },
+        es: {
+          title: 'Vacante cubierta',
+          message: `La vacante "${opening.title}" ya fue cubierta.`,
+        },
+      });
     }
     await this.notify(
       [application.userId],
-      'Candidatura aceita',
-      `Você foi aceito na vaga "${opening.title}". Aceite o convite que chegou no seu e-mail para entrar na equipe.`,
+      {
+        pt: {
+          title: 'Candidatura aceita',
+          message: `Você foi aceito na vaga "${opening.title}". Aceite o convite que chegou no seu e-mail para entrar na equipe.`,
+        },
+        en: {
+          title: 'Application accepted',
+          message: `You were accepted for "${opening.title}". Accept the invite in your email to join the team.`,
+        },
+        es: {
+          title: 'Postulación aceptada',
+          message: `Te aceptaron en la vacante "${opening.title}". Acepta la invitación de tu correo para entrar al equipo.`,
+        },
+      },
       '/jobs',
     );
     return this.forShop(userId, barbershopId, opening.id);
@@ -497,10 +533,23 @@ export class JobOpeningService {
       data: { status: 'rejected', decidedAt: new Date() },
     });
     if (done.count === 0) throw new BadRequestException('Esta candidatura já foi respondida');
+    const title = application.jobOpening.title;
     await this.notify(
       [application.userId],
-      'Candidatura não aceita',
-      `A unidade não seguiu com a sua candidatura para "${application.jobOpening.title}".`,
+      {
+        pt: {
+          title: 'Candidatura não aceita',
+          message: `A unidade não seguiu com a sua candidatura para "${title}".`,
+        },
+        en: {
+          title: 'Application not accepted',
+          message: `The location did not move forward with your application for "${title}".`,
+        },
+        es: {
+          title: 'Postulación no aceptada',
+          message: `El local no siguió con tu postulación para "${title}".`,
+        },
+      },
       '/jobs',
     );
     return this.forShop(userId, barbershopId, application.jobOpening.id);
@@ -513,12 +562,13 @@ export class JobOpeningService {
     userId: number,
     filters: { city?: string | null; category?: TreatmentCategory | null } = {},
   ) {
-    const today = toZonedParts(new Date(), 'America/Sao_Paulo').dateStr;
+    // Janela larga: cada unidade filtra pelo próprio fuso logo abaixo.
+    const horizon = addDaysStr(toZonedParts(new Date(), 'UTC').dateStr, -2);
     const city = filters.city?.trim();
     const openings = await this.prisma.jobOpening.findMany({
       where: {
         status: 'open',
-        endDate: { gte: addDaysStr(today, -1) },
+        endDate: { gte: horizon },
         barbershop: {
           isActive: true,
           ...(city ? { city: { contains: city, mode: 'insensitive' } } : {}),
@@ -526,7 +576,7 @@ export class JobOpeningService {
         ...(filters.category ? { OR: [{ category: filters.category }, { category: null }] } : {}),
       },
       include: {
-        barbershop: { select: { name: true, slug: true, city: true, state: true } },
+        barbershop: { select: { name: true, slug: true, city: true, state: true, timezone: true } },
         applications: { where: { userId }, select: { id: true, status: true } },
       },
       orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
@@ -534,7 +584,10 @@ export class JobOpeningService {
     });
     const myShops = new Set(await this.myShopIds(userId));
     return openings
-      .filter((o) => !myShops.has(o.barbershopId))
+      .filter((o) => {
+        const shopToday = toZonedParts(new Date(), safeTimeZone(o.barbershop.timezone)).dateStr;
+        return o.endDate >= addDaysStr(shopToday, -1) && !myShops.has(o.barbershopId);
+      })
       .map((o) => ({
         ...this.mapOpening(o),
         myApplicationId: o.applications[0]?.id ?? null,
@@ -599,10 +652,23 @@ export class JobOpeningService {
       where: { id: userId },
       select: { fullName: true },
     });
+    const name = who?.fullName ?? '';
     await this.notify(
       managers,
-      'Nova candidatura',
-      `${who?.fullName ?? 'Um profissional'} se candidatou à vaga "${opening.title}".`,
+      {
+        pt: {
+          title: 'Nova candidatura',
+          message: `${name || 'Um profissional'} se candidatou à vaga "${opening.title}".`,
+        },
+        en: {
+          title: 'New application',
+          message: `${name || 'A professional'} applied for "${opening.title}".`,
+        },
+        es: {
+          title: 'Nueva postulación',
+          message: `${name || 'Un profesional'} se postuló a la vacante "${opening.title}".`,
+        },
+      },
       `/barbershops/${opening.barbershopId}/jobs`,
     );
     return { id: application.id, status: application.status };
@@ -661,7 +727,7 @@ export class JobOpeningService {
   }
 
   /** Quem ainda esperava resposta: recusa e avisa (vaga preenchida ou encerrada). */
-  private async rejectPending(openingId: number, title: string, message: string) {
+  private async rejectPending(openingId: number, texts: Notice) {
     const pending = await this.prisma.jobApplication.findMany({
       where: { jobOpeningId: openingId, status: 'pending' },
       select: { userId: true },
@@ -673,28 +739,36 @@ export class JobOpeningService {
     });
     await this.notify(
       pending.map((a) => a.userId),
-      title,
-      message,
+      texts,
       '/jobs',
     );
   }
 
-  private async notify(userIds: number[], title: string, message: string, actionUrl: string) {
-    if (!userIds.length) return;
+  /** Aviso no idioma de cada pessoa (configuração da conta; sem ela, português). */
+  private async notify(userIds: number[], texts: Notice, actionUrl: string) {
+    const ids = [...new Set(userIds)];
+    if (!ids.length) return;
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userSystemConfig: { select: { language: true } } },
+    });
+    if (!users.length) return;
+    const rows = users.map((user) => {
+      const text = texts[normalizeLang(user.userSystemConfig?.language)];
+      return {
+        userId: user.id,
+        title: text.title,
+        message: text.message,
+        type: NotificationType.INFO,
+        actionUrl,
+      };
+    });
     try {
-      await this.prisma.userNotification.createMany({
-        data: userIds.map((userId) => ({
-          userId,
-          title,
-          message,
-          type: NotificationType.INFO,
-          actionUrl,
-        })),
-      });
-      this.realtime.notifyUsers(userIds, 'CREATED', title);
-      await this.push.sendToUsers(userIds, () => ({
-        title,
-        body: message,
+      await this.prisma.userNotification.createMany({ data: rows });
+      for (const row of rows) this.realtime.notifyUsers([row.userId], 'CREATED', row.title);
+      await this.push.sendToUsers(rows.map((row) => row.userId), (lang) => ({
+        title: texts[lang].title,
+        body: texts[lang].message,
         url: actionUrl,
         tag: 'jobs',
       }));
