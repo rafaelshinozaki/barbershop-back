@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–27 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–30 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1253,9 +1253,9 @@ Achados numa revisão de código. Itens 1–27 corrigidos. O restante segue 🆕
 
 **Privacidade e moderação**
 
-28. 🆕 **O profissional vê a nota que cada cliente deu a ele** (`CustomerRatingService.visitFeedback`): a lista mostra, atendimento por atendimento, as estrelas que o cliente deu ao profissional. Ao mesmo tempo, o profissional avalia o cliente. Dá para revidar uma nota baixa e o cliente perde a confiança de avaliar com sinceridade. **Fazer:** mostrar ao profissional só a média (ou só depois de os dois lados avaliarem, como no Airbnb), nunca a nota de cada cliente.
-29. 🆕 **Conta desativada continua com perfil público** (`CareerService.publicProfile`): só esconde se `Professional.suspendedAt`. O usuário desativado pela plataforma (`User.isActive = false`) continua com `/p/:slug` no ar, e provavelmente na busca. **Fazer:** tratar conta inativa como suspensa na página, na busca e no sitemap.
-30. 🆕 **Fila da moderação perde denúncias antigas** (`ModerationService.queue`): pega as últimas `QUEUE_REPORTS` denúncias de tudo e só depois agrupa. Um item com denúncia aberta antiga some da fila. Um item oculto cujas denúncias saíram da janela não aparece mais para ser restaurado. É o mesmo padrão do item 7 (fila do suporte). **Fazer:** buscar primeiro os itens com denúncia aberta ou ocultos (agrupando no banco) e paginar.
+28. ✅ **O profissional vê a nota que cada cliente deu a ele** (`CustomerRatingService.visitFeedback`): a lista mostra, atendimento por atendimento, as estrelas que o cliente deu ao profissional. Ao mesmo tempo, o profissional avalia o cliente. Dá para revidar uma nota baixa e o cliente perde a confiança de avaliar com sinceridade. **Feito:** o histórico do cliente na unidade mostra a caixinha e não a estrela da visita.
+29. ✅ **Conta desativada continua com perfil público** (`CareerService.publicProfile`): só esconde se `Professional.suspendedAt`. O usuário desativado pela plataforma (`User.isActive = false`) continua com `/p/:slug` no ar, e provavelmente na busca. **Feito:** conta inativa some da página, da busca, do sitemap e do Destaque, como o perfil suspenso.
+30. ✅ **Fila da moderação perde denúncias antigas** (`ModerationService.queue`): pega as últimas `QUEUE_REPORTS` denúncias de tudo e só depois agrupa. Um item com denúncia aberta antiga some da fila. Um item oculto cujas denúncias saíram da janela não aparece mais para ser restaurado. É o mesmo padrão do item 7 (fila do suporte). **Feito:** a fila agrupa no banco os itens com denúncia aberta e, no espaço que sobra, os já ocultados, pra poder restaurar.
 
 ### Quarta rodada (2026-10-08)
 

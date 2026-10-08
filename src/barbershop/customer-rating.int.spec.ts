@@ -276,7 +276,7 @@ describe('Nota do cliente (integração)', () => {
     const byOwner = await ratings.visitFeedback(users.dono, shops.a, customerA);
     expect(byOwner.find((f) => f.appointmentId === done.id)).toEqual({
       appointmentId: done.id,
-      rating: 5,
+      rating: null,
       tip: 12.5,
     });
     expect(

@@ -156,8 +156,10 @@ export class CustomerRatingService {
   }
 
   /**
-   * Histórico da unidade: em cada atendimento do cliente, a nota que ele deu
-   * ao profissional e a caixinha. Barbeiro vê só os atendimentos dele.
+   * Histórico da unidade: a caixinha de cada atendimento. A nota que o cliente
+   * deu ao profissional não entra aqui — senão quem atende vê a estrela da
+   * visita e pode revidar na nota que dá ao cliente. Barbeiro vê só os
+   * atendimentos dele.
    */
   async visitFeedback(userId: number, barbershopId: number, customerId: number) {
     const level = await this.barbershops.getMyAccessLevel(userId, barbershopId);
@@ -171,7 +173,6 @@ export class CustomerRatingService {
       },
       select: {
         id: true,
-        professionalReview: { select: { rating: true, hiddenAt: true } },
         tips: { select: { amount: true } },
       },
       orderBy: { startAt: 'desc' },
@@ -179,8 +180,7 @@ export class CustomerRatingService {
     });
     return rows.map((a) => ({
       appointmentId: a.id,
-      rating:
-        a.professionalReview && !a.professionalReview.hiddenAt ? a.professionalReview.rating : null,
+      rating: null,
       tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
     }));
   }

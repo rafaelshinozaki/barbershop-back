@@ -43,7 +43,7 @@ export class CustomerConductType {
   badges: string[];
 }
 
-/** Num atendimento do cliente: a nota que ele deu ao profissional e a caixinha */
+/** Num atendimento do cliente: a caixinha. A nota que ele deu não volta aqui. */
 @ObjectType()
 export class VisitFeedbackType {
   @Field(() => Int)

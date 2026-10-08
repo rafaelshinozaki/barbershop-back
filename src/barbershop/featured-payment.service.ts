@@ -81,7 +81,7 @@ export class FeaturedPaymentService {
           visibility: true,
           suspendedAt: true,
           featuredUntil: true,
-          user: { select: { fullName: true } },
+          user: { select: { fullName: true, isActive: true } },
         },
       });
       if (!professional) throw new NotFoundException('Você ainda não tem perfil de profissional');
@@ -95,7 +95,10 @@ export class FeaturedPaymentService {
         featuredUntil: professional.featuredUntil,
         // A busca de profissionais só mostra quem tem a página pública
         publicProfile:
-          !!professional.slug && professional.visibility === 'public' && !professional.suspendedAt,
+          !!professional.slug &&
+          professional.visibility === 'public' &&
+          !professional.suspendedAt &&
+          professional.user.isActive,
       };
     }
     throw new BadRequestException('Tipo inválido');

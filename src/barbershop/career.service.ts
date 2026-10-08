@@ -214,6 +214,7 @@ export class CareerService {
           email: true,
           photoKey: true,
           identityVerifiedAt: true,
+          isActive: true,
         },
       }),
       this.profileFacts(professional.userId),
@@ -223,7 +224,8 @@ export class CareerService {
         : ([] as Awaited<ReturnType<ProfessionalReviewService['publicReviews']>>),
       this.clientCounts(professional.userId),
     ]);
-    if (!user) throw new NotFoundException('Perfil não encontrado');
+    // Conta desativada pela plataforma: igual a perfil suspenso
+    if (!user || !user.isActive) throw new NotFoundException('Perfil não encontrado');
     return {
       id: professional.id,
       // Atende a domicílio só aparece com a identidade verificada

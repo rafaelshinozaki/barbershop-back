@@ -147,10 +147,31 @@ export class ModerationService {
    * está oculto (pra poder restaurar).
    */
   async queue() {
-    const reports = await this.prisma.contentReport.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: QUEUE_REPORTS,
-    });
+    // Abertos primeiro, agrupados no banco: uma denúncia antiga não some
+    // atrás das últimas 500. O que já foi ocultado continua na fila pra
+    // restaurar, mesmo que a denúncia tenha saído dessa janela.
+    const openGroups = await this.prisma.$queryRaw<
+      { targetType: string; targetId: number; lastReportedAt: Date }[]
+    >`
+      SELECT "targetType", "targetId", MAX("createdAt") AS "lastReportedAt"
+      FROM "ContentReport"
+      WHERE status = 'open'
+      GROUP BY "targetType", "targetId"
+      ORDER BY MAX("createdAt") DESC
+      LIMIT ${QUEUE_REPORTS}
+    `;
+    const seen = new Set(openGroups.map((g) => `${g.targetType}:${g.targetId}`));
+    const hiddenGroups = await this.hiddenTargets(QUEUE_REPORTS);
+    const keys = [
+      ...openGroups,
+      ...hiddenGroups.filter((g) => !seen.has(`${g.targetType}:${g.targetId}`)),
+    ].slice(0, QUEUE_REPORTS);
+    const reports = keys.length
+      ? await this.prisma.contentReport.findMany({
+          where: { OR: keys.map((k) => ({ targetType: k.targetType, targetId: k.targetId })) },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
     const groups = new Map<string, typeof reports>();
     for (const r of reports) {
       const key = `${r.targetType}:${r.targetId}`;
@@ -190,6 +211,46 @@ export class ModerationService {
           ? 1
           : b.lastReportedAt.getTime() - a.lastReportedAt.getTime(),
       );
+  }
+
+  /** Itens já ocultados que têm denúncia, pra poder restaurar. */
+  private hiddenTargets(take: number) {
+    return this.prisma.$queryRaw<{ targetType: string; targetId: number; lastReportedAt: Date }[]>`
+      SELECT "targetType", "targetId", "lastReportedAt" FROM (
+        SELECT 'photo' AS "targetType", p.id AS "targetId", MAX(r."createdAt") AS "lastReportedAt"
+        FROM "BarbershopPhoto" p
+        JOIN "ContentReport" r ON r."targetType" = 'photo' AND r."targetId" = p.id
+        WHERE p."hiddenAt" IS NOT NULL
+        GROUP BY p.id
+        UNION ALL
+        SELECT 'professional_review', rv.id, MAX(r."createdAt")
+        FROM "ProfessionalReview" rv
+        JOIN "ContentReport" r ON r."targetType" = 'professional_review' AND r."targetId" = rv.id
+        WHERE rv."hiddenAt" IS NOT NULL
+        GROUP BY rv.id
+        UNION ALL
+        SELECT 'professional_profile', pr.id, MAX(r."createdAt")
+        FROM "Professional" pr
+        JOIN "ContentReport" r ON r."targetType" = 'professional_profile' AND r."targetId" = pr.id
+        WHERE pr."suspendedAt" IS NOT NULL
+        GROUP BY pr.id
+        UNION ALL
+        SELECT 'barbershop', b.id, MAX(r."createdAt")
+        FROM "Barbershop" b
+        JOIN "ContentReport" r ON r."targetType" = 'barbershop' AND r."targetId" = b.id
+        WHERE b."searchHiddenAt" IS NOT NULL
+        GROUP BY b.id
+        UNION ALL
+        SELECT 'chat_thread', t.id, MAX(r."createdAt")
+        FROM "ChatThread" t
+        JOIN "ContentReport" r
+          ON r."targetType" = 'chat_thread' AND r."targetId" = t.id AND r.status = 'actioned'
+        WHERE t."closedAt" IS NOT NULL
+        GROUP BY t.id
+      ) hidden
+      ORDER BY "lastReportedAt" DESC
+      LIMIT ${take}
+    `;
   }
 
   /** O que o admin vê do conteúdo: título, texto, imagem e o link público */

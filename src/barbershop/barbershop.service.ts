@@ -5573,6 +5573,7 @@ export class BarbershopService {
         visibility: 'public',
         slug: { not: null },
         suspendedAt: null,
+        user: { isActive: true },
         ...(AND.length ? { AND } : {}),
       },
       include: {

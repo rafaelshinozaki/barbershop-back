@@ -63,7 +63,7 @@ export class SitemapService {
     });
 
     const profiles = await this.prisma.professional.findMany({
-      where: { visibility: 'public', slug: { not: null }, suspendedAt: null },
+      where: { visibility: 'public', slug: { not: null }, suspendedAt: null, user: { isActive: true } },
       select: { slug: true, updatedAt: true },
       orderBy: { id: 'asc' },
     });
