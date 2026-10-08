@@ -9,7 +9,6 @@ import { ChatResolver } from './resolvers/chat.resolver';
 import { SupportResolver } from './resolvers/support.resolver';
 import { JobOpeningResolver } from './resolvers/job-opening.resolver';
 import { FeaturedResolver } from './resolvers/featured.resolver';
-import { PilotResolver } from './resolvers/pilot.resolver';
 import { PricingResolver } from './resolvers/pricing.resolver';
 import { PushResolver } from './resolvers/push.resolver';
 import { ConnectResolver } from './resolvers/connect.resolver';
@@ -23,14 +22,10 @@ import { AuthResolver } from './resolvers/auth.resolver';
 import { UserResolver } from './resolvers/user.resolver';
 import { PlanResolver } from './resolvers/plan.resolver';
 import { BackofficeResolver } from './resolvers/backoffice.resolver';
-import { BackofficeTeamResolver } from './resolvers/backoffice-team.resolver';
-import { BackofficeAuditResolver } from './resolvers/backoffice-audit.resolver';
 import { SystemHealthResolver } from './resolvers/system-health.resolver';
 import { BackupModule } from '../backup/backup.module';
 import { OnboardingModule } from '../onboarding/onboarding.module';
 import { OnboardingResolver } from './resolvers/onboarding.resolver';
-import { BackofficeBarbershopResolver } from './resolvers/backoffice-barbershop.resolver';
-import { BackofficeOpsResolver } from './resolvers/backoffice-ops.resolver';
 import { BackofficeGovernanceResolver } from './resolvers/backoffice-governance.resolver';
 import { ApprovalService } from '../backoffice/approval.service';
 import { PrivacyRequestService } from '../backoffice/privacy-request.service';
@@ -97,11 +92,7 @@ import { SocialModule } from '../social/social.module';
     UserResolver,
     PlanResolver,
     BackofficeResolver,
-    BackofficeTeamResolver,
-    BackofficeAuditResolver,
     SystemHealthResolver,
-    BackofficeBarbershopResolver,
-    BackofficeOpsResolver,
     BackofficeGovernanceResolver,
     ApprovalService,
     PrivacyRequestService,
@@ -139,7 +130,6 @@ import { SocialModule } from '../social/social.module';
     SupportResolver,
     JobOpeningResolver,
     FeaturedResolver,
-    PilotResolver,
     PricingResolver,
     PushResolver,
     ConnectResolver,

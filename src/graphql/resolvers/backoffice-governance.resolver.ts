@@ -1,6 +1,7 @@
 import {
   Args,
   Field,
+  Float,
   InputType,
   Int,
   Mutation,
@@ -9,7 +10,7 @@ import {
   Resolver,
 } from '@nestjs/graphql';
 import { BadRequestException, UseFilters, UseGuards } from '@nestjs/common';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
@@ -33,10 +34,31 @@ import {
   PrivacyRequestService,
 } from '../../backoffice/privacy-request.service';
 import { AccountDeletionService } from '../../barbershop/account-deletion.service';
-import { AppPaymentsService } from '../../barbershop/app-payments.service';
+import { APP_PAYMENT_KINDS, AppPaymentKind, AppPaymentsService } from '../../barbershop/app-payments.service';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RefundAppPaymentInput } from './backoffice-ops.resolver';
+@InputType()
+export class RefundAppPaymentInput {
+  @Field()
+  @IsIn(APP_PAYMENT_KINDS)
+  kind: AppPaymentKind;
+
+  @Field(() => Int)
+  @IsInt()
+  id: number;
+
+  /** Só no atendimento pago (estorno parcial); vazio = o que restar */
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @Min(0.01)
+  amount?: number | null;
+
+  @Field()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason: string;
+}
 
 const withJsonPayload = <T extends { payload: unknown }>(row: T) => ({
   ...row,

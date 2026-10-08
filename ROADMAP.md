@@ -896,9 +896,7 @@ Revê o "O que continua aqui" da decisão "Arquitetura: backoffice fora do app".
       - A tela mostra "Confirmado; a ação está em execução" e o filtro ganhou "Em execução".
       - **E2E com a fila de verdade:** no CI, a API do backoffice sobe com o Redis e `LOG_COMMANDS=true` (só fora de produção: os e-mails também vão pro log, de onde o teste lê o código). Assim este back executa os comandos no E2E: a conta confirmada some, o preço novo vale na hora.
     - Continuam aqui, pedidos direto por quem é Administrador (resposta na hora, com o erro da Stripe ou da exclusão na tela): apagar conta, estorno, cobrança recorrente, planos (Stripe), importar CSV (cria contas com senha) e backup. O pedido de confirmação de quem não é Administrador também continua sendo criado aqui, junto dessas operações.
-- **S4 — limpar o back principal.**
-  - Saem os cargos de sistema, a coluna de áreas, o interceptor de auditoria, o segredo e o cabeçalho do gateway, o CORS e as variáveis.
-  - Um teste garante que nenhum resolver ou rota do principal cita cargo de sistema.
+- **S4 — limpar o back principal.** Em andamento. O app do backoffice ainda repassa para cá o que não responde sozinho (apagar conta, estorno com confirmação, planos na Stripe, cobrança manual, backup, saúde, importar CSV, avisos da própria conta e a assinatura em tempo real). Enquanto isso, o gateway, os cargos de sistema, a coluna de áreas, o CORS e o interceptor de auditoria ficam. **Já saiu daqui** (o backoffice responde direto no banco): equipe, piloto, registro de ações, ficha da unidade, ficha da pessoa, busca do topo, sessões e pagamentos pelo app.
 
 #### Riscos e cuidados
 
