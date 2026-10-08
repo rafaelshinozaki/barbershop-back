@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
 import { randomUUID } from 'crypto';
+import { isSealed, openSecret, sealSecret } from '@/common/secret-box';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 
 interface OAuthStatePayload {
@@ -39,6 +40,34 @@ export class SocialService {
 
   private graphUrl(path: string): string {
     return `https://graph.facebook.com/${this.apiVersion()}${path}`;
+  }
+
+  private tokenSecret(): string {
+    const secret =
+      this.config.get<string>('SOCIAL_TOKEN_KEY') || this.config.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('SOCIAL_TOKEN_KEY ou JWT_SECRET é necessário para o token da Página');
+    }
+    return secret;
+  }
+
+  private sealToken(plain: string): string {
+    return sealSecret(plain, this.tokenSecret());
+  }
+
+  /** Abre o token da Página. O que ainda está em texto puro é cifrado na hora. */
+  private async pageToken(connection: { id: number; facebookAccessToken: string }): Promise<string> {
+    const secret = this.tokenSecret();
+    const token = openSecret(connection.facebookAccessToken, secret);
+    if (!isSealed(connection.facebookAccessToken)) {
+      await this.prisma.socialConnection
+        .update({
+          where: { id: connection.id },
+          data: { facebookAccessToken: sealSecret(token, secret) },
+        })
+        .catch((err) => this.logger.warn(`Não foi possível cifrar o token da Página #${connection.id}`, err));
+    }
+    return token;
   }
 
   // ============ OAUTH ============
@@ -151,7 +180,7 @@ export class SocialService {
           barbershopId,
           facebookPageId: page.id,
           facebookPageName: page.name,
-          facebookAccessToken: page.access_token,
+          facebookAccessToken: this.sealToken(page.access_token),
           instagramBusinessAccountId: igAccount?.id ?? null,
           instagramUsername: igAccount?.username ?? null,
           connectedByUserId: payload.userId,
@@ -159,7 +188,7 @@ export class SocialService {
         update: {
           facebookPageId: page.id,
           facebookPageName: page.name,
-          facebookAccessToken: page.access_token,
+          facebookAccessToken: this.sealToken(page.access_token),
           instagramBusinessAccountId: igAccount?.id ?? null,
           instagramUsername: igAccount?.username ?? null,
           connectedByUserId: payload.userId,
@@ -307,6 +336,7 @@ export class SocialService {
       return;
     }
 
+    const accessToken = await this.pageToken(connection);
     const imageUrl = await this.s3Service.getDownloadUrl(post.imageKey);
     const errors: string[] = [];
     let facebookPostId: string | undefined;
@@ -320,7 +350,7 @@ export class SocialService {
           body: JSON.stringify({
             url: imageUrl,
             caption: post.caption,
-            access_token: connection.facebookAccessToken,
+            access_token: accessToken,
           }),
         });
         const json = await res.json();
@@ -342,7 +372,7 @@ export class SocialService {
             body: JSON.stringify({
               image_url: imageUrl,
               caption: post.caption,
-              access_token: connection.facebookAccessToken,
+              access_token: accessToken,
             }),
           },
         );
@@ -357,7 +387,7 @@ export class SocialService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               creation_id: containerJson.id,
-              access_token: connection.facebookAccessToken,
+              access_token: accessToken,
             }),
           },
         );

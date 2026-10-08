@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–16 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–22 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1212,28 +1212,28 @@ Achados numa revisão de código. Itens 1–16 corrigidos. O restante segue 🆕
     - Com valor final 0, só marca o pagamento como pago, sem passar pelo fluxo que ativa ou renova o plano.
     - **Feito:** a mutation e o `POST /apply/:paymentId` recusam. O cupom continua no checkout (`createPaymentIntentForCheckout`), que já manda o valor certo pra Stripe e registra o uso com `claimUse`.
 16. ✅ **Cancelar "este e os próximos" da série passa por cima do cargo** (`AppointmentSeriesService.cancelFromHere`): confere a permissão só para o profissional do horário clicado. Se um horário seguinte da série foi passado para outro profissional, um barbeiro cancela também o horário do colega. **Feito:** cada horário seguinte passa pela mesma checagem de agenda; o de outro profissional fica de fora quando o cargo não permite.
-17. 🆕 **Links de gerenciar e de avaliar não vencem** (`appointment-link.ts`): o token é só o id assinado, sem validade e sem como revogar. Um e-mail antigo encaminhado dá acesso ao chat do atendimento e deixa mudar a avaliação anos depois. **Fazer:** colocar validade (ex.: chat até X dias depois do atendimento, avaliação até 30 dias) e uma versão para invalidar.
-18. 🆕 **Token da Página do Facebook em texto puro** (`SocialConnection.facebookAccessToken`): fica legível no banco e em backups. **Fazer:** criptografar em repouso, como os outros segredos.
+17. ✅ **Links de gerenciar e de avaliar não vencem** (`appointment-link.ts`): o token é só o id assinado, sem validade e sem como revogar. Um e-mail antigo encaminhado dá acesso ao chat do atendimento e deixa mudar a avaliação anos depois. **Feito:** o link novo é `id.versão.assinatura` (o antigo `id.assinatura` vale como versão 0). Gerenciar e chat valem até 14 dias depois do fim do horário; avaliar, até 30 dias. `Appointment.linkVersion` sobe quando a unidade cancela (agenda, série ou fechamento), e o e-mail de cancelamento sai com a versão nova. O cancelamento feito pelo próprio cliente no link continua abrindo.
+18. ✅ **Token da Página do Facebook em texto puro** (`SocialConnection.facebookAccessToken`): fica legível no banco e em backups. **Feito:** o token é gravado com AES-256-GCM (`SOCIAL_TOKEN_KEY`, ou `JWT_SECRET` se ela não existir). Na publicação, o valor antigo em texto puro ainda abre e é cifrado nessa leitura.
 
 **Equipe e convites**
 
-19. 🆕 **Remover da equipe não cancela o convite pendente** (`BarbershopService.deleteBarber`):
+19. ✅ **Remover da equipe não cancela o convite pendente** (`BarbershopService.deleteBarber`):
     - Só faz `isActive: false`.
     - O convite continua `PENDING`: convidar a mesma pessoa de novo esbarra em "Já existe um convite pendente". E o link antigo ainda é aceito, ligando a conta a um vínculo desativado.
     - Os horários futuros do profissional removido ficam na agenda sem aviso a ninguém.
-    - **Fazer:** cancelar os convites pendentes do vínculo ao remover, recusar convite cujo `Barber` está inativo e avisar (ou pedir para remanejar) os horários futuros.
-20. 🆕 **Documento no aceite do convite** (`EmployeeInviteService.acceptInvite`):
+    - **Feito:** remover cancela os convites `PENDING` desse vínculo. Validar e aceitar o convite recusam quando o `Barber` está inativo. Se ainda há horário futuro confirmado ou aguardando pagamento, dono e gerentes recebem o aviso para remanejar.
+20. ✅ **Documento no aceite do convite** (`EmployeeInviteService.acceptInvite`):
     - Aplica a máscara de CPF em qualquer país.
     - A checagem de duplicado compara o número cru com o salvo (que no convite fica com máscara e no cadastro normal fica como foi digitado). Então o mesmo CPF passa duas vezes.
-    - **Fazer:** normalizar o documento (só dígitos, por país) num lugar só, para salvar e para comparar.
-21. 🆕 **Aceite do convite fora de transação e em português fixo** (`acceptInvite`):
+    - **Feito:** `canonicalIdDoc` mascara só CPF brasileiro (11 dígitos); os outros documentos numéricos ficam só com os dígitos. A duplicata compara pelos dígitos, no país informado, então o número cru e o mascarado são a mesma conta.
+21. ✅ **Aceite do convite fora de transação e em português fixo** (`acceptInvite`):
     - Cria usuário, endereço, configuração, preferências e o vínculo em passos separados. Se um passo falha no meio, a conta fica criada e o convite pendente; tentar de novo dá "Já existe uma conta com estes dados".
     - O idioma da conta nova é sempre `pt`, mesmo em unidade do México ou dos EUA.
-    - **Fazer:** uma transação e o idioma pelo país da unidade (`langForCountry`).
+    - **Feito:** usuário, endereço, configuração, preferências, vínculo e o aceite do convite entram numa transação (o convite só sai de `PENDING` se ainda estava pendente). O idioma da conta nova segue o país da unidade (`langForCountry`).
 
 **Avaliações e redes sociais**
 
-22. 🆕 **Editar a avaliação mantém a resposta antiga** (`ReviewRequestService.submitReview`): o cliente troca a nota e o texto pelo link, e a resposta pública da unidade continua lá, respondendo a um texto que não existe mais. Também não volta para moderação se tinha sido denunciada. **Fazer:** ao mudar o texto, limpar `reportedAt` e marcar a resposta como "respondeu à versão anterior" (ou avisar a unidade).
+22. ✅ **Editar a avaliação mantém a resposta antiga** (`ReviewRequestService.submitReview`): o cliente troca a nota e o texto pelo link, e a resposta pública da unidade continua lá, respondendo a um texto que não existe mais. Também não volta para moderação se tinha sido denunciada. **Feito:** quando o texto muda (pelo link ou logado), `reportedAt` sai e a resposta fica `replyStale` — a página e a lista da unidade dizem que ela foi escrita para o texto anterior. Uma resposta nova limpa a marca. Só mudar a nota não mexe na denúncia.
 23. 🆕 **Conectar o Facebook pega sempre a primeira Página** (`SocialService.handleOAuthCallback`): quem administra várias Páginas não escolhe qual, e o post pode sair na Página errada. A volta do OAuth também não confere se a pessoa ainda é gerente da unidade. **Fazer:** tela para escolher a Página e conferir o acesso na volta.
 
 **Limpeza**

@@ -3,6 +3,7 @@ import { bookingChannel } from './booking-channel';
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import {
   appointmentManageUrl,
+  appointmentLinkCovers,
   createAppointmentToken,
   verifyAppointmentToken,
   verifyWaitlistLeaveToken,
@@ -18,7 +19,8 @@ import {
 } from '@nestjs/common';
 import { randomInt } from 'crypto';
 import { SearchCacheService } from './search-cache.service';
-import { langForCountry, LOCALE } from '../email/language';
+import { langForCountry, LOCALE, normalizeLang, type Lang } from '../email/language';
+import { reviewEditData } from './review-edit';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -1871,9 +1873,80 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
-    await this.prisma.barber.update({
-      where: { id: barberId },
-      data: { isActive: false },
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.barber.update({
+        where: { id: barberId },
+        data: { isActive: false },
+      }),
+      // O link do convite pendente deixaria a pessoa entrar num vínculo já desligado
+      this.prisma.employeeInvite.updateMany({
+        where: { barberId, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      }),
+    ]);
+    this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
+    await this.warnFutureAppointments(barbershopId, barber.name, barberId, now);
+  }
+
+  /** Quem administra a unidade fica sabendo dos horários que ainda estão neste profissional. */
+  private async warnFutureAppointments(
+    barbershopId: number,
+    barberName: string,
+    barberId: number,
+    now: Date,
+  ) {
+    const [shop, managers, future] = await Promise.all([
+      this.prisma.barbershop.findUnique({
+        where: { id: barbershopId },
+        select: { ownerUserId: true },
+      }),
+      this.prisma.barber.findMany({
+        where: { barbershopId, isActive: true, staffType: 'manager', userId: { not: null } },
+        select: { userId: true },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          barberId,
+          startAt: { gte: now },
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+        },
+      }),
+    ]);
+    if (!future || !shop) return;
+    const userIds = [
+      ...new Set([shop.ownerUserId, ...managers.map((m) => m.userId)].filter((id): id is number => !!id)),
+    ];
+    if (!userIds.length) return;
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, userSystemConfig: { select: { language: true } } },
+    });
+    const copy: Record<Lang, { title: string; message: string }> = {
+      pt: {
+        title: 'Horários para remanejar',
+        message: `${barberName} saiu da equipe e ainda tem ${future} horário(s) marcado(s). Passe esses clientes para outra pessoa.`,
+      },
+      en: {
+        title: 'Appointments to reassign',
+        message: `${barberName} left the team and still has ${future} upcoming appointment(s). Move those clients to someone else.`,
+      },
+      es: {
+        title: 'Horarios para reasignar',
+        message: `${barberName} salió del equipo y todavía tiene ${future} cita(s). Pase esos clientes a otra persona.`,
+      },
+    };
+    await this.prisma.userNotification.createMany({
+      data: users.map((user) => {
+        const text = copy[normalizeLang(user.userSystemConfig?.language)];
+        return {
+          userId: user.id,
+          type: 'warning',
+          title: text.title,
+          message: text.message,
+          actionUrl: `/barbershops/${barbershopId}/appointments`,
+        };
+      }),
     });
   }
 
@@ -2964,7 +3037,13 @@ export class BarbershopService {
       }
       return tx.appointment.update({
         where: { id: appointmentId },
-        data,
+        data: {
+          ...data,
+          // Cancela pela unidade: o link antigo do e-mail deixa de abrir
+          ...(data.status === 'CANCELLED' && appointment.status !== 'CANCELLED'
+            ? { linkVersion: { increment: 1 } }
+            : {}),
+        },
         include: { services: { include: { service: true } }, customer: true, barber: true },
       });
     });
@@ -5009,9 +5088,9 @@ export class BarbershopService {
             timeZone: shop.timezone,
           }),
           CancellationWindowHours: shop.network.lateCancellationWindowHours,
-          ManageURL: appointmentManageUrl(appt.id),
+          ManageURL: appointmentManageUrl(appt.id, appt.linkVersion),
           // "Adicionar à agenda" (Google, Outlook, .ics pro Apple e outros)
-          ...appointmentCalendarLinks(appt, createAppointmentToken(appt.id)),
+          ...appointmentCalendarLinks(appt, createAppointmentToken(appt.id, appt.linkVersion)),
           BookURL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/u/${shop.slug}`,
           Reason: reason || null,
           SeriesDates: seriesDates?.length ? seriesDates : null,
@@ -5051,8 +5130,10 @@ export class BarbershopService {
           },
         })
       : null;
-    // Mesma resposta pra link adulterado e agendamento apagado
-    if (!appt) throw new NotFoundException('Link inválido ou agendamento não encontrado');
+    // Mesma resposta pra link adulterado, vencido ou agendamento apagado
+    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+      throw new NotFoundException('Link inválido ou agendamento não encontrado');
+    }
     const windowHours = appt.barbershop.network.lateCancellationWindowHours;
     const changeDeadline = new Date(appt.startAt.getTime() - windowHours * 3600000);
     const canChange = appt.status === 'CONFIRMED' && new Date() < changeDeadline;
@@ -5720,10 +5801,14 @@ export class BarbershopService {
     // Mesmo limite da avaliação pelo link (sem limite, um texto enorme ia
     // pra página pública da unidade)
     const text = comment?.trim().slice(0, 1000) || null;
+    const existing = await this.prisma.review.findUnique({
+      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
+      select: { comment: true, reply: true },
+    });
     return this.prisma.review.upsert({
       where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
       create: { barbershopId, clientAccountId, rating, comment: text },
-      update: { rating, comment: text },
+      update: reviewEditData(existing, { rating, comment: text }),
     });
   }
 
@@ -5763,6 +5848,7 @@ export class BarbershopService {
       // Logado: nome da conta; pelo link do e-mail: nome da ficha
       reviewerName: this.privacyName(r.clientAccount?.name ?? r.customer?.name ?? 'Cliente'),
       reply: r.reply,
+      replyStale: r.replyStale,
       repliedAt: r.repliedAt?.toISOString() ?? null,
     }));
   }

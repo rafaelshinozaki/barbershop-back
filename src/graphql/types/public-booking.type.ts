@@ -572,6 +572,9 @@ export class ReviewType {
   @Field(() => String, { nullable: true })
   reply?: string | null;
 
+  @Field({ description: 'A resposta foi escrita para o texto anterior da avaliação' })
+  replyStale: boolean;
+
   @Field(() => String, { nullable: true })
   repliedAt?: string | null;
 }

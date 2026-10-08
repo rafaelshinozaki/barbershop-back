@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessLevel, BarbershopService } from '../barbershop/barbershop.service';
-import { verifyAppointmentToken } from '../barbershop/appointment-link';
+import { appointmentLinkCovers, verifyAppointmentToken } from '../barbershop/appointment-link';
 import { appointmentEvent } from './calendar-links';
 import { buildCalendar, IcsEvent } from './ics';
 
@@ -43,7 +43,9 @@ export class CalendarService {
           },
         })
       : null;
-    if (!appt) throw new NotFoundException('Agendamento não encontrado');
+    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+      throw new NotFoundException('Agendamento não encontrado');
+    }
     const cancelled = appt.status === 'CANCELLED';
     return buildCalendar([appointmentEvent(appt)], {
       // Cancelado: o app apaga o evento que o cliente já tinha adicionado

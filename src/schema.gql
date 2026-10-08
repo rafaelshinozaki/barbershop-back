@@ -2095,6 +2095,9 @@ type ManagedReviewType {
   rating: Int!
   repliedAt: DateTime
   reply: String
+
+  """A resposta foi escrita para o texto anterior da avaliação"""
+  replyStale: Boolean!
   reportReason: String
 
   """Denunciada (aguardando moderação)"""
@@ -3686,6 +3689,9 @@ type ReviewType {
   rating: Int!
   repliedAt: String
   reply: String
+
+  """A resposta foi escrita para o texto anterior da avaliação"""
+  replyStale: Boolean!
   reviewerName: String!
 }
 

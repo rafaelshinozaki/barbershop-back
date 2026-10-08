@@ -803,6 +803,8 @@ model Review {
   reply           String?
   repliedAt       DateTime?
   repliedByUserId Int?
+  // O cliente editou o texto depois da resposta: a resposta fala da versão anterior
+  replyStale      Boolean   @default(false)
   // Denúncia (avaliação abusiva): o admin da plataforma modera; oculta sai
   // da página e da nota média
   reportedAt      DateTime?
@@ -1216,6 +1218,9 @@ model Appointment {
   holdExpiresAt  DateTime?
   // Lembrete "pague o sinal" enviado (uma vez só)
   holdReminderSentAt DateTime?
+  // Versão dos links do e-mail (gerenciar e avaliar). Sobe no cancelamento
+  // pela unidade: o link antigo deixa de abrir.
+  linkVersion Int @default(0)
   barbershop   Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barber       Barber         @relation(fields: [barberId], references: [id], onDelete: Cascade)
@@ -1321,8 +1326,9 @@ model MarketingCampaign {
 // Conexão com a Página do Facebook (e, se houver, a conta comercial do
 // Instagram vinculada a ela) usada pra publicar posts agendados. Um vínculo
 // por barbearia. facebookAccessToken é o Page Access Token de longa duração
-// devolvido pela Meta no fim do fluxo OAuth — nunca é exposto no GraphQL,
-// só usado internamente pelo SocialService pra chamar a Graph API.
+// devolvido pela Meta no fim do fluxo OAuth, cifrado em repouso
+// (src/common/secret-box.ts). Nunca é exposto no GraphQL: o SocialService
+// abre o valor só na hora de chamar a Graph API.
 model SocialConnection {
   id                          Int      @id @default(autoincrement())
   createdAt                   DateTime @default(now())

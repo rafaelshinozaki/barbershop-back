@@ -100,7 +100,7 @@ export class AppointmentReminderService {
                 AppointmentTime: appointmentTime,
                 // Link pra cancelar/remarcar sem login (até a janela da política)
                 CancellationWindowHours: appt.barbershop.network.lateCancellationWindowHours,
-                ManageURL: appointmentManageUrl(appt.id),
+                ManageURL: appointmentManageUrl(appt.id, appt.linkVersion),
                 Year: new Date().getFullYear(),
               },
               subject: {

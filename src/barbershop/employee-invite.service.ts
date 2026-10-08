@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry } from '../email/language';
@@ -10,6 +11,7 @@ import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional } from './professional';
+import { canonicalIdDoc, idDocLookupDigits } from '../common/id-doc';
 import { assertSoloSinglePerson } from './solo';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
@@ -193,7 +195,7 @@ export class EmployeeInviteService {
       include: {
         inviter: { select: { fullName: true } },
         barbershop: { select: { name: true, address: true } },
-        barber: { select: { staffType: true, accessStartsAt: true, accessEndsAt: true } },
+        barber: { select: { staffType: true, accessStartsAt: true, accessEndsAt: true, isActive: true } },
       },
     });
 
@@ -205,6 +207,9 @@ export class EmployeeInviteService {
     }
     if (invite.expiresAt < new Date()) {
       throw new BadRequestException('Este convite expirou');
+    }
+    if (!invite.barber?.isActive) {
+      throw new BadRequestException('Este convite não está mais disponível');
     }
 
     const existingAccount = await this.prisma.user.findFirst({
@@ -247,28 +252,22 @@ export class EmployeeInviteService {
     if (invite.expiresAt < new Date()) {
       throw new BadRequestException('Este convite expirou');
     }
+    if (!invite.barber?.isActive) {
+      throw new BadRequestException('Este convite não está mais disponível');
+    }
 
     const existingUser = await this.prisma.user.findFirst({
       where: { email: invite.email, provider: 'local' },
     });
 
     // Mesma checagem de documento duplicado do signup principal (ver
-    // UserService.createUser) — esse fluxo cria o usuário por um caminho
-    // separado e não tinha a proteção. Escopada por país e ignorada quando
-    // vazia, pelos mesmos motivos.
-    const documentNumber = data.idDocNumber?.trim();
-    let documentAlreadyExists = false;
-    if (documentNumber) {
-      const documentCountry = data.address?.country;
-      const existingDocument = await this.prisma.user.findFirst({
-        where: {
-          idDocNumber: documentNumber,
-          provider: 'local',
-          ...(documentCountry ? { address: { country: documentCountry } } : {}),
-        },
-      });
-      documentAlreadyExists = !!existingDocument;
-    }
+    // UserService.createUser). O número salvo pode estar mascarado (CPF) e o
+    // formulário manda os dígitos: compara pelos dígitos, no país informado.
+    const documentCountry = data.address?.country ?? invite.barbershop.country;
+    const documentNumber = canonicalIdDoc(data.idDocNumber, documentCountry);
+    const documentAlreadyExists = documentNumber
+      ? await this.documentTaken(documentNumber, documentCountry)
+      : false;
 
     if (existingUser || documentAlreadyExists) {
       throw new BadRequestException('Já existe uma conta com estes dados');
@@ -285,82 +284,93 @@ export class EmployeeInviteService {
     const birthdate = data.birthdate ? new Date(data.birthdate) : new Date('1990-01-01');
     const gender = data.gender === 'female' ? 'female' : 'male';
 
-    const newUser = await this.prisma.user.create({
-      data: {
-        email: invite.email,
-        password: hashedPassword,
-        fullName: data.fullName.trim(),
-        idDocNumber: data.idDocNumber
-          .replace(/\D/g, '')
-          .replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
-        phone: data.phone.trim(),
-        gender,
-        birthdate,
-        readTerms: true,
-        membership: 'FREE',
-        isActive: true,
-        roleId: role.id,
-        trialStartDate: new Date(),
-        trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    if (
-      data.address &&
-      data.address.zipcode &&
-      data.address.street &&
-      data.address.city &&
-      data.address.neighborhood &&
-      data.address.state &&
-      data.address.country
-    ) {
-      await this.prisma.address.create({
+    const language = langForCountry(invite.barbershop.country);
+    const newUser = await this.prisma.$transaction(async (tx) => {
+      const seat = await tx.barber.findUnique({
+        where: { id: invite.barberId },
+        select: { isActive: true },
+      });
+      if (!seat?.isActive) {
+        throw new BadRequestException('Este convite não está mais disponível');
+      }
+      const user = await tx.user.create({
         data: {
-          userId: newUser.id,
-          zipcode: data.address.zipcode.replace(/\D/g, ''),
-          street: data.address.street.trim(),
-          city: data.address.city.trim(),
-          neighborhood: data.address.neighborhood.trim(),
-          state: data.address.state.trim(),
-          country: data.address.country.trim(),
-          complement1: data.address.complement1?.trim() || null,
-          complement2: data.address.complement2?.trim() || null,
+          email: invite.email,
+          password: hashedPassword,
+          fullName: data.fullName.trim(),
+          idDocNumber: documentNumber,
+          phone: data.phone.trim(),
+          gender,
+          birthdate,
+          readTerms: true,
+          membership: 'FREE',
+          isActive: true,
+          roleId: role.id,
+          trialStartDate: new Date(),
+          trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         },
       });
-    }
 
-    await this.prisma.userSystemConfig.create({
-      data: {
-        userId: newUser.id,
-        theme: 'light',
-        accentColor: 'bronze',
-        grayColor: 'gray',
-        radius: 'medium',
-        scaling: '100%',
-        panelBackground: 'translucent',
-        language: 'pt',
-      },
-    });
+      if (
+        data.address &&
+        data.address.zipcode &&
+        data.address.street &&
+        data.address.city &&
+        data.address.neighborhood &&
+        data.address.state &&
+        data.address.country
+      ) {
+        await tx.address.create({
+          data: {
+            userId: user.id,
+            zipcode: data.address.zipcode.replace(/\D/g, ''),
+            street: data.address.street.trim(),
+            city: data.address.city.trim(),
+            neighborhood: data.address.neighborhood.trim(),
+            state: data.address.state.trim(),
+            country: data.address.country.trim(),
+            complement1: data.address.complement1?.trim() || null,
+            complement2: data.address.complement2?.trim() || null,
+          },
+        });
+      }
 
-    await this.prisma.notificationPreference.create({
-      data: {
-        userId: newUser.id,
-        newsEmail: true,
-        newsInApp: true,
-        promotionsEmail: true,
-        promotionsInApp: true,
-        instabilityEmail: true,
-        instabilityInApp: true,
-        securityEmail: true,
-        securityInApp: true,
-      },
-    });
+      await tx.userSystemConfig.create({
+        data: {
+          userId: user.id,
+          theme: 'light',
+          accentColor: 'bronze',
+          grayColor: 'gray',
+          radius: 'medium',
+          scaling: '100%',
+          panelBackground: 'translucent',
+          language,
+        },
+      });
 
-    await linkBarberToProfessional(this.prisma, invite.barberId, newUser.id);
+      await tx.notificationPreference.create({
+        data: {
+          userId: user.id,
+          newsEmail: true,
+          newsInApp: true,
+          promotionsEmail: true,
+          promotionsInApp: true,
+          instabilityEmail: true,
+          instabilityInApp: true,
+          securityEmail: true,
+          securityInApp: true,
+        },
+      });
 
-    await this.prisma.employeeInvite.update({
-      where: { id: invite.id },
-      data: { status: 'ACCEPTED', acceptedByUserId: newUser.id },
+      await linkBarberToProfessional(tx, invite.barberId, user.id);
+      const claimed = await tx.employeeInvite.updateMany({
+        where: { id: invite.id, status: 'PENDING' },
+        data: { status: 'ACCEPTED', acceptedByUserId: user.id },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Este convite já foi utilizado');
+      }
+      return user;
     });
     void this.activity.memberJoined(invite.barberId, newUser.id);
 
@@ -385,6 +395,13 @@ export class EmployeeInviteService {
     }
     if (invite.expiresAt < new Date()) {
       throw new BadRequestException('Este convite expirou');
+    }
+    const seat = await this.prisma.barber.findUnique({
+      where: { id: invite.barberId },
+      select: { isActive: true },
+    });
+    if (!seat?.isActive) {
+      throw new BadRequestException('Este convite não está mais disponível');
     }
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.email.toLowerCase() !== invite.email.toLowerCase()) {
@@ -411,15 +428,54 @@ export class EmployeeInviteService {
       if (active) {
         throw new BadRequestException('Você já está na equipe desta unidade');
       }
+      const stillActive = await tx.barber.findUnique({
+        where: { id: invite.barberId },
+        select: { isActive: true },
+      });
+      if (!stillActive?.isActive) {
+        throw new BadRequestException('Este convite não está mais disponível');
+      }
       await linkBarberToProfessional(tx, invite.barberId, userId);
-      await tx.employeeInvite.update({
-        where: { id: invite.id },
+      const claimed = await tx.employeeInvite.updateMany({
+        where: { id: invite.id, status: 'PENDING' },
         data: { status: 'ACCEPTED', acceptedByUserId: userId },
       });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Este convite já foi utilizado');
+      }
     });
     this.realtime.notify(invite.barbershopId, 'BARBER', 'UPDATED');
     void this.activity.memberJoined(invite.barberId, userId);
     return { success: true, barbershopId: invite.barbershopId };
+  }
+
+  /** O mesmo documento, mascarado ou cru, no país informado. */
+  private async documentTaken(documentNumber: string, country?: string | null) {
+    const digits = idDocLookupDigits(documentNumber);
+    if (digits) {
+      const countrySql = country?.trim()
+        ? Prisma.sql`AND lower(COALESCE(a.country, '')) = lower(${country.trim()})`
+        : Prisma.empty;
+      const rows = await this.prisma.$queryRaw<{ id: number }[]>`
+        SELECT u.id
+        FROM "User" u
+        LEFT JOIN "Address" a ON a."userId" = u.id
+        WHERE u.provider = 'local'
+          AND regexp_replace(COALESCE(u."idDocNumber", ''), '\\D', '', 'g') = ${digits}
+          ${countrySql}
+        LIMIT 1
+      `;
+      return rows.length > 0;
+    }
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        provider: 'local',
+        idDocNumber: { equals: documentNumber.trim(), mode: 'insensitive' },
+        ...(country?.trim() ? { address: { country: country.trim() } } : {}),
+      },
+      select: { id: true },
+    });
+    return !!existing;
   }
 
   private async sendEmployeeInviteEmail(invite: any) {

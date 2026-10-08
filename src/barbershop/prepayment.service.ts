@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
-import { verifyAppointmentToken } from './appointment-link';
+import { appointmentLinkCovers, verifyAppointmentToken } from './appointment-link';
 import { stripeConfigured } from './stripe-configured';
 
 const KIND = 'appointment_prepayment';
@@ -43,7 +43,9 @@ export class PrepaymentService {
           },
         })
       : null;
-    if (!appt) throw new NotFoundException('Agendamento não encontrado');
+    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+      throw new NotFoundException('Agendamento não encontrado');
+    }
     return appt;
   }
 

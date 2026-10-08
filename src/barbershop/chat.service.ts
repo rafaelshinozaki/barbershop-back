@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { langForCountry, LOCALE, normalizeLang } from '../email/language';
-import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
+import { appointmentLinkCovers, appointmentManageUrl } from './appointment-link';
 import { BarbershopService, currentEngagement, type AccessLevel } from './barbershop.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ModerationService } from './moderation.service';
@@ -74,6 +74,8 @@ export class ChatService {
       select: {
         id: true,
         startAt: true,
+        endAt: true,
+        linkVersion: true,
         status: true,
         barbershop: {
           select: {
@@ -121,7 +123,9 @@ export class ChatService {
       const account = appt.customer.clientAccount;
       // Conta ligada suspensa ou excluída: o link do e-mail também não entra
       if (account && (account.deletedAt || account.suspendedAt)) return [];
-      const byToken = viewer.manageToken && verifyAppointmentToken(viewer.manageToken) === appt.id;
+      const byToken =
+        !!viewer.manageToken &&
+        appointmentLinkCovers(viewer.manageToken, 'appointment-manage', appt);
       const byAccount =
         !!viewer.clientAccountId && appt.customer.clientAccountId === viewer.clientAccountId;
       return byToken || byAccount ? kinds : [];
@@ -334,7 +338,7 @@ export class ChatService {
         .sendToClient(account.id, (lang) => ({
           title: CLIENT_PUSH_TEXT[lang].title,
           body: CLIENT_PUSH_TEXT[lang].message(from),
-          url: `${appointmentManageUrl(appt.id)}#chat`,
+          url: `${appointmentManageUrl(appt.id, appt.linkVersion)}#chat`,
           tag: `chat-${appt.id}-${kind}`,
         }))
         .catch((error) => this.logger.warn(`Push do chat não enviado: ${error}`));
@@ -365,7 +369,7 @@ export class ChatService {
               timeStyle: 'short',
               timeZone: appt.barbershop.timezone,
             }),
-            ChatURL: `${appointmentManageUrl(appt.id)}#chat`,
+            ChatURL: `${appointmentManageUrl(appt.id, appt.linkVersion)}#chat`,
             AppName: 'Barbershop',
             SupportEmail: 'suporte@barbershop.com.br',
             Year: new Date().getFullYear(),

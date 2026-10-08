@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
-import { verifyReviewToken } from './appointment-link';
+import { appointmentLinkCovers, verifyReviewToken } from './appointment-link';
 
 export const TIP_DESTINATIONS = ['professional', 'unit'] as const;
 export const TIP_METHODS = ['CASH', 'PIX', 'CARD'] as const;
@@ -150,6 +150,8 @@ export class TipService {
           where: { id },
           select: {
             id: true,
+            endAt: true,
+            linkVersion: true,
             status: true,
             barbershopId: true,
             barberId: true,
@@ -158,7 +160,11 @@ export class TipService {
           },
         })
       : null;
-    if (!appt || appt.status !== 'COMPLETED') {
+    if (
+      !appt ||
+      appt.status !== 'COMPLETED' ||
+      !appointmentLinkCovers(token, 'appointment-review', appt)
+    ) {
       throw new NotFoundException('Link inválido ou atendimento não encontrado');
     }
     return appt;

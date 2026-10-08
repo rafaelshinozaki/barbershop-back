@@ -176,7 +176,7 @@ export class ClosureService {
         // Condicional: não passa por cima de quem mudou no meio tempo
         const res = await this.prisma.appointment.updateMany({
           where: { id: a.id, status: 'CONFIRMED' },
-          data: { status: 'CANCELLED' },
+          data: { status: 'CANCELLED', linkVersion: { increment: 1 } },
         });
         if (res.count === 0) continue;
         cancelled++;

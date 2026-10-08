@@ -32,6 +32,9 @@ export class ManagedReviewType {
   @Field(() => String, { nullable: true })
   reply?: string | null;
 
+  @Field({ description: 'A resposta foi escrita para o texto anterior da avaliação' })
+  replyStale: boolean;
+
   @Field(() => Date, { nullable: true })
   repliedAt?: Date | null;
 

@@ -11,6 +11,7 @@ export type AppointmentForEvent = {
   endAt: Date;
   status: string;
   updatedAt: Date;
+  linkVersion?: number;
   barbershop: { name: string; address: string; city: string; state: string };
   barber: { name: string };
   services: Array<{ service: { name: string } | null }>;
@@ -21,7 +22,7 @@ export function appointmentEvent(a: AppointmentForEvent): IcsEvent {
     .map((s) => s.service?.name)
     .filter(Boolean)
     .join(', ');
-  const manage = appointmentManageUrl(a.id);
+  const manage = appointmentManageUrl(a.id, a.linkVersion ?? 0);
   return {
     uid: `appointment-${a.id}@barbershop`,
     start: a.startAt,

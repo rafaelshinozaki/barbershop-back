@@ -279,7 +279,7 @@ export class AppointmentSeriesService {
     if (allowed.length === 0) return { cancelledCount: 0 };
     await this.prisma.appointment.updateMany({
       where: { id: { in: allowed.map((t) => t.id) }, status: 'CONFIRMED' },
-      data: { status: 'CANCELLED' },
+      data: { status: 'CANCELLED', linkVersion: { increment: 1 } },
     });
     for (const t of allowed) {
       // Cada data liberada pode ser a vaga de alguém da lista de espera

@@ -3,7 +3,7 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
-import { appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
+import { appointmentLinkCovers, appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { langForCountry, LOCALE } from '../email/language';
 import { currentPricing } from '../pricing/pricing';
@@ -65,7 +65,9 @@ export class DepositPaymentService {
           include: { barbershop: { select: { currency: true, name: true } } },
         })
       : null;
-    if (!appt) throw new NotFoundException('Agendamento não encontrado');
+    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+      throw new NotFoundException('Agendamento não encontrado');
+    }
     return appt;
   }
 

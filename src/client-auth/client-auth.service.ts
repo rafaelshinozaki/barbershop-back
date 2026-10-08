@@ -846,7 +846,7 @@ export class ClientAuthService {
         serviceIds: a.services.map((s) => s.serviceId),
         rating: a.professionalReview?.rating ?? null,
         tip: a.tips.length ? a.tips.reduce((sum, t) => sum + Number(t.amount), 0) : null,
-        reviewUrl: a.status === 'COMPLETED' ? appointmentReviewUrl(a.id) : null,
+        reviewUrl: a.status === 'COMPLETED' ? appointmentReviewUrl(a.id, undefined, a.linkVersion) : null,
       });
     });
 

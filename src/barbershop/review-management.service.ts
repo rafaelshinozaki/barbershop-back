@@ -56,6 +56,7 @@ export class ReviewManagementService {
       createdAt: r.createdAt,
       reviewerName: reviewerName(r),
       reply: r.reply,
+      replyStale: r.replyStale,
       repliedAt: r.repliedAt,
       reportedAt: r.reportedAt,
       reportReason: r.reportReason,
@@ -74,8 +75,8 @@ export class ReviewManagementService {
     await this.prisma.review.update({
       where: { id: reviewId },
       data: reply
-        ? { reply, repliedAt: new Date(), repliedByUserId: userId }
-        : { reply: null, repliedAt: null, repliedByUserId: null },
+        ? { reply, repliedAt: new Date(), repliedByUserId: userId, replyStale: false }
+        : { reply: null, repliedAt: null, repliedByUserId: null, replyStale: false },
     });
     // Primeira resposta: o cliente fica sabendo (editar depois não reenvia)
     if (reply && !before.reply) {
@@ -174,6 +175,7 @@ export class ReviewManagementService {
       createdAt: r.createdAt,
       reviewerName: reviewerName(r),
       reply: r.reply,
+      replyStale: r.replyStale,
       repliedAt: r.repliedAt,
       reportedAt: r.reportedAt,
       reportReason: r.reportReason,

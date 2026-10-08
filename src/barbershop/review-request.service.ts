@@ -3,10 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry, LOCALE } from '../email/language';
-import { appointmentReviewUrl, verifyReviewToken } from './appointment-link';
+import { appointmentLinkCovers, appointmentReviewUrl, verifyReviewToken } from './appointment-link';
 import { unsubscribeLinks } from './marketing-unsubscribe';
 import { BarbershopService } from './barbershop.service';
 import { linkBarberToProfessional } from './professional';
+import { reviewEditData } from './review-edit';
 
 // O e-mail sai algumas horas depois do fim do atendimento (a pessoa já foi
 // embora, mas ainda lembra de como foi) e só pra atendimentos recentes —
@@ -54,13 +55,13 @@ export class ReviewRequestService {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'reception');
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, linkVersion: true },
     });
     if (!appt) throw new NotFoundException('Agendamento não encontrado');
     if (appt.status !== 'COMPLETED') {
       throw new BadRequestException('Só dá pra pedir avaliação de atendimento concluído');
     }
-    return appointmentReviewUrl(appt.id);
+    return appointmentReviewUrl(appt.id, undefined, appt.linkVersion);
   }
 
   async enqueueDueRequests(now = new Date()) {
@@ -133,8 +134,11 @@ export class ReviewRequestService {
                 timeZone: shop.timezone,
               }),
               // Uma estrela = um link: tocar já abre a página com a nota marcada
-              Stars: [1, 2, 3, 4, 5].map((n) => ({ N: n, URL: appointmentReviewUrl(appt.id, n) })),
-              ReviewURL: appointmentReviewUrl(appt.id),
+              Stars: [1, 2, 3, 4, 5].map((n) => ({
+                N: n,
+                URL: appointmentReviewUrl(appt.id, n, appt.linkVersion),
+              })),
+              ReviewURL: appointmentReviewUrl(appt.id, undefined, appt.linkVersion),
               UnsubscribeURL: unsubscribe.page,
               Year: now.getFullYear(),
             },
@@ -178,7 +182,11 @@ export class ReviewRequestService {
         })
       : null;
     // Só atendimento concluído vira avaliação (como no login: cliente de verdade)
-    if (!appt || appt.status !== 'COMPLETED') {
+    if (
+      !appt ||
+      appt.status !== 'COMPLETED' ||
+      !appointmentLinkCovers(token, 'appointment-review', appt)
+    ) {
       throw new NotFoundException('Link inválido ou atendimento não encontrado');
     }
     return appt;
@@ -284,7 +292,7 @@ export class ReviewRequestService {
       if (existing) {
         await this.prisma.review.update({
           where: { id: existing.id },
-          data: { rating: unit.rating, comment: unit.comment },
+          data: reviewEditData(existing, unit),
         });
       } else {
         // Dois envios ao mesmo tempo: o índice único (unidade + ficha) segura
@@ -298,7 +306,7 @@ export class ReviewRequestService {
             rating: unit.rating,
             comment: unit.comment,
           },
-          update: { rating: unit.rating, comment: unit.comment },
+          update: reviewEditData(null, unit),
         });
       }
       void this.activity.reviewPosted(
