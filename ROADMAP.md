@@ -1176,7 +1176,7 @@ A pergunta em cada tela: o que esse cargo faz no dia a dia, o que está sobrando
 
 ## Bugs encontrados na revisão (2026-10-07)
 
-Achados numa revisão de código. Itens 1–24 corrigidos. O restante segue 🆕.
+Achados numa revisão de código. Itens 1–27 corrigidos. O restante segue 🆕.
 
 ### Segurança e LGPD
 
@@ -1244,12 +1244,12 @@ Achados numa revisão de código. Itens 1–24 corrigidos. O restante segue 🆕
 
 **Convite de amigos (1 mês grátis)**
 
-25. 🆕 **O cupom de "1 mês grátis" não funciona para quem foi convidado** (`FriendInviteService.createFriendInviteCoupon`):
+25. ✅ **O cupom de "1 mês grátis" não funciona para quem foi convidado** (`FriendInviteService.createFriendInviteCoupon`):
     - O cupom é criado com `minSubscriptionMonths: 1`. Quem acabou de criar a conta não tem assinatura, e o `validateCoupon` recusa com "Cupom requer assinatura prévia".
     - O cupom não fica ligado a ninguém: o `_userId` é ignorado e não se cria `UserCoupon`. Ele não aparece em "seus cupons" (`getCouponsForUser`), e qualquer um com o código usa.
-    - **Fazer:** tirar o mínimo de meses do cupom do amigo, criar o `UserCoupon` de cada um e só aceitar o código pela conta dona.
-26. 🆕 **Aceitar o convite duas vezes ao mesmo tempo** (`FriendInviteService.acceptInvite`): confere `status === 'PENDING'` e só grava depois. Dois cliques geram quatro cupons. **Fazer:** atualização condicional (`updateMany` com `status: 'PENDING'`) antes de criar os cupons, tudo numa transação.
-27. 🆕 **Convite de amigo como disparador de e-mail** (`POST /friend-invites`): sem limite próprio (só o geral de 300 por minuto por IP). O e-mail leva o nome da conta, que quem envia escolhe, para qualquer endereço. Também dá para criar contas em série e ganhar meses grátis. **Fazer:** limite por conta e por dia, só para conta com e-mail confirmado, e teto de recompensas por pessoa.
+    - **Feito:** o cupom do amigo não pede meses de assinatura. Cada um ganha um `UserCoupon`. Se o cupom está reservado para uma conta, outra conta não usa o código.
+26. ✅ **Aceitar o convite duas vezes ao mesmo tempo** (`FriendInviteService.acceptInvite`): confere `status === 'PENDING'` e só grava depois. Dois cliques geram quatro cupons. **Feito:** o convite só sai de `PENDING` numa transação, antes de criar os cupons. O segundo clique encontra o convite já processado.
+27. ✅ **Convite de amigo como disparador de e-mail** (`POST /friend-invites`): sem limite próprio (só o geral de 300 por minuto por IP). O e-mail leva o nome da conta, que quem envia escolhe, para qualquer endereço. Também dá para criar contas em série e ganhar meses grátis. **Feito:** 5 convites por conta por dia, só com e-mail confirmado (login social ou conta de cliente verificada) e no máximo 12 convites aceitos com mês grátis por pessoa.
 
 **Privacidade e moderação**
 

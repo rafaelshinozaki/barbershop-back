@@ -1,9 +1,13 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
+
+const INVITES_PER_DAY = 5;
+const MAX_REWARDS = 12;
 
 @Injectable()
 export class FriendInviteService {
@@ -36,14 +40,41 @@ export class FriendInviteService {
     // Verificar se o email não é do próprio usuário
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: {
+        email: true,
+        provider: true,
+        isActive: true,
+        clientAccount: { select: { emailVerifiedAt: true } },
+      },
     });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
 
+    const emailConfirmed = user.provider !== 'local' || user.clientAccount?.emailVerifiedAt != null;
+    if (!user.isActive || !emailConfirmed) {
+      throw new BadRequestException('Confirme seu e-mail antes de convidar alguém.');
+    }
+
     if (user.email.toLowerCase() === friendEmail.toLowerCase()) {
       throw new BadRequestException('Você não pode convidar a si mesmo');
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const [sentToday, rewards] = await Promise.all([
+      this.prisma.friendInvite.count({
+        where: { inviterId: userId, createdAt: { gte: startOfDay } },
+      }),
+      this.prisma.friendInvite.count({
+        where: { inviterId: userId, status: 'ACCEPTED' },
+      }),
+    ]);
+    if (sentToday >= INVITES_PER_DAY) {
+      throw new BadRequestException('Você já enviou o limite de convites de hoje.');
+    }
+    if (rewards >= MAX_REWARDS) {
+      throw new BadRequestException('Você já atingiu o limite de meses grátis por convite.');
     }
 
     // Gerar token único
@@ -178,14 +209,15 @@ export class FriendInviteService {
 
     // Se a conta do usuário foi criada antes do convite, rejeitar o convite
     if (userCreatedAt < inviteCreatedAt) {
-      // Atualizar o convite como rejeitado
-      const updatedInvite = await this.prisma.friendInvite.update({
+      const rejected = await this.prisma.friendInvite.updateMany({
+        where: { id: invite.id, status: 'PENDING' },
+        data: { status: 'REJECTED', acceptedByUserId },
+      });
+      if (rejected.count !== 1) {
+        throw new BadRequestException('Convite já foi processado');
+      }
+      const updatedInvite = await this.prisma.friendInvite.findUniqueOrThrow({
         where: { id: invite.id },
-        data: {
-          status: 'REJECTED',
-          acceptedByUserId,
-          // Não gerar cupons para usuários existentes
-        },
         include: {
           inviter: {
             select: {
@@ -216,68 +248,55 @@ export class FriendInviteService {
       };
     }
 
-    // Gerar cupons apenas para novos usuários
-    const inviterCoupon = await this.createFriendInviteCoupon(
-      invite.inviter.id,
-      'INVITER',
-      invite.id,
-    );
+    const inviteView = {
+      inviter: { select: { id: true, fullName: true, email: true } },
+      acceptedByUser: { select: { id: true, fullName: true, email: true } },
+      inviterCoupon: { select: { id: true, code: true, name: true, value: true, type: true } },
+      friendCoupon: { select: { id: true, code: true, name: true, value: true, type: true } },
+    } as const;
 
-    const friendCoupon = await this.createFriendInviteCoupon(acceptedByUserId, 'FRIEND', invite.id);
-
-    // Atualizar o convite
-    const updatedInvite = await this.prisma.friendInvite.update({
-      where: { id: invite.id },
-      data: {
-        status: 'ACCEPTED',
-        acceptedByUserId,
-        inviterCouponId: inviterCoupon.id,
-        friendCouponId: friendCoupon.id,
-      },
-      include: {
-        inviter: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        acceptedByUser: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        inviterCoupon: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            value: true,
-            type: true,
-          },
-        },
-        friendCoupon: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            value: true,
-            type: true,
-          },
-        },
-      },
+    // O status sai de PENDING antes dos cupons. Dois cliques: só o primeiro
+    // cria cupom. A trava serializa os aceites do mesmo indicador, senão o
+    // teto de meses conta duas vezes ao mesmo tempo.
+    const updatedInvite = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'friend-invite:' + invite.inviterId}))`;
+      const rewards = await tx.friendInvite.count({
+        where: { inviterId: invite.inviterId, status: 'ACCEPTED' },
+      });
+      const claimed = await tx.friendInvite.updateMany({
+        where: { id: invite.id, status: 'PENDING' },
+        data: { status: 'ACCEPTED', acceptedByUserId },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Convite já foi processado');
+      }
+      if (rewards >= MAX_REWARDS) {
+        return tx.friendInvite.findUniqueOrThrow({ where: { id: invite.id }, include: inviteView });
+      }
+      const inviterCoupon = await this.createFriendInviteCoupon(
+        tx,
+        invite.inviter.id,
+        'INVITER',
+        invite.id,
+      );
+      const friendCoupon = await this.createFriendInviteCoupon(tx, acceptedByUserId, 'FRIEND', invite.id);
+      return tx.friendInvite.update({
+        where: { id: invite.id },
+        data: { inviterCouponId: inviterCoupon.id, friendCouponId: friendCoupon.id },
+        include: inviteView,
+      });
     });
 
-    // Enviar emails de confirmação
-    await this.sendInviteAcceptedEmails(updatedInvite, true);
+    const hasBenefits = updatedInvite.inviterCouponId != null;
+    await this.sendInviteAcceptedEmails(updatedInvite, hasBenefits);
 
     return {
       success: true,
-      message: 'Convite aceito com sucesso! Ambos ganharam 1 mês grátis.',
+      message: hasBenefits
+        ? 'Convite aceito com sucesso! Ambos ganharam 1 mês grátis.'
+        : 'Convite aceito. O limite de meses grátis de quem convidou já foi atingido.',
       invite: updatedInvite,
-      hasBenefits: true,
+      hasBenefits,
     };
   }
 
@@ -285,13 +304,14 @@ export class FriendInviteService {
    * Cria um cupom para convite de amigo
    */
   private async createFriendInviteCoupon(
-    _userId: number,
+    db: Prisma.TransactionClient,
+    userId: number,
     type: 'INVITER' | 'FRIEND',
     inviteId: number,
   ) {
     const couponCode = `FRIEND_${type}_${inviteId}_${randomBytes(4).toString('hex').toUpperCase()}`;
 
-    return this.prisma.coupon.create({
+    const coupon = await db.coupon.create({
       data: {
         code: couponCode,
         name:
@@ -306,10 +326,11 @@ export class FriendInviteService {
         isActive: true,
         validFrom: new Date(),
         validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 ano
-        minSubscriptionMonths: 1,
         applicablePlans: null, // Aplicável a todos os planos
       },
     });
+    await db.userCoupon.create({ data: { userId, couponId: coupon.id } });
+    return coupon;
   }
 
   /**

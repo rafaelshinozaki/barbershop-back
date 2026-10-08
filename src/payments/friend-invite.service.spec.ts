@@ -12,6 +12,9 @@ const mockUser = {
   email: 'inviter@test.com',
   fullName: 'Test Inviter',
   createdAt: new Date('2023-01-01'),
+  provider: 'google',
+  isActive: true,
+  clientAccount: null,
 };
 
 const mockFriend = {
@@ -131,7 +134,12 @@ describe('FriendInviteService', () => {
 
       expect(prismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: userId },
-        select: { email: true },
+        select: {
+          email: true,
+          provider: true,
+          isActive: true,
+          clientAccount: { select: { emailVerifiedAt: true } },
+        },
       });
 
       expect(prismaService.friendInvite.create).toHaveBeenCalledWith({
@@ -154,6 +162,31 @@ describe('FriendInviteService', () => {
 
       expect(emailService.sendTemplateEmail).toHaveBeenCalledTimes(1);
       expect(result).toBeDefined();
+    });
+
+    it('should refuse an unconfirmed local account', async () => {
+      prismaService.friendInvite.findFirst.mockResolvedValue(null);
+      prismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        provider: 'local',
+        clientAccount: { emailVerifiedAt: null },
+      });
+
+      await expect(service.createInvite(1, 'friend@test.com')).rejects.toThrow(
+        new BadRequestException('Confirme seu e-mail antes de convidar alguém.'),
+      );
+      expect(prismaService.friendInvite.create).not.toHaveBeenCalled();
+    });
+
+    it('should refuse when the daily invite limit is reached', async () => {
+      prismaService.friendInvite.findFirst.mockResolvedValue(null);
+      prismaService.user.findUnique.mockResolvedValue(mockUser);
+      prismaService.friendInvite.count.mockResolvedValueOnce(5).mockResolvedValueOnce(0);
+
+      await expect(service.createInvite(1, 'friend@test.com')).rejects.toThrow(
+        new BadRequestException('Você já enviou o limite de convites de hoje.'),
+      );
+      expect(prismaService.friendInvite.create).not.toHaveBeenCalled();
     });
 
     it('should throw error if user already invited this email', async () => {

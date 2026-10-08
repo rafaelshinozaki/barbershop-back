@@ -117,6 +117,18 @@ export class CouponsService {
       return { isValid: false, error: 'Cupom já foi utilizado por este usuário' };
     }
 
+    // Cupom entregue a uma conta (convite de amigo): o código não vale
+    // para outra pessoa. Cupom público não tem essa reserva.
+    if (!userCoupon) {
+      const reserved = await this.prisma.userCoupon.findFirst({
+        where: { couponId: coupon.id, usedAt: null },
+        select: { id: true },
+      });
+      if (reserved) {
+        return { isValid: false, error: 'Este cupom não é da sua conta' };
+      }
+    }
+
     // Verificar planos aplicáveis
     if (coupon.applicablePlans) {
       const applicablePlans = JSON.parse(coupon.applicablePlans);
