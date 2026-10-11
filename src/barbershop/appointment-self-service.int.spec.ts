@@ -257,7 +257,8 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     const phone2 = `8${RUN.slice(-12)}`;
     const cancelled = await book('09:30', phone2);
     await prisma.customer.updateMany({
-      where: { networkId, phone: { in: [phone, phone2] } },
+      // A ficha guarda o telefone no formato internacional (+...)
+      where: { networkId, OR: [{ phone: { endsWith: phone } }, { phone: { endsWith: phone2 } }] },
       data: { clientAccountId: account.id },
     });
     await service.cancelManagedAppointment(createAppointmentToken(cancelled!.id));

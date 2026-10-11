@@ -413,6 +413,10 @@ describe('Chat do atendimento (integração)', () => {
     await expect(book({ customerPhone: customer.phone })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+    // O mesmo telefone escrito de outro jeito também é barrado
+    const masked = customer.phone.replace(/\D/g, '').replace(/^(\d{2})(\d+)(\d{2})$/, '($1) $2-$3');
+    expect(masked).not.toBe(customer.phone);
+    await expect(book({ customerPhone: masked })).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       book({ customerPhone: '+5511000000000', customerEmail: customer.email!.toUpperCase() }),
     ).rejects.toBeInstanceOf(ForbiddenException);

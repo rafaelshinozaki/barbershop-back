@@ -1,5 +1,4 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry } from '../email/language';
@@ -12,7 +11,8 @@ import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
 import { linkBarberToProfessional } from './professional';
 import { normalizeEmail } from '../common/email';
-import { canonicalIdDoc, idDocLookupDigits } from '../common/id-doc';
+import { canonicalIdDoc } from '../common/id-doc';
+import { idDocTaken } from '../common/id-doc-lookup';
 import { assertSoloSinglePerson } from './solo';
 
 export type EmployeeRole = 'BarbershopEmployee' | 'BarbershopManager';
@@ -274,7 +274,7 @@ export class EmployeeInviteService {
     const documentCountry = data.address?.country ?? invite.barbershop.country;
     const documentNumber = canonicalIdDoc(data.idDocNumber, documentCountry);
     const documentAlreadyExists = documentNumber
-      ? await this.documentTaken(documentNumber, documentCountry)
+      ? await idDocTaken(this.prisma, documentNumber, documentCountry)
       : false;
 
     if (existingUser || documentAlreadyExists) {
@@ -313,6 +313,8 @@ export class EmployeeInviteService {
           readTerms: true,
           membership: 'FREE',
           isActive: true,
+          // O link do convite chegou neste e-mail
+          emailVerifiedAt: new Date(),
           roleId: role.id,
           trialStartDate: new Date(),
           trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
@@ -451,39 +453,15 @@ export class EmployeeInviteService {
       if (claimed.count !== 1) {
         throw new BadRequestException('Este convite já foi utilizado');
       }
+      // Abriu o link que chegou no e-mail da conta: e-mail confirmado
+      await tx.user.updateMany({
+        where: { id: userId, emailVerifiedAt: null },
+        data: { emailVerifiedAt: new Date() },
+      });
     });
     this.realtime.notify(invite.barbershopId, 'BARBER', 'UPDATED');
     void this.activity.memberJoined(invite.barberId, userId);
     return { success: true, barbershopId: invite.barbershopId };
-  }
-
-  /** O mesmo documento, mascarado ou cru, no país informado. */
-  private async documentTaken(documentNumber: string, country?: string | null) {
-    const digits = idDocLookupDigits(documentNumber);
-    if (digits) {
-      const countrySql = country?.trim()
-        ? Prisma.sql`AND lower(COALESCE(a.country, '')) = lower(${country.trim()})`
-        : Prisma.empty;
-      const rows = await this.prisma.$queryRaw<{ id: number }[]>`
-        SELECT u.id
-        FROM "User" u
-        LEFT JOIN "Address" a ON a."userId" = u.id
-        WHERE u.provider = 'local'
-          AND regexp_replace(COALESCE(u."idDocNumber", ''), '\\D', '', 'g') = ${digits}
-          ${countrySql}
-        LIMIT 1
-      `;
-      return rows.length > 0;
-    }
-    const existing = await this.prisma.user.findFirst({
-      where: {
-        provider: 'local',
-        idDocNumber: { equals: documentNumber.trim(), mode: 'insensitive' },
-        ...(country?.trim() ? { address: { country: country.trim() } } : {}),
-      },
-      select: { id: true },
-    });
-    return !!existing;
   }
 
   private async sendEmployeeInviteEmail(invite: any) {

@@ -264,6 +264,9 @@ export class ProfilePrivacyType {
   @Field()
   hasProfile: boolean;
 
+  @Field({ description: 'A plataforma já liberou o atendimento a domicílio' })
+  homeServiceAvailable: boolean;
+
   @Field()
   fullName: string;
 

@@ -22,6 +22,8 @@ import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
 import { normalizeEmail } from '@/common/email';
+import { canonicalIdDoc } from '@/common/id-doc';
+import { idDocTaken } from '@/common/id-doc-lookup';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -224,19 +226,13 @@ export class UserService {
       // não deve travar países sem esse campo). A checagem é escopada por
       // país porque o mesmo número pode existir legitimamente em documentos
       // de países diferentes.
-      const documentNumber = userData.idDocNumber?.trim();
-      let documentAlreadyExists = false;
-      if (documentNumber) {
-        const documentCountry = userData.address?.country;
-        const existingDocument = await this.prisma.user.findFirst({
-          where: {
-            idDocNumber: documentNumber,
-            provider: 'local',
-            ...(documentCountry ? { address: { country: documentCountry } } : {}),
-          },
-        });
-        documentAlreadyExists = !!existingDocument;
-      }
+      // CPF com e sem máscara é o mesmo documento: grava num formato só e
+      // compara pelos dígitos (mesma regra do convite da equipe)
+      const documentCountry = userData.address?.country;
+      const documentNumber = canonicalIdDoc(userData.idDocNumber, documentCountry);
+      const documentAlreadyExists = documentNumber
+        ? await idDocTaken(this.prisma, documentNumber, documentCountry)
+        : false;
 
       // Mensagem e status idênticos para email e documento duplicados: dar
       // respostas diferentes permitiria que alguém descobrisse, testando a
@@ -268,7 +264,7 @@ export class UserService {
           email,
           password: hashedPassword,
           fullName: userData.fullName,
-          idDocNumber: userData.idDocNumber,
+          idDocNumber: documentNumber,
           phone: userData.phone,
           gender: userData.gender,
           // "1990-01-01" (só a data) passa na validação mas o Prisma quer data e hora
@@ -1182,10 +1178,10 @@ export class UserService {
     // Hash da nova senha
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Atualizar a senha
+    // Atualizar a senha. O link chegou no e-mail: ele fica confirmado
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, emailVerifiedAt: user.emailVerifiedAt ?? new Date() },
     });
 
     this.logger.log(`Password for user with email: ${email} has been updated`);
@@ -2326,6 +2322,21 @@ export class UserService {
           membershipType: typeof membership,
         });
 
+        // Mesmo documento com ou sem máscara: mesma regra do cadastro
+        const documentNumber = canonicalIdDoc(userData.idDocNumber, userData.address?.country);
+        if (
+          documentNumber &&
+          (await idDocTaken(this.prisma, documentNumber, userData.address?.country))
+        ) {
+          result.errors.push({
+            row: rowNumber,
+            email: userData.email,
+            error: 'Documento já está registrado',
+          });
+          result.errorCount++;
+          continue;
+        }
+
         // Criar usuário
         const newUser = await this.prisma.user.create({
           data: {
@@ -2336,7 +2347,7 @@ export class UserService {
             fullName: userData.fullName,
             gender: userData.gender,
             phone: userData.phone,
-            idDocNumber: userData.idDocNumber,
+            idDocNumber: documentNumber,
             birthdate: new Date(userData.birthdate),
             readTerms: userData.readTerms,
             membership: MEMBERSHIP_STATUS.FREE,

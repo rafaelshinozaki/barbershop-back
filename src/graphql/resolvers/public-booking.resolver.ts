@@ -237,7 +237,7 @@ export class PublicBookingResolver {
       depositAmount:
         appointment.depositAmount != null ? Number(appointment.depositAmount) : undefined,
       // Quem acabou de agendar já pode cancelar/remarcar pela tela de confirmação
-      manageToken: createAppointmentToken(appointment.id),
+      manageToken: createAppointmentToken(appointment.id, appointment.linkVersion),
     };
   }
 

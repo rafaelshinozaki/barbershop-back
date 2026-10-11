@@ -114,12 +114,37 @@ describe('Verificação de identidade (integração)', () => {
 
     await fake.completeFake(u.id, sessionOf(url), 'verified');
     expect(await fake.status(u.id)).toMatchObject({ status: 'verified', verified: true });
+    // Domicílio fora do piloto: sem a chave ligada, o selo não aparece
     expect(await career.publicProfile(`idv-ok-${RUN}`)).toMatchObject({
-      homeService: true,
+      homeService: false,
       identityVerified: true,
     });
+    process.env.HOME_SERVICE_ENABLED = 'true';
+    try {
+      expect(await career.publicProfile(`idv-ok-${RUN}`)).toMatchObject({
+        homeService: true,
+        identityVerified: true,
+      });
+    } finally {
+      delete process.env.HOME_SERVICE_ENABLED;
+    }
     // Já verificada: não abre outra
     await expect(fake.start(u.id)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('domicílio desligado na plataforma: o profissional não liga a opção', async () => {
+    const u = await professional('dom', 'Dora Domicilio');
+    await expect(career.updatePrivacy(u.id, { offersHomeService: true })).rejects.toThrow(
+      'domicílio ainda não está disponível',
+    );
+    expect((await career.privacy(u.id)).homeServiceAvailable).toBe(false);
+    process.env.HOME_SERVICE_ENABLED = 'true';
+    try {
+      await career.updatePrivacy(u.id, { offersHomeService: true });
+      expect((await career.privacy(u.id)).homeServiceAvailable).toBe(true);
+    } finally {
+      delete process.env.HOME_SERVICE_ENABLED;
+    }
   });
 
   it('documento de outra pessoa não verifica; pedir de novo guarda o motivo', async () => {

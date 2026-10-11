@@ -14,6 +14,7 @@ const mockUser = {
   createdAt: new Date('2023-01-01'),
   provider: 'google',
   isActive: true,
+  emailVerifiedAt: null,
   clientAccount: null,
 };
 
@@ -56,7 +57,15 @@ describe('FriendInviteService', () => {
       },
       user: {
         findUnique: jest.fn(),
+        update: jest.fn(),
       },
+      verificationCode: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      $transaction: jest.fn(async (ops: unknown[]) => ops),
       coupon: {
         create: jest.fn(),
       },
@@ -138,6 +147,7 @@ describe('FriendInviteService', () => {
           email: true,
           provider: true,
           isActive: true,
+          emailVerifiedAt: true,
           clientAccount: { select: { emailVerifiedAt: true } },
         },
       });
@@ -176,6 +186,20 @@ describe('FriendInviteService', () => {
         new BadRequestException('Confirme seu e-mail antes de convidar alguém.'),
       );
       expect(prismaService.friendInvite.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts a local account whose email was confirmed by code', async () => {
+      prismaService.friendInvite.findFirst.mockResolvedValue(null);
+      prismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        provider: 'local',
+        emailVerifiedAt: new Date(),
+        clientAccount: null,
+      });
+      prismaService.friendInvite.count.mockResolvedValue(0);
+      prismaService.friendInvite.create.mockResolvedValue({ ...mockInvite, inviter: mockUser });
+
+      await expect(service.createInvite(1, 'friend@test.com')).resolves.toBeDefined();
     });
 
     it('should refuse when the daily invite limit is reached', async () => {
@@ -433,6 +457,59 @@ describe('FriendInviteService', () => {
 
       // Restore original implementation
       mockAcceptInvite.mockRestore();
+    });
+  });
+
+  describe('confirmação do e-mail', () => {
+    it('manda o código e confirma; código errado conta tentativa', async () => {
+      prismaService.user.findUnique.mockResolvedValue({
+        id: 1,
+        email: 'inviter@test.com',
+        fullName: 'Test Inviter',
+        emailVerifiedAt: null,
+      });
+      await expect(service.sendEmailConfirmationCode(1)).resolves.toEqual({
+        sent: true,
+        alreadyConfirmed: false,
+      });
+      const code = prismaService.verificationCode.create.mock.calls[0][0].data.code;
+      expect(code).toMatch(/^\d{6}$/);
+      expect(emailService.sendTemplateEmail).toHaveBeenCalledWith(
+        1,
+        'verification_code',
+        expect.objectContaining({ VerificationCode: code }),
+        expect.anything(),
+        'email-confirmation-code',
+        'inviter@test.com',
+      );
+
+      const record = {
+        id: 9,
+        code,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      prismaService.verificationCode.findFirst.mockResolvedValue(record);
+      await expect(service.confirmEmailCode(1, '000000')).rejects.toThrow('Código incorreto.');
+      expect(prismaService.verificationCode.update).toHaveBeenCalledWith({
+        where: { id: 9 },
+        data: { attempts: 1, used: false },
+      });
+      await expect(service.confirmEmailCode(1, code)).resolves.toEqual({ emailConfirmed: true });
+      expect(prismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { emailVerifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('código vencido pede um novo', async () => {
+      prismaService.verificationCode.findFirst.mockResolvedValue({
+        id: 9,
+        code: '123456',
+        attempts: 0,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(service.confirmEmailCode(1, '123456')).rejects.toThrow('Código vencido');
     });
   });
 });
