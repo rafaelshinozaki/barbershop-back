@@ -456,7 +456,9 @@ describe('Chat do atendimento (integração)', () => {
       },
     });
     const freeAppt = await appointment(shopIds[0], freeBarber.id, customer.id);
-    await expect(chat.threads(freeAppt, staff(freelancer))).rejects.toBeInstanceOf(NotFoundException);
+    await expect(chat.threads(freeAppt, staff(freelancer))).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
 
     const before = pings.length;
     await chat.send(freeAppt, 'professional', 'oi', {

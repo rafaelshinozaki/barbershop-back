@@ -2670,7 +2670,12 @@ async function ensureChats(prisma: PrismaClient) {
           create: messages.map((m) => ({
             createdAt: m.at,
             senderSide: m.side,
-            senderUserId: m.side === 'staff' ? (kind === 'professional' ? appt.barber.userId : green.ownerUserId) : null,
+            senderUserId:
+              m.side === 'staff'
+                ? kind === 'professional'
+                  ? appt.barber.userId
+                  : green.ownerUserId
+                : null,
             body: m.body,
           })),
         },
@@ -2690,8 +2695,16 @@ async function ensureChats(prisma: PrismaClient) {
     const wanted = atBrt(-2, 19);
     const noted = atBrt(-2, 19, 20);
     await open(lucas, 'professional', noted, wanted, [
-      { side: 'client', at: wanted, body: 'Queria o degradê mais baixo nas laterais, como da última vez.' },
-      { side: 'staff', at: noted, body: 'Fechado. Deixo a tesoura no topo e a máquina baixa na lateral.' },
+      {
+        side: 'client',
+        at: wanted,
+        body: 'Queria o degradê mais baixo nas laterais, como da última vez.',
+      },
+      {
+        side: 'staff',
+        at: noted,
+        body: 'Fechado. Deixo a tesoura no topo e a máquina baixa na lateral.',
+      },
     ]);
   }
 
@@ -2778,9 +2791,7 @@ async function ensureMutualRatings(prisma: PrismaClient) {
         rating: sample.rating,
         comment: sample.comment,
         createdAt: at,
-        ...(sample.reply
-          ? { reply: sample.reply, repliedAt: addMinutes(at, 180) }
-          : {}),
+        ...(sample.reply ? { reply: sample.reply, repliedAt: addMinutes(at, 180) } : {}),
       },
     });
     await prisma.customerRating.createMany({
@@ -2823,8 +2834,20 @@ async function ensureOpenScreens(prisma: PrismaClient) {
 
   if (!(await prisma.appointmentTip.count({ where: { barbershopId: green.id } }))) {
     const visits = [
-      { customer: 'Lucas Ferreira', barber: 'Cayo Carlos', destination: 'professional', method: 'CASH', amount: 15 },
-      { customer: 'Mariana Costa', barber: 'Minion Cayo', destination: 'unit', method: 'PIX', amount: 10 },
+      {
+        customer: 'Lucas Ferreira',
+        barber: 'Cayo Carlos',
+        destination: 'professional',
+        method: 'CASH',
+        amount: 15,
+      },
+      {
+        customer: 'Mariana Costa',
+        barber: 'Minion Cayo',
+        destination: 'unit',
+        method: 'PIX',
+        amount: 10,
+      },
     ];
     for (const v of visits) {
       const appt = await prisma.appointment.findFirst({
@@ -2868,7 +2891,9 @@ async function ensureOpenScreens(prisma: PrismaClient) {
     });
   }
 
-  if (!(await prisma.employeeInvite.count({ where: { barbershopId: green.id, status: 'PENDING' } }))) {
+  if (
+    !(await prisma.employeeInvite.count({ where: { barbershopId: green.id, status: 'PENDING' } }))
+  ) {
     const email = 'andre.lima@email.com';
     const barber =
       (await prisma.barber.findFirst({ where: { barbershopId: green.id, email } })) ??
@@ -2997,7 +3022,9 @@ async function ensureOpenScreens(prisma: PrismaClient) {
     });
   }
 
-  if (!(await prisma.supportTicket.count({ where: { subject: 'Não consigo remarcar pelo link' } }))) {
+  if (
+    !(await prisma.supportTicket.count({ where: { subject: 'Não consigo remarcar pelo link' } }))
+  ) {
     const mariana = await prisma.clientAccount.findUnique({
       where: { email: 'mariana.costa@cliente.com' },
     });
@@ -3055,7 +3082,11 @@ async function ensureOpenScreens(prisma: PrismaClient) {
     });
   }
 
-  if (!(await prisma.privacyRequest.count({ where: { requesterEmail: 'lucas.ferreira@cliente.com' } }))) {
+  if (
+    !(await prisma.privacyRequest.count({
+      where: { requesterEmail: 'lucas.ferreira@cliente.com' },
+    }))
+  ) {
     const lucas = await prisma.clientAccount.findUnique({
       where: { email: 'lucas.ferreira@cliente.com' },
     });
@@ -3075,13 +3106,23 @@ async function ensureOpenScreens(prisma: PrismaClient) {
     });
   }
 
-  if (!(await prisma.backofficeApproval.count({ where: { summary: { startsWith: 'Estorno de demonstração' } } }))) {
+  if (
+    !(await prisma.backofficeApproval.count({
+      where: { summary: { startsWith: 'Estorno de demonstração' } },
+    }))
+  ) {
     await prisma.backofficeApproval.create({
       data: {
         action: 'payment.refund',
-        payload: { kind: 'deposit', id: 0, amount: null, reason: 'Cobrança de demonstração, conferir antes de estornar.' },
+        payload: {
+          kind: 'deposit',
+          id: 0,
+          amount: null,
+          reason: 'Cobrança de demonstração, conferir antes de estornar.',
+        },
         summary: 'Estorno de demonstração de um sinal que não existe (id 0)',
-        reason: 'Pedido de exemplo para a fila de confirmações. Aprovar não estorna nada: o pagamento não existe.',
+        reason:
+          'Pedido de exemplo para a fila de confirmações. Aprovar não estorna nada: o pagamento não existe.',
         status: 'pending',
         requestedByEmail: 'finance@backoffice.demo',
         requestedByRole: 'finance',
@@ -3111,12 +3152,19 @@ async function ensureOpenScreens(prisma: PrismaClient) {
         data: { proUntil: extendProUntil(tiago.proUntil, 1, now) },
       });
       await prisma.proReferral.create({
-        data: { inviterUserId: marcos.id, invitedUserId: tiago.id, months: 1, createdAt: atBrt(-6, 13) },
+        data: {
+          inviterUserId: marcos.id,
+          invitedUserId: tiago.id,
+          months: 1,
+          createdAt: atBrt(-6, 13),
+        },
       });
     }
   }
 
-  if (!(await prisma.review.count({ where: { barbershopId: green.id, reportedAt: { not: null } } }))) {
+  if (
+    !(await prisma.review.count({ where: { barbershopId: green.id, reportedAt: { not: null } } }))
+  ) {
     const customer = await prisma.customer.findFirst({
       where: {
         networkId: green.networkId,
@@ -3147,7 +3195,10 @@ async function ensureOpenScreens(prisma: PrismaClient) {
     const profile = await prisma.professional.findFirst({ where: { slug: 'tiago-moura' } });
     const vintage = await prisma.barbershop.findUnique({ where: { slug: 'barbearia-vintage' } });
     const thread = await prisma.chatThread.findFirst({
-      where: { barbershopId: green.id, messages: { some: { body: 'Tem estacionamento na porta?' } } },
+      where: {
+        barbershopId: green.id,
+        messages: { some: { body: 'Tem estacionamento na porta?' } },
+      },
     });
     const reports: { targetType: string; targetId: number; reason: string; details: string }[] = [];
     if (review) {

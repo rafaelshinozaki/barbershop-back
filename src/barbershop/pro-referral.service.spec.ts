@@ -22,18 +22,22 @@ describe('ProReferralService.claim', () => {
         create: jest.fn(async () => ({ id: 1 })),
       },
       user: {
-        update: jest.fn(async ({ where, data }: { where: { id: number }; data: { proUntil: Date } }) => {
-          updates.push({ id: where.id, proUntil: data.proUntil });
-          return data;
-        }),
+        update: jest.fn(
+          async ({ where, data }: { where: { id: number }; data: { proUntil: Date } }) => {
+            updates.push({ id: where.id, proUntil: data.proUntil });
+            return data;
+          },
+        ),
       },
     };
     const prisma = {
       user: {
-        findUnique: jest.fn(async ({ where }: { where: { proReferralCode?: string; id?: number } }) => {
-          if (where.proReferralCode) return inviter;
-          return { createdAt: overrides?.createdAt ?? now, proReferralCode: 'EXISTING' };
-        }),
+        findUnique: jest.fn(
+          async ({ where }: { where: { proReferralCode?: string; id?: number } }) => {
+            if (where.proReferralCode) return inviter;
+            return { createdAt: overrides?.createdAt ?? now, proReferralCode: 'EXISTING' };
+          },
+        ),
         findUniqueOrThrow: jest.fn(async () => ({
           proUntil: null,
           _count: { proReferralsSent: 1 },

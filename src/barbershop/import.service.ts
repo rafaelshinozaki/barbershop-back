@@ -230,7 +230,6 @@ export class ImportService {
       return `Linha ${row.line}: ${messageOf(error)}`;
     }
   }
-
 }
 
 /** Nome da planilha → profissional. Igualdade primeiro; "contém" só com um candidato. */

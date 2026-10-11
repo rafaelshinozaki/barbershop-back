@@ -327,9 +327,8 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.inventoryItem.create({
         data: { barbershopId: A.shopId, productId: product.id, quantity: 10 },
       });
-      const before = (
-        await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } })
-      ).loyaltyPoints;
+      const before = (await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } }))
+        .loyaltyPoints;
       const item = (quantity: number, total: number) => ({
         itemType: 'PRODUCT',
         productId: product.id,

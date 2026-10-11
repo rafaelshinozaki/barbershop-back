@@ -6,7 +6,9 @@ describe('SocialService.handleOAuthCallback', () => {
 
   function build(ensureAccess: () => Promise<unknown>) {
     const upsert = jest.fn();
-    const createChoice = jest.fn(async ({ data }: { data: { token: string; userToken: string } }) => data);
+    const createChoice = jest.fn(
+      async ({ data }: { data: { token: string; userToken: string } }) => data,
+    );
     const prisma = {
       socialConnection: { upsert },
       socialPageChoice: { deleteMany: jest.fn(), create: createChoice },

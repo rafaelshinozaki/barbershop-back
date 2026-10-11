@@ -198,7 +198,9 @@ export class EmployeeInviteService {
       include: {
         inviter: { select: { fullName: true } },
         barbershop: { select: { name: true, address: true } },
-        barber: { select: { staffType: true, accessStartsAt: true, accessEndsAt: true, isActive: true } },
+        barber: {
+          select: { staffType: true, accessStartsAt: true, accessEndsAt: true, isActive: true },
+        },
       },
     });
 

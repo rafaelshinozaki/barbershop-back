@@ -37,6 +37,7 @@ describe('Avaliação do profissional (integração)', () => {
         gender: 'female',
         birthdate: new Date('1990-01-01'),
         readTerms: true,
+        isActive: true,
         roleId,
       },
     });

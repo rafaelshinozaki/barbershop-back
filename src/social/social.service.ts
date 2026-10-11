@@ -60,7 +60,10 @@ export class SocialService {
   }
 
   /** Abre o token da Página. O que ainda está em texto puro é cifrado na hora. */
-  private async pageToken(connection: { id: number; facebookAccessToken: string }): Promise<string> {
+  private async pageToken(connection: {
+    id: number;
+    facebookAccessToken: string;
+  }): Promise<string> {
     const secret = this.tokenSecret();
     const token = openSecret(connection.facebookAccessToken, secret);
     if (!isSealed(connection.facebookAccessToken)) {
@@ -69,7 +72,9 @@ export class SocialService {
           where: { id: connection.id },
           data: { facebookAccessToken: sealSecret(token, secret) },
         })
-        .catch((err) => this.logger.warn(`Não foi possível cifrar o token da Página #${connection.id}`, err));
+        .catch((err) =>
+          this.logger.warn(`Não foi possível cifrar o token da Página #${connection.id}`, err),
+        );
     }
     return token;
   }

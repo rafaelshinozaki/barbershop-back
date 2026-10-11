@@ -9,12 +9,10 @@ describe('closureAffectsAppointment', () => {
   const laterEnd = new Date('2026-10-08T16:30:00-03:00');
 
   it('não cancela atendimento confirmado que já começou', () => {
-    expect(
-      closureAffectsAppointment('CONFIRMED', earlier, earlierEnd, now, tz, null, null),
-    ).toBe(false);
-    expect(closureAffectsAppointment('CONFIRMED', later, laterEnd, now, tz, null, null)).toBe(
-      true,
+    expect(closureAffectsAppointment('CONFIRMED', earlier, earlierEnd, now, tz, null, null)).toBe(
+      false,
     );
+    expect(closureAffectsAppointment('CONFIRMED', later, laterEnd, now, tz, null, null)).toBe(true);
   });
 
   it('expira a reserva de sinal mesmo de um horário que já passou', () => {
@@ -24,9 +22,9 @@ describe('closureAffectsAppointment', () => {
   });
 
   it('horário especial só pega quem fica de fora da janela', () => {
-    expect(
-      closureAffectsAppointment('CONFIRMED', later, laterEnd, now, tz, '14:00', '18:00'),
-    ).toBe(false);
+    expect(closureAffectsAppointment('CONFIRMED', later, laterEnd, now, tz, '14:00', '18:00')).toBe(
+      false,
+    );
     const morning = new Date('2026-10-08T18:30:00-03:00');
     expect(
       closureAffectsAppointment(
