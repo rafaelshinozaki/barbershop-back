@@ -266,7 +266,7 @@ export class DepositPaymentService {
                 style: 'currency',
                 currency: shop.currency,
               }),
-              PayURL: appointmentManageUrl(appt.id),
+              PayURL: appointmentManageUrl(appt.id, appt.linkVersion),
               Year: now.getFullYear(),
             },
             subject: {

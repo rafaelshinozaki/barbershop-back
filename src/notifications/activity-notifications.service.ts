@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { currentEngagement } from '../barbershop/barbershop.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { staffRoleLabel } from '../barbershop/staff-roles';
@@ -721,7 +722,8 @@ export class ActivityNotificationsService {
         network: { select: { ownerUserId: true } },
         barbers: {
           where: {
-            isActive: true,
+            // Freelancer fora do período do vínculo não recebe mais nada da unidade
+            ...currentEngagement(),
             userId: { not: null },
             // Gerente recebe tudo; a recepção, o que é da agenda; o barbeiro,
             // o que é dele

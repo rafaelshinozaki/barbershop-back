@@ -10,6 +10,14 @@ import {
   visiblePastVisit,
 } from './career';
 import { ensureProfessional } from './professional';
+import { homeServiceEnabled } from './home-service';
+
+/** Ligar o domicílio só quando a plataforma liberou */
+function assertHomeServiceAllowed(offers: boolean | null | undefined) {
+  if (offers && !homeServiceEnabled()) {
+    throw new BadRequestException('O atendimento a domicílio ainda não está disponível.');
+  }
+}
 import { ProfessionalReviewService } from './professional-review.service';
 import { professionalBadges } from './badges';
 import {
@@ -158,6 +166,7 @@ export class CareerService {
       ...facts,
       shifts,
       ...(professional ? this.choicesOf(professional) : emptyChoices()),
+      homeServiceAvailable: homeServiceEnabled(),
     };
   }
 
@@ -169,6 +178,7 @@ export class CareerService {
 
   async applySignup(userId: number, input: Parameters<typeof parseProfessionalSignup>[0]) {
     const choices = this.parse(input, parseProfessionalSignup);
+    assertHomeServiceAllowed((choices as { offersHomeService?: boolean }).offersHomeService);
     const professional = await ensureProfessional(this.prisma, userId);
     await this.prisma.professional.update({
       where: { id: professional.id },
@@ -178,6 +188,7 @@ export class CareerService {
 
   async updatePrivacy(userId: number, input: Parameters<typeof parseProfilePatch>[0]) {
     const patch = this.parse(input, parseProfilePatch);
+    assertHomeServiceAllowed(patch.offersHomeService);
     const [user, professional] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } }),
       this.prisma.professional.findUnique({ where: { userId } }),
@@ -229,7 +240,8 @@ export class CareerService {
     return {
       id: professional.id,
       // Atende a domicílio só aparece com a identidade verificada
-      homeService: professional.offersHomeService && !!user.identityVerifiedAt,
+      homeService:
+        homeServiceEnabled() && professional.offersHomeService && !!user.identityVerifiedAt,
       identityVerified: !!user.identityVerifiedAt,
       ...presentPublicProfile({
         fullName: user.fullName,

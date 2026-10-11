@@ -229,6 +229,25 @@ describe('ActivityNotificationsService (integração com o banco)', () => {
     expect(emails).toHaveLength(0); // agenda: e-mail desligado por padrão
   });
 
+  it('gerente com vínculo vencido (freelancer) não recebe mais aviso', async () => {
+    const seat = await prisma.barber.findFirstOrThrow({
+      where: { barbershopId: ids.shopId, userId: ids.manager },
+    });
+    await prisma.barber.update({
+      where: { id: seat.id },
+      data: { accessEndsAt: new Date(Date.now() - 86_400_000) },
+    });
+    try {
+      await prisma.userNotification.deleteMany({ where: { userId: ids.manager } });
+      const appt = await createAppointment();
+      await service.appointmentCreated(appt.id, ids.owner);
+      expect(await notificationsOf(ids.manager)).toHaveLength(0);
+      expect(await notificationsOf(ids.barberUser)).not.toHaveLength(0);
+    } finally {
+      await prisma.barber.update({ where: { id: seat.id }, data: { accessEndsAt: null } });
+    }
+  });
+
   it('agendamento online (sem autor) avisa o dono também', async () => {
     const appt = await createAppointment();
     await service.appointmentCreated(appt.id, null);

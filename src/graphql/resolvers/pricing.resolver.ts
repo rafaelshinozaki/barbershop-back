@@ -38,6 +38,14 @@ export class PricingValuesType {
 
   @Field(() => Int, { description: 'Taxa por vaga preenchida, em centavos (0 = grátis)' })
   jobFillFeeCents: number;
+
+  @Field(() => Float, {
+    description: 'Cliente novo da vitrine: % do primeiro atendimento concluído (0 = desligado)',
+  })
+  newClientFeePercent: number;
+
+  @Field(() => Int, { description: 'Teto da taxa do cliente novo, em centavos' })
+  newClientFeeCapCents: number;
 }
 
 @ObjectType()
@@ -65,6 +73,12 @@ export class UpdatePricingInput {
 
   @Field(() => Int, { nullable: true })
   jobFillFeeCents?: number;
+
+  @Field(() => Float, { nullable: true })
+  newClientFeePercent?: number;
+
+  @Field(() => Int, { nullable: true })
+  newClientFeeCapCents?: number;
 }
 
 /** Preços e taxas da plataforma: todos veem (as telas mostram); só o admin muda */

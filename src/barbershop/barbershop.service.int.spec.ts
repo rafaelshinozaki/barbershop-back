@@ -474,7 +474,7 @@ describe('BarbershopService (integração com o banco)', () => {
         customerPhone: `11${RUN}78`,
         clientAccountId: account.id,
       });
-      const own = await prisma.customer.findFirst({ where: { phone: `11${RUN}78` } });
+      const own = await prisma.customer.findFirst({ where: { phone: { endsWith: `11${RUN}78` } } });
       expect(own!.clientAccountId).toBe(account.id);
     });
 
@@ -713,6 +713,129 @@ describe('BarbershopService (integração com o banco)', () => {
   });
 
   // ============ Vendas ============
+
+  describe('apagar a ficha do cliente', () => {
+    it('anonimiza: atendimento, caixinha e avaliação ficam; dados pessoais e ficha técnica saem', async () => {
+      const c = await prisma.customer.create({
+        data: {
+          networkId: A.networkId,
+          name: 'Para Apagar',
+          phone: `9${RUN}`,
+          email: 'apagar@x.test',
+          notes: 'alergia',
+        },
+      });
+      const past = await prisma.appointment.create({
+        data: {
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          customerId: c.id,
+          startAt: new Date(Date.now() - 3 * 86_400_000),
+          endAt: new Date(Date.now() - 3 * 86_400_000 + 1_800_000),
+          status: 'COMPLETED',
+        },
+      });
+      await prisma.appointmentTip.create({
+        data: {
+          appointmentId: past.id,
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          destination: 'professional',
+          method: 'CASH',
+          amount: 10,
+          currency: 'BRL',
+        },
+      });
+      await prisma.professionalReview.create({
+        data: {
+          appointmentId: past.id,
+          barberId: A.barberId,
+          barbershopId: A.shopId,
+          customerId: c.id,
+          rating: 1,
+        },
+      });
+      await prisma.consentForm.create({
+        data: { barbershopId: A.shopId, customerId: c.id, formType: 'ANAMNESIS' },
+      });
+
+      // Horário marcado pela frente: pede para cancelar antes
+      const future = await prisma.appointment.create({
+        data: {
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          customerId: c.id,
+          startAt: new Date(Date.now() + 3 * 86_400_000),
+          endAt: new Date(Date.now() + 3 * 86_400_000 + 1_800_000),
+          status: 'CONFIRMED',
+        },
+      });
+      await expect(service.deleteCustomer(A.ownerId, A.shopId, c.id)).rejects.toThrow(
+        'horários marcados',
+      );
+      await prisma.appointment.update({ where: { id: future.id }, data: { status: 'CANCELLED' } });
+
+      await service.deleteCustomer(A.ownerId, A.shopId, c.id);
+      const row = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
+      expect(row).toMatchObject({ name: 'Cliente removido', phone: '', email: null, notes: null });
+      expect(row.deletedAt).toBeInstanceOf(Date);
+      expect(await prisma.appointment.count({ where: { id: past.id } })).toBe(1);
+      expect(await prisma.appointmentTip.count({ where: { appointmentId: past.id } })).toBe(1);
+      expect(await prisma.professionalReview.count({ where: { appointmentId: past.id } })).toBe(1);
+      expect(await prisma.consentForm.count({ where: { customerId: c.id } })).toBe(0);
+
+      // Some da lista e não abre mais
+      const list = await service.getCustomers(A.ownerId, A.shopId, { search: 'Cliente removido' });
+      expect(list.find((x: { id: number }) => x.id === c.id)).toBeUndefined();
+      await expect(service.getCustomer(A.ownerId, A.shopId, c.id)).rejects.toThrow(
+        'Cliente não encontrado',
+      );
+      await expect(service.deleteCustomer(A.ownerId, A.shopId, c.id)).rejects.toThrow(
+        'Cliente não encontrado',
+      );
+    });
+  });
+
+  describe('link de gerenciar com a versão do agendamento', () => {
+    it('horário cancelado e reativado continua abrindo pela conta do cliente', async () => {
+      process.env.APPOINTMENT_LINK_SECRET ??= 'segredo-de-teste';
+      const account = await prisma.clientAccount.create({
+        data: { email: `link-${RUN}@test.local`, name: 'Link Versao' },
+      });
+      const c = await prisma.customer.create({
+        data: {
+          networkId: A.networkId,
+          name: 'Link Versao',
+          phone: `8${RUN}`,
+          clientAccountId: account.id,
+        },
+      });
+      const appt = await prisma.appointment.create({
+        data: {
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          customerId: c.id,
+          startAt: new Date(Date.now() + 5 * 86_400_000),
+          endAt: new Date(Date.now() + 5 * 86_400_000 + 1_800_000),
+          status: 'CONFIRMED',
+          // Já foi cancelado pela unidade uma vez e voltou
+          linkVersion: 1,
+        },
+      });
+      try {
+        const [item] = await service.getClientUpcomingAppointments(account.id);
+        expect(item.id).toBe(appt.id);
+        expect(item.manageToken.startsWith(`${appt.id}.1.`)).toBe(true);
+        await expect(service.getManagedAppointment(item.manageToken)).resolves.toMatchObject({
+          id: appt.id,
+        });
+      } finally {
+        await prisma.appointment.delete({ where: { id: appt.id } });
+        await prisma.customer.delete({ where: { id: c.id } });
+        await prisma.clientAccount.delete({ where: { id: account.id } });
+      }
+    });
+  });
 
   describe('vendas', () => {
     const sale = (extra: Record<string, unknown> = {}) =>

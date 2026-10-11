@@ -132,3 +132,75 @@ describe('SocialService.createPost: chave da imagem', () => {
     });
   });
 });
+
+describe('SocialService: chave do token da Página', () => {
+  const { sealSecret, openSecret } = jest.requireActual('../common/secret-box');
+
+  function build(env: Record<string, string | undefined>, stored: string) {
+    const updateConnection = jest.fn(async () => undefined);
+    const updatePost = jest.fn(async () => undefined);
+    const prisma = {
+      socialPost: {
+        findUnique: async () => ({
+          id: 1,
+          status: 'SCHEDULED',
+          barbershopId: 4,
+          imageKey: 'social-posts/4/x.jpg',
+          caption: 'oi',
+          postToFacebook: true,
+          postToInstagram: false,
+        }),
+        update: updatePost,
+      },
+      socialConnection: {
+        findUnique: async () => ({ id: 7, facebookPageId: 'p1', facebookAccessToken: stored }),
+        update: updateConnection,
+      },
+    };
+    const service = new SocialService(
+      prisma as never,
+      { get: (key: string) => env[key] } as never,
+      {} as never,
+      { getDownloadUrl: async () => 'https://img' } as never,
+      { ensureAccess: async () => ({}) } as never,
+    );
+    return { service, updateConnection, updatePost };
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('em produção sem SOCIAL_TOKEN_KEY nem começa a conexão', async () => {
+    const { service } = build(
+      { NODE_ENV: 'production', JWT_SECRET: 'jwt', META_APP_ID: 'a', META_APP_SECRET: 'b' },
+      '',
+    );
+    await expect(service.getConnectUrl(9, 4)).rejects.toThrow('SOCIAL_TOKEN_KEY');
+  });
+
+  it('token cifrado com o JWT_SECRET abre e é cifrado de novo com a chave própria', async () => {
+    const old = sealSecret('page-token', 'jwt');
+    const { service, updateConnection } = build(
+      { NODE_ENV: 'production', JWT_SECRET: 'jwt', SOCIAL_TOKEN_KEY: 'own' },
+      old,
+    );
+    jest.spyOn(global, 'fetch').mockResolvedValue({ json: async () => ({ id: 'x' }) } as never);
+    await (service as any).publishPost(1);
+    const resealed = (updateConnection.mock.calls[0] as any)[0].data.facebookAccessToken;
+    expect(openSecret(resealed, 'own')).toBe('page-token');
+  });
+
+  it('token que nenhuma chave abre: o post falha pedindo pra conectar de novo', async () => {
+    const lost = sealSecret('page-token', 'chave-que-sumiu');
+    const { service, updatePost } = build({ JWT_SECRET: 'jwt', SOCIAL_TOKEN_KEY: 'own' }, lost);
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await (service as any).publishPost(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(updatePost).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: expect.objectContaining({
+        status: 'FAILED',
+        errorMessage: expect.stringContaining('de novo'),
+      }),
+    });
+  });
+});

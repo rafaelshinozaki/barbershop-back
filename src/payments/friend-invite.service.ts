@@ -4,7 +4,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
+import { CHANGE_PASSWORD_CODE_EXPIRY_MINUTES, CHANGE_PASSWORD_MAX_ATTEMPTS } from '@/common';
+
+const EMAIL_NOT_CONFIRMED = 'Confirme seu e-mail antes de convidar alguém.';
+
+/** E-mail da conta confirmado: login social, código confirmado ou conta de cliente confirmada */
+function emailConfirmedOf(user: {
+  provider: string;
+  emailVerifiedAt: Date | null;
+  clientAccount: { emailVerifiedAt: Date | null } | null;
+}) {
+  return (
+    user.provider !== 'local' ||
+    user.emailVerifiedAt != null ||
+    user.clientAccount?.emailVerifiedAt != null
+  );
+}
 
 const INVITES_PER_DAY = 5;
 const MAX_REWARDS = 12;
@@ -44,6 +60,7 @@ export class FriendInviteService {
         email: true,
         provider: true,
         isActive: true,
+        emailVerifiedAt: true,
         clientAccount: { select: { emailVerifiedAt: true } },
       },
     });
@@ -51,9 +68,8 @@ export class FriendInviteService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const emailConfirmed = user.provider !== 'local' || user.clientAccount?.emailVerifiedAt != null;
-    if (!user.isActive || !emailConfirmed) {
-      throw new BadRequestException('Confirme seu e-mail antes de convidar alguém.');
+    if (!user.isActive || !emailConfirmedOf(user)) {
+      throw new BadRequestException(EMAIL_NOT_CONFIRMED);
     }
 
     if (user.email.toLowerCase() === friendEmail.toLowerCase()) {
@@ -107,6 +123,83 @@ export class FriendInviteService {
     await this.sendInviteEmail(invite);
 
     return invite;
+  }
+
+  /** Pode convidar? (a tela mostra a confirmação do e-mail antes de deixar enviar) */
+  async eligibility(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        provider: true,
+        emailVerifiedAt: true,
+        clientAccount: { select: { emailVerifiedAt: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    return { emailConfirmed: emailConfirmedOf(user), email: user.email };
+  }
+
+  /** Manda um código de 6 dígitos para o e-mail da conta */
+  async sendEmailConfirmationCode(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true, emailVerifiedAt: true },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (user.emailVerifiedAt) return { sent: false, alreadyConfirmed: true };
+    // Um código por vez: o anterior deixa de valer
+    await this.prisma.verificationCode.updateMany({
+      where: { userId, used: false },
+      data: { used: true },
+    });
+    const code = randomInt(100000, 1000000).toString();
+    await this.prisma.verificationCode.create({
+      data: {
+        code,
+        userId,
+        expiresAt: new Date(Date.now() + CHANGE_PASSWORD_CODE_EXPIRY_MINUTES * 60 * 1000),
+      },
+    });
+    await this.emailService.sendTemplateEmail(
+      userId,
+      'verification_code',
+      {
+        FullName: user.fullName,
+        AppName: 'Barbershop',
+        VerificationCode: code,
+        SupportEmail: 'suporte@barbershop.com.br',
+        Year: new Date().getFullYear(),
+      },
+      { pt: 'Confirme seu e-mail', en: 'Confirm your email', es: 'Confirma tu correo' },
+      'email-confirmation-code',
+      user.email,
+    );
+    return { sent: true, alreadyConfirmed: false };
+  }
+
+  /** Confere o código e marca o e-mail da conta como confirmado */
+  async confirmEmailCode(userId: number, code: string) {
+    const record = await this.prisma.verificationCode.findFirst({
+      where: { userId, used: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!record || record.expiresAt < new Date()) {
+      throw new BadRequestException('Código vencido. Peça um novo.');
+    }
+    if (record.code !== (code ?? '').trim()) {
+      const attempts = record.attempts + 1;
+      await this.prisma.verificationCode.update({
+        where: { id: record.id },
+        data: { attempts, used: attempts >= CHANGE_PASSWORD_MAX_ATTEMPTS },
+      });
+      throw new BadRequestException('Código incorreto.');
+    }
+    await this.prisma.$transaction([
+      this.prisma.verificationCode.update({ where: { id: record.id }, data: { used: true } }),
+      this.prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } }),
+    ]);
+    return { emailConfirmed: true };
   }
 
   /**

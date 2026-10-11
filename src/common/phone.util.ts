@@ -28,3 +28,23 @@ export function normalizePhoneToE164(
   }
   return null;
 }
+
+/**
+ * Formas de escrever o mesmo telefone, só com dígitos: "(11) 99999-0000",
+ * "11999990000" e "+55 11 99999-0000" dão o mesmo conjunto. Serve pra achar
+ * a ficha (e o bloqueio) do cliente sem depender de como ele digitou.
+ */
+export function phoneDigitVariants(
+  raw: string | null | undefined,
+  defaultCountryCode = '55',
+): string[] {
+  const digits = (raw ?? '').replace(/\D/g, '');
+  if (!digits) return [];
+  const out = new Set<string>([digits]);
+  const e164 = normalizePhoneToE164(raw, defaultCountryCode)?.slice(1);
+  if (e164) out.add(e164);
+  if (e164?.startsWith(defaultCountryCode) && e164.length >= 12) {
+    out.add(e164.slice(defaultCountryCode.length));
+  }
+  return [...out];
+}

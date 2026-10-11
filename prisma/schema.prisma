@@ -17,6 +17,9 @@ model User {
   // Gravado em minúsculas. A unicidade de verdade ignora maiúsculas
   // (índice em lower(email), provider): Fulano@x.com e fulano@x.com são a mesma conta.
   email               String
+  // E-mail confirmado (código enviado para ele, link de "esqueci a senha" ou
+  // convite da equipe aceito pelo link). Login social já vem confirmado.
+  emailVerifiedAt     DateTime?
   provider            String             @default("local")
   password            String
   fullName            String
@@ -640,6 +643,9 @@ model Customer {
   blockedAt       DateTime?
   blockedReason   String?
   blockedByUserId Int?
+  // Apagada pela unidade: os dados pessoais saem, mas a ficha fica (sem nome)
+  // pra não levar junto atendimentos, caixinhas, pagamentos e avaliações
+  deletedAt       DateTime?
   network         Network         @relation(fields: [networkId], references: [id], onDelete: Cascade)
   clientAccount   ClientAccount?  @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   appointments   Appointment[]

@@ -46,37 +46,76 @@ export class SocialService {
     return `https://graph.facebook.com/${this.apiVersion()}${path}`;
   }
 
+  /**
+   * Chave que cifra o token da Página. Em produção é obrigatória uma chave
+   * própria: derivada do JWT_SECRET, trocar o JWT_SECRET (pra derrubar
+   * sessões) deixaria todos os tokens guardados sem abrir.
+   */
   private tokenSecret(): string {
-    const secret =
-      this.config.get<string>('SOCIAL_TOKEN_KEY') || this.config.get<string>('JWT_SECRET');
-    if (!secret) {
+    const own = this.config.get<string>('SOCIAL_TOKEN_KEY');
+    if (own) return own;
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new BadRequestException(
+        'Conexão com redes sociais indisponível: configure SOCIAL_TOKEN_KEY no servidor.',
+      );
+    }
+    const fallback = this.config.get<string>('JWT_SECRET');
+    if (!fallback) {
       throw new Error('SOCIAL_TOKEN_KEY ou JWT_SECRET é necessário para o token da Página');
     }
-    return secret;
+    return fallback;
+  }
+
+  /** Chaves pra abrir: a atual e, se for outra, a antiga (JWT_SECRET) */
+  private openKeys(): string[] {
+    const keys = [
+      this.config.get<string>('SOCIAL_TOKEN_KEY'),
+      this.config.get<string>('JWT_SECRET'),
+    ].filter((k): k is string => !!k);
+    return [...new Set(keys)];
   }
 
   private sealToken(plain: string): string {
     return sealSecret(plain, this.tokenSecret());
   }
 
-  /** Abre o token da Página. O que ainda está em texto puro é cifrado na hora. */
+  /** Abre com a chave atual ou a antiga; null se nenhuma abre (precisa reconectar) */
+  private openToken(stored: string): { token: string; key: string } | null {
+    for (const key of this.openKeys()) {
+      try {
+        return { token: openSecret(stored, key), key };
+      } catch {
+        // tenta a próxima
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Abre o token da Página. O que está em texto puro, ou cifrado com a chave
+   * antiga, é cifrado de novo com a atual. Null: não abre mais (reconectar).
+   */
   private async pageToken(connection: {
     id: number;
     facebookAccessToken: string;
-  }): Promise<string> {
-    const secret = this.tokenSecret();
-    const token = openSecret(connection.facebookAccessToken, secret);
-    if (!isSealed(connection.facebookAccessToken)) {
+  }): Promise<string | null> {
+    const opened = this.openToken(connection.facebookAccessToken);
+    if (!opened) return null;
+    const own = this.config.get<string>('SOCIAL_TOKEN_KEY');
+    const stale =
+      !isSealed(connection.facebookAccessToken) ||
+      (own != null && own !== '' && opened.key !== own);
+    if (stale) {
       await this.prisma.socialConnection
         .update({
           where: { id: connection.id },
-          data: { facebookAccessToken: sealSecret(token, secret) },
+          data: { facebookAccessToken: this.sealToken(opened.token) },
         })
         .catch((err) =>
           this.logger.warn(`Não foi possível cifrar o token da Página #${connection.id}`, err),
         );
     }
-    return token;
+    return opened.token;
   }
 
   // ============ OAUTH ============
@@ -86,6 +125,8 @@ export class SocialService {
     if (!this.isConfigured()) {
       throw new BadRequestException('Integração com Meta não configurada nesta instância.');
     }
+    // Sem chave pra guardar o token, nem começa o login no Facebook
+    this.tokenSecret();
     const state = this.jwtService.sign({ barbershopId, userId } as OAuthStatePayload, {
       secret: this.config.get<string>('JWT_SECRET'),
       expiresIn: '10m',
@@ -418,6 +459,16 @@ export class SocialService {
     }
 
     const accessToken = await this.pageToken(connection);
+    if (!accessToken) {
+      await this.prisma.socialPost.update({
+        where: { id: postId },
+        data: {
+          status: 'FAILED',
+          errorMessage: 'A conexão com o Facebook precisa ser refeita. Conecte a conta de novo.',
+        },
+      });
+      return;
+    }
     const imageUrl = await this.s3Service.getDownloadUrl(post.imageKey);
     const errors: string[] = [];
     let facebookPostId: string | undefined;

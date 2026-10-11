@@ -2865,6 +2865,14 @@ type PricingType {
   """Taxa por vaga preenchida, em centavos (0 = grátis)"""
   jobFillFeeCents: Int!
 
+  """Teto da taxa do cliente novo, em centavos"""
+  newClientFeeCapCents: Int!
+
+  """
+  Cliente novo da vitrine: % do primeiro atendimento concluído (0 = desligado)
+  """
+  newClientFeePercent: Float!
+
   """% da plataforma sobre o que passa pelo Stripe"""
   platformFeePercent: Float!
 
@@ -2884,6 +2892,14 @@ type PricingValuesType {
 
   """Taxa por vaga preenchida, em centavos (0 = grátis)"""
   jobFillFeeCents: Int!
+
+  """Teto da taxa do cliente novo, em centavos"""
+  newClientFeeCapCents: Int!
+
+  """
+  Cliente novo da vitrine: % do primeiro atendimento concluído (0 = desligado)
+  """
+  newClientFeePercent: Float!
 
   """% da plataforma sobre o que passa pelo Stripe"""
   platformFeePercent: Float!
@@ -2964,6 +2980,9 @@ type ProfilePrivacyType {
   engagements: [String!]!
   fullName: String!
   hasProfile: Boolean!
+
+  """A plataforma já liberou o atendimento a domicílio"""
+  homeServiceAvailable: Boolean!
 
   """Atendo a domicílio (no perfil só com a identidade verificada)"""
   offersHomeService: Boolean!
@@ -4209,6 +4228,8 @@ input UpdatePricingInput {
   featuredProPriceCents: Int
   featuredShopPriceCents: Int
   jobFillFeeCents: Int
+  newClientFeeCapCents: Int
+  newClientFeePercent: Float
   platformFeePercent: Float
   proPriceCents: Int
 }

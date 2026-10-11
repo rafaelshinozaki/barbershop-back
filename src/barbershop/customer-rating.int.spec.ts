@@ -236,10 +236,16 @@ describe('Nota do cliente (integração)', () => {
   });
 
   it('a equipe vê a nota: recepção pra cima sempre; barbeiro só de quem atende', async () => {
+    // Só o que este negócio avaliou: a nota e a falta da outra rede ficam lá
     const byManager = await ratings.conductForStaff(users.dono, shops.a, customerA);
-    expect(byManager.ratingCount).toBe(3);
-    expect((await ratings.conductForStaff(users.recep, shops.a, customerA)).ratingCount).toBe(3);
-    expect((await ratings.conductForStaff(users.pro, shops.a, customerA)).ratingCount).toBe(3);
+    expect(byManager).toMatchObject({ punctuality: 3, treatment: 3.5, ratingCount: 2, noShows: 0 });
+    expect((await ratings.conductForStaff(users.recep, shops.a, customerA)).ratingCount).toBe(2);
+    expect((await ratings.conductForStaff(users.pro, shops.a, customerA)).ratingCount).toBe(2);
+    // O outro negócio também só vê a nota que ele deu
+    expect(await ratings.conductForStaff(users.dono2, shops.b, customerB)).toMatchObject({
+      ratingCount: 1,
+      noShows: 1,
+    });
     await expect(ratings.conductForStaff(users.outro, shops.a, customerA)).rejects.toBeInstanceOf(
       ForbiddenException,
     );

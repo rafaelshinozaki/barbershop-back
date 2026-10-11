@@ -83,7 +83,8 @@ import {
 import { PLANO_STATUS } from '../common/contants';
 import { S3Service } from '../aws/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { normalizePhoneToE164 } from '../common/phone.util';
+import { normalizePhoneToE164, phoneDigitVariants } from '../common/phone.util';
+import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { currentPricing } from '../pricing/pricing';
 import { appointmentCalendarLinks } from '../calendar/calendar-links';
@@ -1622,7 +1623,7 @@ export class BarbershopService {
     filters?: { isActive?: boolean; search?: string; limit?: number; offset?: number },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
-    const where: any = { networkId: barbershop.networkId };
+    const where: any = { networkId: barbershop.networkId, deletedAt: null };
     if (filters?.isActive !== undefined) where.isActive = filters.isActive;
     if (filters?.search) {
       where.OR = [{ name: { contains: filters.search, mode: 'insensitive' } }];
@@ -1648,7 +1649,7 @@ export class BarbershopService {
   async getCustomer(userId: number, barbershopId: number, customerId: number) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, networkId: barbershop.networkId },
+      where: { id: customerId, networkId: barbershop.networkId, deletedAt: null },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     return this.hideContact(await this.contactVisibility(userId, barbershop), customer);
@@ -1670,7 +1671,7 @@ export class BarbershopService {
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, networkId: barbershop.networkId },
+      where: { id: customerId, networkId: barbershop.networkId, deletedAt: null },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     return this.prisma.customer.update({
@@ -1684,8 +1685,43 @@ export class BarbershopService {
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
-    if (!customer) throw new NotFoundException('Cliente não encontrado');
-    await this.prisma.customer.delete({ where: { id: customerId } });
+    if (!customer || customer.deletedAt) throw new NotFoundException('Cliente não encontrado');
+    // Horário marcado pela frente teria que ser cancelado (e estornado) antes
+    const upcoming = await this.prisma.appointment.count({
+      where: {
+        customerId,
+        status: { in: ['CONFIRMED', 'PENDING_PAYMENT', 'IN_PROGRESS'] },
+        endAt: { gte: new Date() },
+      },
+    });
+    if (upcoming > 0) {
+      throw new BadRequestException(
+        'Este cliente tem horários marcados. Cancele os horários antes de apagar a ficha.',
+      );
+    }
+    // Anonimiza em vez de apagar: a exclusão em cascata levava atendimentos,
+    // caixinhas, pagamentos e a avaliação do profissional (registro
+    // financeiro fica 5 anos; avaliação não some apagando o cliente). Saem os
+    // dados pessoais, a ficha técnica e a lista de espera.
+    await this.prisma.$transaction([
+      this.prisma.consentForm.deleteMany({ where: { customerId } }),
+      this.prisma.waitlistEntry.deleteMany({ where: { customerId } }),
+      this.prisma.customer.update({
+        where: { id: customerId },
+        data: {
+          name: 'Cliente removido',
+          phone: '',
+          email: null,
+          birthDate: null,
+          notes: null,
+          clientAccountId: null,
+          marketingOptOut: true,
+          isActive: false,
+          blockedReason: null,
+          deletedAt: new Date(),
+        },
+      }),
+    ]);
   }
 
   /**
@@ -1719,12 +1755,32 @@ export class BarbershopService {
     return this.hideContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
+  /** Ficha da rede com este telefone, escrito de qualquer jeito (só os dígitos contam) */
+  private async customerIdsByPhone(networkId: number, phone: string, onlyBlocked = false) {
+    const variants = phoneDigitVariants(phone);
+    if (!variants.length) return [];
+    const rows = await this.prisma.$queryRaw<{ id: number }[]>`
+      SELECT id FROM "Customer"
+      WHERE "networkId" = ${networkId}
+        AND "deletedAt" IS NULL
+        AND regexp_replace(phone, '\\D', '', 'g') IN (${Prisma.join(variants)})
+        ${onlyBlocked ? Prisma.sql`AND "blockedAt" IS NOT NULL` : Prisma.empty}
+      ORDER BY id ASC
+    `;
+    return rows.map((r) => r.id);
+  }
+
   /** Agendamento online: recusa cliente bloqueado (pelo telefone, e-mail ou conta) */
   private async ensureNotBlocked(
     networkId: number,
     input: { customerPhone: string; customerEmail?: string; clientAccountId?: number },
   ) {
-    const or: Prisma.CustomerWhereInput[] = [{ phone: input.customerPhone }];
+    // Telefone com outra formatação também é o mesmo cliente bloqueado
+    const blockedByPhone = await this.customerIdsByPhone(networkId, input.customerPhone, true);
+    const or: Prisma.CustomerWhereInput[] = [
+      { phone: input.customerPhone },
+      ...(blockedByPhone.length ? [{ id: { in: blockedByPhone } }] : []),
+    ];
     const email = input.customerEmail?.trim();
     if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (input.clientAccountId) or.push({ clientAccountId: input.clientAccountId });
@@ -3541,13 +3597,17 @@ export class BarbershopService {
     });
 
     const networkId = barbershop.networkId;
-    let customer = await this.prisma.customer.findFirst({ where: { networkId, phone } });
+    const [existingId] = await this.customerIdsByPhone(networkId, phone);
+    let customer =
+      existingId != null
+        ? await this.prisma.customer.findUnique({ where: { id: existingId } })
+        : null;
     if (!customer) {
       customer = await this.prisma.customer.create({
         data: {
           networkId,
           name,
-          phone,
+          phone: normalizePhoneToE164(phone) ?? phone,
           email,
           clientAccountId: input.clientAccountId ?? null,
         },
@@ -3906,7 +3966,7 @@ export class BarbershopService {
     segment: string,
     inactiveDays?: number,
   ) {
-    const baseWhere = { networkId, isActive: true, marketingOptOut: false };
+    const baseWhere = { networkId, isActive: true, marketingOptOut: false, deletedAt: null };
 
     if (segment === 'INACTIVE') {
       const days = inactiveDays ?? 60;
@@ -4799,10 +4859,8 @@ export class BarbershopService {
 
     await this.ensureNotBlocked(barbershop.networkId, input);
 
-    const returningCustomer = await this.prisma.customer.findFirst({
-      where: { networkId: barbershop.networkId, phone: input.customerPhone },
-      select: { id: true },
-    });
+    const [returningId] = await this.customerIdsByPhone(barbershop.networkId, input.customerPhone);
+    const returningCustomer = returningId != null ? { id: returningId } : null;
 
     const { services, durationMinutes } = await this.publicServices(
       input.barbershopId,
@@ -4862,15 +4920,19 @@ export class BarbershopService {
     }
 
     const networkId = barbershop.networkId;
-    let customer = await this.prisma.customer.findFirst({
-      where: { networkId, phone: input.customerPhone },
-    });
+    // A mesma pessoa digitando o telefone com outra formatação não vira outra ficha
+    const [existingId] = await this.customerIdsByPhone(networkId, input.customerPhone);
+    let customer =
+      existingId != null
+        ? await this.prisma.customer.findUnique({ where: { id: existingId } })
+        : null;
     if (!customer) {
       customer = await this.prisma.customer.create({
         data: {
           networkId,
           name: input.customerName,
-          phone: input.customerPhone,
+          // Grava no formato internacional quando dá (o WhatsApp precisa dele)
+          phone: normalizePhoneToE164(input.customerPhone) ?? input.customerPhone.trim(),
           email: input.customerEmail || null,
           clientAccountId: input.clientAccountId ?? null,
         },
@@ -5198,13 +5260,14 @@ export class BarbershopService {
         status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
         endAt: { gte: new Date() },
       },
-      select: { id: true },
+      select: { id: true, linkVersion: true },
       orderBy: { startAt: 'asc' },
       take: 20,
     });
     return Promise.all(
       appts.map(async (a) => {
-        const token = createAppointmentToken(a.id);
+        // Versão atual: um horário cancelado e reativado pela equipe tem versão > 0
+        const token = createAppointmentToken(a.id, a.linkVersion);
         return { ...(await this.getManagedAppointment(token)), manageToken: token };
       }),
     );
@@ -5644,7 +5707,7 @@ export class BarbershopService {
           shops: shops.map((s) => ({ name: s.name, slug: s.slug })),
           acceptingClients: p.acceptingClients,
           // Atende a domicílio só com a identidade verificada
-          homeService: p.offersHomeService && !!p.user.identityVerifiedAt,
+          homeService: homeServiceEnabled() && p.offersHomeService && !!p.user.identityVerifiedAt,
           distanceKm: distances.length ? Math.round(Math.min(...distances) * 10) / 10 : null,
           // Posições das unidades mostradas (fora do GraphQL), pro cache da busca
           points: shops.flatMap((s) =>

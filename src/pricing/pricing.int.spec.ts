@@ -64,8 +64,16 @@ describe('Preços e taxas (integração)', () => {
       BadRequestException,
     );
     await expect(pricing.update(1, { nada: 1 } as never)).rejects.toThrow('Campo desconhecido');
-    // Taxa da vaga pode ser desligada (0)
+    // Taxa da vaga pode ser desligada (0), mas não de 1 a 99 centavos (o cartão recusa)
     expect((await pricing.update(1, { jobFillFeeCents: 0 })).jobFillFeeCents).toBe(0);
+    await expect(pricing.update(1, { jobFillFeeCents: 50 })).rejects.toThrow('a partir de 100');
+    expect((await pricing.update(1, { jobFillFeeCents: 100 })).jobFillFeeCents).toBe(100);
+    // Taxa do cliente novo: desligada por padrão, com teto; aceita casas decimais
+    expect(DEFAULT_PRICING).toMatchObject({ newClientFeePercent: 0, newClientFeeCapCents: 1000 });
+    expect((await pricing.update(1, { newClientFeePercent: 10.5 })).newClientFeePercent).toBe(10.5);
+    await expect(pricing.update(1, { newClientFeePercent: 31 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
     // Valor salvo à mão no banco fora do limite volta ao padrão ao carregar
     await prisma.platformSetting.update({
       where: { key: 'pricing' },

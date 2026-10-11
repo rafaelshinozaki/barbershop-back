@@ -152,7 +152,8 @@ export class CustomerRatingService {
       });
       if (!served) throw new ForbiddenException('Só quem atende o cliente vê a nota dele');
     }
-    return this.conductOf(customer);
+    // A nota fica dentro do negócio que avaliou: só as fichas desta rede
+    return this.conductOf(customer, shop.networkId);
   }
 
   /**
@@ -313,11 +314,22 @@ export class CustomerRatingService {
   }
 
   /** Média das fichas da mesma pessoa (pela conta de cliente) e o comparecimento */
-  private async conductOf(customer: { id: number | null; clientAccountId: number | null }) {
+  /**
+   * Com `networkId`, só as fichas daquele negócio (a equipe nunca vê a nota
+   * que outro negócio deu). Sem ele, todas as fichas da conta (o próprio
+   * cliente vendo a sua nota).
+   */
+  private async conductOf(
+    customer: { id: number | null; clientAccountId: number | null },
+    networkId?: number,
+  ) {
     const customerIds = customer.clientAccountId
       ? (
           await this.prisma.customer.findMany({
-            where: { clientAccountId: customer.clientAccountId },
+            where: {
+              clientAccountId: customer.clientAccountId,
+              ...(networkId != null ? { networkId } : {}),
+            },
             select: { id: true },
           })
         ).map((c) => c.id)

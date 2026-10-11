@@ -258,8 +258,9 @@ describe('Lista de espera online (integração)', () => {
       join({ customerPhone: `5${RUN.slice(-8)}69`, customerEmail: target, barberId: null }),
     ).rejects.toThrow('várias listas de espera hoje');
 
+    // A ficha guarda o telefone no formato internacional (+55...)
     await prisma.customer.updateMany({
-      where: { networkId, phone },
+      where: { networkId, phone: { endsWith: phone } },
       data: { blockedAt: new Date(), blockedReason: 'teste' },
     });
     await expect(join({ customerPhone: phone, date: addDays(monday, 8) })).rejects.toBeInstanceOf(

@@ -9,6 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   DEFAULT_PRICING,
   PRICING_LIMITS,
+  PERCENT_KEYS,
+  isPricingValueAllowed,
   Pricing,
   currentPricing,
   setCurrentPricing,
@@ -57,10 +59,14 @@ export class PricingService implements OnModuleInit, OnModuleDestroy {
       if (value == null) continue;
       if (!(key in PRICING_LIMITS)) throw new BadRequestException(`Campo desconhecido: ${key}`);
       const { min, max } = PRICING_LIMITS[key];
-      if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
-        throw new BadRequestException(`${key} deve ficar entre ${min} e ${max}`);
+      if (typeof value !== 'number' || !isPricingValueAllowed(key, value)) {
+        throw new BadRequestException(
+          key === 'jobFillFeeCents' && typeof value === 'number' && value > 0 && value < 100
+            ? `${key}: use 0 (grátis) ou a partir de 100 centavos (o cartão não cobra menos que R$ 1,00)`
+            : `${key} deve ficar entre ${min} e ${max}`,
+        );
       }
-      next[key] = key === 'platformFeePercent' ? Math.round(value * 100) / 100 : Math.round(value);
+      next[key] = PERCENT_KEYS.has(key) ? Math.round(value * 100) / 100 : Math.round(value);
     }
     await this.prisma.platformSetting.upsert({
       where: { key: KEY },
