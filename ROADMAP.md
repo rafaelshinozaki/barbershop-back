@@ -1274,3 +1274,36 @@ Achados numa revisão de código. Itens 1–36 corrigidos.
     - **Fazer:** cancelar só do horário atual para frente, incluir `PENDING_PAYMENT` (expirando a reserva) e avisar a lista de espera quando o horário aumenta. **Feito:** atendimento confirmado que já começou fica. Reserva de sinal no horário fechado é liberada (se o pagamento já tinha passado, o horário confirma). Salvar o fechamento usa o mesmo aviso da lista de espera de quando o dia reabre, então aumentar o horário especial avisa.
 35. ✅ **Importação de planilha escolhe o profissional errado** (`ImportService.matchBarber`): compara nomes com "contém" nos dois sentidos e fica com o primeiro que bater. "Ana" na planilha cai na "Mariana", e "Jo" em qualquer "João" ou "Jorge". **Fazer:** igualdade exata (sem acento e maiúsculas) primeiro, "contém" só se houver um único candidato, e erro na linha quando ficar ambíguo. **Feito:** o nome igual ganha. "Contém" só quando uma pessoa combina. Se mais de uma combina, a linha volta com erro em vez de escolher a primeira.
 36. ✅ **Aceite do convite da equipe com e-mail em maiúscula** (efeito do item 31 em `EmployeeInviteService.acceptInvite`): o convite guarda o e-mail em minúscula e procura a conta exatamente assim. Quem já tem conta com maiúscula ganha uma segunda conta em vez de entrar com a sua. Resolve junto com o item 31. **Feito:** criar, validar e aceitar o convite procuram a conta sem diferenciar maiúsculas, então a conta que já existe é reaproveitada.
+
+### Quinta rodada (2026-10-11)
+
+**CI vermelho na main (6 commits seguidos)**
+
+37. 🆕 **Lint quebra o CI antes dos testes:** 45 erros de formatação (prettier), quase todos em `prisma/seed-demo.ts` e alguns em `src/support/support.service.ts`. Como o lint vem primeiro, os testes e a checagem de migrations não rodam no CI. **Fazer:** `pnpm exec eslint --fix` nesses arquivos.
+38. 🆕 **Testes desatualizados (7 arquivos falham rodando local):**
+    - `professional-review`, `search`, `moderation`, `identity-verification` e `featured-payment`: a página pública agora exige conta ativa, e o padrão de `User.isActive` é `false`. Os usuários de teste são criados sem `isActive: true`.
+    - `job-opening` (taxa por vaga): o teste novo "preencher a última vaga" coloca mais um profissional na unidade, e o teste seguinte esbarra no limite de 3 profissionais do plano.
+    - `deposit-payment`: o link do cliente para de abrir depois que a unidade cancela. Ver o item 44.
+    - **Fazer:** criar os usuários de teste com `isActive: true`, usar outra unidade (ou plano maior) no teste da taxa e decidir o item 44.
+39. 🆕 **e2e do front vermelho na main:** o log disponível não mostra o motivo. Rever depois de o back voltar a ficar verde (o e2e do front roda contra a main do back).
+
+**Correções que ficaram pela metade**
+
+40. 🆕 **Convite de amigo bloqueado para quase todo dono** (`FriendInviteService.createInvite`): a checagem de "e-mail confirmado" só aceita conta local que tenha conta de cliente ligada e confirmada. A conta da equipe não tem confirmação de e-mail própria. Então o dono cadastrado por e-mail e senha, sem conta de cliente, sempre recebe "Confirme seu e-mail antes de convidar alguém". **Fazer:** usar uma confirmação de e-mail da própria conta da equipe (ex.: o código do cadastro) ou outra prova (conta com plano pago, login social).
+41. 🆕 **CPF repetido ainda passa no cadastro principal** (`UserService.createUser`): o convite da equipe passou a comparar por dígitos (`canonicalIdDoc` e `documentTaken`), mas o cadastro normal ainda compara o texto exato e grava como foi digitado. `123.456.789-01` e `12345678901` viram duas contas. **Fazer:** usar o mesmo `canonicalIdDoc` e a mesma busca por dígitos no cadastro, no cadastro em massa e na edição do perfil.
+42. 🆕 **Busca de documento no convite falha por país** (`EmployeeInviteService.documentTaken`):
+    - Sem endereço no formulário, o país vem do cadastro da unidade e é comparado por igualdade com o país do endereço das contas. Se um lado tem "BR" e o outro "Brasil", não bate.
+    - Conta sem endereço nunca é achada, porque o filtro de país corta o `LEFT JOIN`.
+    - **Fazer:** normalizar o país para o código ISO dos dois lados e, sem país conhecido, comparar só o documento.
+43. 🆕 **Links de gerenciar criados sem a versão do agendamento:** `getClientUpcomingAppointments` (`barbershop.service.ts`) e o link "pagar o sinal" (`deposit-payment.service.ts`) usam a versão 0. A equipe pode reativar um agendamento cancelado (de CANCELLED para CONFIRMED), e aí a versão já é maior que 0. O link em "Próximos horários" da conta do cliente e o de pagar o sinal dão "não encontrado". **Fazer:** passar `appt.linkVersion` em todo `createAppointmentToken` e `appointmentManageUrl`.
+44. 🆕 **Cancelado pela unidade, o cliente perde a página do pagamento:** cancelar aumenta a versão do link, e o link que o cliente tinha (pagamento pelo app ou sinal) para de abrir. Ele não consegue ver que o valor foi estornado. O e-mail de cancelamento traz o link novo, mas quem está na página ou usa o e-mail anterior fica sem nada. **Fazer:** deixar a versão anterior abrir só para leitura (status e estorno), sem chat nem ações, ou mandar sempre o link novo junto com o aviso de estorno.
+45. 🆕 **Token do Facebook depende do `JWT_SECRET`** (`social.service.ts`): sem `SOCIAL_TOKEN_KEY`, a chave de cifra sai do `JWT_SECRET`. Trocar o `JWT_SECRET` (por exemplo, para derrubar todas as sessões) faz os tokens guardados não abrirem mais, e todo post agendado falha. **Fazer:** exigir `SOCIAL_TOKEN_KEY` em produção (falhar ao subir sem ela) e tratar a falha de decifrar como "conecte de novo".
+
+**Novos**
+
+46. 🆕 **Telefone sem padrão no agendamento público** (`createPublicAppointment` e `ensureNotBlocked`):
+    - O telefone é comparado exatamente como foi digitado (a tela não tem máscara).
+    - Cliente bloqueado pela unidade agenda de novo só trocando a formatação: `(11) 99999-0000` em vez de `11999990000`.
+    - O mesmo cliente vira várias fichas, o que estraga histórico, "cliente novo", fidelidade e indicação.
+    - **Fazer:** normalizar para E.164 (`normalizePhoneToE164`, já usado na importação) ao gravar e ao buscar, e migrar as fichas existentes, juntando as duplicadas com cuidado.
+47. 🆕 **Avisos de atividade para freelancer com acesso vencido** (`ActivityNotificationsService.deliver`): os destinatários são filtrados só por `isActive`, sem olhar `accessStartsAt`/`accessEndsAt`. Freelancer com vínculo vencido continua recebendo no sininho e por e-mail os agendamentos, vendas e nomes de clientes. **Fazer:** usar o mesmo filtro de período de acesso que `barbershop.service.ts` já usa nas outras consultas.
