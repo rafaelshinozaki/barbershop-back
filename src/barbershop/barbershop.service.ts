@@ -329,6 +329,37 @@ function checkSaleAmounts(data: {
   }
 }
 
+/**
+ * Os valores da venda têm de fechar entre si: cada item = quantidade × preço,
+ * subtotal = soma dos itens e total = subtotal − desconto + imposto (nunca
+ * abaixo de zero). Antes o total vinha da tela sem conferência: dava pra
+ * lançar R$ 100 em itens com total de R$ 1 (caixa, relatório e comissão
+ * ficavam cada um com um número).
+ */
+const MONEY_TOLERANCE = 0.01;
+function checkSaleConsistency(data: {
+  items: Array<{ quantity: number; unitPrice: number; totalPrice: number }>;
+  subtotal: number;
+  discountAmount?: number | null;
+  taxAmount?: number | null;
+  total: number;
+}) {
+  const off = (a: number, b: number) => Math.abs(a - b) > MONEY_TOLERANCE;
+  for (const item of data.items) {
+    if (off(item.totalPrice, item.quantity * item.unitPrice)) {
+      throw new BadRequestException('O valor de um item não bate com quantidade × preço');
+    }
+  }
+  const itemsSum = data.items.reduce((sum, item) => sum + item.totalPrice, 0);
+  if (off(data.subtotal, itemsSum)) {
+    throw new BadRequestException('O subtotal não bate com a soma dos itens');
+  }
+  const expected = Math.max(0, data.subtotal - (data.discountAmount ?? 0) + (data.taxAmount ?? 0));
+  if (off(data.total, expected)) {
+    throw new BadRequestException('O total não bate com subtotal − desconto + imposto');
+  }
+}
+
 const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
 /** Centavos certos (soma de float deixava 26,999999…) */
@@ -6483,6 +6514,8 @@ export class BarbershopService {
     return subs.map((s) => ({
       ...this.toClientSubscriptionResult(s),
       barbershopName: s.barbershop.name,
+      // Moeda da unidade (a conta mostrava sempre em reais)
+      currency: s.barbershop.currency,
     }));
   }
 
@@ -6736,6 +6769,7 @@ export class BarbershopService {
       new Date(),
       productUnits(data.items),
     );
+    checkSaleConsistency(data);
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
 
@@ -7131,6 +7165,30 @@ export class BarbershopService {
         where: { id: saleId, barbershopId },
       });
       if (!existing) throw new BadRequestException('Venda não encontrada');
+      // A venda editada com novo total também tem de fechar (o total gravado
+      // já desconta sinal, cartão-presente e pontos; por isso só confere
+      // quando o total vem na edição). O que não veio fica como estava.
+      if (data.total !== undefined) {
+        const items =
+          data.items ??
+          (
+            await tx.saleItem.findMany({
+              where: { saleId },
+              select: { quantity: true, unitPrice: true, totalPrice: true },
+            })
+          ).map((i) => ({
+            quantity: i.quantity,
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
+          }));
+        checkSaleConsistency({
+          items,
+          subtotal: data.subtotal ?? Number(existing.subtotal),
+          discountAmount: data.discountAmount ?? Number(existing.discountAmount ?? 0),
+          taxAmount: data.taxAmount ?? Number(existing.taxAmount ?? 0),
+          total: data.total ?? Number(existing.total),
+        });
+      }
 
       const updateData: any = {};
       if (data.customerId !== undefined) updateData.customerId = data.customerId;

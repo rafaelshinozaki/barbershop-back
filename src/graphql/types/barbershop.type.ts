@@ -1758,6 +1758,9 @@ export class ClientSubscriptionType {
   @Field(() => Float, { nullable: true })
   price?: number;
 
+  @Field({ nullable: true, description: 'Moeda da unidade (ISO 4217)' })
+  currency?: string;
+
   @Field(() => Int, { nullable: true })
   sessionsPerCycle?: number;
 

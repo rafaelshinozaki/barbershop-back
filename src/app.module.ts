@@ -66,14 +66,13 @@ import { rejectNonSubscription } from './common/ws-subscriptions-only';
         DB_PASSWORD: Joi.string().required(),
         DB_NAME: Joi.string().required(),
 
-        EMAIL_HOST: Joi.string().required(),
-        EMAIL_PORT: Joi.string().required(),
-        EMAIL_SECURE: Joi.string().required(),
-        EMAIL_USER: Joi.string().required(),
-        EMAIL_PASS: Joi.string().required(),
-        EMAIL_FROM: Joi.string().required(), // valide também o EMAIL_FROM
+        // E-mail sai pela API do Mailgun: só estas três são usadas (as antigas
+        // EMAIL_HOST/PORT/USER/PASS e MAILGUN_FROM não fazem mais nada)
+        MAILGUN_API_KEY: Joi.string().required(),
         MAILGUN_DOMAIN: Joi.string().required(),
-        MAILGUN_FROM: Joi.string().required(),
+        EMAIL_FROM: Joi.string().required(),
+        // Domínio da região EU: https://api.eu.mailgun.net
+        MAILGUN_URL: Joi.string().uri().optional(),
 
         STRIPE_SECRET_KEY: Joi.string().required(),
         STRIPE_WEBHOOK_SECRET: Joi.string().required(),

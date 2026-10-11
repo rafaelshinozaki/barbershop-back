@@ -1025,6 +1025,9 @@ type ClientSubscriptionType {
   clientEmail: String
   clientName: String
   createdAt: String!
+
+  """Moeda da unidade (ISO 4217)"""
+  currency: String
   currentPeriodEnd: String
   currentPeriodStart: String
   id: Int!
