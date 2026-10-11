@@ -19,6 +19,7 @@ import { ActivityNotificationsService } from '../notifications/activity-notifica
 import { BarbershopService } from './barbershop.service';
 import { currentPricing } from '../pricing/pricing';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
+import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
 const MIN_RENT = 1;
 const MAX_RENT = 100_000;
@@ -162,13 +163,13 @@ export class ChairRentService {
     if (!Number.isFinite(amount) || amount < MIN_RENT || amount > MAX_RENT) {
       throw new BadRequestException(`O aluguel precisa ficar entre ${MIN_RENT} e ${MAX_RENT}`);
     }
-    const cents = Math.round(amount * 100);
     const currency = link.host.currency;
+    const cents = toMinorUnits(amount, currency);
     const newMode: RentBillingMode = mode ?? (link.rentBillingMode as RentBillingMode);
     if (newMode !== 'CARD' && newMode !== 'MANUAL') {
       throw new BadRequestException('Forma de cobrança inválida');
     }
-    const sameAmount = link.rentAmount && Math.round(Number(link.rentAmount) * 100) === cents;
+    const sameAmount = link.rentAmount && toMinorUnits(Number(link.rentAmount), currency) === cents;
     if (sameAmount && newMode === link.rentBillingMode && link.rentStatus !== 'NONE') {
       return this.view(link.id, hostBarbershopId);
     }
@@ -180,7 +181,7 @@ export class ChairRentService {
       await this.prisma.sharedLocationMember.update({
         where: { id: link.id },
         data: {
-          rentAmount: new Decimal(cents / 100),
+          rentAmount: new Decimal(fromMinorUnits(cents, currency)),
           rentCurrency: currency,
           rentBillingMode: 'MANUAL',
           rentStripePriceId: null,
@@ -196,7 +197,7 @@ export class ChairRentService {
         link.memberBarbershopId,
         wasManual ? 'changed' : 'manualSet',
         link.host.name,
-        this.money(cents / 100, currency),
+        this.money(fromMinorUnits(cents, currency), currency),
         userId,
         `rent:${link.id}:manual:${cents}:${Date.now()}`,
       );
@@ -230,7 +231,7 @@ export class ChairRentService {
     await this.prisma.sharedLocationMember.update({
       where: { id: link.id },
       data: {
-        rentAmount: new Decimal(cents / 100),
+        rentAmount: new Decimal(fromMinorUnits(cents, currency)),
         rentCurrency: currency,
         rentStripePriceId: priceId,
         rentStatus: link.rentStripeSubscriptionId ? link.rentStatus : 'AWAITING_PAYMENT',
@@ -240,7 +241,7 @@ export class ChairRentService {
       link.memberBarbershopId,
       event,
       link.host.name,
-      this.money(cents / 100, currency),
+      this.money(fromMinorUnits(cents, currency), currency),
       userId,
       `rent:${link.id}:${event}:${cents}:${Date.now()}`,
     );
@@ -346,7 +347,7 @@ export class ChairRentService {
         if (!priceId) {
           priceId = await this.createPrice(
             link,
-            Math.round(Number(link.rentAmount) * 100),
+            toMinorUnits(Number(link.rentAmount), link.rentCurrency ?? 'BRL'),
             link.rentCurrency ?? 'BRL',
           );
           // Fora da transação: se ela desfizer depois da Stripe, o preço fica
@@ -872,8 +873,8 @@ export class ChairRentService {
     const line = invoice.lines?.data?.[0];
     const periodStart = line?.period?.start ? new Date(line.period.start * 1000) : null;
     const periodEnd = line?.period?.end ? new Date(line.period.end * 1000) : null;
-    const amount = (paid ? invoice.amount_paid : invoice.amount_due) / 100;
     const currency = (invoice.currency || link.rentCurrency || 'brl').toUpperCase();
+    const amount = fromMinorUnits(paid ? invoice.amount_paid : invoice.amount_due, currency);
 
     const firstTime = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rent-invoice:${invoice.id}`}))`;

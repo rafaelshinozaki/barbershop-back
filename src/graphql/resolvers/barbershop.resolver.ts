@@ -89,7 +89,10 @@ import {
   CreateSubscriptionPlanInput,
   UpdateSubscriptionPlanInput,
 } from '../dto/barbershop.dto';
-import { BarbershopService } from '../../barbershop/barbershop.service';
+import {
+  BarbershopService,
+  assertStaffAppointmentSource,
+} from '../../barbershop/barbershop.service';
 import { S3Service } from '../../aws/s3.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
@@ -917,6 +920,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const { barbershopId: _b, ...rest } = input;
+    assertStaffAppointmentSource(input.source);
     const result = await this.barbershopService.createAppointment(user.id, barbershopId, {
       ...rest,
       startAt: new Date(input.startAt),
