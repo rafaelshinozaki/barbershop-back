@@ -88,6 +88,7 @@ import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { currentPricing } from '../pricing/pricing';
 import { appointmentCalendarLinks } from '../calendar/calendar-links';
+import { toMinorUnits } from '../common/money-units';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
 /** Agenda da franquia: período máximo pedido (6 semanas = visão de mês) */
@@ -366,6 +367,58 @@ const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 /** Situações que a equipe pode pôr num agendamento (PENDING_PAYMENT é do sinal online) */
+/**
+ * Origens que a equipe escolhe ao marcar pela agenda. ONLINE é só a página
+ * pública; IMPORT e HISTORY, só a importação de planilha (HISTORY fica fora
+ * da cota do plano solo: aceito da tela, marcava tudo como histórico e a
+ * cota nunca fechava).
+ */
+export const STAFF_APPOINTMENT_SOURCES = ['PHONE', 'WALK_IN'] as const;
+
+export const CLOSED_CASH_SALE_MESSAGE =
+  'Essa venda é de um caixa já fechado. Lance a correção no caixa aberto.';
+
+/**
+ * A edição mexe no que o fechamento do caixa contou? Situação, forma de
+ * pagamento, itens, desconto ou acréscimo. Compara com os itens (o total
+ * gravado já desconta sinal, cartão-presente e pontos; a tela manda o total
+ * cheio)
+ */
+export function saleMoneyChanged(
+  existing: {
+    paymentStatus: string;
+    paymentMethod: string | null;
+    discountAmount: Prisma.Decimal | number | null;
+    taxAmount: Prisma.Decimal | number | null;
+    items: Array<{ totalPrice: Prisma.Decimal | number }>;
+  },
+  data: {
+    paymentStatus?: string;
+    paymentMethod?: string;
+    discountAmount?: number;
+    taxAmount?: number;
+    items?: Array<{ totalPrice: number }>;
+  },
+): boolean {
+  const cents = (v: Prisma.Decimal | number | null | undefined) => Math.round(Number(v ?? 0) * 100);
+  const sum = (items: Array<{ totalPrice: Prisma.Decimal | number }>) =>
+    items.reduce((acc, i) => acc + cents(i.totalPrice), 0);
+  return (
+    (data.paymentStatus !== undefined && data.paymentStatus !== existing.paymentStatus) ||
+    (data.paymentMethod !== undefined && data.paymentMethod !== existing.paymentMethod) ||
+    (data.discountAmount !== undefined &&
+      cents(data.discountAmount) !== cents(existing.discountAmount)) ||
+    (data.taxAmount !== undefined && cents(data.taxAmount) !== cents(existing.taxAmount)) ||
+    (data.items !== undefined && sum(data.items) !== sum(existing.items))
+  );
+}
+
+export function assertStaffAppointmentSource(source: string | null | undefined) {
+  if (source != null && !(STAFF_APPOINTMENT_SOURCES as readonly string[]).includes(source)) {
+    throw new BadRequestException('Origem do agendamento inválida');
+  }
+}
+
 const STAFF_APPOINTMENT_STATUSES = [
   'DRAFT',
   'CONFIRMED',
@@ -2797,6 +2850,14 @@ export class BarbershopService {
     /** notify = false: a série manda um e-mail só, com todas as datas */
     opts: { notify?: boolean } = {},
   ) {
+    // Fim antes do início escapava da checagem de conflito (startAt < endAt
+    // nunca batia) e data inválida virava erro 500 do banco
+    if (isNaN(new Date(data.startAt).getTime()) || isNaN(new Date(data.endAt).getTime())) {
+      throw new BadRequestException('Horário inválido');
+    }
+    if (new Date(data.endAt) <= new Date(data.startAt)) {
+      throw new BadRequestException('O fim tem que ser depois do início');
+    }
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     if (data.source !== 'HISTORY') {
       await assertSoloBookingAllowed(this.prisma, barbershopId, data.startAt);
@@ -3369,6 +3430,7 @@ export class BarbershopService {
         prepaidPaymentIntentId: true,
         prepaidRefundedAt: true,
         prepaidRefundedAmount: true,
+        barbershop: { select: { currency: true } },
       },
     });
     const intentId = appt?.prepaidPaymentIntentId;
@@ -3397,7 +3459,7 @@ export class BarbershopService {
     try {
       await this.stripeService.createRefund(
         intentId,
-        Math.round(value * 100),
+        toMinorUnits(value, appt.barbershop.currency),
         'requested_by_customer',
         `prepayment-refund-${intentId}-${Math.round(after * 100)}`,
         true,
@@ -6828,9 +6890,15 @@ export class BarbershopService {
     // closeCashSession). Uma venda feita sem caixa aberto simplesmente não
     // entra na conferência de dinheiro físico, mas continua contando no
     // dashboard financeiro (que não depende de sessão de caixa).
-    const openSession = await this.prisma.cashSession.findFirst({
-      where: { barbershopId, status: 'OPEN' },
-    });
+    // Só a venda que já entra paga vai pro caixa aberto agora; a pendente
+    // entra no caixa em que for paga (updateSale). Antes ficava no caixa da
+    // criação e, paga em dinheiro depois, não entrava na conta de nenhum
+    const openSession =
+      data.paymentStatus === 'PAID'
+        ? await this.prisma.cashSession.findFirst({
+            where: { barbershopId, status: 'OPEN' },
+          })
+        : null;
     const created = this.prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
         data: {
@@ -7163,8 +7231,17 @@ export class BarbershopService {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.sale.findFirst({
         where: { id: saleId, barbershopId },
+        include: {
+          items: { select: { totalPrice: true } },
+          cashSession: { select: { status: true } },
+        },
       });
       if (!existing) throw new BadRequestException('Venda não encontrada');
+      // Caixa já fechado: o fechamento gravado (esperado e diferença) conta
+      // com esta venda; mudar valor, forma ou situação desfazia a conferência
+      if (existing.cashSession?.status === 'CLOSED' && saleMoneyChanged(existing, data)) {
+        throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
+      }
       // A venda editada com novo total também tem de fechar (o total gravado
       // já desconta sinal, cartão-presente e pontos; por isso só confere
       // quando o total vem na edição). O que não veio fica como estava.
@@ -7203,6 +7280,12 @@ export class BarbershopService {
         updateData.paymentStatus = data.paymentStatus;
         if (data.paymentStatus === 'PAID' && existing.paymentStatus !== 'PAID') {
           updateData.paidAt = new Date();
+          // Paga agora: entra no caixa aberto agora (onde o dinheiro entrou)
+          const open = await tx.cashSession.findFirst({
+            where: { barbershopId, status: 'OPEN' },
+            select: { id: true },
+          });
+          updateData.cashSessionId = open?.id ?? null;
         }
       }
       if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
@@ -7270,8 +7353,12 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const existing = await this.prisma.sale.findFirst({
       where: { id: saleId, barbershopId },
+      include: { cashSession: { select: { status: true } } },
     });
     if (!existing) throw new BadRequestException('Venda não encontrada');
+    if (existing.cashSession?.status === 'CLOSED') {
+      throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
+    }
     // Apagar desfaz o que a venda mexeu fora dela: antes o cartão-presente
     // ficava sem o saldo, o cliente perdia os pontos resgatados (e mantinha
     // os ganhos) e o estoque continuava baixado
@@ -7495,8 +7582,34 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const existing = await this.prisma.expense.findFirst({
       where: { id: expenseId, barbershopId },
+      include: { cashSession: { select: { status: true } } },
     });
     if (!existing) throw new NotFoundException('Despesa não encontrada');
+    if (existing.cashSession?.status === 'CLOSED') {
+      throw new BadRequestException(
+        'Essa despesa é de um caixa já fechado. Lance a correção no caixa aberto.',
+      );
+    }
+    // Despesa lançada por vale, pagamento da equipe ou aluguel da cadeira:
+    // apagar só ela deixava o lançamento apontando pra nada
+    const [payEntry, payout, rent] = await Promise.all([
+      this.prisma.barberPayEntry.findFirst({ where: { expenseId }, select: { id: true } }),
+      this.prisma.barberPayout.findFirst({ where: { expenseId }, select: { id: true } }),
+      this.prisma.chairRentPayment.findFirst({
+        where: { memberExpenseId: expenseId },
+        select: { id: true },
+      }),
+    ]);
+    if (payEntry || payout) {
+      throw new BadRequestException(
+        'Essa despesa veio do pagamento da equipe. Desfaça por lá (Pagamento da equipe).',
+      );
+    }
+    if (rent) {
+      throw new BadRequestException(
+        'Essa despesa veio do aluguel da cadeira. Desfaça o pagamento do aluguel por lá.',
+      );
+    }
     await this.prisma.expense.delete({ where: { id: expenseId } });
     return true;
   }

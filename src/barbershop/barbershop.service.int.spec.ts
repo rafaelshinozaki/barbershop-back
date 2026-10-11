@@ -11,7 +11,11 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService, NETWORK_AGENDA_CAP } from './barbershop.service';
+import {
+  BarbershopService,
+  NETWORK_AGENDA_CAP,
+  assertStaffAppointmentSource,
+} from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -434,6 +438,38 @@ describe('BarbershopService (integração com o banco)', () => {
       await book(at(day, '10:00'));
       await expect(book(at(day, '10:30'))).resolves.toBeTruthy();
       await expect(book(at(day, '10:00'), { barberId: A.otherBarberId })).resolves.toBeTruthy();
+    });
+
+    it('fim antes do início (ou data inválida) é recusado', async () => {
+      // Antes passava e o horário escapava da checagem de conflito
+      const start = at(day, '17:00');
+      await expect(
+        service.createAppointment(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          barberId: A.barberId,
+          startAt: start,
+          endAt: new Date(start.getTime() - 30 * 60000),
+          services: [{ serviceId: A.serviceId, unitPrice: 50 }],
+        }),
+      ).rejects.toThrow('O fim tem que ser depois do início');
+      await expect(
+        service.createAppointment(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          barberId: A.barberId,
+          startAt: new Date('abc'),
+          endAt: start,
+          services: [{ serviceId: A.serviceId, unitPrice: 50 }],
+        }),
+      ).rejects.toThrow('Horário inválido');
+    });
+
+    it('a agenda da equipe só aceita as origens da equipe', () => {
+      // HISTORY pela tela furava a cota do plano solo
+      expect(() => assertStaffAppointmentSource('HISTORY')).toThrow('Origem');
+      expect(() => assertStaffAppointmentSource('ONLINE')).toThrow('Origem');
+      expect(() => assertStaffAppointmentSource('IMPORT')).toThrow('Origem');
+      expect(() => assertStaffAppointmentSource('PHONE')).not.toThrow();
+      expect(() => assertStaffAppointmentSource(undefined)).not.toThrow();
     });
 
     it('agendamento cancelado libera o horário', async () => {
@@ -946,6 +982,89 @@ describe('BarbershopService (integração com o banco)', () => {
       await expect(
         service.setCommissionRule(A.ownerId, A.shopId, { percentage: 500 }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('venda paga depois entra no caixa em que foi paga; caixa fechado não muda', async () => {
+      await prisma.cashSession.updateMany({
+        where: { barbershopId: A.shopId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      const first = await service.openCashSession(A.ownerId, A.shopId, 0);
+      // Lançada pendente: ainda não está em caixa nenhum
+      const pending = await sale({ paymentStatus: 'PENDING' });
+      expect(pending.cashSessionId).toBeNull();
+      // Paga na hora: no caixa aberto
+      const paid = await sale();
+      expect(paid.cashSessionId).toBe(first.id);
+      await service.closeCashSession(A.ownerId, A.shopId, { countedBalance: 100 });
+      const second = await service.openCashSession(A.ownerId, A.shopId, 0);
+      // A pendente paga agora em dinheiro: entra no segundo caixa
+      const updated = await service.updateSale(A.ownerId, A.shopId, pending.id, {
+        paymentStatus: 'PAID',
+        paymentMethod: 'CASH',
+      });
+      expect(updated?.cashSessionId).toBe(second.id);
+      const closed = await service.closeCashSession(A.ownerId, A.shopId, { countedBalance: 100 });
+      expect(Number(closed.expectedBalance)).toBe(100);
+
+      // A do primeiro caixa (já fechado): não muda valor nem forma, não apaga
+      await expect(
+        service.updateSale(A.ownerId, A.shopId, paid.id, { paymentMethod: 'PIX' }),
+      ).rejects.toThrow('caixa já fechado');
+      await expect(service.deleteSale(A.ownerId, A.shopId, paid.id)).rejects.toThrow(
+        'caixa já fechado',
+      );
+      // O que não mexe no dinheiro continua editável
+      await expect(
+        service.updateSale(A.ownerId, A.shopId, paid.id, {
+          paymentMethod: 'CASH',
+          paymentStatus: 'PAID',
+        }),
+      ).resolves.toBeTruthy();
+      await service.openCashSession(A.ownerId, A.shopId, 0);
+    });
+
+    it('despesa de caixa fechado ou do pagamento da equipe não se apaga por fora', async () => {
+      await prisma.cashSession.updateMany({
+        where: { barbershopId: A.shopId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      await service.openCashSession(A.ownerId, A.shopId, 50);
+      const expense = await service.createExpense(A.ownerId, A.shopId, {
+        category: 'OTHER',
+        description: 'Café',
+        amount: 10,
+        paymentMethod: 'CASH',
+      });
+      await service.closeCashSession(A.ownerId, A.shopId, { countedBalance: 40 });
+      await expect(service.deleteExpense(A.ownerId, A.shopId, expense.id)).rejects.toThrow(
+        'caixa já fechado',
+      );
+      await service.openCashSession(A.ownerId, A.shopId, 0);
+      const vale = await prisma.expense.create({
+        data: {
+          barbershopId: A.shopId,
+          category: 'SALARY',
+          description: 'Vale',
+          amount: 5,
+          createdByUserId: A.ownerId,
+        },
+      });
+      await prisma.barberPayEntry.create({
+        data: {
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          type: 'ADVANCE',
+          amount: 5,
+          method: 'PIX',
+          date: new Date(),
+          expenseId: vale.id,
+          createdByUserId: A.ownerId,
+        },
+      });
+      await expect(service.deleteExpense(A.ownerId, A.shopId, vale.id)).rejects.toThrow(
+        'pagamento da equipe',
+      );
     });
 
     it('cartão-presente de outra franquia não vale', async () => {

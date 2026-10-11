@@ -6,6 +6,7 @@ import { BarbershopService } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { appointmentLinkCovers, verifyAppointmentToken } from './appointment-link';
 import { stripeConfigured } from './stripe-configured';
+import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
 const KIND = 'appointment_prepayment';
 /** Dá pra pagar antes enquanto o horário está marcado e ainda não foi cobrado */
@@ -91,7 +92,7 @@ export class PrepaymentService {
       throw new BadRequestException('Este horário não pode ser pago agora');
     }
     const amount = this.due(appt);
-    const cents = Math.round(amount * 100);
+    const cents = toMinorUnits(amount, appt.barbershop.currency);
     if (cents <= 0) throw new BadRequestException('Não há valor a pagar');
     if (!stripeConfigured()) throw new BadRequestException('Pagamento online indisponível');
     const destination = await this.connect.barbershopDestination(appt.barbershopId);
@@ -182,7 +183,7 @@ export class PrepaymentService {
       where: { id: appt.id, prepaidAt: null },
       data: {
         prepaidAt: new Date(),
-        prepaidAmount: intent.amount / 100,
+        prepaidAmount: fromMinorUnits(intent.amount, intent.currency),
         prepaidPaymentIntentId: intent.id,
         prepaidStripeAccountId: (intent.transfer_data?.destination as string) ?? null,
       },

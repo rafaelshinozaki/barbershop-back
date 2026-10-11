@@ -12,6 +12,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { appointmentLinkCovers, verifyReviewToken } from './appointment-link';
+import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
 export const TIP_DESTINATIONS = ['professional', 'unit'] as const;
 export const TIP_METHODS = ['CASH', 'PIX', 'CARD'] as const;
@@ -19,9 +20,31 @@ export type TipDestination = (typeof TIP_DESTINATIONS)[number];
 export type TipMethod = (typeof TIP_METHODS)[number];
 
 const MAX_TIP = 10_000;
-/** Caixinha pelo app: de 1 a 500 na moeda da unidade */
-const MIN_APP_TIP = 1;
-const MAX_APP_TIP = 500;
+/**
+ * Caixinha pelo app: de 1 a 500 na moeda da unidade. Nas moedas em que a
+ * unidade vale muito pouco (sem centavos, ou com milhares por dólar), o
+ * limite acompanha a moeda: 500 ienes ou 500 pesos colombianos não pagam
+ * nem um café, e 1 iene fica abaixo do mínimo que a Stripe cobra.
+ */
+const APP_TIP_SCALE: Record<string, number> = {
+  JPY: 100,
+  KRW: 1000,
+  CLP: 1000,
+  PYG: 5000,
+  VND: 20000,
+  UGX: 3000,
+  XAF: 500,
+  XOF: 500,
+  XPF: 100,
+  COP: 1000,
+  ARS: 1000,
+  IDR: 10000,
+  HUF: 100,
+};
+export function appTipLimits(currency: string | null | undefined) {
+  const scale = APP_TIP_SCALE[(currency ?? '').toUpperCase()] ?? 1;
+  return { min: 1 * scale, max: 500 * scale };
+}
 const TIP_KIND = 'appointment_tip';
 const DESK_LEVELS: AccessLevel[] = ['reception', 'manager', 'owner'];
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -197,8 +220,8 @@ export class TipService {
       barbershopName: appt.barbershop.name,
       professional: !!dest.professional,
       unit: !!dest.unit,
-      minAmount: MIN_APP_TIP,
-      maxAmount: MAX_APP_TIP,
+      minAmount: appTipLimits(appt.barbershop.currency).min,
+      maxAmount: appTipLimits(appt.barbershop.currency).max,
       given: given.map((g) => ({ destination: g.destination, amount: Number(g.amount) })),
     };
   }
@@ -208,15 +231,16 @@ export class TipService {
     if (!(TIP_DESTINATIONS as readonly string[]).includes(destination)) {
       throw new BadRequestException('Destino da caixinha inválido');
     }
-    if (!(amount >= MIN_APP_TIP) || amount > MAX_APP_TIP) {
-      throw new BadRequestException(`A caixinha pelo app vai de ${MIN_APP_TIP} a ${MAX_APP_TIP}`);
-    }
     const appt = await this.appointmentByToken(token);
+    const limits = appTipLimits(appt.barbershop.currency);
+    if (!(amount >= limits.min) || amount > limits.max) {
+      throw new BadRequestException(`A caixinha pelo app vai de ${limits.min} a ${limits.max}`);
+    }
     const accountId = (await this.destinations(appt))[destination as TipDestination];
     if (!accountId) {
       throw new BadRequestException('Este destino ainda não recebe caixinha pelo app');
     }
-    const cents = Math.round(round2(amount) * 100);
+    const cents = toMinorUnits(amount, appt.barbershop.currency);
     const intent = await this.stripe.createPaymentIntent(
       cents,
       appt.barbershop.currency.toLowerCase(),
@@ -236,7 +260,7 @@ export class TipService {
     return {
       clientSecret: intent.client_secret,
       paymentIntentId: intent.id,
-      amount: cents / 100,
+      amount: fromMinorUnits(cents, appt.barbershop.currency),
       currency: appt.barbershop.currency,
     };
   }
@@ -274,7 +298,7 @@ export class TipService {
           barberId: destination === 'professional' ? appt.barberId : null,
           destination,
           method: 'STRIPE',
-          amount: new Decimal(intent.amount / 100),
+          amount: new Decimal(fromMinorUnits(intent.amount, intent.currency)),
           currency: appt.barbershop.currency,
           receivedByUnit: false,
           stripePaymentIntentId: intent.id,

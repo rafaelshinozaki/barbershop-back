@@ -14,6 +14,7 @@ import { currentPricing } from '../pricing/pricing';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { stripeConfigured } from './stripe-configured';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
+import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
 const KIND = 'appointment_deposit';
 /** Lembra de pagar quem reservou e ainda não pagou depois desse tempo... */
@@ -92,7 +93,7 @@ export class DepositPaymentService {
         'O tempo pra pagar acabou e o horário foi liberado. Agende de novo.',
       );
     }
-    const amount = Math.round(Number(appt.depositAmount ?? 0) * 100);
+    const amount = toMinorUnits(Number(appt.depositAmount ?? 0), appt.barbershop.currency);
     if (amount <= 0) throw new BadRequestException('Este horário não tem sinal');
 
     let intent: Stripe.PaymentIntent | null = null;
@@ -137,7 +138,7 @@ export class DepositPaymentService {
     }
     return {
       clientSecret: intent.client_secret,
-      amount: amount / 100,
+      amount: fromMinorUnits(amount, appt.barbershop.currency),
       currency: appt.barbershop.currency,
       holdExpiresAt: appt.holdExpiresAt,
     };

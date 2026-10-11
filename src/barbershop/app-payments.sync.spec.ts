@@ -90,6 +90,35 @@ describe('AppPaymentsService.syncStripeRefund', () => {
     expect(appointment.updateMany).not.toHaveBeenCalled();
   });
 
+  it('em moeda sem centavos, o estorno parcial vale o valor inteiro', async () => {
+    const { service, appointment } = setup();
+    appointment.prepaid = {
+      id: 8,
+      prepaidAt: new Date(),
+      prepaidAmount: 4000,
+      prepaidRefundedAt: null,
+      prepaidRefundedAmount: 0,
+    };
+    // ¥1.500 vêm da Stripe como 1500 (não 150000)
+    await service.syncStripeRefund(
+      charge({ amount_refunded: 1500, refunded: false, currency: 'jpy' }),
+    );
+    expect(appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { prepaidRefundedAmount: 1500, prepaidRefundedAt: null },
+      }),
+    );
+  });
+
+  it('em moeda sem centavos, estorno menor que o sinal não marca estornado', async () => {
+    const { service, appointment } = setup();
+    appointment.deposit = { id: 4, depositAmount: 1000, depositRefundedAt: null };
+    await service.syncStripeRefund(
+      charge({ amount_refunded: 500, refunded: false, currency: 'jpy' }),
+    );
+    expect(appointment.updateMany).not.toHaveBeenCalled();
+  });
+
   it('marca a caixinha estornada', async () => {
     const { service, appointmentTip } = setup();
     appointmentTip.row = { id: 3, amount: 10, refundedAt: null };

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { currentPricing } from '../pricing/pricing';
 import { BarbershopService } from './barbershop.service';
+import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
 export const APP_PAYMENT_KINDS = ['deposit', 'prepaid', 'tip'] as const;
 export type AppPaymentKind = (typeof APP_PAYMENT_KINDS)[number];
@@ -323,17 +324,21 @@ export class AppPaymentsService {
       typeof charge.payment_intent === 'string'
         ? charge.payment_intent
         : charge.payment_intent?.id ?? null;
-    const amountRefundedCents = charge.amount_refunded ?? 0;
-    if (!paymentIntentId || amountRefundedCents <= 0) return;
+    // Na moeda da cobrança (a Stripe manda na menor unidade: centavo, ou a
+    // própria unidade nas moedas sem centavos)
+    const refunded = fromMinorUnits(charge.amount_refunded ?? 0, charge.currency);
+    if (!paymentIntentId || refunded <= 0) return;
     const now = new Date();
-    await this.syncDepositRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
-    await this.syncPrepaidRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
-    await this.syncTipRefund(paymentIntentId, amountRefundedCents, charge.refunded, now);
+    const currency = charge.currency;
+    await this.syncDepositRefund(paymentIntentId, refunded, currency, charge.refunded, now);
+    await this.syncPrepaidRefund(paymentIntentId, refunded, charge.refunded, now);
+    await this.syncTipRefund(paymentIntentId, refunded, currency, charge.refunded, now);
   }
 
   private async syncDepositRefund(
     paymentIntentId: string,
-    amountRefundedCents: number,
+    refunded: number,
+    currency: string,
     fullyRefunded: boolean,
     now: Date,
   ) {
@@ -342,8 +347,8 @@ export class AppPaymentsService {
       select: { id: true, depositAmount: true, depositRefundedAt: true },
     });
     if (!appt || appt.depositRefundedAt) return;
-    const depositCents = Math.round(Number(appt.depositAmount ?? 0) * 100);
-    if (!fullyRefunded && amountRefundedCents < depositCents) return;
+    const deposit = toMinorUnits(Number(appt.depositAmount ?? 0), currency);
+    if (!fullyRefunded && toMinorUnits(refunded, currency) < deposit) return;
     await this.prisma.appointment.updateMany({
       where: { id: appt.id, depositRefundedAt: null },
       data: { depositPaid: false, depositRefundedAt: now },
@@ -352,7 +357,7 @@ export class AppPaymentsService {
 
   private async syncPrepaidRefund(
     paymentIntentId: string,
-    amountRefundedCents: number,
+    refunded: number,
     fullyRefunded: boolean,
     now: Date,
   ) {
@@ -369,7 +374,7 @@ export class AppPaymentsService {
     if (!appt?.prepaidAt || appt.prepaidRefundedAt) return;
     const paid = Number(appt.prepaidAmount ?? 0);
     const before = Number(appt.prepaidRefundedAmount ?? 0);
-    const fromStripe = Math.round(amountRefundedCents) / 100;
+    const fromStripe = refunded;
     const next = Math.min(paid, Math.max(before, fromStripe));
     const full = fullyRefunded || (paid > 0 && next >= paid);
     if (next === before && !full) return;
@@ -381,7 +386,8 @@ export class AppPaymentsService {
 
   private async syncTipRefund(
     paymentIntentId: string,
-    amountRefundedCents: number,
+    refunded: number,
+    currency: string,
     fullyRefunded: boolean,
     now: Date,
   ) {
@@ -390,8 +396,8 @@ export class AppPaymentsService {
       select: { id: true, amount: true, refundedAt: true },
     });
     if (!tip || tip.refundedAt) return;
-    const tipCents = Math.round(Number(tip.amount) * 100);
-    if (!fullyRefunded && amountRefundedCents < tipCents) return;
+    const tipMinor = toMinorUnits(Number(tip.amount), currency);
+    if (!fullyRefunded && toMinorUnits(refunded, currency) < tipMinor) return;
     await this.prisma.appointmentTip.updateMany({
       where: { id: tip.id, refundedAt: null },
       data: { refundedAt: now },
