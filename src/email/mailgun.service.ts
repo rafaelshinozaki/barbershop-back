@@ -21,8 +21,10 @@ export class MailgunService {
     }
     this.domain = domain;
 
+    // Domínio criado na região EU do Mailgun usa outro endereço da API
+    const url = this.config.get<string>('MAILGUN_URL') || 'https://api.mailgun.net';
     const mailgun = new Mailgun(FormData);
-    this.client = mailgun.client({ username, key: apiKey, url: 'https://api.mailgun.net' });
+    this.client = mailgun.client({ username, key: apiKey, url });
   }
 
   async send(options: {

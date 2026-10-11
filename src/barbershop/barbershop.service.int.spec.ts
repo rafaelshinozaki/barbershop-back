@@ -242,8 +242,8 @@ describe('BarbershopService (integração com o banco)', () => {
         service.createSale(B.ownerId, A.shopId, {
           saleType: 'SERVICE',
           items: [],
-          subtotal: 10,
-          total: 10,
+          subtotal: 0,
+          total: 0,
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
@@ -270,8 +270,8 @@ describe('BarbershopService (integração com o banco)', () => {
           customerId: B.customerId,
           saleType: 'SERVICE',
           items: [],
-          subtotal: 100,
-          total: 100,
+          subtotal: 0,
+          total: 0,
           loyaltyPointsRedeemed: 500,
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
@@ -284,8 +284,8 @@ describe('BarbershopService (integração com o banco)', () => {
         customerId: A.customerId,
         saleType: 'SERVICE',
         items: [],
-        subtotal: 10,
-        total: 10,
+        subtotal: 0,
+        total: 0,
       });
       for (const change of [{ customerId: B.customerId }, { barberId: B.barberId }]) {
         await expect(
@@ -838,6 +838,43 @@ describe('BarbershopService (integração com o banco)', () => {
   });
 
   describe('vendas', () => {
+    it('total que não bate com os itens é recusado', async () => {
+      const item = {
+        itemType: 'SERVICE',
+        serviceId: A.serviceId,
+        quantity: 2,
+        unitPrice: 50,
+        totalPrice: 100,
+      };
+      // Itens de R$ 100 com total de R$ 1
+      await expect(
+        service.createSale(A.ownerId, A.shopId, {
+          saleType: 'SERVICE',
+          items: [item],
+          subtotal: 100,
+          total: 1,
+        }),
+      ).rejects.toThrow('total não bate');
+      // Subtotal diferente da soma dos itens
+      await expect(
+        service.createSale(A.ownerId, A.shopId, {
+          saleType: 'SERVICE',
+          items: [item],
+          subtotal: 10,
+          total: 10,
+        }),
+      ).rejects.toThrow('subtotal não bate');
+      // Item com valor diferente de quantidade × preço
+      await expect(
+        service.createSale(A.ownerId, A.shopId, {
+          saleType: 'SERVICE',
+          items: [{ ...item, totalPrice: 1 }],
+          subtotal: 1,
+          total: 1,
+        }),
+      ).rejects.toThrow('quantidade × preço');
+    });
+
     const sale = (extra: Record<string, unknown> = {}) =>
       service.createSale(A.ownerId, A.shopId, {
         customerId: A.customerId,
@@ -1473,8 +1510,8 @@ describe('BarbershopService (integração com o banco)', () => {
           barberId: basicBarberId,
           saleType: 'SERVICE',
           items: [],
-          subtotal: 10,
-          total: 10,
+          subtotal: 0,
+          total: 0,
         }),
       );
       await denied(service.getWalkIns(basic, A.shopId));
@@ -1531,8 +1568,8 @@ describe('BarbershopService (integração com o banco)', () => {
         barberId: A.otherBarberId,
         saleType: 'SERVICE',
         items: [],
-        subtotal: 10,
-        total: 10,
+        subtotal: 0,
+        total: 0,
       });
       const sales = (await service.getSales(reception, A.shopId)) as any;
       expect((Array.isArray(sales) ? sales : sales.items).map((x: any) => x.id)).toContain(sale.id);
@@ -1643,15 +1680,15 @@ describe('BarbershopService (integração com o banco)', () => {
         barberId: A.barberId,
         saleType: 'SERVICE',
         items: [],
-        subtotal: 10,
-        total: 10,
+        subtotal: 0,
+        total: 0,
       });
       const other = await service.createSale(A.ownerId, A.shopId, {
         barberId: A.otherBarberId,
         saleType: 'SERVICE',
         items: [],
-        subtotal: 10,
-        total: 10,
+        subtotal: 0,
+        total: 0,
       });
       const seenByBarber = (await service.getSales(A.staffUserId, A.shopId)) as { id: number }[];
       const ids = (
@@ -1671,8 +1708,8 @@ describe('BarbershopService (integração com o banco)', () => {
         service.createSale(A.staffUserId, A.shopId, {
           saleType: 'SERVICE',
           items: [],
-          subtotal: 10,
-          total: 10,
+          subtotal: 0,
+          total: 0,
           ...extra,
         });
       // Sem dizer o profissional: a venda é dele
