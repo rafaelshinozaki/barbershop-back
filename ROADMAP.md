@@ -1286,7 +1286,7 @@ Achados numa revisão de código. Itens 1–36 corrigidos.
     - `deposit-payment`: o link do cliente para de abrir depois que a unidade cancela. Ver o item 44.
     - **Fazer:** criar os usuários de teste com `isActive: true`, usar outra unidade (ou plano maior) no teste da taxa e decidir o item 44.
     - **Feito:** usuários de teste com `isActive: true`. O teste da vaga preenchida remove da equipe quem entrou (libera a vaga do plano e cancela o convite). O teste do pagamento passa a esperar o comportamento atual: o link antigo não abre e o da versão nova mostra o estorno (o item 44 continua em aberto).
-39. 🆕 **e2e do front vermelho na main:** o log disponível não mostra o motivo. Rever depois de o back voltar a ficar verde (o e2e do front roda contra a main do back).
+39. ✅ **e2e do front vermelho na main:** o log disponível não mostra o motivo. Rever depois de o back voltar a ficar verde (o e2e do front roda contra a main do back). **Feito:** era o teste do push com endpoint falso (`push.example.test`), que o back passou a recusar. O teste usa um endereço do FCM (front #125).
 
 **Correções que ficaram pela metade**
 
@@ -1308,3 +1308,16 @@ Achados numa revisão de código. Itens 1–36 corrigidos.
     - O mesmo cliente vira várias fichas, o que estraga histórico, "cliente novo", fidelidade e indicação.
     - **Fazer:** normalizar para E.164 (`normalizePhoneToE164`, já usado na importação) ao gravar e ao buscar, e migrar as fichas existentes, juntando as duplicadas com cuidado.
 47. 🆕 **Avisos de atividade para freelancer com acesso vencido** (`ActivityNotificationsService.deliver`): os destinatários são filtrados só por `isActive`, sem olhar `accessStartsAt`/`accessEndsAt`. Freelancer com vínculo vencido continua recebendo no sininho e por e-mail os agendamentos, vendas e nomes de clientes. **Fazer:** usar o mesmo filtro de período de acesso que `barbershop.service.ts` já usa nas outras consultas.
+
+### Sexta rodada (2026-10-11): requisitos conferidos contra o código
+
+Conferidos e certos: preços padrão (Pro R$ 39,90, Destaque R$ 49,90 e R$ 24,90, taxa da vaga R$ 14,90, 15% só no Stripe), cota grátis (30 atendimentos e 30 produtos), prazos de guarda (1 ano do histórico do negócio, 2 anos do registro da equipe da plataforma) e o consentimento para dado de saúde.
+
+48. 🆕 **A nota do cliente vaza entre negócios** (`CustomerRatingService.conductOf`): a decisão jurídica diz que a nota "fica só dentro do negócio que avaliou". Mas, quando a ficha tem conta de cliente, a média junta as fichas de **todas as redes** (`customer.findMany({ clientAccountId })`), com notas, faltas e comparecimento de outros negócios. **Fazer:** limitar ao `networkId` da unidade que consulta (a visão do próprio cliente, `myConduct`, pode continuar juntando).
+49. 🆕 **Apagar a ficha do cliente apaga histórico financeiro e avaliações** (`BarbershopService.deleteCustomer`):
+    - O `customer.delete` leva em cascata os agendamentos e, com eles, as avaliações do profissional (`ProfessionalReview`), as caixinhas (`AppointmentTip`), as taxas de falta, os pacotes comprados e os dados do sinal e do pagamento pelo app.
+    - Isso contraria duas decisões: "a avaliação continua (sem o nome); a unidade não some com avaliação ruim apagando o cliente" e "registros financeiros ficam 5 anos". Na prática, o gerente apaga uma avaliação ruim do profissional apagando o cliente.
+    - **Fazer:** anonimizar a ficha (nome, telefone, e-mail, observações e ficha técnica) em vez de apagar, ou trocar as relações de agendamento, caixinha, avaliação e pacote para `SetNull`/`Restrict`. Teste cobrindo que a avaliação e a caixinha continuam.
+50. 🆕 **Atendimento a domicílio já está no ar** (`profile-privacy.ts`, `career.service.ts`, busca): a decisão é "fora do piloto, até os termos específicos (responsabilidade, segurança, botão de ajuda)". Hoje o profissional verificado liga "Atendo a domicílio" e o selo aparece no perfil público e na busca. **Fazer:** uma chave de liberação (variável de ambiente ou item do backoffice), desligada por padrão, que esconde a opção e o selo.
+51. 🆕 **Taxa do cliente novo do marketplace não existe em Preços e taxas** (`src/pricing/pricing.ts`): a decisão pede "mais um item em Preços e taxas (padrão 0 até ligar)": 10% do primeiro atendimento concluído vindo da vitrine, com teto de R$ 10. Não há o item nem o cálculo, embora a origem do agendamento (vitrine × link) e o "cliente novo" já existam. **Fazer:** criar o item com padrão 0 agora (para o backoffice mostrar) e o cálculo depois do piloto.
+52. 🆕 **Taxa da vaga aceita valores que a Stripe recusa** (`PRICING_LIMITS.jobFillFeeCents`): o limite é `min: 0`, mas o comentário diz "acima de zero, no mínimo R$ 1,00". O admin consegue salvar 1 a 99 centavos, e a cobrança falha na Stripe. **Fazer:** aceitar 0 (desligado) ou valor de 100 para cima.
