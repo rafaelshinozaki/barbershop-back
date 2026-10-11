@@ -219,6 +219,10 @@ describe('Vagas para freelancer (integração)', () => {
     const job = await opening({ title: 'Uma vaga só', slots: 1 });
     const winner = await jobs.apply(pro2Id, job.id);
     const leftover = await jobs.apply(pro3Id, job.id);
+    const seatsBefore = await prisma.barber.findMany({
+      where: { barbershopId: shopId },
+      select: { id: true },
+    });
     const after = await jobs.accept(ownerId, shopId, winner.id);
     expect(after.status).toBe('filled');
     expect(
@@ -228,6 +232,12 @@ describe('Vagas para freelancer (integração)', () => {
     expect((await jobs.myApplications(pro3Id)).find((a) => a.id === leftover.id)?.status).toBe(
       'rejected',
     );
+    // Libera a vaga do plano que o aceite ocupou (o teste da taxa aceita mais um)
+    const hired = await prisma.barber.findMany({
+      where: { barbershopId: shopId, id: { notIn: seatsBefore.map((b) => b.id) } },
+      select: { id: true },
+    });
+    for (const b of hired) await barbershops.deleteBarber(ownerId, shopId, b.id);
   });
 
   it('desistir e se candidatar de novo; recusar avisa; encerrar recusa quem esperava', async () => {

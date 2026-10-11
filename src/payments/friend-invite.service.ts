@@ -259,7 +259,9 @@ export class FriendInviteService {
     // cria cupom. A trava serializa os aceites do mesmo indicador, senão o
     // teto de meses conta duas vezes ao mesmo tempo.
     const updatedInvite = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'friend-invite:' + invite.inviterId}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
+        'friend-invite:' + invite.inviterId
+      }))`;
       const rewards = await tx.friendInvite.count({
         where: { inviterId: invite.inviterId, status: 'ACCEPTED' },
       });
@@ -279,7 +281,12 @@ export class FriendInviteService {
         'INVITER',
         invite.id,
       );
-      const friendCoupon = await this.createFriendInviteCoupon(tx, acceptedByUserId, 'FRIEND', invite.id);
+      const friendCoupon = await this.createFriendInviteCoupon(
+        tx,
+        acceptedByUserId,
+        'FRIEND',
+        invite.id,
+      );
       return tx.friendInvite.update({
         where: { id: invite.id },
         data: { inviterCouponId: inviterCoupon.id, friendCouponId: friendCoupon.id },

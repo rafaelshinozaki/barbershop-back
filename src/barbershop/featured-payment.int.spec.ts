@@ -86,6 +86,7 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
           gender: 'male',
           birthdate: new Date('1990-01-01'),
           readTerms: true,
+          isActive: true,
           roleId,
         },
       })

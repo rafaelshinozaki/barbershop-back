@@ -158,10 +158,7 @@ export class UserResolver {
         where: { id: user.id },
         select: { fullName: true, identityVerifiedAt: true },
       });
-      if (
-        current?.identityVerifiedAt &&
-        input.fullName.trim() !== current.fullName.trim()
-      ) {
+      if (current?.identityVerifiedAt && input.fullName.trim() !== current.fullName.trim()) {
         updateData.identityVerifiedAt = null;
       }
     }

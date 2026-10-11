@@ -1915,7 +1915,9 @@ export class BarbershopService {
     ]);
     if (!future || !shop) return;
     const userIds = [
-      ...new Set([shop.ownerUserId, ...managers.map((m) => m.userId)].filter((id): id is number => !!id)),
+      ...new Set(
+        [shop.ownerUserId, ...managers.map((m) => m.userId)].filter((id): id is number => !!id),
+      ),
     ];
     if (!userIds.length) return;
     const users = await this.prisma.user.findMany({
@@ -4452,9 +4454,7 @@ export class BarbershopService {
       parseBusinessHours(shop.businessHours) ??
       WEEKDAY_KEYS.map((_, i) => DEFAULT_WORKING_HOURS[i]);
     const professionalIds = [
-      ...new Set(
-        barbers.map((b) => b.professionalId).filter((id): id is number => id != null),
-      ),
+      ...new Set(barbers.map((b) => b.professionalId).filter((id): id is number => id != null)),
     ];
     const userIds = [
       ...new Set(
@@ -4492,8 +4492,8 @@ export class BarbershopService {
       const extra = b.professionalId
         ? links.filter((l) => l.professionalId === b.professionalId).map((l) => l.id)
         : b.userId
-          ? links.filter((l) => l.userId === b.userId).map((l) => l.id)
-          : [];
+        ? links.filter((l) => l.userId === b.userId).map((l) => l.id)
+        : [];
       personIds.set(b.id, [...new Set([b.id, ...extra])]);
     }
     const allBarberIds = [...new Set([...personIds.values()].flat())];
@@ -4539,12 +4539,7 @@ export class BarbershopService {
       const closure = closureByDate.get(date) ?? null;
       let earliest: string | undefined;
       for (const b of barbers) {
-        const window = this.windowOnDate(
-          schedulesByBarber.get(b.id) ?? [],
-          week,
-          closure,
-          date,
-        );
+        const window = this.windowOnDate(schedulesByBarber.get(b.id) ?? [], week, closure, date);
         const busy: { start: number; end: number }[] = [];
         for (const id of personIds.get(b.id) ?? [b.id]) {
           for (const range of busyByBarber.get(id) ?? []) {
@@ -7093,8 +7088,7 @@ export class BarbershopService {
 
       const nextStatus = data.paymentStatus ?? existing.paymentStatus;
       const nextTotal = data.total !== undefined ? data.total : Number(existing.total);
-      const nextCustomerId =
-        data.customerId !== undefined ? data.customerId : existing.customerId;
+      const nextCustomerId = data.customerId !== undefined ? data.customerId : existing.customerId;
       const nextEarned = loyaltyEarnedFor(
         barbershop.network,
         nextStatus,
@@ -7113,8 +7107,7 @@ export class BarbershopService {
         });
       }
       if (nextCustomerId) {
-        const delta =
-          nextCustomerId === existing.customerId ? nextEarned - prevEarned : nextEarned;
+        const delta = nextCustomerId === existing.customerId ? nextEarned - prevEarned : nextEarned;
         if (delta !== 0) {
           await tx.customer.update({
             where: { id: nextCustomerId },

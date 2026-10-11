@@ -3,7 +3,11 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
-import { appointmentLinkCovers, appointmentManageUrl, verifyAppointmentToken } from './appointment-link';
+import {
+  appointmentLinkCovers,
+  appointmentManageUrl,
+  verifyAppointmentToken,
+} from './appointment-link';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { langForCountry, LOCALE } from '../email/language';
 import { currentPricing } from '../pricing/pricing';

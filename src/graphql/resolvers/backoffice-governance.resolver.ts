@@ -34,7 +34,11 @@ import {
   PrivacyRequestService,
 } from '../../backoffice/privacy-request.service';
 import { AccountDeletionService } from '../../barbershop/account-deletion.service';
-import { APP_PAYMENT_KINDS, AppPaymentKind, AppPaymentsService } from '../../barbershop/app-payments.service';
+import {
+  APP_PAYMENT_KINDS,
+  AppPaymentKind,
+  AppPaymentsService,
+} from '../../barbershop/app-payments.service';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { PrismaService } from '../../prisma/prisma.service';
 @InputType()

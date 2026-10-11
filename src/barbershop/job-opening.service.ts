@@ -766,12 +766,15 @@ export class JobOpeningService {
     try {
       await this.prisma.userNotification.createMany({ data: rows });
       for (const row of rows) this.realtime.notifyUsers([row.userId], 'CREATED', row.title);
-      await this.push.sendToUsers(rows.map((row) => row.userId), (lang) => ({
-        title: texts[lang].title,
-        body: texts[lang].message,
-        url: actionUrl,
-        tag: 'jobs',
-      }));
+      await this.push.sendToUsers(
+        rows.map((row) => row.userId),
+        (lang) => ({
+          title: texts[lang].title,
+          body: texts[lang].message,
+          url: actionUrl,
+          tag: 'jobs',
+        }),
+      );
     } catch (err) {
       this.logger.warn(`Aviso de vaga não enviado: ${err}`);
     }

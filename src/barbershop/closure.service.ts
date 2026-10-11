@@ -133,7 +133,15 @@ export class ClosureService {
     });
     const now = new Date();
     return appts.filter((a) =>
-      closureAffectsAppointment('CONFIRMED', a.startAt, a.endAt, now, timeZone, openTime, closeTime),
+      closureAffectsAppointment(
+        'CONFIRMED',
+        a.startAt,
+        a.endAt,
+        now,
+        timeZone,
+        openTime,
+        closeTime,
+      ),
     );
   }
 
@@ -232,9 +240,9 @@ export class ClosureService {
     );
     const holds = await this.held(barbershopId, timeZone, dates, openTime, closeTime);
     for (const hold of holds) {
-      await this.deposits.releaseUnpaidHold(hold.id, false).catch((err) =>
-        this.logger.error(`Erro ao liberar a reserva de sinal #${hold.id}:`, err),
-      );
+      await this.deposits
+        .releaseUnpaidHold(hold.id, false)
+        .catch((err) => this.logger.error(`Erro ao liberar a reserva de sinal #${hold.id}:`, err));
     }
     const affected = await this.affected(barbershopId, timeZone, dates, openTime, closeTime);
     let cancelled = 0;

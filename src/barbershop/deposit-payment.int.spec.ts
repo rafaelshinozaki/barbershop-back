@@ -725,7 +725,13 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     );
     expect(connectedRefunds).toContain(piB);
     expect((await load(b.id)).prepaidRefundedAt).toBeInstanceOf(Date);
-    expect(await prepayments.status(b.token)).toMatchObject({ paid: false, refunded: true });
+    // Cancelado pela unidade, o link antigo deixa de abrir; o do e-mail de
+    // cancelamento (versão nova) mostra o estorno
+    const cancelled = await load(b.id);
+    await expect(prepayments.status(b.token)).rejects.toThrow('Agendamento não encontrado');
+    expect(
+      await prepayments.status(createAppointmentToken(b.id, cancelled.linkVersion)),
+    ).toMatchObject({ paid: false, refunded: true });
 
     // Falta: a unidade estorna na mão (gerente/dono)
     const c = await bookTue('12:00');

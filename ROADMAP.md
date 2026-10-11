@@ -1279,12 +1279,13 @@ Achados numa revisão de código. Itens 1–36 corrigidos.
 
 **CI vermelho na main (6 commits seguidos)**
 
-37. 🆕 **Lint quebra o CI antes dos testes:** 45 erros de formatação (prettier), quase todos em `prisma/seed-demo.ts` e alguns em `src/support/support.service.ts`. Como o lint vem primeiro, os testes e a checagem de migrations não rodam no CI. **Fazer:** `pnpm exec eslint --fix` nesses arquivos.
-38. 🆕 **Testes desatualizados (7 arquivos falham rodando local):**
+37. ✅ **Lint quebra o CI antes dos testes:** 45 erros de formatação (prettier), quase todos em `prisma/seed-demo.ts` e alguns em `src/support/support.service.ts`. Como o lint vem primeiro, os testes e a checagem de migrations não rodam no CI. **Fazer:** `pnpm exec eslint --fix` nesses arquivos. **Feito:** formatação corrigida em 20 arquivos (só espaços e quebras de linha).
+38. ✅ **Testes desatualizados (7 arquivos falham rodando local):**
     - `professional-review`, `search`, `moderation`, `identity-verification` e `featured-payment`: a página pública agora exige conta ativa, e o padrão de `User.isActive` é `false`. Os usuários de teste são criados sem `isActive: true`.
     - `job-opening` (taxa por vaga): o teste novo "preencher a última vaga" coloca mais um profissional na unidade, e o teste seguinte esbarra no limite de 3 profissionais do plano.
     - `deposit-payment`: o link do cliente para de abrir depois que a unidade cancela. Ver o item 44.
     - **Fazer:** criar os usuários de teste com `isActive: true`, usar outra unidade (ou plano maior) no teste da taxa e decidir o item 44.
+    - **Feito:** usuários de teste com `isActive: true`. O teste da vaga preenchida remove da equipe quem entrou (libera a vaga do plano e cancela o convite). O teste do pagamento passa a esperar o comportamento atual: o link antigo não abre e o da versão nova mostra o estorno (o item 44 continua em aberto).
 39. 🆕 **e2e do front vermelho na main:** o log disponível não mostra o motivo. Rever depois de o back voltar a ficar verde (o e2e do front roda contra a main do back).
 
 **Correções que ficaram pela metade**

@@ -102,11 +102,7 @@ export function verifyReviewToken(token: string | undefined | null): number | nu
   return readAppointmentLink(token, 'appointment-review')?.id ?? null;
 }
 
-export function appointmentReviewUrl(
-  appointmentId: number,
-  rating?: number,
-  version = 0,
-): string {
+export function appointmentReviewUrl(appointmentId: number, rating?: number, version = 0): string {
   const front = process.env.FRONTEND_URL || 'http://localhost:5173';
   const t = encodeURIComponent(createReviewToken(appointmentId, version));
   return `${front}/review?t=${t}${rating ? `&r=${rating}` : ''}`;
@@ -115,7 +111,9 @@ export function appointmentReviewUrl(
 /** Página do front onde o cliente vê, cancela ou remarca o horário. */
 export function appointmentManageUrl(appointmentId: number, version = 0): string {
   const front = process.env.FRONTEND_URL || 'http://localhost:5173';
-  return `${front}/booking/manage?t=${encodeURIComponent(createAppointmentToken(appointmentId, version))}`;
+  return `${front}/booking/manage?t=${encodeURIComponent(
+    createAppointmentToken(appointmentId, version),
+  )}`;
 }
 
 /** Link do pedido de suporte: quem pediu acompanha e responde sem login */

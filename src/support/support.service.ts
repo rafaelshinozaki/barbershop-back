@@ -175,8 +175,7 @@ export class SupportService {
       messages: { orderBy: { createdAt: 'asc' as const } },
       clientAccount: { select: { id: true as const, suspendedAt: true as const } },
     };
-    const filtered =
-      status && SUPPORT_STATUSES.includes(status as SupportStatus) ? status : null;
+    const filtered = status && SUPPORT_STATUSES.includes(status as SupportStatus) ? status : null;
     // Sem filtro, os abertos entram antes do take: um chamado antigo esperando
     // resposta não some atrás de 200 fechados recentes
     const tickets = filtered
@@ -210,7 +209,8 @@ export class SupportService {
     });
     const rank: Record<string, number> = { answered: 0, closed: 1 };
     rest.sort(
-      (a, b) => rank[a.status] - rank[b.status] || b.lastActivityAt.getTime() - a.lastActivityAt.getTime(),
+      (a, b) =>
+        rank[a.status] - rank[b.status] || b.lastActivityAt.getTime() - a.lastActivityAt.getTime(),
     );
     return [...open, ...rest];
   }
