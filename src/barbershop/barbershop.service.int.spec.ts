@@ -798,6 +798,7 @@ describe('BarbershopService (integração com o banco)', () => {
 
   describe('link de gerenciar com a versão do agendamento', () => {
     it('horário cancelado e reativado continua abrindo pela conta do cliente', async () => {
+      process.env.APPOINTMENT_LINK_SECRET ??= 'segredo-de-teste';
       const account = await prisma.clientAccount.create({
         data: { email: `link-${RUN}@test.local`, name: 'Link Versao' },
       });
