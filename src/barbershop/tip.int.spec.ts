@@ -250,6 +250,25 @@ describe('Caixinha do atendimento (integração)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('o profissional só apaga a caixinha que ele mesmo registrou', async () => {
+    const appt = await appointment(shopId, proBarber);
+    const byDesk = await tips.add(users.dono, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CARD',
+      amount: 9,
+    });
+    await expect(tips.remove(users.pro, shopId, byDesk.id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    const own = await tips.add(users.pro, shopId, appt.id, {
+      destination: 'professional',
+      method: 'PIX',
+      amount: 4,
+    });
+    await expect(tips.remove(users.pro, shopId, own.id)).resolves.toBe(true);
+    await expect(tips.remove(users.dono, shopId, byDesk.id)).resolves.toBe(true);
+  });
+
   it('apagar leva o lançamento junto; depois do fechamento do pagamento não apaga', async () => {
     const appt = await appointment(shopId, proBarber);
     const first = await tips.add(users.dono, shopId, appt.id, {

@@ -29,6 +29,8 @@ import { FeaturedPaymentService } from '../barbershop/featured-payment.service';
 import { JobOpeningService } from '../barbershop/job-opening.service';
 import { AppPaymentsService } from '../barbershop/app-payments.service';
 import { currentPricing } from '../pricing/pricing';
+import { fromMinorUnits } from '../common/money-units';
+import { supportEmail } from '../common/app-urls';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -210,7 +212,7 @@ export class StripeController {
       return tx.payment.create({
         data: {
           subscriptionId: subscription.id,
-          amount: new Prisma.Decimal(invoice.amount_paid / 100),
+          amount: new Prisma.Decimal(fromMinorUnits(invoice.amount_paid, invoice.currency)),
           paymentDate: new Date(invoice.created * 1000),
           nextPaymentDate: new Date((invoice.next_payment_attempt || invoice.created) * 1000),
           paymentMethod: 'stripe',
@@ -230,11 +232,11 @@ export class StripeController {
       AppName: 'Barbershop',
       InvoiceID: invoice.id,
       // Formatados no template ({{money}}/{{date}}) no idioma do usuário
-      Amount: invoice.amount_paid / 100,
+      Amount: fromMinorUnits(invoice.amount_paid, invoice.currency),
       Currency: invoice.currency,
       DueDate: new Date(payment.nextPaymentDate),
       InvoiceURL: invoice.hosted_invoice_url,
-      SupportEmail: 'suporte@barbershop.com.br',
+      SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
     };
 
@@ -337,7 +339,7 @@ export class StripeController {
         create: {
           subscriptionId: subscription.id,
           stripeInvoiceId: invoice.id,
-          amount: new Prisma.Decimal(invoice.amount_paid / 100),
+          amount: new Prisma.Decimal(fromMinorUnits(invoice.amount_paid, invoice.currency)),
           platformFeePercent: new Prisma.Decimal(currentPricing().platformFeePercent),
           status: 'SUCCEEDED',
           periodStart: new Date(stripeSubscription.current_period_start * 1000),

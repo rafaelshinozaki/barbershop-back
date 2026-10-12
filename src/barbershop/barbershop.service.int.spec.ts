@@ -268,6 +268,23 @@ describe('BarbershopService (integração com o banco)', () => {
       );
     });
 
+    it('não agenda com profissional inativo nem cliente apagado', async () => {
+      await prisma.barber.update({ where: { id: A.otherBarberId }, data: { isActive: false } });
+      try {
+        await expect(book(at(day, '10:00'), { barberId: A.otherBarberId })).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      } finally {
+        await prisma.barber.update({ where: { id: A.otherBarberId }, data: { isActive: true } });
+      }
+      const gone = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Apagado', phone: `6${RUN}`, deletedAt: new Date() },
+      });
+      await expect(book(at(day, '10:00'), { customerId: gone.id })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
     it('não registra venda pra cliente de outra franquia (nem resgata os pontos dele)', async () => {
       await expect(
         service.createSale(A.ownerId, A.shopId, {

@@ -9,6 +9,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import Stripe from 'stripe';
+import { appUrl, supportEmail } from '../common/app-urls';
 
 /** Cupom aplicado no checkout do plano (valores em reais). */
 interface CheckoutCoupon {
@@ -322,8 +323,8 @@ export class PaymentsService {
       const context = {
         FullName: user.fullName,
         AppName: 'Barbershop',
-        ReactivateURL: 'https://app.barbershop.com/plans',
-        SupportEmail: 'suporte@barbershop.com.br',
+        ReactivateURL: appUrl('/pricing'),
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
 
@@ -1026,7 +1027,7 @@ export class PaymentsService {
           Currency: 'BRL',
           PaymentDate: new Date(),
           DueDate: payment.nextPaymentDate,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         {
@@ -1073,7 +1074,7 @@ export class PaymentsService {
           Amount: Number(payment.amount),
           Currency: 'BRL',
           Reason: reason,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         {

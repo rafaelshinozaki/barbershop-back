@@ -4,6 +4,7 @@ import * as webpush from 'web-push';
 import { PrismaService } from '@/prisma/prisma.service';
 import { type Lang, normalizeLang } from '@/email/language';
 import { assertPushEndpoint } from './push-endpoint';
+import { supportEmail } from '../common/app-urls';
 
 export type PushPayload = {
   title: string;
@@ -37,7 +38,7 @@ export class PushService {
     const privateKey = this.config.get<string>('VAPID_PRIVATE_KEY');
     if (!publicKey || !privateKey) return null;
     return {
-      subject: this.config.get<string>('VAPID_SUBJECT') || 'mailto:suporte@barbershop.com.br',
+      subject: this.config.get<string>('VAPID_SUBJECT') || `mailto:${supportEmail()}`,
       publicKey,
       privateKey,
     };
