@@ -8,6 +8,27 @@
  * ela continua saindo como está.
  */
 export const ERROR_REASONS: Readonly<Record<string, string>> = {
+  // Validação dos DTOs (class-validator)
+  'Email inválido': 'INVALID_EMAIL',
+  'Nome muito curto': 'NAME_TOO_SHORT',
+  'Telefone inválido': 'INVALID_PHONE',
+  'O preço não pode ser negativo': 'PRICE_CANNOT_BE_NEGATIVE',
+  'A senha deve ter ao menos 8 caracteres': 'PASSWORD_MIN_8',
+  'Invalid phone number format. Use format: +55XXXXXXXXXXX': 'INVALID_PHONE',
+  'Invalid CPF. Please provide a valid CPF in the format 000.000.000-00': 'INVALID_CPF',
+  'Name must be between 3 and 255 letters': 'NAME_LENGTH_3_255',
+  'Name must be a string': 'INVALID_INPUT',
+  'Phone must be a string': 'INVALID_PHONE',
+  'CPF must be a string': 'INVALID_CPF',
+  'Birthdate must be a valid date': 'INVALID_BIRTHDATE',
+  'Address must be an object': 'INVALID_ADDRESS',
+  'Address cannot be empty': 'INVALID_ADDRESS',
+  'Accept terms must be a boolean': 'INVALID_INPUT',
+  'Gender not found': 'INVALID_GENDER',
+  'Invalid language': 'INVALID_LANGUAGE',
+  'System settings must be an object': 'INVALID_INPUT',
+  'System settings cannot be empty': 'INVALID_INPUT',
+  'Dados inválidos': 'INVALID_INPUT',
   'Esse dia ainda não está aberto para agendamento online': 'BOOKING_DAY_NOT_OPEN_YET',
   'Escolha um dos horários da lista': 'CHOOSE_LISTED_TIME',
   'Só o admin do sistema altera contas da equipe do sistema.': 'ONLY_SYSTEM_ADMIN_CAN_CHANGE',

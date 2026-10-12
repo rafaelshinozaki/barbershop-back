@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { GraphQLError } from 'graphql';
 import { formatGqlError } from './format-error';
@@ -17,7 +18,7 @@ describe('formatGqlError', () => {
       message: 'Dados inválidos',
       path: ['financialSummary'],
       locations: undefined,
-      extensions: { code: 'BAD_USER_INPUT' },
+      extensions: { code: 'BAD_USER_INPUT', reason: 'INVALID_INPUT' },
     });
     expect(JSON.stringify(out)).not.toMatch(/dist|findMany|invocation/);
   });
@@ -51,5 +52,29 @@ describe('formatGqlError', () => {
       new GraphQLError('Algo novo'),
     );
     expect(out.extensions).toEqual({ code: 'BAD_REQUEST' });
+  });
+
+  // O ValidationPipe joga um BadRequestException com a lista de mensagens
+  const invalid = (messages: string[]) =>
+    new BadRequestException({ message: messages, error: 'Bad Request', statusCode: 400 });
+
+  it('erro de validação do DTO: vai a primeira mensagem com o código dela', () => {
+    const err = invalid(['Telefone inválido', 'Email inválido']);
+    const out = formatGqlError(
+      { message: 'Bad Request Exception', extensions: { code: 'BAD_REQUEST' } },
+      wrap(err),
+    );
+    expect(out.message).toBe('Telefone inválido');
+    expect(out.extensions).toEqual({ code: 'BAD_REQUEST', reason: 'INVALID_PHONE' });
+  });
+
+  it('validação sem mensagem no catálogo leva o código genérico', () => {
+    const err = invalid(['email must be an email']);
+    const out = formatGqlError(
+      { message: 'Bad Request Exception', extensions: { code: 'BAD_REQUEST' } },
+      wrap(err),
+    );
+    expect(out.message).toBe('email must be an email');
+    expect(out.extensions).toEqual({ code: 'BAD_REQUEST', reason: 'INVALID_INPUT' });
   });
 });
