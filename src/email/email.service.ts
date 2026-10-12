@@ -8,6 +8,7 @@ import * as fs from 'fs/promises';
 import Handlebars from 'handlebars';
 import { ConfigService } from '@nestjs/config';
 import { isLocalized, LOCALE, Lang, Localized, normalizeLang, pick } from './language';
+import type { EmailAttachment } from '../queue/notification-jobs';
 
 // O log de e-mails guardava o contexto inteiro — inclusive o link de
 // redefinição de senha (com o token) e códigos de verificação: quem lesse a
@@ -60,6 +61,7 @@ export class EmailService {
     to: string,
     lang = 'pt',
     headers?: Record<string, string>,
+    attachments?: EmailAttachment[],
   ) {
     return this.renderAndSend(
       loggedAgainstUserId,
@@ -70,6 +72,7 @@ export class EmailService {
       to,
       normalizeLang(lang),
       headers,
+      attachments,
     );
   }
 
@@ -127,6 +130,7 @@ export class EmailService {
     to: string,
     lang: Lang,
     headers?: Record<string, string>,
+    attachments?: EmailAttachment[],
   ) {
     this.logger.log(`Enviando email (${template}, ${lang}) para [${to}]`);
 
@@ -141,6 +145,7 @@ export class EmailService {
         subject,
         html,
         headers,
+        attachments,
       });
 
       await this.prisma.emailLogger.create({

@@ -87,7 +87,7 @@ import { normalizePhoneToE164, phoneDigitVariants } from '../common/phone.util';
 import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { currentPricing } from '../pricing/pricing';
-import { appointmentCalendarLinks } from '../calendar/calendar-links';
+import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
 import { toMinorUnits } from '../common/money-units';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
@@ -5339,6 +5339,9 @@ export class BarbershopService {
         lang,
         meta: template.replace('_', '-'),
         to,
+        // Convite de calendário: o Gmail (e os outros) mostram o evento com o
+        // nome do serviço e põem na agenda; no cancelamento, apagam
+        attachments: [appointmentInvite(appt, { name: appt.customer.name, email: to })],
       },
       // Uma confirmação por agendamento; remarcação, uma por novo horário
       template === 'appointment_confirmation'

@@ -29,6 +29,15 @@ export interface CustomerEmailJob {
   campaignId?: number;
   /** Cabeçalhos extras (ex.: List-Unsubscribe da campanha) */
   headers?: Record<string, string>;
+  /** Anexos em texto (ex.: convite .ics do agendamento) */
+  attachments?: EmailAttachment[];
+}
+
+/** Anexo de texto; vai como string pra caber no job da fila (Redis) */
+export interface EmailAttachment {
+  filename: string;
+  content: string;
+  contentType: string;
 }
 
 export type EmailJob = UserEmailJob | CustomerEmailJob;

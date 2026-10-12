@@ -9,6 +9,7 @@ import { normalizePhoneToE164 } from '../common/phone.util';
 import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import { appointmentManageUrl } from './appointment-link';
+import { appointmentInvite } from '../calendar/calendar-links';
 import { ReviewRequestService } from './review-request.service';
 import { CustomerRatingService } from './customer-rating.service';
 import { DepositPaymentService } from './deposit-payment.service';
@@ -51,6 +52,7 @@ export class AppointmentReminderService {
       },
       include: {
         customer: true,
+        barber: { select: { name: true } },
         barbershop: { include: { network: { select: { lateCancellationWindowHours: true } } } },
         services: { include: { service: true } },
       },
@@ -113,6 +115,10 @@ export class AppointmentReminderService {
               lang,
               meta: 'appointment-reminder',
               to: appt.customer.email,
+              // Mesmo convite da confirmação: quem não aceitou ainda pode pôr na agenda
+              attachments: [
+                appointmentInvite(appt, { name: appt.customer.name, email: appt.customer.email }),
+              ],
             },
             `appointment-reminder-email-${appt.id}-${appt.startAt.getTime()}`,
           );
