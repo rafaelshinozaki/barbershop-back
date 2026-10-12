@@ -1614,3 +1614,28 @@ O app foi aberto com o seed de demonstração. As telas foram percorridas como d
     - **Posição repetida na fila:** em `createWalkIn`, a posição na fila presencial é calculada fora da transação. Duas entradas ao mesmo tempo ficam com o mesmo número.
     - **Hora sempre em pt-BR:** o e-mail "avalie seus clientes" formata a hora sempre em pt-BR, mesmo pra quem usa o app em inglês ou espanhol.
 121. ✅ **E-mail do agendamento sem convite de calendário** (back: `sendAppointmentEmail`, lembrete): o e-mail de confirmação não trazia o evento. O Gmail adivinhava pelo texto e mostrava o cartão como "Consulta médica". **Feito:** a confirmação, a remarcação e o lembrete levam o convite `invite.ics` (`METHOD:REQUEST`, a unidade como organizadora e o cliente como participante já confirmado). O título é o nome do serviço, e a unidade vai no local. O cancelamento leva `METHOD:CANCEL` com o mesmo UID, e o app apaga o evento. O "Adicionar à agenda" também usa o nome do serviço como título. A série recorrente leva um evento por data, tanto na confirmação quanto no "cancelar este e os próximos". Excluir um horário futuro avisa o cliente e apaga o evento do calendário dele (antes ele não recebia nada).
+
+### Décima nona rodada (2026-10-12): exclusões, lista de espera, agendamento público e conversa
+
+Os textos das telas e dos e-mails foram conferidos de forma automática: nenhuma chave de tradução falta em pt, en ou es, e todo template de e-mail tem as três versões. Foi lido o código de conversa, comissões, estornos, estoque, importação, lista de espera e exclusão de contas e unidades. A API do agendamento público foi testada com entradas fora do normal. Comissão, estorno e importação não tiveram problema. Os itens 124 e 125 foram reproduzidos chamando a API.
+
+122. 🆕 **Apagar uma unidade (ou a conta do dono) some com os horários marcados e com o dinheiro pago pelo app** (back: `deleteBarbershop`, `AccountDeletionService.erase`): a exclusão cancela as assinaturas do clube e o aluguel da cadeira, e depois apaga a unidade em cascata. Junto vão os horários futuros:
+    - os clientes não são avisados e têm o horário (e agora o convite) na agenda;
+    - o sinal e o atendimento pagos pelo app não são estornados;
+    - os registros desses pagamentos são apagados, e não dá mais pra estornar pelo sistema.
+
+    A prévia da exclusão só mostra as unidades e as assinaturas, sem os horários futuros nem o dinheiro recebido online. A assinatura do clube é cancelada na hora, sem devolver o resto do ciclo já pago. **Fazer:** antes de apagar:
+    - cancelar os horários futuros (e-mail de cancelamento com o convite `CANCEL`);
+    - estornar o sinal e o pagamento pelo app desses horários;
+    - avisar quem está na lista de espera.
+
+    Manter os registros financeiros (anonimizados) em vez do cascade. Na prévia, mostrar "X horários futuros serão cancelados e R$ Y devolvidos".
+123. 🆕 **Lista de espera avisa uma pessoa só e para por aí** (back: `checkWaitlistOnCancellation`, `deleteAppointment`): quando abre um horário, só a primeira pessoa da fila recebe o aviso e passa a "avisada". Se ela não agenda, o horário fica vago e ninguém mais é avisado: não há prazo pra resposta nem reaviso pro próximo. Excluir um horário futuro também libera a vaga sem avisar a lista (cancelar avisa). **Fazer:** prazo pra quem foi avisado (ex.: 30 min, ou até 2 h antes do horário). Vencido o prazo e o horário ainda livre, avisar o próximo. A exclusão passa pelo mesmo aviso do cancelamento.
+124. 🆕 **Agendamento público aceita qualquer data e qualquer minuto** (back: `createPublicAppointment`, `ensurePublicSlot`): a API aceitou um horário em 22/10/2030 (id 1044, quatro anos adiante) e um às 14:07 (id 1046), fora da grade que a tela mostra. Não existe limite de antecedência ("agendar até X dias", como no Booksy). Um script, ou alguém mexendo na requisição, cria horários fora da grade e deixa buracos de poucos minutos na agenda. **Fazer:** limite de antecedência configurável na unidade (padrão 90 dias), conferido na lista de horários e na criação. A criação só aceita horários que a lista oferece.
+125. 🆕 **Erros de validação continuam em português pra quem usa inglês ou espanhol** (back: DTOs com `class-validator`, ex.: `public-booking.dto.ts`, `client-auth.dto.ts`): "Telefone inválido", "Email inválido", "Nome muito curto" e as outras mensagens de validação (cerca de 15) não passam pelo catálogo do item 81, então chegam sem `reason` e o front mostra o texto em português. **Fazer:** incluir essas mensagens no `ERROR_REASONS` (com as traduções em `apiErrors.*`), e estender o teste do catálogo aos DTOs.
+126. 🆕 **Conversa do atendimento sem prazo, e troca de profissional muda quem lê** (back: `ChatService.allowedKinds`):
+    - **Sem prazo:** um atendimento concluído há anos ainda aceita mensagem do cliente, e a conversa vira um canal permanente.
+    - **Troca de profissional:** se a equipe troca o profissional do horário, quem lê a conversa "com o profissional" passa a ser o novo (o acesso é pelo profissional atual do agendamento). Ele vê o que o cliente escreveu pro anterior, e o anterior perde o acesso.
+
+    **Fazer:** fechar a conversa X dias depois do atendimento (ex.: 7), deixando só leitura. Prender a conversa ao profissional que a abriu (`ChatThread.barberId`) ou abrir outra ao trocar.
+127. 🆕 **Venda de produto deixa o estoque negativo sem aviso** (back: `moveStock`; front: venda): o ajuste manual recusa estoque negativo ("Estoque não pode ficar negativo"), mas a venda baixa o estoque mesmo sem saldo. O produto aparece com -2, e quem vende não é avisado na hora. **Fazer:** na venda, avisar "Só há N em estoque" (sem bloquear, pra não travar o caixa) e mostrar o negativo destacado no estoque.
