@@ -330,6 +330,8 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       onlineRefunds: [{ currency: 'BRL', amount: 80 }],
     });
 
+    // O link de gerenciar do e-mail é assinado (no CI não há .env)
+    process.env.APPOINTMENT_LINK_SECRET ??= 'segredo-de-teste';
     stripeCalls.length = 0;
     emails.length = 0;
     await service.deleteAccount(owner.id, { password: PASSWORD });
