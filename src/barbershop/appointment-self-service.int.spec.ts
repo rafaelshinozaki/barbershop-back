@@ -7,7 +7,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService, BOOKING_GRACE_MINUTES } from './barbershop.service';
+import {
+  BarbershopService,
+  BOOKING_GRACE_MINUTES,
+  PUBLIC_BOOKING_WINDOW_DAYS,
+} from './barbershop.service';
 import { createAppointmentToken } from './appointment-link';
 
 // O link é assinado com o segredo do servidor; o job de testes do CI não tem .env
@@ -401,5 +405,27 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     await expect(book('17:00', `11${RUN}8`.slice(0, 14))).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('página pública: só horário da lista e só até a janela do agendamento online', async () => {
+    // Fora da grade (14:07): a lista nunca oferece, e a API também recusa
+    await expect(book('14:07', `117${RUN}`.slice(0, 14))).rejects.toThrow(
+      'Escolha um dos horários da lista',
+    );
+    // Além da janela de dias: nem a lista mostra, nem a criação aceita
+    const far = new Date(Date.now() + (PUBLIC_BOOKING_WINDOW_DAYS + 7) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    expect(await service.getPublicAvailableSlots(shopId, barberId, [serviceId], far)).toEqual([]);
+    await expect(
+      service.createPublicAppointment({
+        barbershopId: shopId,
+        barberId,
+        serviceIds: [serviceId],
+        startAt: new Date(`${far}T10:00:00-03:00`).toISOString(),
+        customerName: 'Longe',
+        customerPhone: `118${RUN}`.slice(0, 14),
+      }),
+    ).rejects.toThrow('ainda não está aberto');
   });
 });

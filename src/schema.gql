@@ -6,6 +6,8 @@ type AccountDeletionPreviewType {
   activeClientSubscriptions: Int!
   barbershops: [String!]!
   blocked: Boolean!
+  futureAppointments: Int!
+  onlineRefunds: [DeletionRefundType!]!
   requiresPassword: Boolean!
 }
 
@@ -558,6 +560,12 @@ type BarbershopCustomer {
   notes: String
   phone: String!
   updatedAt: String!
+}
+
+type BarbershopDeletionPreviewType {
+  activeClientSubscriptions: Int!
+  futureAppointments: Int!
+  onlineRefunds: [DeletionRefundType!]!
 }
 
 type BarbershopPhotoType {
@@ -1608,6 +1616,11 @@ input DeleteMyAccountInput {
 type DeletePaymentMethodResponse {
   message: String!
   success: Boolean!
+}
+
+type DeletionRefundType {
+  amount: Float!
+  currency: String!
 }
 
 type DemographicAnalysis {
@@ -3326,6 +3339,7 @@ type Query {
   barbershopChangeLogActors(barbershopId: Int!): [ChangeLogActorType!]!
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
   barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopDeletionPreview(id: Int!): BarbershopDeletionPreviewType!
   barbershopJobOpenings(barbershopId: Int!): [JobOpeningType!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
   barbershopPaymentAccount(barbershopId: Int!): PaymentAccountStatusType!

@@ -8,6 +8,8 @@
  * ela continua saindo como está.
  */
 export const ERROR_REASONS: Readonly<Record<string, string>> = {
+  'Esse dia ainda não está aberto para agendamento online': 'BOOKING_DAY_NOT_OPEN_YET',
+  'Escolha um dos horários da lista': 'CHOOSE_LISTED_TIME',
   'Só o admin do sistema altera contas da equipe do sistema.': 'ONLY_SYSTEM_ADMIN_CAN_CHANGE',
   'Operação indisponível para a equipe da plataforma.': 'ACTION_NOT_AVAILABLE_PLATFORM_TEAM',
   'No authentication token found': 'NOT_SIGNED_IN',

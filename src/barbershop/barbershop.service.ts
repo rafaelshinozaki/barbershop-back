@@ -150,6 +150,10 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
 /** Recepção não atende: não aparece pra agendar nem recebe agendamento */
 /** Até quantos dias à frente o "próximo horário disponível" procura */
 const NEXT_AVAILABLE_DAYS = 60;
+/** Agendamento online: até quantos dias à frente (lista, próximo livre e criação) */
+export const PUBLIC_BOOKING_WINDOW_DAYS = 90;
+/** Grade da lista de horários (a criação só aceita horário nela) */
+const SLOT_GRANULARITY_MIN = 15;
 /** Quanto tempo o horário fica reservado esperando o sinal online */
 export const DEPOSIT_HOLD_MINUTES = 15;
 /** Quem atende: marcado pra atender, ou sem marcação e fora da recepção */
@@ -1729,7 +1733,125 @@ export class BarbershopService {
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
     await this.cancelChairRentsOfBarbershops([id]);
+    await this.cancelFutureAppointmentsOfBarbershops([id]);
     await this.prisma.barbershop.delete({ where: { id } });
+  }
+
+  /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
+  async getBarbershopDeletionPreview(userId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, id, 'owner');
+    const [impact, activeClientSubscriptions] = await Promise.all([
+      this.deletionImpact([id]),
+      this.prisma.clientSubscription.count({
+        where: { barbershopId: id, status: { not: 'CANCELED' } },
+      }),
+    ]);
+    return { ...impact, activeClientSubscriptions };
+  }
+
+  private futureAppointmentsWhere(barbershopIds: number[]): Prisma.AppointmentWhereInput {
+    return {
+      barbershopId: { in: barbershopIds },
+      startAt: { gt: new Date() },
+      status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+    };
+  }
+
+  /**
+   * Horários futuros das unidades e o que foi pago por eles pelo app (sinal e
+   * atendimento), que volta pro cliente se as unidades forem apagadas. Por
+   * moeda: uma rede pode ter unidades em países diferentes.
+   */
+  async deletionImpact(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return { futureAppointments: 0, onlineRefunds: [] };
+    const appts = await this.prisma.appointment.findMany({
+      where: this.futureAppointmentsWhere(barbershopIds),
+      select: {
+        depositPaid: true,
+        depositPaidAt: true,
+        depositAmount: true,
+        depositRefundedAt: true,
+        prepaidAt: true,
+        prepaidAmount: true,
+        prepaidRefundedAt: true,
+        prepaidRefundedAmount: true,
+        barbershop: { select: { currency: true } },
+      },
+    });
+    const byCurrency = new Map<string, number>();
+    for (const a of appts) {
+      let back = 0;
+      if (a.depositPaid && a.depositPaidAt && !a.depositRefundedAt) {
+        back += Number(a.depositAmount ?? 0);
+      }
+      if (a.prepaidAt && !a.prepaidRefundedAt) {
+        back += Number(a.prepaidAmount ?? 0) - Number(a.prepaidRefundedAmount ?? 0);
+      }
+      if (back > 0) {
+        const currency = a.barbershop.currency;
+        byCurrency.set(currency, round2((byCurrency.get(currency) ?? 0) + back));
+      }
+    }
+    return {
+      futureAppointments: appts.length,
+      onlineRefunds: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+    };
+  }
+
+  /**
+   * Antes de apagar unidades (ou a conta do dono): os horários futuros são
+   * cancelados, o que o cliente pagou pelo app volta e ele recebe o e-mail de
+   * cancelamento (com o convite que tira o evento da agenda). Antes o cascade
+   * apagava tudo calado e o dinheiro ficava. Estorno que falha interrompe a
+   * exclusão (nada é apagado), como nas assinaturas.
+   */
+  async cancelFutureAppointmentsOfBarbershops(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return;
+    const appts = await this.prisma.appointment.findMany({
+      where: this.futureAppointmentsWhere(barbershopIds),
+      select: {
+        id: true,
+        depositPaid: true,
+        depositPaidAt: true,
+        prepaidAt: true,
+        customer: { select: { email: true } },
+        barbershop: { select: { country: true } },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+    for (const a of appts) {
+      let refunded = false;
+      if (a.depositPaid && a.depositPaidAt)
+        refunded = (await this.refundOnlineDeposit(a.id)) || refunded;
+      if (a.prepaidAt) refunded = (await this.refundPrepayment(a.id)) || refunded;
+      await this.prisma.appointment.update({
+        where: { id: a.id },
+        data: { status: 'CANCELLED' },
+      });
+      const to = a.customer.email;
+      if (!to) continue;
+      const lang = langForCountry(a.barbershop.country);
+      const reason = {
+        pt: 'A unidade encerrou o atendimento pelo app.',
+        en: 'The business stopped taking bookings through the app.',
+        es: 'La unidad dejó de atender por la app.',
+      }[lang];
+      const money = {
+        pt: ' O que você pagou pelo app foi devolvido.',
+        en: ' What you paid through the app has been refunded.',
+        es: ' Lo que pagaste por la app fue devuelto.',
+      }[lang];
+      // O e-mail é montado agora (enfileirado com tudo pronto): depois de
+      // apagar não há mais o horário pra carregar
+      await this.sendAppointmentEmail(
+        a.id,
+        'appointment_cancelled',
+        to,
+        refunded ? reason + money : reason,
+      ).catch((err) =>
+        this.logger.error(`Erro ao avisar o cancelamento do agendamento #${a.id}:`, err),
+      );
+    }
   }
 
   /**
@@ -4767,6 +4889,12 @@ export class BarbershopService {
       select: { timezone: true },
     });
     const timeZone = safeTimeZone(shop?.timezone);
+    // Além da janela do agendamento online, nada (a criação também recusa)
+    const lastDay = addDaysStr(
+      toZonedParts(new Date(), timeZone).dateStr,
+      PUBLIC_BOOKING_WINDOW_DAYS,
+    );
+    if (dateStr > lastDay) return [];
 
     if (barberId != null) {
       const barber = await this.prisma.barber.findFirst({
@@ -4819,9 +4947,15 @@ export class BarbershopService {
       !!fromDate &&
       /^\d{4}-\d{2}-\d{2}$/.test(fromDate) &&
       !isNaN(Date.parse(`${fromDate}T00:00:00Z`));
-    // Data no passado vira hoje; muito longe não varre o ano inteiro
-    const start =
-      valid && fromDate > today && fromDate <= addDaysStr(today, 365) ? fromDate : today;
+    // Data no passado vira hoje; além da janela do agendamento online, nada
+    const lastDay = addDaysStr(today, PUBLIC_BOOKING_WINDOW_DAYS);
+    if (valid && fromDate > lastDay) return null;
+    const start = valid && fromDate > today ? fromDate : today;
+    const daysLeft =
+      Math.round(
+        (Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000,
+      ) + 1;
+    maxDays = Math.min(maxDays, daysLeft);
 
     // Expediente, fechamentos, horários e folgas do período inteiro, de uma vez.
     const week =
@@ -5050,7 +5184,6 @@ export class BarbershopService {
 
     const now = new Date();
     const slots: string[] = [];
-    const SLOT_GRANULARITY_MIN = 15;
 
     for (
       let minutes = windowStartMin;
@@ -5098,11 +5231,25 @@ export class BarbershopService {
     if (isNaN(startAt.getTime()) || startAt <= new Date()) {
       throw new BadRequestException('Horário inválido');
     }
+    const timeZone = safeTimeZone(barbershop.timezone);
+    const local = toZonedParts(startAt, timeZone);
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    if (local.dateStr > addDaysStr(today, PUBLIC_BOOKING_WINDOW_DAYS)) {
+      throw new BadRequestException('Esse dia ainda não está aberto para agendamento online');
+    }
     const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
-    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
     const window = await this.getWorkingWindowOn(barbershop.id, barberId, local.dateStr);
     if (!window) throw new BadRequestException('Profissional não atende nesse dia');
     const startMin = local.minutesOfDay;
+    // Só os horários da lista (grade a partir do início do expediente): pela
+    // API dava pra marcar 14:07 e deixar buracos de minutos na agenda
+    if (
+      startAt.getUTCSeconds() !== 0 ||
+      startAt.getUTCMilliseconds() !== 0 ||
+      (startMin - this.toMinutes(window.start)) % SLOT_GRANULARITY_MIN !== 0
+    ) {
+      throw new BadRequestException('Escolha um dos horários da lista');
+    }
     const endMin = startMin + durationMinutes;
     if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
       throw new BadRequestException('Horário fora do expediente do profissional');
