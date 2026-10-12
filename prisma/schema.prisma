@@ -598,6 +598,7 @@ model Barbershop {
   noShowFees      NoShowFee[]
   clientSubscriptionPlans ClientSubscriptionPlan[]
   clientSubscriptions     ClientSubscription[]
+  subscriptionPayouts     SubscriptionPayout[]
   socialConnection        SocialConnection?
   socialPageChoices       SocialPageChoice[]
   socialPosts             SocialPost[]
@@ -1617,6 +1618,8 @@ model ServicePackage {
   totalSessions  Int
   price          Decimal
   isActive       Boolean  @default(true)
+  // Dias de validade a partir da compra. Vazio = não vence.
+  validityDays   Int?
   barbershop     Barbershop        @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   clientPackages ClientPackage[]
@@ -1638,29 +1641,43 @@ model ClientPackage {
   // Venda que gerou este pacote. Apagar essa venda cancela o pacote se
   // nenhuma sessão foi usada.
   saleId           Int?     @unique
+  // Copiado da oferta na compra. Vazio = não vence.
+  expiresAt        DateTime?
   barbershop       Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   sale             Sale?          @relation("PackageIssue", fields: [saleId], references: [id], onDelete: SetNull)
   customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id])
+  uses             ClientPackageUse[]
 
   @@index([barbershopId])
   @@index([customerId])
   @@index([barbershopId, status])
 }
 
+// Cada baixa de sessão: quem fez, em qual atendimento e em qual venda.
+// Desfazer a baixa devolve a sessão. A baixa da conta se desfaz ao apagar a venda.
+model ClientPackageUse {
+  id              Int       @id @default(autoincrement())
+  createdAt       DateTime  @default(now())
+  clientPackageId Int
+  appointmentId   Int?
+  saleId          Int?
+  usedByUserId    Int
+  undoneAt        DateTime?
+  undoneByUserId  Int?
+  clientPackage   ClientPackage @relation(fields: [clientPackageId], references: [id], onDelete: Cascade)
+
+  @@index([clientPackageId])
+  @@index([saleId])
+}
+
 // ============ ASSINATURA RECORRENTE DO CLIENTE ============
 //
-// Diferente do sinal, cartão-presente e taxa de no-show (todos cobrança
-// manual por escolha explícita), a assinatura recorrente precisa mesmo de
-// cobrança automática todo mês — não dá pra pedir pro cliente final pagar
-// na mão todo mês sem perder o sentido do produto. Usa o Stripe Subscriptions
-// nativo (Product/Price/Subscription) na conta da PRÓPRIA PLATAFORMA, não
-// Stripe Connect: o dono da barbearia não precisa criar/onboardar conta
-// nenhuma (mesma preocupação de fricção que descartou o Connect na taxa de
-// no-show). O dinheiro cai inteiro na conta da plataforma; o repasse pra
-// barbearia é reconciliação manual periódica (ver PLATFORM_SUBSCRIPTION_FEE_PERCENT
-// em subscription.constants.ts) — o sistema só calcula quanto é devido,
-// não transfere nada sozinho.
+// Cobrança automática todo mês (Stripe Subscriptions). Com a unidade
+// conectada ao Stripe, o dinheiro cai na conta dela e a plataforma fica
+// com application_fee_percent. Sem conta conectada, cai na plataforma e o
+// repasse é manual: o backoffice registra o que já pagou (SubscriptionPayout)
+// e o relatório desconta isso do que ainda é devido.
 
 model ClientSubscriptionPlan {
   id               Int      @id @default(autoincrement())
@@ -1698,6 +1715,12 @@ model ClientSubscription {
   usedThisCycle        Int       @default(0) // resetado a cada invoice.payment_succeeded (novo ciclo)
   cancelAtPeriodEnd    Boolean   @default(false)
   canceledAt           DateTime?
+  // Conta Connect no momento da assinatura. Preenchido = o Stripe manda o
+  // dinheiro pra unidade (menos a taxa gravada abaixo). Vazio = cai na
+  // plataforma e o repasse é manual. Não muda depois: a renovação segue a
+  // mesma conta.
+  connectAccountId     String?
+  applicationFeePercent Decimal?
   barbershop           Barbershop                  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   clientAccount        ClientAccount               @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
   plan                 ClientSubscriptionPlan      @relation(fields: [planId], references: [id])
@@ -1717,12 +1740,29 @@ model ClientSubscriptionPayment {
   // Taxa da plataforma (%) quando foi pago: o relatório de repasse não muda
   // se a taxa mudar depois (vazio = pagamento de antes desta coluna)
   platformFeePercent Decimal?
+  // true = o Stripe já liquidou na conta conectada; não entra no "a repassar"
+  settledViaConnect Boolean @default(false)
   status          String // SUCCEEDED, FAILED
   periodStart     DateTime?
   periodEnd       DateTime?
   subscription    ClientSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([subscriptionId])
+}
+
+// Repasse manual da assinatura que caiu na plataforma (quem da equipe do
+// backoffice pagou, quando e quanto). A unidade vê a soma no relatório.
+model SubscriptionPayout {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  barbershopId    Int
+  amount          Decimal
+  paidAt          DateTime
+  note            String?
+  recordedByEmail String
+  barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, paidAt])
 }
 
 // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============

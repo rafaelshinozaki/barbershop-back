@@ -1301,6 +1301,9 @@ export class ServicePackageType {
   @Field(() => Float)
   price: number;
 
+  @Field(() => Int, { nullable: true })
+  validityDays?: number;
+
   @Field()
   isActive: boolean;
 
@@ -1328,8 +1331,17 @@ export class ClientPackageType {
   @Field({ nullable: true })
   servicePackageName?: string;
 
+  @Field(() => Int, { nullable: true })
+  serviceId?: number;
+
   @Field({ nullable: true })
   serviceName?: string;
+
+  @Field({ nullable: true })
+  expiresAt?: string;
+
+  @Field(() => [ClientPackageUseType])
+  uses: ClientPackageUseType[];
 
   @Field(() => Int)
   totalSessions: number;
@@ -1342,6 +1354,27 @@ export class ClientPackageType {
 
   @Field()
   createdAt: string;
+}
+
+@ObjectType()
+export class ClientPackageUseType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  createdAt: string;
+
+  @Field(() => Int, { nullable: true })
+  appointmentId?: number;
+
+  @Field(() => Int, { nullable: true })
+  saleId?: number;
+
+  @Field({ nullable: true })
+  usedByName?: string;
+
+  @Field({ nullable: true })
+  undoneAt?: string;
 }
 
 @ObjectType()
@@ -1752,6 +1785,9 @@ export class ClientSubscriptionType {
   @Field({ nullable: true })
   planName?: string;
 
+  @Field(() => Int, { nullable: true })
+  serviceId?: number;
+
   @Field({ nullable: true })
   serviceName?: string;
 
@@ -1823,6 +1859,12 @@ export class SubscriptionRevenueReportType {
     description: 'Já caiu direto na conta de recebimento da unidade (Stripe Connect), sem a taxa',
   })
   paidOutAutomatically?: number;
+
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Repasse manual já registrado no backoffice, no período',
+  })
+  paidOutManually?: number;
 }
 
 // Type alias for resolver (naming consistency)

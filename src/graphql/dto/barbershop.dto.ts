@@ -746,6 +746,14 @@ export class CreateSaleInput {
   @Field(() => Int, { nullable: true })
   appointmentId?: number;
 
+  /** Sessão do clube usada nesta venda: o serviço do plano entra sem cobrar. */
+  @Field(() => Int, { nullable: true })
+  clientSubscriptionId?: number;
+
+  /** Sessão de pacote usada nesta venda: o serviço do pacote entra sem cobrar. */
+  @Field(() => Int, { nullable: true })
+  clientPackageId?: number;
+
   @Field()
   saleType: string;
 
@@ -849,6 +857,12 @@ export class CreateServicePackageInput {
   @Field(() => Float)
   @Min(0)
   price: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  validityDays?: number;
 }
 
 @InputType()
@@ -869,6 +883,12 @@ export class UpdateServicePackageInput {
 
   @Field({ nullable: true })
   isActive?: boolean;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  validityDays?: number | null;
 }
 
 @InputType()

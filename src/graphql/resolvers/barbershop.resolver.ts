@@ -1339,6 +1339,16 @@ export class BarbershopResolver {
     return this.barbershopService.debitClientPackageSession(user.id, barbershopId, id);
   }
 
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async undoClientPackageUse(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.undoClientPackageUse(user.id, barbershopId, id);
+  }
+
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1619,6 +1629,16 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.deleteSubscriptionPlan(user.id, barbershopId, id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [ClientSubscriptionType])
+  async customerSubscriptions(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getCustomerSubscriptions(user.id, barbershopId, customerId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

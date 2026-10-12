@@ -10,6 +10,7 @@
  */
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { currentPricing } from '../pricing/pricing';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BarbershopService,
@@ -1595,6 +1596,360 @@ describe('BarbershopService (integração com o banco)', () => {
 
       await prisma.clientPackage.delete({ where: { id: pkg.id } });
       await prisma.servicePackage.delete({ where: { id: offer.id } });
+    });
+
+    it('fechar a conta com sessão do clube zera o serviço e baixa o ciclo', async () => {
+      const before = await prisma.customer.findUniqueOrThrow({
+        where: { id: A.customerId },
+        select: { clientAccountId: true },
+      });
+      expect(await service.getCustomerSubscriptions(A.ownerId, A.shopId, A.customerId)).toEqual([]);
+      const account = await prisma.clientAccount.create({
+        data: { email: `club-${RUN}@test.local`, name: 'Clube', emailVerifiedAt: new Date() },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Clube Corte',
+          price: new Decimal(80),
+          sessionsPerCycle: 1,
+        },
+      });
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: A.shopId,
+          clientAccountId: account.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_club_${RUN}`,
+          status: 'ACTIVE',
+        },
+      });
+      let saleId: number | null = null;
+      try {
+        await prisma.customer.update({
+          where: { id: A.customerId },
+          data: { clientAccountId: account.id },
+        });
+        const listed = await service.getCustomerSubscriptions(A.ownerId, A.shopId, A.customerId);
+        expect(listed).toEqual([
+          expect.objectContaining({
+            id: sub.id,
+            serviceId: A.serviceId,
+            usedThisCycle: 0,
+            sessionsPerCycle: 1,
+          }),
+        ]);
+        const paid = {
+          customerId: A.customerId,
+          saleType: 'SERVICE',
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: 40,
+              totalPrice: 40,
+            },
+          ],
+          subtotal: 40,
+          total: 40,
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH',
+          clientSubscriptionId: sub.id,
+        };
+        await expect(service.createSale(A.ownerId, A.shopId, paid)).rejects.toThrow('sem cobrar');
+        const sale = await service.createSale(A.ownerId, A.shopId, {
+          ...paid,
+          items: [{ ...paid.items[0], unitPrice: 0, totalPrice: 0 }],
+          subtotal: 0,
+          total: 0,
+        });
+        saleId = sale.id;
+        expect(Number(sale.total)).toBe(0);
+        expect(
+          (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } })).usedThisCycle,
+        ).toBe(1);
+        await expect(
+          service.createSale(A.ownerId, A.shopId, {
+            ...paid,
+            items: [{ ...paid.items[0], unitPrice: 0, totalPrice: 0 }],
+            subtotal: 0,
+            total: 0,
+          }),
+        ).rejects.toThrow('não tem sessões');
+      } finally {
+        if (saleId) {
+          await prisma.saleItem.deleteMany({ where: { saleId } });
+          await prisma.sale.delete({ where: { id: saleId } });
+        }
+        await prisma.customer.update({
+          where: { id: A.customerId },
+          data: { clientAccountId: before.clientAccountId },
+        });
+        await prisma.clientSubscription.deleteMany({ where: { id: sub.id } });
+        await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+        await prisma.clientAccount.delete({ where: { id: account.id } });
+      }
+    });
+
+    it('assinatura com conta conectada manda o dinheiro pra unidade', async () => {
+      const extra: unknown[] = [];
+      const stripe = {
+        attachPaymentMethod: async () => undefined,
+        setDefaultPaymentMethod: async () => undefined,
+        createSubscription: async (
+          _c: string,
+          _p: string,
+          _m: unknown,
+          _key: string,
+          params: unknown,
+        ) => {
+          extra.push(params);
+          return {
+            id: `sub_dest_${RUN}`,
+            status: 'active',
+            current_period_start: 1,
+            current_period_end: 2,
+            latest_invoice: null,
+          };
+        },
+      };
+      const svc = new BarbershopService(
+        prisma,
+        {} as never,
+        {} as never,
+        { isConfigured: () => false } as never,
+        stripe as never,
+        {} as never,
+        { notify: () => undefined } as never,
+      );
+      const client = await prisma.clientAccount.create({
+        data: { email: `dest-${RUN}@test.local`, name: 'Destino', stripeCustomerId: 'cus_dest' },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Mensal Connect',
+          price: new Decimal(80),
+          stripePriceId: 'price_dest',
+        },
+      });
+      const account = await prisma.paymentAccount.create({
+        data: {
+          ownerType: 'barbershop',
+          ownerId: A.shopId,
+          provider: 'stripe',
+          stripeAccountId: `acct_dest_${RUN}`,
+          chargesEnabled: true,
+        },
+      });
+      try {
+        await svc.subscribeToPlan(client.id, A.shopId, plan.id, 'pm_dest');
+        const fee = currentPricing().platformFeePercent;
+        expect(extra).toEqual([
+          { transfer_data: { destination: account.stripeAccountId }, application_fee_percent: fee },
+        ]);
+        const sub = await prisma.clientSubscription.findFirstOrThrow({
+          where: { clientAccountId: client.id },
+        });
+        expect(sub.connectAccountId).toBe(account.stripeAccountId);
+        expect(Number(sub.applicationFeePercent)).toBe(fee);
+      } finally {
+        await prisma.clientSubscription.deleteMany({ where: { clientAccountId: client.id } });
+        await prisma.paymentAccount.delete({ where: { id: account.id } });
+        await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+        await prisma.clientAccount.delete({ where: { id: client.id } });
+      }
+    });
+
+    it('relatório de assinatura tira o que já caiu na conta e o repasse registrado', async () => {
+      const before = await service.getSubscriptionRevenueReport(A.ownerId, A.shopId);
+      const client = await prisma.clientAccount.create({
+        data: { email: `repasse-${RUN}@test.local`, name: 'Repasse' },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Mensal Repasse',
+          price: new Decimal(80),
+          stripePriceId: `price_repasse_${RUN}`,
+        },
+      });
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: A.shopId,
+          clientAccountId: client.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_repasse_${RUN}`,
+          status: 'ACTIVE',
+          connectAccountId: `acct_repasse_${RUN}`,
+          applicationFeePercent: new Decimal(10),
+        },
+      });
+      try {
+        await prisma.clientSubscriptionPayment.create({
+          data: {
+            subscriptionId: sub.id,
+            stripeInvoiceId: `in_connect_${RUN}`,
+            amount: new Decimal(100),
+            platformFeePercent: new Decimal(10),
+            settledViaConnect: true,
+            status: 'SUCCEEDED',
+          },
+        });
+        await prisma.clientSubscriptionPayment.create({
+          data: {
+            subscriptionId: sub.id,
+            stripeInvoiceId: `in_plat_${RUN}`,
+            amount: new Decimal(80),
+            platformFeePercent: new Decimal(10),
+            status: 'SUCCEEDED',
+          },
+        });
+        await prisma.subscriptionPayout.create({
+          data: {
+            barbershopId: A.shopId,
+            amount: new Decimal(20),
+            paidAt: new Date(),
+            recordedByEmail: 'fin@test.local',
+          },
+        });
+        const after = await service.getSubscriptionRevenueReport(A.ownerId, A.shopId);
+        expect(after.grossAmount - before.grossAmount).toBe(180);
+        expect(after.platformFeeAmount - before.platformFeeAmount).toBe(18);
+        expect((after.paidOutAutomatically ?? 0) - (before.paidOutAutomatically ?? 0)).toBe(90);
+        expect((after.paidOutManually ?? 0) - (before.paidOutManually ?? 0)).toBe(20);
+        // 80 da plataforma, menos 10% e menos os 20 já pagos
+        expect(after.netOwedToBarbershop - before.netOwedToBarbershop).toBe(52);
+      } finally {
+        await prisma.subscriptionPayout.deleteMany({
+          where: { barbershopId: A.shopId, recordedByEmail: 'fin@test.local' },
+        });
+        await prisma.clientSubscriptionPayment.deleteMany({ where: { subscriptionId: sub.id } });
+        await prisma.clientSubscription.delete({ where: { id: sub.id } });
+        await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+        await prisma.clientAccount.delete({ where: { id: client.id } });
+      }
+    });
+
+    it('fechar a conta com sessão do pacote zera o serviço e apagar a venda devolve', async () => {
+      const modules = jest
+        .spyOn(service as never as { canAccessModule: () => Promise<boolean> }, 'canAccessModule')
+        .mockResolvedValue(true);
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote Conta',
+          totalSessions: 2,
+          price: new Decimal(80),
+          validityDays: 30,
+        },
+      });
+      let checkoutSaleId: number | null = null;
+      let issuedSaleId: number | null = null;
+      let clientPackageId: number | null = null;
+      try {
+        const bought = await service.purchaseClientPackage(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          servicePackageId: offer.id,
+          paymentMethod: 'PIX',
+        });
+        clientPackageId = bought.id;
+        issuedSaleId = bought.saleId ?? null;
+        expect(bought.expiresAt).toBeTruthy();
+        expect(new Date(bought.expiresAt!).getTime()).toBeGreaterThan(Date.now());
+
+        await expect(
+          service.debitClientPackageSession(A.staffUserId, A.shopId, bought.id),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+
+        const paid = {
+          customerId: A.customerId,
+          saleType: 'SERVICE',
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: 40,
+              totalPrice: 40,
+            },
+          ],
+          subtotal: 40,
+          total: 40,
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH',
+          clientPackageId: bought.id,
+        };
+        await expect(service.createSale(A.ownerId, A.shopId, paid)).rejects.toThrow('sem cobrar');
+        const sale = await service.createSale(A.ownerId, A.shopId, {
+          ...paid,
+          items: [{ ...paid.items[0], unitPrice: 0, totalPrice: 0 }],
+          subtotal: 0,
+          total: 0,
+        });
+        checkoutSaleId = sale.id;
+        expect(Number(sale.total)).toBe(0);
+        const afterUse = await prisma.clientPackage.findUniqueOrThrow({ where: { id: bought.id } });
+        expect(afterUse.usedSessions).toBe(1);
+        const use = await prisma.clientPackageUse.findFirstOrThrow({
+          where: { clientPackageId: bought.id, saleId: sale.id, undoneAt: null },
+        });
+        expect(use.usedByUserId).toBe(A.ownerId);
+        await expect(
+          service.undoClientPackageUse(A.ownerId, A.shopId, use.id),
+        ).rejects.toThrow('Apague a venda');
+
+        await service.deleteSale(A.ownerId, A.shopId, sale.id);
+        checkoutSaleId = null;
+        const restored = await prisma.clientPackage.findUniqueOrThrow({ where: { id: bought.id } });
+        expect(restored.usedSessions).toBe(0);
+        expect(restored.status).toBe('ACTIVE');
+        expect(
+          (await prisma.clientPackageUse.findUniqueOrThrow({ where: { id: use.id } })).undoneAt,
+        ).toBeTruthy();
+
+        await service.debitClientPackageSession(A.ownerId, A.shopId, bought.id);
+        const manual = await prisma.clientPackageUse.findFirstOrThrow({
+          where: { clientPackageId: bought.id, saleId: null, undoneAt: null },
+        });
+        expect(manual.usedByUserId).toBe(A.ownerId);
+        await service.undoClientPackageUse(A.ownerId, A.shopId, manual.id);
+        expect(
+          (await prisma.clientPackage.findUniqueOrThrow({ where: { id: bought.id } })).usedSessions,
+        ).toBe(0);
+
+        await prisma.clientPackage.update({
+          where: { id: bought.id },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+        await expect(
+          service.createSale(A.ownerId, A.shopId, {
+            ...paid,
+            items: [{ ...paid.items[0], unitPrice: 0, totalPrice: 0 }],
+            subtotal: 0,
+            total: 0,
+          }),
+        ).rejects.toThrow('venceu');
+      } finally {
+        modules.mockRestore();
+        if (checkoutSaleId) {
+          await prisma.saleItem.deleteMany({ where: { saleId: checkoutSaleId } });
+          await prisma.sale.delete({ where: { id: checkoutSaleId } });
+        }
+        if (clientPackageId) {
+          await prisma.clientPackage.delete({ where: { id: clientPackageId } });
+        }
+        if (issuedSaleId) {
+          await prisma.saleItem.deleteMany({ where: { saleId: issuedSaleId } });
+          await prisma.sale.delete({ where: { id: issuedSaleId } });
+        }
+        await prisma.servicePackage.delete({ where: { id: offer.id } });
+      }
     });
   });
 

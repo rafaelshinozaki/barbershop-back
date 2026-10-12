@@ -341,18 +341,29 @@ export class StripeController {
           currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
         },
       });
+      // A taxa da conta conectada é a da assinatura (o Stripe já descontou
+      // essa). A da plataforma é a de hoje, porque o repasse ainda vai sair.
+      const feePercent = subscription.connectAccountId
+        ? Number(subscription.applicationFeePercent ?? currentPricing().platformFeePercent)
+        : currentPricing().platformFeePercent;
+      const settledViaConnect = subscription.connectAccountId != null;
       await tx.clientSubscriptionPayment.upsert({
         where: { stripeInvoiceId: invoice.id },
         create: {
           subscriptionId: subscription.id,
           stripeInvoiceId: invoice.id,
           amount: new Prisma.Decimal(fromMinorUnits(invoice.amount_paid, invoice.currency)),
-          platformFeePercent: new Prisma.Decimal(currentPricing().platformFeePercent),
+          platformFeePercent: new Prisma.Decimal(feePercent),
+          settledViaConnect,
           status: 'SUCCEEDED',
           periodStart: new Date(stripeSubscription.current_period_start * 1000),
           periodEnd: new Date(stripeSubscription.current_period_end * 1000),
         },
-        update: { status: 'SUCCEEDED' },
+        update: {
+          status: 'SUCCEEDED',
+          platformFeePercent: new Prisma.Decimal(feePercent),
+          settledViaConnect,
+        },
       });
     });
   }

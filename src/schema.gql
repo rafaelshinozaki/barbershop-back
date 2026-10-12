@@ -988,13 +988,25 @@ type ClientPackageType {
   barbershopId: Int!
   createdAt: String!
   customerId: Int!
+  expiresAt: String
   id: Int!
+  serviceId: Int
   serviceName: String
   servicePackageId: Int!
   servicePackageName: String
   status: String!
   totalSessions: Int!
   usedSessions: Int!
+  uses: [ClientPackageUseType!]!
+}
+
+type ClientPackageUseType {
+  appointmentId: Int
+  createdAt: String!
+  id: Int!
+  saleId: Int
+  undoneAt: String
+  usedByName: String
 }
 
 input ClientResetPasswordInput {
@@ -1038,6 +1050,7 @@ type ClientSubscriptionType {
   planId: Int!
   planName: String
   price: Float
+  serviceId: Int
   serviceName: String
   sessionsPerCycle: Int
   status: String!
@@ -1421,6 +1434,8 @@ input CreateReviewInput {
 input CreateSaleInput {
   appointmentId: Int
   barberId: Int
+  clientPackageId: Int
+  clientSubscriptionId: Int
   customerId: Int
   discountAmount: Float = 0
   giftCardCode: String
@@ -1450,6 +1465,7 @@ input CreateServicePackageInput {
   price: Float!
   serviceId: Int!
   totalSessions: Int!
+  validityDays: Int
 }
 
 input CreateSocialPostInput {
@@ -2333,6 +2349,7 @@ type Mutation {
   terminateSession(sessionId: String!): Boolean!
   undoBarberPayout(barbershopId: Int!, id: Int!): Boolean!
   undoChairRentPayment(barbershopId: Int!, paymentId: Int!): ChairRentPaymentType!
+  undoClientPackageUse(barbershopId: Int!, id: Int!): Boolean!
   unlinkClientSocialAccount(provider: String!): Boolean!
   unlinkSocialAccount(provider: String!): Boolean!
   unsubscribeFromMarketing(token: String!): String!
@@ -3352,6 +3369,7 @@ type Query {
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
   customerServiceHistory(barbershopId: Int!, customerId: Int!, limit: Int): [ServiceHistory!]!
+  customerSubscriptions(barbershopId: Int!, customerId: Int!): [ClientSubscriptionType!]!
   customerVisitFeedback(barbershopId: Int!, customerId: Int!): [VisitFeedbackType!]!
   demographicAnalysis: DemographicAnalysis!
   depositPayoutReport(barbershopId: Int!, endDate: String, startDate: String): SubscriptionRevenueReportType!
@@ -3734,6 +3752,7 @@ type ServicePackageType {
   serviceName: String
   totalSessions: Int!
   updatedAt: String!
+  validityDays: Int
 }
 
 input SetBarberPayConfigInput {
@@ -3924,6 +3943,9 @@ type SubscriptionRevenueReportType {
   Já caiu direto na conta de recebimento da unidade (Stripe Connect), sem a taxa
   """
   paidOutAutomatically: Float
+
+  """Repasse manual já registrado no backoffice, no período"""
+  paidOutManually: Float
   paymentsCount: Int!
   platformFeeAmount: Float!
   platformFeePercentage: Float!
@@ -4306,6 +4328,7 @@ input UpdateServicePackageInput {
   name: String
   price: Float
   totalSessions: Int
+  validityDays: Int
 }
 
 input UpdateSubscriptionPlanInput {

@@ -6704,6 +6704,138 @@ export class BarbershopService {
     return true;
   }
 
+  /**
+   * Assinaturas ativas do cliente nesta unidade. A ficha da unidade liga pela
+   * conta; se ainda não ligou, o e-mail igual encontra a conta do clube.
+   */
+  async getCustomerSubscriptions(userId: number, barbershopId: number, customerId: number) {
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const accountId = await this.clientAccountIdForCustomer(shop.networkId, customerId);
+    if (accountId == null) return [];
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: { barbershopId, clientAccountId: accountId, status: 'ACTIVE' },
+      include: { clientAccount: true, plan: { include: { service: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return subs.map((s) => this.toClientSubscriptionResult(s));
+  }
+
+  /** Conta do clube desta ficha, ou null se o cliente não tem conta. */
+  private async clientAccountIdForCustomer(networkId: number, customerId: number) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId },
+      select: { clientAccountId: true, email: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (customer.clientAccountId) return customer.clientAccountId;
+    const email = customer.email?.trim();
+    if (!email) return null;
+    const account = await this.prisma.clientAccount.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    return account?.id ?? null;
+  }
+
+  /**
+   * Confere se esta venda pode usar uma sessão do clube. O serviço do plano
+   * tem de estar na venda, e uma unidade dele a R$ 0 (a sessão que o clube cobre).
+   */
+  private async prepareClubSession(
+    networkId: number,
+    barbershopId: number,
+    data: {
+      customerId?: number;
+      clientSubscriptionId?: number;
+      items: Array<{ serviceId?: number; quantity: number; unitPrice: number; totalPrice: number }>;
+    },
+  ) {
+    if (!data.customerId) {
+      throw new BadRequestException('Selecione um cliente para usar a sessão do clube.');
+    }
+    const accountId = await this.clientAccountIdForCustomer(networkId, data.customerId);
+    const sub = await this.prisma.clientSubscription.findFirst({
+      where: { id: data.clientSubscriptionId, barbershopId },
+      include: { plan: true },
+    });
+    if (!sub || accountId == null || sub.clientAccountId !== accountId) {
+      throw new BadRequestException('Esta assinatura não é deste cliente.');
+    }
+    if (sub.status !== 'ACTIVE') {
+      throw new BadRequestException('Assinatura não está ativa');
+    }
+    const limit = sub.plan.sessionsPerCycle;
+    if (limit != null && sub.usedThisCycle >= limit) {
+      throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
+    }
+    const cents = (v: number) => Math.round(v * 100);
+    const covered = data.items.some(
+      (item) =>
+        item.serviceId === sub.plan.serviceId &&
+        item.quantity >= 1 &&
+        cents(item.unitPrice) === 0 &&
+        cents(item.totalPrice) === 0,
+    );
+    if (!covered) {
+      const hasService = data.items.some((item) => item.serviceId === sub.plan.serviceId);
+      throw new BadRequestException(
+        hasService
+          ? 'O serviço do clube entra na venda sem cobrar uma sessão.'
+          : 'A venda não tem o serviço coberto por esta assinatura.',
+      );
+    }
+    return { id: sub.id, limit, serviceId: sub.plan.serviceId };
+  }
+
+  /**
+   * Confere se esta venda pode usar uma sessão de pacote. O serviço do pacote
+   * tem de estar na venda, e uma unidade dele a R$ 0.
+   */
+  private async preparePackageSession(
+    barbershopId: number,
+    data: {
+      customerId?: number;
+      clientPackageId?: number;
+      items: Array<{ serviceId?: number; quantity: number; unitPrice: number; totalPrice: number }>;
+    },
+  ) {
+    if (!data.customerId) {
+      throw new BadRequestException('Selecione um cliente para usar a sessão do pacote.');
+    }
+    const pkg = await this.prisma.clientPackage.findFirst({
+      where: { id: data.clientPackageId, barbershopId },
+      include: { servicePackage: true },
+    });
+    if (!pkg || pkg.customerId !== data.customerId) {
+      throw new BadRequestException('Este pacote não é deste cliente.');
+    }
+    if (pkg.status !== 'ACTIVE') throw new BadRequestException('Pacote não está ativo');
+    if (pkg.expiresAt && pkg.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Este pacote venceu.');
+    }
+    if (pkg.usedSessions >= pkg.totalSessions) {
+      throw new BadRequestException('Pacote não tem sessões restantes');
+    }
+    const cents = (v: number) => Math.round(v * 100);
+    const serviceId = pkg.servicePackage.serviceId;
+    const covered = data.items.some(
+      (item) =>
+        item.serviceId === serviceId &&
+        item.quantity >= 1 &&
+        cents(item.unitPrice) === 0 &&
+        cents(item.totalPrice) === 0,
+    );
+    if (!covered) {
+      const hasService = data.items.some((item) => item.serviceId === serviceId);
+      throw new BadRequestException(
+        hasService
+          ? 'O serviço do pacote entra na venda sem cobrar uma sessão.'
+          : 'A venda não tem o serviço coberto por este pacote.',
+      );
+    }
+    return { id: pkg.id, serviceId };
+  }
+
   async getBarbershopSubscribers(userId: number, barbershopId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const subs = await this.prisma.clientSubscription.findMany({
@@ -6722,23 +6854,35 @@ export class BarbershopService {
     endDate?: string,
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
-    const payments = await this.prisma.clientSubscriptionPayment.findMany({
-      where: {
-        status: 'SUCCEEDED',
-        subscription: { barbershopId },
-        createdAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
-      },
-    });
+    const period = reportPeriod(safeTimeZone(shop.timezone), startDate, endDate);
+    const [payments, payouts] = await Promise.all([
+      this.prisma.clientSubscriptionPayment.findMany({
+        where: {
+          status: 'SUCCEEDED',
+          subscription: { barbershopId },
+          createdAt: period,
+        },
+      }),
+      this.prisma.subscriptionPayout.findMany({
+        where: { barbershopId, paidAt: period },
+      }),
+    ]);
     // Cada pagamento com a taxa de quando foi pago (mudar a taxa hoje não
     // muda o repasse de meses passados); centavos arredondados
     const current = currentPricing().platformFeePercent;
+    const feeOf = (amount: number, percent: { toString(): string } | null) =>
+      (amount * Number(percent ?? current)) / 100;
     const grossAmount = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
     const platformFeeAmount = round2(
-      payments.reduce(
-        (sum, p) => sum + (Number(p.amount) * Number(p.platformFeePercent ?? current)) / 100,
-        0,
-      ),
+      payments.reduce((sum, p) => sum + feeOf(Number(p.amount), p.platformFeePercent), 0),
     );
+    // O que o Stripe já mandou pra conta conectada não é mais devido
+    const paidOutAutomatically = round2(
+      payments
+        .filter((p) => p.settledViaConnect)
+        .reduce((sum, p) => sum + Number(p.amount) - feeOf(Number(p.amount), p.platformFeePercent), 0),
+    );
+    const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
     return {
       paymentsCount: payments.length,
       grossAmount,
@@ -6746,8 +6890,24 @@ export class BarbershopService {
       platformFeePercentage:
         grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
       platformFeeAmount,
-      netOwedToBarbershop: round2(grossAmount - platformFeeAmount),
+      paidOutAutomatically,
+      paidOutManually,
+      netOwedToBarbershop: round2(
+        grossAmount - platformFeeAmount - paidOutAutomatically - paidOutManually,
+      ),
     };
+  }
+
+  /**
+   * Conta Connect que já recebe de verdade. Fornecedor falso (sem Stripe)
+   * deixa a assinatura na plataforma, pro repasse manual.
+   */
+  private async subscriptionDestination(barbershopId: number) {
+    const acc = await this.prisma.paymentAccount.findUnique({
+      where: { ownerType_ownerId: { ownerType: 'barbershop', ownerId: barbershopId } },
+    });
+    if (!acc?.chargesEnabled || acc.provider !== 'stripe') return null;
+    return acc.stripeAccountId;
   }
 
   private toClientSubscriptionResult(s: any) {
@@ -6759,6 +6919,7 @@ export class BarbershopService {
       clientEmail: s.clientAccount?.email ?? null,
       planId: s.planId,
       planName: s.plan?.name ?? null,
+      serviceId: s.plan?.serviceId ?? null,
       serviceName: s.plan?.service?.name ?? null,
       price: s.plan ? Number(s.plan.price) : null,
       sessionsPerCycle: s.plan?.sessionsPerCycle ?? null,
@@ -6839,6 +7000,10 @@ export class BarbershopService {
 
         await this.stripeService.attachPaymentMethod(paymentMethodId, stripeCustomerId);
         await this.stripeService.setDefaultPaymentMethod(stripeCustomerId, paymentMethodId);
+        // Com conta conectada, o Stripe manda o líquido pra unidade e fica
+        // com a taxa. Sem conta, o dinheiro fica na plataforma.
+        const destination = await this.subscriptionDestination(barbershopId);
+        const feePercent = currentPricing().platformFeePercent;
         const stripeSubscription = await this.stripeService.createSubscription(
           stripeCustomerId,
           stripePriceId,
@@ -6848,6 +7013,9 @@ export class BarbershopService {
             planId: String(planId),
           },
           `client-sub:${clientAccountId}:${planId}:${previous + 1}`,
+          destination
+            ? { transfer_data: { destination }, application_fee_percent: feePercent }
+            : undefined,
         );
 
         const subscription = await tx.clientSubscription.create({
@@ -6859,6 +7027,8 @@ export class BarbershopService {
             status: stripeSubscription.status === 'active' ? 'ACTIVE' : 'INCOMPLETE',
             currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
             currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+            connectAccountId: destination,
+            applicationFeePercent: destination != null ? new Decimal(feePercent) : null,
           },
         });
         return { stripeSubscription, subscription };
@@ -7082,6 +7252,8 @@ export class BarbershopService {
       paymentMethod?: string;
       giftCardCode?: string;
       loyaltyPointsRedeemed?: number;
+      clientSubscriptionId?: number;
+      clientPackageId?: number;
     },
   ) {
     checkSaleAmounts(data);
@@ -7146,6 +7318,21 @@ export class BarbershopService {
       productUnits(data.items),
     );
     checkSaleConsistency(data);
+    // Sessão do clube: a venda já traz o serviço do plano a R$ 0 (uma sessão).
+    // A baixa entra na mesma transação da venda.
+    const clubRedeem = data.clientSubscriptionId
+      ? await this.prepareClubSession(barbershop.networkId, barbershopId, data)
+      : null;
+    const packageRedeem = data.clientPackageId
+      ? await this.preparePackageSession(barbershopId, data)
+      : null;
+    if (
+      clubRedeem &&
+      packageRedeem &&
+      clubRedeem.serviceId === packageRedeem.serviceId
+    ) {
+      throw new BadRequestException('Use o clube ou o pacote neste serviço, não os dois.');
+    }
     const discount = data.discountAmount ?? 0;
     const tax = data.taxAmount ?? 0;
 
@@ -7260,6 +7447,37 @@ export class BarbershopService {
             'O saldo do cartão-presente mudou enquanto a venda era registrada. Tente de novo.',
           );
         }
+      }
+      if (clubRedeem) {
+        const { count } = await tx.clientSubscription.updateMany({
+          where: {
+            id: clubRedeem.id,
+            status: 'ACTIVE',
+            ...(clubRedeem.limit != null ? { usedThisCycle: { lt: clubRedeem.limit } } : {}),
+          },
+          data: { usedThisCycle: { increment: 1 } },
+        });
+        if (count === 0) {
+          throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
+        }
+      }
+      if (packageRedeem) {
+        const debited = await tx.$executeRaw`
+          UPDATE "ClientPackage"
+          SET "usedSessions" = "usedSessions" + 1,
+              status = CASE WHEN "usedSessions" + 1 >= "totalSessions" THEN 'COMPLETED' ELSE 'ACTIVE' END,
+              "updatedAt" = NOW()
+          WHERE id = ${packageRedeem.id} AND status = 'ACTIVE' AND "usedSessions" < "totalSessions"
+            AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`;
+        if (debited === 0) throw new BadRequestException('Pacote não tem sessões restantes');
+        await tx.clientPackageUse.create({
+          data: {
+            clientPackageId: packageRedeem.id,
+            appointmentId: data.appointmentId ?? null,
+            saleId: sale.id,
+            usedByUserId: userId,
+          },
+        });
       }
       if (loyaltyPointsRedeemed && data.customerId) {
         const debited = await tx.customer.updateMany({
@@ -7670,6 +7888,7 @@ export class BarbershopService {
     // os ganhos) e o estoque continuava baixado
     await this.prisma.$transaction(async (tx) => {
       await this.cancelIssuedIfUnused(tx, saleId);
+      await this.restorePackageUses(tx, saleId, userId);
       if (existing.giftCardId && existing.giftCardAmountApplied) {
         await tx.giftCard.update({
           where: { id: existing.giftCardId },
@@ -7716,6 +7935,23 @@ export class BarbershopService {
    * apagar a venda. Com uso, recusa: o que sobrou sai por refundIssuedRemainder.
    * O update é condicional pra um débito no meio do caminho não passar.
    */
+  /** Apagar a venda da conta devolve a sessão do pacote que ela baixou. */
+  private async restorePackageUses(tx: Prisma.TransactionClient, saleId: number, userId: number) {
+    const uses = await tx.clientPackageUse.findMany({ where: { saleId, undoneAt: null } });
+    for (const use of uses) {
+      const restored = await tx.clientPackage.updateMany({
+        where: { id: use.clientPackageId, usedSessions: { gt: 0 } },
+        data: { usedSessions: { decrement: 1 }, status: 'ACTIVE' },
+      });
+      if (restored.count === 1) {
+        await tx.clientPackageUse.update({
+          where: { id: use.id },
+          data: { undoneAt: new Date(), undoneByUserId: userId },
+        });
+      }
+    }
+  }
+
   private async cancelIssuedIfUnused(tx: Prisma.TransactionClient, saleId: number) {
     const issuedPackage = await tx.clientPackage.findUnique({ where: { saleId } });
     if (issuedPackage) {
@@ -8205,11 +8441,18 @@ export class BarbershopService {
   async createServicePackage(
     userId: number,
     barbershopId: number,
-    data: { serviceId: number; name: string; totalSessions: number; price: number },
+    data: {
+      serviceId: number;
+      name: string;
+      totalSessions: number;
+      price: number;
+      validityDays?: number | null;
+    },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     checkMoney('Preço', data.price);
     checkSessionCount('Sessões', data.totalSessions);
+    checkSessionCount('Validade', data.validityDays);
     await this.ensureModuleAccess(barbershopId, 'packages');
     const service = await this.prisma.barbershopService.findFirst({
       where: { id: data.serviceId, barbershopId },
@@ -8222,6 +8465,7 @@ export class BarbershopService {
         name: data.name,
         totalSessions: data.totalSessions,
         price: new Decimal(data.price),
+        validityDays: data.validityDays ?? null,
       },
       include: { service: true },
     });
@@ -8232,13 +8476,20 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     id: number,
-    data: Partial<{ name: string; totalSessions: number; price: number; isActive: boolean }>,
+    data: Partial<{
+      name: string;
+      totalSessions: number;
+      price: number;
+      isActive: boolean;
+      validityDays: number | null;
+    }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
     checkMoney('Preço', data.price);
     checkSessionCount('Sessões', data.totalSessions);
+    if (data.validityDays != null) checkSessionCount('Validade', data.validityDays);
     const { price, ...rest } = data;
     const updated = await this.prisma.servicePackage.update({
       where: { id },
@@ -8262,7 +8513,17 @@ export class BarbershopService {
     return {
       ...cp,
       servicePackageName: cp.servicePackage?.name ?? null,
+      serviceId: cp.servicePackage?.serviceId ?? null,
       serviceName: cp.servicePackage?.service?.name ?? null,
+      expiresAt: cp.expiresAt ? new Date(cp.expiresAt).toISOString() : null,
+      uses: (cp.uses ?? []).map((use: any) => ({
+        id: use.id,
+        createdAt: new Date(use.createdAt).toISOString(),
+        appointmentId: use.appointmentId ?? null,
+        saleId: use.saleId ?? null,
+        usedByName: use.usedByName ?? null,
+        undoneAt: use.undoneAt ? new Date(use.undoneAt).toISOString() : null,
+      })),
     };
   }
 
@@ -8295,6 +8556,9 @@ export class BarbershopService {
           servicePackageId: pkg.id,
           totalSessions: pkg.totalSessions,
           saleId: sale.id,
+          expiresAt: pkg.validityDays
+            ? new Date(Date.now() + pkg.validityDays * 86_400_000)
+            : null,
         },
         include: { servicePackage: { include: { service: true } } },
       });
@@ -8356,20 +8620,42 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId);
     const packages = await this.prisma.clientPackage.findMany({
       where: { barbershopId, customerId },
-      include: { servicePackage: { include: { service: true } } },
+      include: {
+        servicePackage: { include: { service: true } },
+        uses: { where: { undoneAt: null }, orderBy: { createdAt: 'desc' }, take: 8 },
+      },
       orderBy: { createdAt: 'desc' },
     });
-    return packages.map((p) => this.toClientPackageResult(p));
+    const names = await this.userNames(packages.flatMap((p) => p.uses.map((u) => u.usedByUserId)));
+    return packages.map((p) =>
+      this.toClientPackageResult({
+        ...p,
+        uses: p.uses.map((u) => ({ ...u, usedByName: names.get(u.usedByUserId) ?? null })),
+      }),
+    );
+  }
+
+  private async userNames(ids: number[]) {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return new Map<number, string>();
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, fullName: true },
+    });
+    return new Map(users.map((u) => [u.id, u.fullName]));
   }
 
   async debitClientPackageSession(userId: number, barbershopId: number, clientPackageId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const clientPackage = await this.prisma.clientPackage.findFirst({
       where: { id: clientPackageId, barbershopId },
     });
     if (!clientPackage) throw new NotFoundException('Pacote do cliente não encontrado');
     if (clientPackage.status !== 'ACTIVE') {
       throw new BadRequestException('Pacote não está ativo');
+    }
+    if (clientPackage.expiresAt && clientPackage.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Este pacote venceu.');
     }
     // Baixa condicional no banco (mesma ideia dos pontos de fidelidade):
     // débitos simultâneos não passam do total de sessões do pacote
@@ -8378,15 +8664,42 @@ export class BarbershopService {
       SET "usedSessions" = "usedSessions" + 1,
           status = CASE WHEN "usedSessions" + 1 >= "totalSessions" THEN 'COMPLETED' ELSE 'ACTIVE' END,
           "updatedAt" = NOW()
-      WHERE id = ${clientPackageId} AND status = 'ACTIVE' AND "usedSessions" < "totalSessions"`;
+      WHERE id = ${clientPackageId} AND status = 'ACTIVE' AND "usedSessions" < "totalSessions"
+        AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`;
     if (debited === 0) {
       throw new BadRequestException('Pacote não tem sessões restantes');
     }
+    await this.prisma.clientPackageUse.create({
+      data: { clientPackageId, usedByUserId: userId },
+    });
     const updated = await this.prisma.clientPackage.findUniqueOrThrow({
       where: { id: clientPackageId },
       include: { servicePackage: { include: { service: true } } },
     });
     return this.toClientPackageResult(updated);
+  }
+
+  /** Desfaz uma baixa feita na ficha (sem venda). A da conta se desfaz ao apagar a venda. */
+  async undoClientPackageUse(userId: number, barbershopId: number, useId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    const use = await this.prisma.clientPackageUse.findFirst({
+      where: { id: useId, clientPackage: { barbershopId } },
+    });
+    if (!use) throw new NotFoundException('Baixa não encontrada');
+    if (use.undoneAt) throw new BadRequestException('Esta baixa já foi desfeita.');
+    if (use.saleId) {
+      throw new BadRequestException('A baixa deste pacote está na venda. Apague a venda para desfazer.');
+    }
+    const restored = await this.prisma.clientPackage.updateMany({
+      where: { id: use.clientPackageId, usedSessions: { gt: 0 } },
+      data: { usedSessions: { decrement: 1 }, status: 'ACTIVE' },
+    });
+    if (restored.count === 0) throw new BadRequestException('Pacote não tem sessões restantes');
+    await this.prisma.clientPackageUse.update({
+      where: { id: use.id },
+      data: { undoneAt: new Date(), undoneByUserId: userId },
+    });
+    return true;
   }
 
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
