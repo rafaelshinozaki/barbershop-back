@@ -878,6 +878,11 @@ export class PurchaseClientPackageInput {
 
   @Field(() => Int)
   servicePackageId: number;
+
+  // Com a forma, a venda do pacote já entra paga; sem, fica pendente
+  @Field({ nullable: true })
+  @IsOptional()
+  paymentMethod?: string;
 }
 
 // ============ Assinatura recorrente do cliente ============
@@ -973,6 +978,15 @@ export class CreateGiftCardInput {
 
   @Field(() => Float)
   initialValue: number;
+
+  // Unidade que vendeu: o valor entra no faturamento e no caixa dela
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  barbershopId?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  paymentMethod?: string;
 
   @Field({ nullable: true })
   purchaserName?: string;

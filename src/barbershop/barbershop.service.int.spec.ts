@@ -383,6 +383,24 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(await points()).toBe(before);
       expect(Number((await stock()).quantity)).toBe(9);
 
+      // Vendas do mesmo produto ao mesmo tempo: nenhuma baixa se perde
+      await Promise.all(
+        [1, 2, 3, 4].map(() =>
+          service.createSale(A.ownerId, A.shopId, {
+            saleType: 'PRODUCT',
+            items: [item(1, 20)],
+            subtotal: 20,
+            total: 20,
+          }),
+        ),
+      );
+      expect(Number((await stock()).quantity)).toBe(5);
+      const moves = await prisma.inventoryMovement.findMany({
+        where: { inventoryItemId: (await stock()).id, notes: null, movementType: 'SALE' },
+        orderBy: { quantityAfter: 'desc' },
+      });
+      expect(moves.slice(-4).map((m) => Number(m.quantityAfter))).toEqual([8, 7, 6, 5]);
+
       async function stock() {
         return prisma.inventoryItem.findUniqueOrThrow({
           where: { barbershopId_productId: { barbershopId: A.shopId, productId: product.id } },
@@ -439,6 +457,75 @@ describe('BarbershopService (integração com o banco)', () => {
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(await prisma.clientPackage.count({ where: { servicePackageId: offer.id } })).toBe(0);
+      await prisma.servicePackage.delete({ where: { id: offer.id } });
+    });
+
+    it('pacote e cartão-presente vendidos viram venda; pacote só da recepção pra cima', async () => {
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote Venda',
+          totalSessions: 4,
+          price: new Decimal(120),
+        },
+      });
+      // O plano Basic do teste não tem o módulo de pacotes
+      const modules = jest
+        .spyOn(service as never as { canAccessModule: () => Promise<boolean> }, 'canAccessModule')
+        .mockResolvedValue(true);
+      // Barbeiro (nível padrão) não vende pacote
+      await expect(
+        service.purchaseClientPackage(A.staffUserId, A.shopId, {
+          customerId: A.customerId,
+          servicePackageId: offer.id,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await service.purchaseClientPackage(A.ownerId, A.shopId, {
+        customerId: A.customerId,
+        servicePackageId: offer.id,
+        paymentMethod: 'PIX',
+      });
+      const pkgSale = await prisma.sale.findFirstOrThrow({
+        where: { barbershopId: A.shopId, saleType: 'PACKAGE' },
+        include: { items: true },
+        orderBy: { id: 'desc' },
+      });
+      expect(pkgSale).toMatchObject({
+        customerId: A.customerId,
+        paymentStatus: 'PAID',
+        paymentMethod: 'PIX',
+      });
+      expect(Number(pkgSale.total)).toBe(120);
+      expect(pkgSale.items[0]).toMatchObject({
+        itemType: 'PACKAGE',
+        notes: 'Pacote — Pacote Venda',
+      });
+
+      // Cartão-presente vendido na unidade, sem a forma: fica pendente
+      const card = await service.createGiftCard(A.ownerId, A.networkId, {
+        initialValue: 50,
+        barbershopId: A.shopId,
+      });
+      const cardSale = await prisma.sale.findFirstOrThrow({
+        where: { barbershopId: A.shopId, saleType: 'GIFT_CARD' },
+        include: { items: true },
+        orderBy: { id: 'desc' },
+      });
+      expect(cardSale.paymentStatus).toBe('PENDING');
+      expect(cardSale.items[0].notes).toBe(`Cartão-presente ${card.code}`);
+      // Unidade de outra rede: recusa
+      await expect(
+        service.createGiftCard(A.ownerId, A.networkId, {
+          initialValue: 50,
+          barbershopId: B.shopId,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      await prisma.sale.deleteMany({ where: { id: { in: [pkgSale.id, cardSale.id] } } });
+      await prisma.giftCard.delete({ where: { id: card.id } });
+      modules.mockRestore();
+      await prisma.clientPackage.deleteMany({ where: { servicePackageId: offer.id } });
       await prisma.servicePackage.delete({ where: { id: offer.id } });
     });
   });
@@ -1409,6 +1496,33 @@ describe('BarbershopService (integração com o banco)', () => {
       });
       expect(back.takesAppointments).toBeNull();
       expect(await onPublicPage()).toBe(false);
+    });
+
+    it('estender o vínculo encerrado confere a vaga de novo', async () => {
+      // 2 de 3 vagas: o freelancer com vínculo vencido não conta
+      const DAY = 24 * 3_600_000;
+      const expired = await prisma.barber.create({
+        data: {
+          barbershopId: shopId,
+          name: 'Freela',
+          phone: phone(30),
+          accessStartsAt: new Date(Date.now() - 10 * DAY),
+          accessEndsAt: new Date(Date.now() - DAY),
+        },
+      });
+      expect((await service.getPlanSeatUsage(A.ownerId, shopId)).used).toBe(2);
+      await service.createBarber(A.ownerId, shopId, { name: 'Vaga 31', phone: phone(31) });
+      await expect(
+        service.updateBarber(A.ownerId, shopId, expired.id, {
+          accessEndsAt: new Date(Date.now() + 10 * DAY),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      // Mudar a data sem voltar a valer não esbarra
+      await expect(
+        service.updateBarber(A.ownerId, shopId, expired.id, {
+          accessEndsAt: new Date(Date.now() - 2 * DAY),
+        }),
+      ).resolves.toBeTruthy();
     });
   });
 

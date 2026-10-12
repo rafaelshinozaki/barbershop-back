@@ -380,6 +380,27 @@ export const STAFF_APPOINTMENT_SOURCES = ['PHONE', 'WALK_IN'] as const;
  * sem `paidAt` cai pela criação. Antes o faturamento usava a criação: venda
  * lançada pendente ontem e paga hoje contava como de ontem
  */
+/**
+ * Soma (ou tira) do estoque no banco, com `increment`, e devolve o saldo
+ * antes/depois a partir do valor que voltou. Ler e gravar o valor absoluto
+ * perdia uma baixa quando duas vendas do mesmo produto saíam juntas.
+ */
+async function moveStock(
+  tx: Prisma.TransactionClient,
+  barbershopId: number,
+  productId: number,
+  unit: string,
+  change: number,
+) {
+  const inventoryItem = await tx.inventoryItem.upsert({
+    where: { barbershopId_productId: { barbershopId, productId } },
+    create: { barbershopId, productId, quantity: change, unit },
+    update: { quantity: { increment: change }, unit },
+  });
+  const quantityAfter = Number(inventoryItem.quantity);
+  return { inventoryItem, quantityBefore: quantityAfter - change, quantityAfter };
+}
+
 export function paidInRange(range: Prisma.DateTimeFilter): Prisma.SaleWhereInput {
   return { OR: [{ paidAt: range }, { paidAt: null, createdAt: range }] };
 }
@@ -2008,9 +2029,19 @@ export class BarbershopService {
         );
       }
     }
-    // Passou a ocupar vaga (começou a atender ou voltou a ficar ativo)
+    // Passou a ocupar vaga (começou a atender, voltou a ficar ativo ou o
+    // vínculo encerrado foi estendido e voltou a valer)
+    const now = new Date();
     const activeAfter = data.isActive ?? barber.isActive;
-    if (activeAfter && servesAfter && !(barber.isActive && servesBefore)) {
+    const endsAfter = data.accessEndsAt === undefined ? barber.accessEndsAt : data.accessEndsAt;
+    const inPeriodBefore = barber.accessEndsAt == null || barber.accessEndsAt >= now;
+    const inPeriodAfter = endsAfter == null || new Date(endsAfter) >= now;
+    if (
+      activeAfter &&
+      servesAfter &&
+      inPeriodAfter &&
+      !(barber.isActive && servesBefore && inPeriodBefore)
+    ) {
       await this.ensureSeatFor(barbershopId, barber.userId);
     }
     return this.prisma.barber.update({ where: { id: barberId }, data });
@@ -2363,27 +2394,16 @@ export class BarbershopService {
       throw new NotFoundException('Produto não encontrado nesta unidade');
     }
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.inventoryItem.findUnique({
-        where: { barbershopId_productId: { barbershopId, productId: data.productId } },
-      });
-      const quantityBefore = existing ? Number(existing.quantity) : 0;
-      const quantityAfter = quantityBefore + data.quantityChange;
+      const {
+        inventoryItem: item,
+        quantityBefore,
+        quantityAfter,
+      } = await moveStock(tx, barbershopId, data.productId, product.unit, data.quantityChange);
+      // Confere depois de aplicar (o saldo que voltou é o de verdade, mesmo
+      // com outra baixa ao mesmo tempo); negativo desfaz a transação
       if (quantityAfter < 0) {
         throw new BadRequestException('Estoque não pode ficar negativo');
       }
-      const item = existing
-        ? await tx.inventoryItem.update({
-            where: { id: existing.id },
-            data: { quantity: quantityAfter, unit: product.unit },
-          })
-        : await tx.inventoryItem.create({
-            data: {
-              barbershopId,
-              productId: data.productId,
-              quantity: quantityAfter,
-              unit: product.unit,
-            },
-          });
       await tx.inventoryMovement.create({
         data: {
           inventoryItemId: item.id,
@@ -6111,6 +6131,8 @@ export class BarbershopService {
       recipientName?: string;
       message?: string;
       expiresAt?: Date;
+      barbershopId?: number | null;
+      paymentMethod?: string | null;
     },
   ) {
     const network = await this.getMyNetwork(userId);
@@ -6119,25 +6141,45 @@ export class BarbershopService {
     if (data.initialValue <= 0) {
       throw new BadRequestException('O valor do cartão-presente deve ser maior que zero');
     }
+    // A unidade que vendeu: o valor entra no faturamento e no caixa dela
+    // (antes o cartão só criava o saldo e o dinheiro não aparecia em lugar nenhum)
+    const { barbershopId, paymentMethod, ...card } = data;
+    if (barbershopId != null) {
+      const shop = await this.prisma.barbershop.findFirst({
+        where: { id: barbershopId, networkId },
+        select: { id: true },
+      });
+      if (!shop) throw new NotFoundException('Unidade não encontrada nesta rede');
+    }
 
     let code = this.generateGiftCardCode();
     while (await this.prisma.giftCard.findUnique({ where: { code } })) {
       code = this.generateGiftCardCode();
     }
 
-    return this.prisma.giftCard.create({
-      data: {
-        networkId,
-        code,
-        initialValue: new Decimal(data.initialValue),
-        remainingValue: new Decimal(data.initialValue),
-        purchaserName: data.purchaserName,
-        purchaserPhone: data.purchaserPhone,
-        purchaserEmail: data.purchaserEmail,
-        recipientName: data.recipientName,
-        message: data.message,
-        expiresAt: data.expiresAt,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      if (barbershopId != null) {
+        await this.recordStandaloneSale(tx, barbershopId, {
+          itemType: 'GIFT_CARD',
+          amount: card.initialValue,
+          notes: `Cartão-presente ${code}`,
+          paymentMethod,
+        });
+      }
+      return tx.giftCard.create({
+        data: {
+          networkId,
+          code,
+          initialValue: new Decimal(card.initialValue),
+          remainingValue: new Decimal(card.initialValue),
+          purchaserName: card.purchaserName,
+          purchaserPhone: card.purchaserPhone,
+          purchaserEmail: card.purchaserEmail,
+          recipientName: card.recipientName,
+          message: card.message,
+          expiresAt: card.expiresAt,
+        },
+      });
     });
   }
 
@@ -7057,25 +7099,14 @@ export class BarbershopService {
         if (item.itemType !== 'PRODUCT' || !item.productId) continue;
         const product = await tx.barbershopProduct.findUnique({ where: { id: item.productId } });
         if (!product) continue;
-        const existing = await tx.inventoryItem.findUnique({
-          where: { barbershopId_productId: { barbershopId, productId: item.productId } },
-        });
-        const quantityBefore = existing ? Number(existing.quantity) : 0;
         const quantityChange = -item.quantity;
-        const quantityAfter = quantityBefore + quantityChange;
-        const inventoryItem = existing
-          ? await tx.inventoryItem.update({
-              where: { id: existing.id },
-              data: { quantity: quantityAfter },
-            })
-          : await tx.inventoryItem.create({
-              data: {
-                barbershopId,
-                productId: item.productId,
-                quantity: quantityAfter,
-                unit: product.unit,
-              },
-            });
+        const { inventoryItem, quantityBefore, quantityAfter } = await moveStock(
+          tx,
+          barbershopId,
+          item.productId,
+          product.unit,
+          quantityChange,
+        );
         await tx.inventoryMovement.create({
           data: {
             inventoryItemId: inventoryItem.id,
@@ -7171,25 +7202,14 @@ export class BarbershopService {
       if (deltaSold === 0) continue;
       const product = await tx.barbershopProduct.findUnique({ where: { id: productId } });
       if (!product) continue;
-      const existing = await tx.inventoryItem.findUnique({
-        where: { barbershopId_productId: { barbershopId, productId } },
-      });
-      const quantityBefore = existing ? Number(existing.quantity) : 0;
       const quantityChange = -deltaSold;
-      const quantityAfter = quantityBefore + quantityChange;
-      const inventoryItem = existing
-        ? await tx.inventoryItem.update({
-            where: { id: existing.id },
-            data: { quantity: quantityAfter },
-          })
-        : await tx.inventoryItem.create({
-            data: {
-              barbershopId,
-              productId,
-              quantity: quantityAfter,
-              unit: product.unit,
-            },
-          });
+      const { inventoryItem, quantityBefore, quantityAfter } = await moveStock(
+        tx,
+        barbershopId,
+        productId,
+        product.unit,
+        quantityChange,
+      );
       await tx.inventoryMovement.create({
         data: {
           inventoryItemId: inventoryItem.id,
@@ -7497,7 +7517,7 @@ export class BarbershopService {
     if (!session) {
       throw new NotFoundException('Nenhum caixa aberto para esta unidade');
     }
-    const [cashSales, cashExpenses, cashRent] = await Promise.all([
+    const [cashSales, cashExpenses, cashRent, cashTips] = await Promise.all([
       this.prisma.sale.aggregate({
         where: {
           cashSessionId: session.id,
@@ -7515,9 +7535,17 @@ export class BarbershopService {
         where: { cashSessionId: session.id, method: 'CASH', status: 'SUCCEEDED' },
         _sum: { amount: true },
       }),
+      // Caixinha em dinheiro deixada no balcão (da unidade ou pro profissional)
+      this.prisma.appointmentTip.aggregate({
+        where: { cashSessionId: session.id, method: 'CASH' },
+        _sum: { amount: true },
+      }),
     ]);
     const openingBalance = Number(session.openingBalance);
-    const cashIn = Number(cashSales._sum.total ?? 0) + Number(cashRent._sum.amount ?? 0);
+    const cashIn =
+      Number(cashSales._sum.total ?? 0) +
+      Number(cashRent._sum.amount ?? 0) +
+      Number(cashTips._sum.amount ?? 0);
     const cashOut = Number(cashExpenses._sum.amount ?? 0);
     const expectedBalance = openingBalance + cashIn - cashOut;
     const difference = data.countedBalance - expectedBalance;
@@ -7841,25 +7869,86 @@ export class BarbershopService {
   async purchaseClientPackage(
     userId: number,
     barbershopId: number,
-    data: { customerId: number; servicePackageId: number },
+    data: { customerId: number; servicePackageId: number; paymentMethod?: string | null },
   ) {
-    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    // Vender pacote é receber dinheiro: da recepção pra cima (antes qualquer
+    // barbeiro dava um pacote de graça)
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     await this.ensureModuleAccess(barbershopId, 'packages');
     const pkg = await this.prisma.servicePackage.findFirst({
       where: { id: data.servicePackageId, barbershopId, isActive: true },
     });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
-    const clientPackage = await this.prisma.clientPackage.create({
-      data: {
-        barbershopId,
+    const clientPackage = await this.prisma.$transaction(async (tx) => {
+      await this.recordStandaloneSale(tx, barbershopId, {
         customerId: data.customerId,
-        servicePackageId: pkg.id,
-        totalSessions: pkg.totalSessions,
-      },
-      include: { servicePackage: { include: { service: true } } },
+        itemType: 'PACKAGE',
+        amount: Number(pkg.price),
+        notes: `Pacote — ${pkg.name}`,
+        paymentMethod: data.paymentMethod,
+      });
+      return tx.clientPackage.create({
+        data: {
+          barbershopId,
+          customerId: data.customerId,
+          servicePackageId: pkg.id,
+          totalSessions: pkg.totalSessions,
+        },
+        include: { servicePackage: { include: { service: true } } },
+      });
     });
     return this.toClientPackageResult(clientPackage);
+  }
+
+  /**
+   * Venda avulsa de pacote ou cartão-presente: entra no faturamento como
+   * qualquer venda. Com a forma de pagamento já sai paga (e no caixa aberto);
+   * sem ela fica pendente, pra receber depois pela tela de vendas.
+   */
+  private async recordStandaloneSale(
+    tx: Prisma.TransactionClient,
+    barbershopId: number,
+    data: {
+      customerId?: number | null;
+      itemType: 'PACKAGE' | 'GIFT_CARD';
+      amount: number;
+      notes: string;
+      paymentMethod?: string | null;
+    },
+  ) {
+    const paid = !!data.paymentMethod;
+    const openSession = paid
+      ? await tx.cashSession.findFirst({
+          where: { barbershopId, status: 'OPEN' },
+          select: { id: true },
+        })
+      : null;
+    const amount = new Decimal(round2(data.amount));
+    return tx.sale.create({
+      data: {
+        barbershopId,
+        customerId: data.customerId ?? null,
+        cashSessionId: openSession?.id ?? null,
+        saleType: data.itemType,
+        subtotal: amount,
+        total: amount,
+        paymentStatus: paid ? 'PAID' : 'PENDING',
+        paymentMethod: data.paymentMethod ?? null,
+        paidAt: paid ? new Date() : null,
+        items: {
+          create: [
+            {
+              itemType: data.itemType,
+              quantity: 1,
+              unitPrice: amount,
+              totalPrice: amount,
+              notes: data.notes,
+            },
+          ],
+        },
+      },
+    });
   }
 
   async getClientPackages(userId: number, barbershopId: number, customerId: number) {

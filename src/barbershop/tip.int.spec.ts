@@ -156,6 +156,7 @@ describe('Caixinha do atendimento (integração)', () => {
       where: { barbershopId: { in: [shopId, soloShopId] } },
     });
     await prisma.barberPayout.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.cashSession.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: { in: [shopId, soloShopId] } } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });
@@ -248,6 +249,40 @@ describe('Caixinha do atendimento (integração)', () => {
     await expect(
       tips.add(users.dono, soloShopId, solo.id, { destination: 'unit', method: 'CASH', amount: 5 }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('caixinha em dinheiro deixada no balcão entra no caixa aberto e no fechamento', async () => {
+    const appt = await appointment(shopId, proBarber);
+    await barbershops.openCashSession(users.dono, shopId, 100);
+    const unitCash = await tips.add(users.dono, shopId, appt.id, {
+      destination: 'unit',
+      method: 'CASH',
+      amount: 10,
+    });
+    await tips.add(users.dono, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CASH',
+      amount: 5,
+      receivedByUnit: true,
+    });
+    // Na mão do profissional e no cartão: fora da gaveta
+    await tips.add(users.pro, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CASH',
+      amount: 7,
+    });
+    await tips.add(users.dono, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CARD',
+      amount: 9,
+    });
+    const closed = await barbershops.closeCashSession(users.dono, shopId, { countedBalance: 115 });
+    expect(Number(closed.expectedBalance)).toBe(115);
+    expect(Number(closed.difference)).toBe(0);
+    // Caixa fechado: a caixinha dele não se apaga mais
+    await expect(tips.remove(users.dono, shopId, unitCash.id)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('o profissional só apaga a caixinha que ele mesmo registrou', async () => {
