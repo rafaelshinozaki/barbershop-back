@@ -28,6 +28,11 @@ describe('Trocar e cancelar o plano (integração com o banco)', () => {
       charges.push({ amount: p.amount, key: p.idempotencyKey });
       return { id: `pi_chg_${RUN}_${++seq}`, status: 'succeeded' };
     },
+    // Assinatura antiga na Stripe (plano trocado pelo backoffice)
+    getSubscription: async () => ({
+      items: { data: [{ id: 'si_1', price: { id: 'price_basic' } }] },
+    }),
+    updateSubscription: jest.fn(async () => ({})),
   };
   const email = { sendTemplateEmail: async () => undefined };
   // Uso de hoje: cabe, a não ser que o teste diga que não
@@ -217,5 +222,22 @@ describe('Trocar e cancelar o plano (integração com o banco)', () => {
     );
     // No gratuito não há o que cancelar
     await expect(payments.unsubscribe(userId)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('plano trocado pelo backoffice: a assinatura antiga da Stripe passa pro preço novo, sem cobrar', async () => {
+    await prisma.plan.update({
+      where: { id: premiumId },
+      data: { stripePriceId: 'price_premium' },
+    });
+    const sub = await startBasic(10);
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: { planId: premiumId, stripeSubscriptionId: `sub_chg_${RUN}` },
+    });
+    await payments.syncStripePlanPrice([userId]);
+    expect(stripe.updateSubscription).toHaveBeenCalledWith(`sub_chg_${RUN}`, {
+      items: [{ id: 'si_1', price: 'price_premium' }],
+      proration_behavior: 'none',
+    });
   });
 });
