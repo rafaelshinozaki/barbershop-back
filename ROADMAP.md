@@ -813,6 +813,69 @@ O código do backoffice-back (`allowed-operations.json`: 41 consultas e 37 alter
 
 **Decidido** (dono da plataforma, 2026-10-12): corrigir dados de base da unidade (fuso, moeda, país, slug) e transferir a propriedade são as duas exceções à regra "fora do backoffice, de propósito". As duas exigem motivo, avisam o dono por e-mail e no sininho e entram no Histórico da unidade como "Equipe da plataforma" (o nome do funcionário fica só no Registro de ações). Fora delas, a equipe continua sem mexer em dado do negócio.
 
+### Tela de resultados: lucro e números da plataforma — 🆕 (pedido do dono da plataforma em 2026-10-12)
+
+**O que existe hoje:** o Painel mostra uma "receita" que é a soma de todas as cobranças de plano pagas desde o começo (`Payment` concluído, `backofficeStats.revenue`). Não tem período, não desconta estorno nem a tarifa da Stripe, e não inclui as outras fontes de receita. O resto do Painel é contagem de contas, crescimento e retenção do marketplace. A receita do Destaque fica numa aba à parte, e a taxa estimada dos pagamentos pelo app, em outra tela.
+
+**A tela:** `/results` no app do backoffice, com seletor de período (este mês, mês passado, 3, 6 e 12 meses, personalizado), comparação com o período anterior e exportação em CSV (com a proteção do item 90). Os valores vêm em reais (a moeda da plataforma). Pagamento em outra moeda entra convertido pela cotação que a Stripe usou no repasse (`balance_transaction`).
+
+#### 1. Resultado (o quanto a plataforma ganha)
+
+| Linha | De onde vem |
+|---|---|
+| Planos (assinaturas dos donos) | `Payment` pago no período |
+| Destaque (unidade e profissional) | `FeaturedPurchase` paga |
+| Taxa de vaga de freelancer | `JobApplication` com taxa paga |
+| Taxa da plataforma nos pagamentos pelo app | `application_fee` de sinal, atendimento pago e caixinha (o valor real da Stripe, não a estimativa pela tabela atual) |
+| Taxa da plataforma no aluguel de cadeira e nos clubes de assinatura | Parte da plataforma no que entra pela conta dela |
+| Taxa do cliente novo do marketplace | Quando estiver ligada (item 51) |
+| **= Receita bruta** | |
+| − Estornos e disputas perdidas | Estornos do período, inclusive os feitos no painel da Stripe (item 89) |
+| − Tarifa da Stripe | `balance_transaction.fee` de cada cobrança |
+| − Cupons e cortesias | Desconto dado por cupom e dias de cortesia |
+| **= Receita líquida** | |
+| − Custos fixos (lançados à mão) | Servidor, e-mail (Mailgun), WhatsApp, domínio, ferramentas. Cadastro simples de custo por mês, só Super admin |
+| **= Resultado do período** | Lucro ou prejuízo, com gráfico mês a mês |
+
+**Dinheiro que só passa pela plataforma** fica num quadro separado e não conta como receita: aluguel de cadeira no cartão e clubes de assinatura. O quadro mostra quanto entrou, quanto já foi repassado e quanto falta repassar (liga com "Repasses a fazer").
+
+#### 2. Assinaturas (saúde do negócio recorrente)
+
+- **MRR** (receita mensal recorrente) e **ARR**, com a evolução mês a mês.
+- MRR novo, de upgrade, de downgrade e perdido (cancelamento), no formato "ponte" de um mês pro outro.
+- **Churn** de contas e de receita, e os motivos de cancelamento (campo novo no cancelamento).
+- Assinaturas por plano, em teste grátis, em atraso (`PAST_DUE`) e o valor em atraso.
+- **Ticket médio** por conta (ARPA), **LTV** estimado e **tempo médio até pagar** (do cadastro à primeira cobrança).
+- Conversão do teste grátis em plano pago.
+
+#### 3. Volume que passa pelo app (GMV)
+
+- Total de agendamentos, vendas registradas e valor movimentado pelas unidades no período, com a parte paga pelo app (Connect) e a parte paga no balcão.
+- Agendamentos por origem (vitrine, link próprio, equipe), cancelamentos e faltas.
+- Unidades e profissionais ativos (com agendamento no período), novos e inativos há 30 dias.
+- Contas de recebimento (Connect) abertas e quanto já movimentaram.
+
+#### 4. Recortes
+
+- Por cidade/estado, por tipo de estabelecimento, por plano e por canal de aquisição (cupom, indicação, convite de amigo).
+- **Top unidades** por receita gerada pra plataforma e por GMV, com link pra ficha.
+- **Coortes:** dos que entraram em cada mês, quantos continuam pagando depois de 1, 3, 6 e 12 meses.
+
+#### Quem vê
+
+| | SA | AD | CO | FI | CR | AN |
+|---|---|---|---|---|---|---|
+| Resultado (lucro), custos fixos | A | V | – | V | – | – |
+| Assinaturas, GMV, recortes | V | V | V | V | V | V |
+
+O Analista e o Crescimento veem só os números agregados, sem nome de unidade no "Top". Custo fixo só o Super admin lança. Nova permissão `results.read` (agregados) e `results.profit` (lucro e custos).
+
+#### Como fazer
+
+- **Fonte dos valores reais:** gravar, em cada cobrança paga, a tarifa e a taxa que a Stripe aplicou (`balance_transaction`: `fee`, `net`, `exchange_rate`), por webhook. A tela soma o que está no banco, sem chamar a Stripe.
+- **Resumo diário:** uma rotina noturna grava os totais do dia (`PlatformDailyMetrics`). Assim a tela de 12 meses abre rápido e o histórico não muda quando um registro antigo é apagado. O dia de hoje é calculado na hora.
+- **Antes, corrigir o que distorce os números:** estorno pela Stripe não sincronizado (89), moeda sem centavos (86), troca de plano sem cobrar (83/87), venda contada no dia em que foi lançada (73).
+
 ### Tirar o backoffice do projeto principal
 
 **Decisão (2026-09-29):** o projeto principal (`barbershop-front` e `barbershop-back`) fica **sem nada do backoffice**: sem tela, operação, cargo, conta da equipe, auditoria ou variável de ambiente. O backoffice vira dois apps completos:
