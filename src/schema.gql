@@ -328,6 +328,9 @@ type AppointmentTipType {
 
   """A unidade recebeu e repassa ao profissional no pagamento"""
   receivedByUnit: Boolean!
+
+  """Caixinha paga pelo app e estornada (não conta como recebida)"""
+  refunded: Boolean!
 }
 
 type ApprovalOutcomeType {
@@ -1351,10 +1354,12 @@ input CreateExpenseInput {
 }
 
 input CreateGiftCardInput {
+  barbershopId: Int
   expiresAt: String
   initialValue: Float!
   message: String
   networkId: Int!
+  paymentMethod: String
   purchaserEmail: String
   purchaserName: String
   purchaserPhone: String
@@ -2826,10 +2831,13 @@ type PlanSeatUsage {
 }
 
 type PlanSubscription {
+  cancelAtPeriodEnd: Boolean
   cancelationDate: String
   createdAt: String!
+  currentPeriodEnd: String
   id: Int!
   payments: [Payment!]
+  pendingPlanId: Int
   plan: Plan!
   planId: Int!
   startSubDate: String!
@@ -3247,6 +3255,7 @@ type PublicSubscriptionPlanType {
 
 input PurchaseClientPackageInput {
   customerId: Int!
+  paymentMethod: String
   servicePackageId: Int!
 }
 
