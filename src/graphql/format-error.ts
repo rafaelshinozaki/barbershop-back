@@ -1,4 +1,5 @@
 import { unwrapResolverError } from '@apollo/server/errors';
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { GraphQLFormattedError } from 'graphql';
 import { errorReasonOf } from '../common/error-reasons';
@@ -18,7 +19,11 @@ export function formatGqlError(
     const where = { locations: formattedError.locations, path: formattedError.path };
     const original = error === undefined ? undefined : unwrapResolverError(error);
     if (original instanceof Prisma.PrismaClientValidationError) {
-      return { message: 'Dados inválidos', ...where, extensions: { code: 'BAD_USER_INPUT' } };
+      return {
+        message: 'Dados inválidos',
+        ...where,
+        extensions: { code: 'BAD_USER_INPUT', reason: 'INVALID_INPUT' },
+      };
     }
     if (
       original instanceof Prisma.PrismaClientKnownRequestError ||
@@ -35,10 +40,14 @@ export function formatGqlError(
     const ext = formattedError.extensions as Record<string, unknown> | undefined;
     const code =
       typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined;
-    const message = String(formattedError.message ?? 'Internal server error');
+    // Validação do DTO (ValidationPipe): o texto vinha "Bad Request Exception",
+    // sem dizer o campo. Vai a primeira mensagem da validação; a que não está
+    // no catálogo leva o código genérico INVALID_INPUT
+    const validation = validationMessageOf(original);
+    const message = validation ?? String(formattedError.message ?? 'Internal server error');
     // `code` continua sendo a categoria (FORBIDDEN, BAD_REQUEST…); `reason` diz
     // qual erro foi, pro front traduzir (ver error-reasons.ts)
-    const reason = errorReasonOf(message);
+    const reason = errorReasonOf(message) ?? (validation ? 'INVALID_INPUT' : undefined);
     const extensions = {
       ...(code !== undefined ? { code } : {}),
       ...(reason ? { reason } : {}),
@@ -52,3 +61,13 @@ export function formatGqlError(
     return { message: 'Internal server error' };
   }
 }
+
+const validationMessageOf = (error: unknown): string | undefined => {
+  if (!(error instanceof BadRequestException)) return undefined;
+  const response = error.getResponse();
+  const messages =
+    typeof response === 'object' && response !== null
+      ? (response as { message?: unknown }).message
+      : undefined;
+  return Array.isArray(messages) && typeof messages[0] === 'string' ? messages[0] : undefined;
+};
