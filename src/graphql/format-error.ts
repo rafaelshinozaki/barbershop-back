@@ -1,6 +1,7 @@
 import { unwrapResolverError } from '@apollo/server/errors';
 import { Prisma } from '@prisma/client';
 import type { GraphQLFormattedError } from 'graphql';
+import { errorReasonOf } from '../common/error-reasons';
 
 /**
  * Resposta de erro do GraphQL: só campos serializáveis (evita "Converting
@@ -34,10 +35,18 @@ export function formatGqlError(
     const ext = formattedError.extensions as Record<string, unknown> | undefined;
     const code =
       typeof ext?.code === 'string' || typeof ext?.code === 'number' ? ext.code : undefined;
+    const message = String(formattedError.message ?? 'Internal server error');
+    // `code` continua sendo a categoria (FORBIDDEN, BAD_REQUEST…); `reason` diz
+    // qual erro foi, pro front traduzir (ver error-reasons.ts)
+    const reason = errorReasonOf(message);
+    const extensions = {
+      ...(code !== undefined ? { code } : {}),
+      ...(reason ? { reason } : {}),
+    };
     return {
-      message: String(formattedError.message ?? 'Internal server error'),
+      message,
       ...where,
-      extensions: code !== undefined ? { code } : undefined,
+      extensions: Object.keys(extensions).length ? extensions : undefined,
     };
   } catch {
     return { message: 'Internal server error' };

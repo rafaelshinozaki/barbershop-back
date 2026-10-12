@@ -225,6 +225,41 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     ).toBe(1);
   });
 
+  it('desmarcar "Ativo" na edição: cancela o convite pendente e avisa dos horários marcados', async () => {
+    const shop = shops[0];
+    const { barber, invite } = await invites.createInvite(shop.ownerId, {
+      barbershopId: shop.shopId,
+      email: `mu-desliga-${RUN}@test.local`,
+      name: 'Desligado',
+      phone: '11900000010',
+      role: 'BarbershopEmployee',
+    });
+    const startAt = new Date(Date.now() + 3 * DAY);
+    await prisma.appointment.create({
+      data: {
+        barbershopId: shop.shopId,
+        customerId: shop.customerId,
+        barberId: barber.id,
+        startAt,
+        endAt: new Date(startAt.getTime() + 30 * 60_000),
+        status: 'CONFIRMED',
+      },
+    });
+    const before = await prisma.userNotification.count({ where: { userId: shop.ownerId } });
+
+    const updated = await service.updateBarber(shop.ownerId, shop.shopId, barber.id, {
+      isActive: false,
+    });
+    expect(updated.isActive).toBe(false);
+    expect(
+      (await prisma.employeeInvite.findUniqueOrThrow({ where: { id: invite.id } })).status,
+    ).toBe('CANCELLED');
+    expect(await prisma.userNotification.count({ where: { userId: shop.ownerId } })).toBe(
+      before + 1,
+    );
+    await prisma.userNotification.deleteMany({ where: { userId: shop.ownerId } });
+  });
+
   it('escala sobreposta em outra unidade não passa; turno encostado passa', async () => {
     const dow = (new Date(`${day}T12:00:00Z`).getUTCDay() + 1) % 7;
     await service.createBarberSchedule(shops[0].ownerId, {

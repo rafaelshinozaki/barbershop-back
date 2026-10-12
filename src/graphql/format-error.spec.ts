@@ -41,7 +41,15 @@ describe('formatGqlError', () => {
       message: 'Agendamento não encontrado',
       locations: undefined,
       path: undefined,
-      extensions: { code: 'NOT_FOUND' },
+      extensions: { code: 'NOT_FOUND', reason: 'APPOINTMENT_NOT_FOUND' },
     });
+  });
+
+  it('mensagem fora do catálogo vai sem reason (o front mostra o texto)', () => {
+    const out = formatGqlError(
+      { message: 'Algo novo', extensions: { code: 'BAD_REQUEST' } },
+      new GraphQLError('Algo novo'),
+    );
+    expect(out.extensions).toEqual({ code: 'BAD_REQUEST' });
   });
 });
