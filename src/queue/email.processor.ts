@@ -42,6 +42,7 @@ export class EmailProcessor extends WorkerHost {
         data.to,
         data.lang,
         data.headers,
+        data.attachments,
       );
       if (data.campaignId) {
         await this.prisma.marketingCampaign.update({

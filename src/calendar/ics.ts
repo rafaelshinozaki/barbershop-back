@@ -16,6 +16,9 @@ export type IcsEvent = {
   sequence?: number;
   cancelled?: boolean;
   updatedAt?: Date;
+  /** Convite por e-mail (METHOD:REQUEST): quem convida e quem é convidado */
+  organizer?: { name: string; email: string };
+  attendee?: { name: string; email: string };
 };
 
 const PRODID = '-//Barbershop//Agenda//PT';
@@ -35,6 +38,11 @@ function text(value: string) {
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
     .replace(/\r?\n/g, '\\n');
+}
+
+/** Nome dentro de parâmetro (CN="..."): sem aspas nem quebra de linha */
+function paramValue(value: string) {
+  return `"${value.replace(/["\r\n]/g, ' ').trim()}"`;
 }
 
 /** Linhas de no máximo 75 bytes, continuadas com espaço (RFC 5545 §3.1) */
@@ -71,6 +79,17 @@ function eventLines(e: IcsEvent, now: Date) {
   if (e.description) lines.push(`DESCRIPTION:${text(e.description)}`);
   if (e.location) lines.push(`LOCATION:${text(e.location)}`);
   if (e.url) lines.push(`URL:${e.url}`);
+  if (e.organizer) {
+    lines.push(`ORGANIZER;CN=${paramValue(e.organizer.name)}:mailto:${e.organizer.email}`);
+  }
+  if (e.attendee) {
+    // Já confirmado: o app mostra o evento sem pedir "Sim/Não/Talvez"
+    lines.push(
+      `ATTENDEE;CN=${paramValue(
+        e.attendee.name,
+      )};ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:${e.attendee.email}`,
+    );
+  }
   if (e.updatedAt) lines.push(`LAST-MODIFIED:${stamp(e.updatedAt)}`);
   lines.push(`SEQUENCE:${e.sequence ?? 0}`);
   lines.push(`STATUS:${e.cancelled ? 'CANCELLED' : 'CONFIRMED'}`);
@@ -80,11 +99,16 @@ function eventLines(e: IcsEvent, now: Date) {
 
 /**
  * Monta o calendário. `name` aparece como nome da agenda assinada; `method`
- * CANCEL num .ics avulso faz o app apagar o evento que já tinha.
+ * CANCEL num .ics avulso faz o app apagar o evento que já tinha; REQUEST é o
+ * convite anexado ao e-mail (o Gmail mostra o cartão do evento e põe na agenda).
  */
 export function buildCalendar(
   events: IcsEvent[],
-  opts: { name?: string; method?: 'PUBLISH' | 'CANCEL'; refreshHours?: number } = {},
+  opts: {
+    name?: string;
+    method?: 'PUBLISH' | 'REQUEST' | 'CANCEL';
+    refreshHours?: number;
+  } = {},
 ) {
   const now = new Date();
   const lines = [

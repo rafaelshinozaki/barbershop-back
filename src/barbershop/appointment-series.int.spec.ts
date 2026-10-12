@@ -212,6 +212,11 @@ describe('Agendamento recorrente (integração)', () => {
       to: `fixo-${RUN}@test.local`,
     });
     expect(emails[0].context.SeriesDates).toHaveLength(2);
+    // O convite de calendário leva as duas datas, um evento cada
+    const invite = emails[0].attachments[0];
+    expect(invite.contentType).toContain('method=REQUEST');
+    for (const a of appts) expect(invite.content).toContain(`UID:appointment-${a.id}@barbershop`);
+    expect(invite.content.match(/BEGIN:VEVENT/g)).toHaveLength(2);
   });
 
   it('fora do expediente avisa mas marca', async () => {
@@ -262,6 +267,11 @@ describe('Agendamento recorrente (integração)', () => {
     const cancelledEmails = emails.filter((e) => e.template === 'appointment_cancelled');
     expect(cancelledEmails).toHaveLength(1);
     expect(cancelledEmails[0].context.SeriesDates).toHaveLength(3);
+    // Os três saem do calendário do cliente; o primeiro (que ficou) não
+    const cancelInvite = cancelledEmails[0].attachments[0];
+    expect(cancelInvite.contentType).toContain('method=CANCEL');
+    expect(cancelInvite.content.match(/BEGIN:VEVENT/g)).toHaveLength(3);
+    expect(cancelInvite.content).not.toContain(`UID:appointment-${appts[0].id}@barbershop`);
     expect(emails.map((e) => e.template)).toContain('waitlist_slot_available');
     expect(
       (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: waiting.id } })).status,
@@ -278,6 +288,25 @@ describe('Agendamento recorrente (integração)', () => {
     await expect(series.cancelFromHere(ownerId, shopId, single!.id)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('excluir um horário futuro avisa o cliente e apaga o evento do calendário dele', async () => {
+    const appt = await barbershops.createAppointment(ownerId, shopId, {
+      customerId,
+      barberId: beto,
+      startAt: at(monday, '16:00'),
+      endAt: at(monday, '16:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await settle();
+    emails.length = 0;
+    await barbershops.deleteAppointment(ownerId, shopId, appt!.id);
+    await until(() => emails.some((e) => e.template === 'appointment_cancelled'));
+    const email = emails.find((e) => e.template === 'appointment_cancelled');
+    expect(email.to).toBe(`fixo-${RUN}@test.local`);
+    expect(email.attachments[0].contentType).toContain('method=CANCEL');
+    expect(email.attachments[0].content).toContain(`UID:appointment-${appt!.id}@barbershop`);
+    expect(await prisma.appointment.count({ where: { id: appt!.id } })).toBe(0);
   });
 
   it('barbeira faz série na própria agenda, não na do colega; limites', async () => {

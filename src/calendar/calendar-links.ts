@@ -1,5 +1,5 @@
 import { appointmentManageUrl } from '../barbershop/appointment-link';
-import { googleCalendarUrl, IcsEvent, outlookCalendarUrl } from './ics';
+import { buildCalendar, googleCalendarUrl, IcsEvent, outlookCalendarUrl } from './ics';
 
 // Evento de calendário do agendamento e os links "adicionar à agenda".
 // Arquivo à parte (sem depender de BarbershopService) pra o serviço de
@@ -27,7 +27,9 @@ export function appointmentEvent(a: AppointmentForEvent): IcsEvent {
     uid: `appointment-${a.id}@barbershop`,
     start: a.startAt,
     end: a.endAt,
-    summary: `${services || 'Horário'} — ${a.barbershop.name}`,
+    // O nome do serviço é o título do evento na agenda do cliente (a unidade
+    // vai no local). Sem isso o Gmail chegava a chamar de "Consulta médica"
+    summary: services || `Horário em ${a.barbershop.name}`,
     description: `Com ${a.barber.name}\nRemarcar ou cancelar: ${manage}`,
     location: `${a.barbershop.name}, ${a.barbershop.address}, ${a.barbershop.city} - ${a.barbershop.state}`,
     url: manage,
@@ -35,6 +37,38 @@ export function appointmentEvent(a: AppointmentForEvent): IcsEvent {
     sequence: Math.floor(a.updatedAt.getTime() / 1000),
     updatedAt: a.updatedAt,
     cancelled: a.status === 'CANCELLED',
+  };
+}
+
+/**
+ * Convite do agendamento anexado aos e-mails (confirmação, remarcação,
+ * lembrete e cancelamento). Mesmo UID do "adicionar à agenda": o app troca
+ * o evento quando o horário muda e apaga quando é cancelado.
+ */
+export function appointmentInvite(
+  /** Um horário, ou todos os de uma série recorrente (um evento cada) */
+  appointments: AppointmentForEvent | AppointmentForEvent[],
+  customer: { name: string; email: string },
+  /** E-mail de cancelamento (ou horário excluído): o app apaga os eventos */
+  opts: { cancelled?: boolean } = {},
+): { filename: string; content: string; contentType: string } {
+  const list = Array.isArray(appointments) ? appointments : [appointments];
+  const from = process.env.EMAIL_FROM || 'noreply@barbershop.app';
+  const cancelled = opts.cancelled ?? list.every((a) => a.status === 'CANCELLED');
+  const method = cancelled ? 'CANCEL' : 'REQUEST';
+  const content = buildCalendar(
+    list.map((a) => ({
+      ...appointmentEvent(a),
+      cancelled,
+      organizer: { name: a.barbershop.name, email: from },
+      attendee: customer,
+    })),
+    { method },
+  );
+  return {
+    filename: 'invite.ics',
+    content,
+    contentType: `text/calendar; charset=utf-8; method=${method}`,
   };
 }
 

@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from '../barbershop/barbershop.service';
 import { createAppointmentToken } from '../barbershop/appointment-link';
 import { CalendarService } from './calendar.service';
-import { appointmentCalendarLinks } from './calendar-links';
+import { appointmentCalendarLinks, appointmentInvite } from './calendar-links';
 import { buildCalendar } from './ics';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -174,7 +174,8 @@ describe('Calendário (integração)', () => {
   it('cliente: .ics pelo link assinado; cancelado sai como cancelamento; link adulterado não', async () => {
     const ics = unfold(await calendar.appointmentIcs(createAppointmentToken(appts.anaNext)));
     expect(ics).toContain(`UID:appointment-${appts.anaNext}@barbershop`);
-    expect(ics).toContain('SUMMARY:Corte — Barbearia Agenda');
+    // O título é o serviço (a unidade vai no local)
+    expect(ics).toContain('SUMMARY:Corte\r\n');
     expect(ics).toContain('LOCATION:Barbearia Agenda\\, Rua das Flores\\, 10\\, SP - SP');
     expect(ics).toContain('STATUS:CONFIRMED');
     expect(ics).toContain('/booking/manage?t=');
@@ -215,6 +216,31 @@ describe('Calendário (integração)', () => {
     } finally {
       if (before) process.env.PUBLIC_API_URL = before;
     }
+  });
+
+  it('convite do e-mail: REQUEST com quem convida e o cliente; cancelado vira CANCEL', async () => {
+    const appt = await prisma.appointment.findUniqueOrThrow({
+      where: { id: appts.anaNext },
+      include: { barbershop: true, barber: true, services: { include: { service: true } } },
+    });
+    const invite = appointmentInvite(appt, { name: 'Ana "Cliente"', email: 'ana@test.local' });
+    expect(invite.filename).toBe('invite.ics');
+    expect(invite.contentType).toBe('text/calendar; charset=utf-8; method=REQUEST');
+    const ics = unfold(invite.content);
+    expect(ics).toContain('METHOD:REQUEST');
+    expect(ics).toContain(`UID:appointment-${appts.anaNext}@barbershop`);
+    expect(ics).toContain('SUMMARY:Corte\r\n');
+    expect(ics).toMatch(/ORGANIZER;CN="Barbearia Agenda":mailto:\S+@\S+/);
+    expect(ics).toContain(
+      'ATTENDEE;CN="Ana  Cliente";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:ana@test.local',
+    );
+
+    const cancelled = appointmentInvite(
+      { ...appt, status: 'CANCELLED' },
+      { name: 'Ana', email: 'ana@test.local' },
+    );
+    expect(cancelled.contentType).toContain('method=CANCEL');
+    expect(unfold(cancelled.content)).toContain('STATUS:CANCELLED');
   });
 
   it('equipe: barbeira assina a própria agenda (sem contato do cliente); a da unidade não', async () => {
