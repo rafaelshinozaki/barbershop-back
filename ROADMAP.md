@@ -766,6 +766,53 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 
 **Operações antigas a tirar** ✅ (feito): `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
 
+### Operações que faltam (levantamento de 2026-10-12)
+
+O código do backoffice-back (`allowed-operations.json`: 41 consultas e 37 alterações) foi comparado com o que o app faz e o que o suporte e o financeiro vão precisar no dia a dia. Nenhuma das operações abaixo existe hoje. A coluna "Quem" usa as permissões de `staff/roles.ts`. Prioridade: **P1** antes de abrir o piloto pago, **P2** nos primeiros meses, **P3** quando o volume pedir.
+
+#### Financeiro
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Repasses a fazer** (aluguel de cadeira no cartão e clubes de assinatura dos clientes) | O dinheiro desses dois entra na conta da plataforma, e o repasse ao espaço/unidade é "reconciliação manual" (`chair-rent.service.ts`, relatório de repasse em `barbershop.service.ts`). Não há tela que junte quanto se deve a cada unidade, nem como marcar "repassado em DD/MM, por PIX/transferência, comprovante". Hoje o repasse depende de planilha. | `finance.write` | **P1** |
+| **Estornar cobrança do plano** (assinatura do dono) | O estorno do backoffice cobre só pagamento pelo app (sinal, atendimento, caixinha). Cobrança do plano em dobro ou contestada só sai pelo painel da Stripe, e o app não fica sabendo (ver item 89). | `payments.refund` (acima do limite, confirmação) | **P1** |
+| **Cancelar no fim do período / reativar assinatura do plano** | Hoje só existe cancelar na hora (ver item 84). O suporte precisa de "cancela ao fim do mês pago" e de "desfazer o cancelamento" antes do vencimento. | `finance.write` | **P1** |
+| **Dias de cortesia / estender o teste grátis** | `trialEndDate` existe, mas não há como a equipe conceder dias (compensar uma falha, fechar uma venda). Hoje só com cupom, que vale na próxima cobrança. | `finance.write` | P2 |
+| **Estornar compra de Destaque e taxa da vaga de freelancer** | Os dois aparecem só como receita (`adminFeaturedPurchases`). Pedido de reembolso vai pro painel da Stripe e o Destaque continua ligado (item 89). | `payments.refund` | P2 |
+| **Disputas (chargeback): lista com prazo e evidência** | `PaymentDispute` chega pelo webhook e aparece misturado em Pagamentos pelo app. Não há fila com o prazo de resposta da Stripe, nem como anexar a evidência (agendamento, mensagens, recibo) sem sair do backoffice. | `finance.write` | P2 |
+| **Assinaturas dos clientes (clubes)** | Não há lista das assinaturas de clube (`ClientSubscription`): situação, inadimplência, pagamentos, cancelar ou estornar por pedido do cliente. | `finance.read` / `finance.write` | P2 |
+
+#### Contas e unidades
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Suspender uma unidade ou rede inteira** | Hoje só dá pra tirar a unidade da busca (moderação, `searchHiddenAt`). Em fraude ou golpe, a página pública continua recebendo agendamento e pagamento. Precisa de suspensão com motivo que tire a página do ar, pare cobranças pelo app e avise o dono. | `users.edit` (com confirmação) | **P1** |
+| **Corrigir dados de base da unidade** (fuso, moeda, país, slug) | A moeda e o fuso vêm do país no cadastro. Escolheu errado, não há como trocar depois (nem o dono nem a equipe), e moeda errada afeta preços, Connect e cobrança. Fica só pra essas correções, com motivo, sem personificar (o resto continua no app do negócio). | `users.edit` | **P1** |
+| **Transferir a propriedade** da unidade ou rede pra outra conta | Venda do negócio, sócio que sai, dono que perdeu o e-mail. Hoje exige mexer no banco. | `users.edit` (com confirmação) | P2 |
+| **Reenviar e-mails de conta** (confirmar e-mail, redefinir senha, convite de funcionário pendente) | O suporte só consegue pedir pra pessoa tentar de novo. O convite da equipe da plataforma já tem reenviar (`team.resendInvite`), o convite de funcionário de uma unidade não. | `support.reply` | **P1** |
+| **Exportar os dados do titular** (LGPD: acesso e portabilidade) | O pedido é registrado (`PrivacyRequest`, prazo de 15 dias), mas não há como gerar o arquivo com os dados da pessoa (conta, fichas de cliente, agendamentos, pagamentos, mensagens). O atendimento é feito à mão, consulta por consulta. | `privacy.manage` | **P1** |
+| **Juntar fichas de cliente duplicadas** | Fichas antigas do mesmo telefone em formatos diferentes ficaram separadas (ver item 46). O dono não consegue juntar e pede ao suporte. A junção move agendamentos, vendas, pontos e pacotes pra uma ficha só. | `users.edit` | P2 |
+| **Liberar vaga extra do plano por exceção** | O limite de profissionais é fixo por plano. Negociação comercial ("mais 1 vaga por 2 meses") não tem como ser feita sem trocar de plano. | `finance.write` | P3 |
+| **Selo de identidade: revisar manualmente** | A verificação (Stripe Identity) é automática. Quando falha por foto ruim ou documento estrangeiro, o profissional não tem a quem recorrer. | `users.edit` | P3 |
+
+#### Moderação e conteúdo
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Vagas de freelancer na moderação** | A fila cobre fotos, avaliações, perfis, unidades e conversas, mas não as vagas (`JobOpening`). Vaga falsa ou abusiva não tem como sair do ar. | `moderation.resolve` | P2 |
+| **Lista de bloqueio de telefone/e-mail na plataforma** | O bloqueio de cliente é por negócio. Quem faz agendamento falso em massa em várias unidades só é barrado unidade por unidade. | `clients.suspend` | P3 |
+
+#### Sistema e operação
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Envios que falharam** (e-mail e WhatsApp) | A Saúde do sistema mostra o tamanho das filas, mas não quais envios falharam de vez, pra quem e por quê, nem um "reenviar". Lembrete ou confirmação que falhou some sem ninguém saber. | `health.write` | P2 |
+| **Webhooks da Stripe que falharam** | Se o processamento de um evento dá erro, ele fica só no log. Uma lista dos eventos com erro e um "processar de novo" evitam pagamento aprovado sem registro. | `health.write` | P2 |
+| **Liga/desliga de funções sem deploy** | Atendimento a domicílio (`HOME_SERVICE_ENABLED`) e outras chaves estão no `.env`. Ligar pra uma cidade ou desligar numa emergência pede deploy. Ficaria em `PlatformSetting`, como Preços e taxas. | `pricing.manage` (só admin) | P3 |
+| **Aviso geral no app** (manutenção, instabilidade) | O sininho é por pessoa. Uma faixa no topo pra todo mundo ("manutenção às 23h") não existe. | `notify.send` | P3 |
+
+**Decisão a tomar:** a correção de fuso e moeda e a transferência de propriedade mexem em dado do negócio, o que a regra acima ("fora do backoffice, de propósito") evita. A proposta é abrir exceção só pra esses dois, sempre com motivo, aviso ao dono e registro no Histórico da unidade como "Equipe da plataforma".
+
 ### Tirar o backoffice do projeto principal
 
 **Decisão (2026-09-29):** o projeto principal (`barbershop-front` e `barbershop-back`) fica **sem nada do backoffice**: sem tela, operação, cargo, conta da equipe, auditoria ou variável de ambiente. O backoffice vira dois apps completos:
