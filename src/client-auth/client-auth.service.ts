@@ -798,8 +798,10 @@ export class ClientAuthService {
     const currencyByCustomer = new Map(customers.map((c) => [c.id, c.network?.currency ?? 'BRL']));
 
     const [appointments, sales, walkIns] = await Promise.all([
+      // Só o que já passou: os próximos ficam em "Próximos horários" (antes
+      // apareciam de novo no topo do histórico, com "Agendar de novo")
       this.prisma.appointment.findMany({
-        where: { customerId: { in: customerIds } },
+        where: { customerId: { in: customerIds }, startAt: { lt: new Date() } },
         include: {
           barbershop: { select: { name: true, slug: true } },
           services: { include: { service: { select: { name: true } } } },

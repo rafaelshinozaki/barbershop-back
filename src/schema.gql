@@ -3338,12 +3338,14 @@ type Query {
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
   clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
+  clientSession: ClientAccountType
   closureImpact(barbershopId: Int!, input: ClosureInput!): [ClosureImpactType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
   couponStats(id: Int!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
+  currentUser: User
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
   customerConduct(barbershopId: Int!, customerId: Int!): CustomerConductType!
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
