@@ -466,15 +466,13 @@ model Network {
   // claro/escuro continuam por usuário (UserSystemConfig).
   accentColor    String?
   grayColor      String?
-  ownerUserId    Int
+  ownerUserId    Int          @unique
   ownerUser      User         @relation("NetworkOwner", fields: [ownerUserId], references: [id])
   barbershops    Barbershop[]
   customers      Customer[]
   favoritedBy    ClientFavorite[]
   giftCards      GiftCard[]
   referrals      CustomerReferral[]
-
-  @@index([ownerUserId])
 }
 
 // Cartão-presente: emitido manualmente pela equipe (venda recebida em
@@ -496,8 +494,12 @@ model GiftCard {
   message        String?
   isActive       Boolean   @default(true)
   expiresAt      DateTime?
+  // Venda que emitiu este cartão. Apagar essa venda cancela o cartão se
+  // ninguém usou o saldo (ver deleteSale).
+  saleId         Int?      @unique
   network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
-  sales          Sale[]
+  sale           Sale?     @relation("GiftCardIssue", fields: [saleId], references: [id], onDelete: SetNull)
+  sales          Sale[]    @relation("GiftCardRedemption")
 
   @@index([networkId])
 }
@@ -1486,7 +1488,9 @@ model Sale {
   barber         Barber?    @relation(fields: [barberId], references: [id])
   appointment    Appointment? @relation(fields: [appointmentId], references: [id])
   cashSession    CashSession? @relation(fields: [cashSessionId], references: [id])
-  giftCard       GiftCard?  @relation(fields: [giftCardId], references: [id])
+  giftCard       GiftCard?  @relation("GiftCardRedemption", fields: [giftCardId], references: [id])
+  issuedGiftCard GiftCard?  @relation("GiftCardIssue")
+  issuedPackage  ClientPackage? @relation("PackageIssue")
   items          SaleItem[]
 
   @@index([barbershopId])
@@ -1631,7 +1635,11 @@ model ClientPackage {
   totalSessions    Int      // copiado da oferta no momento da compra
   usedSessions     Int      @default(0)
   status           String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  // Venda que gerou este pacote. Apagar essa venda cancela o pacote se
+  // nenhuma sessão foi usada.
+  saleId           Int?     @unique
   barbershop       Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+  sale             Sale?          @relation("PackageIssue", fields: [saleId], references: [id], onDelete: SetNull)
   customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id])
 

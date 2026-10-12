@@ -19,6 +19,11 @@ import type { Job } from 'bullmq';
 // (a cada 5 min), sem carregar milhares de linhas de uma vez
 const BATCH_SIZE = 500;
 
+/** A confirmação já avisou: horário criado a menos de 24 h do início. */
+export function reminderCoveredByConfirmation(createdAt: Date, startAt: Date) {
+  return startAt.getTime() - createdAt.getTime() <= 24 * 60 * 60 * 1000;
+}
+
 @Injectable()
 export class AppointmentReminderService {
   private readonly logger = new Logger(AppointmentReminderService.name);
@@ -63,6 +68,15 @@ export class AppointmentReminderService {
 
     let enqueued = 0;
     for (const appt of appointments) {
+      // Marcado já dentro das 24 h: a confirmação acabou de sair com os
+      // mesmos dados. Marca como lembrado pra não mandar o segundo e-mail.
+      if (reminderCoveredByConfirmation(appt.createdAt, appt.startAt)) {
+        await this.prisma.appointment.updateMany({
+          where: { id: appt.id, reminderSentAt: null },
+          data: { reminderSentAt: new Date() },
+        });
+        continue;
+      }
       const claimed = await this.prisma.appointment.updateMany({
         where: { id: appt.id, reminderSentAt: null },
         data: { reminderSentAt: new Date() },

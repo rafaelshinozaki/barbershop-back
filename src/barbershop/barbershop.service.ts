@@ -297,6 +297,23 @@ function productQuantities(
   return qty;
 }
 
+/** Quanto o cliente pagou de verdade: o que falta no caixa mais o sinal e o
+ * pagamento pelo app. Cartão-presente e pontos resgatados não contam. */
+function loyaltyMoneyBase(total: number, depositApplied: number, prepaidApplied: number) {
+  return Math.max(0, total + depositApplied + prepaidApplied);
+}
+
+function customerBookingRefusal(err: unknown): boolean {
+  if (!(err instanceof BadRequestException)) return false;
+  return (
+    err.message === 'Você já tem um horário nesse período' ||
+    err.message === 'Você já tem 5 horários marcados. Cancele um para marcar outro.'
+  );
+}
+
+/** Horários futuros que o agendamento público aceita por telefone. */
+const PUBLIC_UPCOMING_LIMIT = 5;
+
 function loyaltyEarnedFor(
   network: { loyaltyEnabled: boolean; loyaltyPointsPerCurrencyUnit: number | null },
   paymentStatus: string,
@@ -411,6 +428,20 @@ export function paidInRange(range: Prisma.DateTimeFilter): Prisma.SaleWhereInput
 export const CLOSED_CASH_SALE_MESSAGE =
   'Essa venda é de um caixa já fechado. Lance a correção no caixa aberto.';
 
+export const PACKAGE_SALE_USED_MESSAGE =
+  'Este pacote já teve sessão usada. Estorne o que sobrou em vez de apagar a venda.';
+export const GIFT_CARD_SALE_USED_MESSAGE =
+  'Este cartão-presente já foi usado. Estorne o que sobrou em vez de apagar a venda.';
+export const ISSUED_SALE_VALUE_LOCKED_MESSAGE =
+  'O valor de uma venda de pacote ou cartão-presente não pode ser alterado.';
+export const NOTHING_LEFT_TO_REFUND_MESSAGE = 'Não sobrou valor para estornar.';
+export const SALE_NOT_ISSUED_MESSAGE = 'Esta venda não é de pacote nem de cartão-presente.';
+export const PACKAGE_UNUSED_DELETE_MESSAGE = 'O pacote não foi usado. Apague a venda para cancelar.';
+export const GIFT_CARD_UNUSED_DELETE_MESSAGE =
+  'O cartão-presente não foi usado. Apague a venda para cancelar.';
+export const PACKAGE_CHANGED_MESSAGE = 'O pacote mudou. Tente de novo.';
+export const GIFT_CARD_CHANGED_MESSAGE = 'O cartão-presente mudou. Tente de novo.';
+
 /**
  * A edição mexe no que o fechamento do caixa contou? Situação, forma de
  * pagamento, itens, desconto ou acréscimo. Compara com os itens (o total
@@ -442,6 +473,39 @@ export function saleMoneyChanged(
     (data.discountAmount !== undefined &&
       cents(data.discountAmount) !== cents(existing.discountAmount)) ||
     (data.taxAmount !== undefined && cents(data.taxAmount) !== cents(existing.taxAmount)) ||
+    (data.items !== undefined && sum(data.items) !== sum(existing.items))
+  );
+}
+
+/** Pacote e cartão-presente: a edição pode receber o pagamento, mas não muda o valor. */
+export function issuedSaleValueChanged(
+  existing: {
+    saleType: string;
+    subtotal: Prisma.Decimal | number;
+    discountAmount: Prisma.Decimal | number | null;
+    taxAmount: Prisma.Decimal | number | null;
+    total: Prisma.Decimal | number;
+    items: Array<{ totalPrice: Prisma.Decimal | number }>;
+  },
+  data: {
+    saleType?: string;
+    subtotal?: number;
+    discountAmount?: number;
+    taxAmount?: number;
+    total?: number;
+    items?: Array<{ totalPrice: number }>;
+  },
+): boolean {
+  const cents = (v: Prisma.Decimal | number | null | undefined) => Math.round(Number(v ?? 0) * 100);
+  const sum = (items: Array<{ totalPrice: Prisma.Decimal | number }>) =>
+    items.reduce((acc, i) => acc + cents(i.totalPrice), 0);
+  return (
+    (data.saleType !== undefined && data.saleType !== existing.saleType) ||
+    (data.subtotal !== undefined && cents(data.subtotal) !== cents(existing.subtotal)) ||
+    (data.discountAmount !== undefined &&
+      cents(data.discountAmount) !== cents(existing.discountAmount)) ||
+    (data.taxAmount !== undefined && cents(data.taxAmount) !== cents(existing.taxAmount)) ||
+    (data.total !== undefined && cents(data.total) !== cents(existing.total)) ||
     (data.items !== undefined && sum(data.items) !== sum(existing.items))
   );
 }
@@ -820,15 +884,13 @@ export class BarbershopService {
 
   /** Encontra ou cria a rede do usuário (uma rede por dono). */
   private async findOrCreateNetwork(userId: number) {
-    let network = await this.prisma.network.findFirst({
-      where: { ownerUserId: userId },
+    // Trava por dono: dois cadastros ao mesmo tempo não criam duas redes
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`network-owner:${userId}`}))`;
+      const existing = await tx.network.findFirst({ where: { ownerUserId: userId } });
+      if (existing) return existing;
+      return tx.network.create({ data: { ownerUserId: userId } });
     });
-    if (!network) {
-      network = await this.prisma.network.create({
-        data: { ownerUserId: userId },
-      });
-    }
-    return network;
   }
 
   // ============ NETWORK (FRANQUIA) ============
@@ -1934,6 +1996,57 @@ export class BarbershopService {
     if (blocked) {
       throw new ForbiddenException(
         'Não é possível agendar online nesta unidade. Fale diretamente com a unidade.',
+      );
+    }
+  }
+
+  /**
+   * O mesmo cliente (telefone ou conta) não marca dois horários ao mesmo
+   * tempo, nem passa de 5 horários futuros pela página pública.
+   */
+  private async assertPublicCustomerCanBook(
+    client: {
+      customer: Prisma.TransactionClient['customer'];
+      appointment: Prisma.TransactionClient['appointment'];
+    },
+    networkId: number,
+    phone: string,
+    clientAccountId: number | null | undefined,
+    startAt: Date,
+    endAt: Date,
+  ) {
+    const ids = new Set(await this.customerIdsByPhone(networkId, phone));
+    if (clientAccountId) {
+      const linked = await client.customer.findMany({
+        where: { networkId, clientAccountId, deletedAt: null },
+        select: { id: true },
+      });
+      for (const row of linked) ids.add(row.id);
+    }
+    if (ids.size === 0) return;
+    const customerId = { in: [...ids] };
+    const overlap = await client.appointment.findFirst({
+      where: {
+        customerId,
+        barbershop: { networkId },
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+      select: { id: true },
+    });
+    if (overlap) throw new BadRequestException('Você já tem um horário nesse período');
+    const upcoming = await client.appointment.count({
+      where: {
+        customerId,
+        barbershop: { networkId },
+        status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+        startAt: { gt: new Date() },
+      },
+    });
+    if (upcoming >= PUBLIC_UPCOMING_LIMIT) {
+      throw new BadRequestException(
+        'Você já tem 5 horários marcados. Cancele um para marcar outro.',
       );
     }
   }
@@ -5162,6 +5275,16 @@ export class BarbershopService {
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
 
     const bookingCustomerId = customer.id;
+    // Recusa cedo (o "qualquer profissional" não tenta o próximo barbeiro
+    // com o mesmo erro). A trava de verdade é dentro da transação.
+    await this.assertPublicCustomerCanBook(
+      this.prisma,
+      networkId,
+      input.customerPhone,
+      input.clientAccountId,
+      startAt,
+      endAt,
+    );
     // Primeira vez no negócio: nenhum agendamento anterior na rede que não
     // tenha sido cancelado (ficha nova ou ficha que nunca veio)
     const firstVisit =
@@ -5181,6 +5304,18 @@ export class BarbershopService {
     const payOnline = barbershop.onlineDeposit && depositAmount != null && depositAmount.gt(0);
     const book = (barberId: number) =>
       this.prisma.$transaction(async (tx) => {
+        const phoneKey = phoneDigitVariants(input.customerPhone).sort().join('|');
+        if (phoneKey) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`public-customer:${networkId}:${phoneKey}`}))`;
+        }
+        await this.assertPublicCustomerCanBook(
+          tx,
+          networkId,
+          input.customerPhone,
+          input.clientAccountId,
+          startAt,
+          endAt,
+        );
         await this.lockSchedule(tx, barberId);
         await this.ensureBarberAvailable(
           input.barbershopId,
@@ -5226,6 +5361,7 @@ export class BarbershopService {
         created = await book(barberId);
         break;
       } catch (err) {
+        if (customerBookingRefusal(err)) throw err;
         if (!auto || !(err instanceof BadRequestException) || barberId === free[free.length - 1]) {
           throw err;
         }
@@ -6238,6 +6374,9 @@ export class BarbershopService {
     if (data.initialValue <= 0) {
       throw new BadRequestException('O valor do cartão-presente deve ser maior que zero');
     }
+    if (data.expiresAt && new Date(data.expiresAt).getTime() <= Date.now()) {
+      throw new BadRequestException('A validade do cartão-presente não pode ser no passado');
+    }
     // A unidade que vendeu: o valor entra no faturamento e no caixa dela
     // (antes o cartão só criava o saldo e o dinheiro não aparecia em lugar nenhum)
     const { barbershopId, paymentMethod, ...card } = data;
@@ -6255,13 +6394,15 @@ export class BarbershopService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      let saleId: number | undefined;
       if (barbershopId != null) {
-        await this.recordStandaloneSale(tx, barbershopId, {
+        const sale = await this.recordStandaloneSale(tx, barbershopId, {
           itemType: 'GIFT_CARD',
           amount: card.initialValue,
           notes: `Cartão-presente ${code}`,
           paymentMethod,
         });
+        saleId = sale.id;
       }
       return tx.giftCard.create({
         data: {
@@ -6275,6 +6416,7 @@ export class BarbershopService {
           recipientName: card.recipientName,
           message: card.message,
           expiresAt: card.expiresAt,
+          saleId,
         },
       });
     });
@@ -6753,6 +6895,9 @@ export class BarbershopService {
       where: { id: subscriptionId, clientAccountId },
     });
     if (!subscription) throw new NotFoundException('Assinatura não encontrada');
+    // Já encerrada ou já marcada pra acabar no fim do ciclo: chamar a Stripe
+    // de novo só devolve um erro genérico
+    if (subscription.status === 'CANCELED' || subscription.cancelAtPeriodEnd) return true;
     await this.stripeService.updateSubscription(subscription.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -6822,13 +6967,15 @@ export class BarbershopService {
       data.services.map((s) => s.serviceId),
     );
     await assertSoloBookingAllowed(this.prisma, barbershopId, new Date());
-    const maxPos = await this.prisma.walkIn.aggregate({
-      where: { barbershopId, status: 'WAITING' },
-      _max: { queuePosition: true },
-    });
-    const queuePosition = (maxPos._max.queuePosition ?? 0) + 1;
 
     return this.prisma.$transaction(async (tx) => {
+      // A posição sai dentro da trava: duas entradas juntas não ficam com o mesmo número
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in:${barbershopId}`}))`;
+      const maxPos = await tx.walkIn.aggregate({
+        where: { barbershopId, status: 'WAITING' },
+        _max: { queuePosition: true },
+      });
+      const queuePosition = (maxPos._max.queuePosition ?? 0) + 1;
       const walkIn = await tx.walkIn.create({
         data: {
           barbershopId,
@@ -7133,7 +7280,8 @@ export class BarbershopService {
         barbershop.network.loyaltyPointsPerCurrencyUnit
       ) {
         const pointsEarned = Math.floor(
-          finalTotal * barbershop.network.loyaltyPointsPerCurrencyUnit,
+          loyaltyMoneyBase(finalTotal, depositApplied, prepaidApplied) *
+            barbershop.network.loyaltyPointsPerCurrencyUnit,
         );
         if (pointsEarned > 0) {
           await tx.customer.update({
@@ -7382,6 +7530,15 @@ export class BarbershopService {
         },
       });
       if (!existing) throw new BadRequestException('Venda não encontrada');
+      // Pacote e cartão guardam o valor vendido. Receber a pendente (situação
+      // e forma) continua permitido; mudar o total deixaria o saldo diferente
+      // do que a venda diz.
+      if (
+        (existing.saleType === 'PACKAGE' || existing.saleType === 'GIFT_CARD') &&
+        issuedSaleValueChanged(existing, data)
+      ) {
+        throw new BadRequestException(ISSUED_SALE_VALUE_LOCKED_MESSAGE);
+      }
       // Caixa já fechado: o fechamento gravado (esperado e diferença) conta
       // com esta venda; mudar valor, forma ou situação desfazia a conferência
       if (existing.cashSession?.status === 'CLOSED' && saleMoneyChanged(existing, data)) {
@@ -7441,7 +7598,11 @@ export class BarbershopService {
       const nextEarned = loyaltyEarnedFor(
         barbershop.network,
         nextStatus,
-        nextTotal,
+        loyaltyMoneyBase(
+          nextTotal,
+          Number(existing.depositApplied ?? 0),
+          Number(existing.prepaidApplied ?? 0),
+        ),
         nextCustomerId,
       );
       const prevEarned = existing.loyaltyPointsEarned ?? 0;
@@ -7508,6 +7669,7 @@ export class BarbershopService {
     // ficava sem o saldo, o cliente perdia os pontos resgatados (e mantinha
     // os ganhos) e o estoque continuava baixado
     await this.prisma.$transaction(async (tx) => {
+      await this.cancelIssuedIfUnused(tx, saleId);
       if (existing.giftCardId && existing.giftCardAmountApplied) {
         await tx.giftCard.update({
           where: { id: existing.giftCardId },
@@ -7545,6 +7707,147 @@ export class BarbershopService {
         });
       }
       await tx.sale.delete({ where: { id: saleId } });
+    });
+    return true;
+  }
+
+  /**
+   * A venda emitiu um pacote ou cartão. Sem uso, cancela os dois antes de
+   * apagar a venda. Com uso, recusa: o que sobrou sai por refundIssuedRemainder.
+   * O update é condicional pra um débito no meio do caminho não passar.
+   */
+  private async cancelIssuedIfUnused(tx: Prisma.TransactionClient, saleId: number) {
+    const issuedPackage = await tx.clientPackage.findUnique({ where: { saleId } });
+    if (issuedPackage) {
+      if (issuedPackage.usedSessions > 0) {
+        throw new BadRequestException(PACKAGE_SALE_USED_MESSAGE);
+      }
+      const cancelled = await tx.clientPackage.updateMany({
+        where: { id: issuedPackage.id, saleId, usedSessions: 0, status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
+      });
+      if (cancelled.count === 0) {
+        const again = await tx.clientPackage.findUnique({ where: { id: issuedPackage.id } });
+        const alreadyCancelled = again?.usedSessions === 0 && again.status === 'CANCELLED';
+        if (!alreadyCancelled) throw new BadRequestException(PACKAGE_SALE_USED_MESSAGE);
+      }
+    }
+
+    const issuedCard = await tx.giftCard.findUnique({ where: { saleId } });
+    if (!issuedCard) return;
+    const unused = Number(issuedCard.remainingValue) === Number(issuedCard.initialValue);
+    if (!unused) throw new BadRequestException(GIFT_CARD_SALE_USED_MESSAGE);
+    const deactivated = await tx.giftCard.updateMany({
+      where: {
+        id: issuedCard.id,
+        saleId,
+        isActive: true,
+        remainingValue: issuedCard.initialValue,
+      },
+      data: { isActive: false, remainingValue: new Decimal(0) },
+    });
+    if (deactivated.count === 0) {
+      const again = await tx.giftCard.findUnique({ where: { id: issuedCard.id } });
+      const stillUnused =
+        again != null && Number(again.remainingValue) === Number(again.initialValue);
+      if (!stillUnused) throw new BadRequestException(GIFT_CARD_SALE_USED_MESSAGE);
+    }
+  }
+
+  /**
+   * O pacote ou o cartão já foi usado em parte. Abaixa a venda até o que foi
+   * consumido e zera o que sobrou (sessões ou saldo).
+   */
+  async refundIssuedRemainder(userId: number, barbershopId: number, saleId: number) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.sale.findFirst({
+        where: { id: saleId, barbershopId },
+        include: { cashSession: { select: { status: true } } },
+      });
+      if (!existing) throw new BadRequestException('Venda não encontrada');
+      if (existing.cashSession?.status === 'CLOSED') {
+        throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
+      }
+      const issued = await tx.clientPackage.findUnique({ where: { saleId } });
+      const card = issued ? null : await tx.giftCard.findUnique({ where: { saleId } });
+      if (!issued && !card) throw new BadRequestException(SALE_NOT_ISSUED_MESSAGE);
+
+      let newTotal = 0;
+      if (issued) {
+        if (issued.usedSessions <= 0) throw new BadRequestException(PACKAGE_UNUSED_DELETE_MESSAGE);
+        if (issued.status !== 'ACTIVE' || issued.usedSessions >= issued.totalSessions) {
+          throw new BadRequestException(NOTHING_LEFT_TO_REFUND_MESSAGE);
+        }
+        newTotal = round2((Number(existing.total) * issued.usedSessions) / issued.totalSessions);
+        const updated = await tx.clientPackage.updateMany({
+          where: {
+            id: issued.id,
+            saleId,
+            status: 'ACTIVE',
+            usedSessions: issued.usedSessions,
+            totalSessions: issued.totalSessions,
+          },
+          data: { totalSessions: issued.usedSessions, status: 'COMPLETED' },
+        });
+        if (updated.count === 0) throw new BadRequestException(PACKAGE_CHANGED_MESSAGE);
+      } else if (card) {
+        const remaining = Number(card.remainingValue);
+        const initial = Number(card.initialValue);
+        if (remaining >= initial) throw new BadRequestException(GIFT_CARD_UNUSED_DELETE_MESSAGE);
+        if (remaining <= 0) throw new BadRequestException(NOTHING_LEFT_TO_REFUND_MESSAGE);
+        newTotal = round2(Math.max(0, Number(existing.total) - remaining));
+        const updated = await tx.giftCard.updateMany({
+          where: { id: card.id, saleId, remainingValue: card.remainingValue },
+          data: { remainingValue: new Decimal(0), isActive: false },
+        });
+        if (updated.count === 0) throw new BadRequestException(GIFT_CARD_CHANGED_MESSAGE);
+      }
+
+      const amount = new Decimal(newTotal);
+      const prevEarned = existing.loyaltyPointsEarned ?? 0;
+      const nextEarned =
+        prevEarned > 0
+          ? loyaltyEarnedFor(
+              barbershop.network,
+              existing.paymentStatus,
+              loyaltyMoneyBase(
+                newTotal,
+                Number(existing.depositApplied ?? 0),
+                Number(existing.prepaidApplied ?? 0),
+              ),
+              existing.customerId,
+            )
+          : 0;
+      await tx.sale.update({
+        where: { id: saleId },
+        data: {
+          subtotal: amount,
+          discountAmount: new Decimal(0),
+          taxAmount: new Decimal(0),
+          total: amount,
+          ...(prevEarned > 0 ? { loyaltyPointsEarned: nextEarned || null } : {}),
+        },
+      });
+      if (prevEarned > 0 && existing.customerId && nextEarned !== prevEarned) {
+        await tx.customer.update({
+          where: { id: existing.customerId },
+          data: { loyaltyPoints: { increment: nextEarned - prevEarned } },
+        });
+      }
+      const items = await tx.saleItem.findMany({ where: { saleId }, orderBy: { id: 'asc' } });
+      if (items[0]) {
+        await tx.saleItem.update({
+          where: { id: items[0].id },
+          data: { unitPrice: amount, totalPrice: amount },
+        });
+      }
+      for (const extra of items.slice(1)) {
+        await tx.saleItem.update({
+          where: { id: extra.id },
+          data: { unitPrice: new Decimal(0), totalPrice: new Decimal(0) },
+        });
+      }
     });
     return true;
   }
@@ -7978,7 +8281,7 @@ export class BarbershopService {
     });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
     const clientPackage = await this.prisma.$transaction(async (tx) => {
-      await this.recordStandaloneSale(tx, barbershopId, {
+      const sale = await this.recordStandaloneSale(tx, barbershopId, {
         customerId: data.customerId,
         itemType: 'PACKAGE',
         amount: Number(pkg.price),
@@ -7991,6 +8294,7 @@ export class BarbershopService {
           customerId: data.customerId,
           servicePackageId: pkg.id,
           totalSessions: pkg.totalSessions,
+          saleId: sale.id,
         },
         include: { servicePackage: { include: { service: true } } },
       });

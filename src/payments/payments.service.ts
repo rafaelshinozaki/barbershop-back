@@ -16,6 +16,7 @@ import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import Stripe from 'stripe';
 import { appUrl, supportEmail } from '../common/app-urls';
+import { timeZoneForOwner } from '../common/owner-timezone';
 import { BarbershopService } from '../barbershop/barbershop.service';
 
 /** Cupom aplicado no checkout do plano (valores em reais). */
@@ -1283,6 +1284,7 @@ export class PaymentsService {
           DueDate: payment.nextPaymentDate,
           SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
+          TimeZone: await timeZoneForOwner(this.prisma, user.id),
         },
         {
           pt: `Pagamento recorrente processado - ${plan.name}`,

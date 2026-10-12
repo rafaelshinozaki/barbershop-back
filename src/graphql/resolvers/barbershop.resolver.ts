@@ -1196,6 +1196,18 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async refundIssuedRemainder(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const result = await this.barbershopService.refundIssuedRemainder(user.id, barbershopId, id);
+    this.realtime.notify(barbershopId, 'SALE', 'UPDATED');
+    return result;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => [Sale])
   async barbershopSales(
     @CurrentUser() user: UserDTO,

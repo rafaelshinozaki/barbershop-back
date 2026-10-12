@@ -2244,6 +2244,7 @@ type Mutation {
     barbershopId: Int!
     id: Int!
   ): Appointment!
+  refundIssuedRemainder(barbershopId: Int!, id: Int!): Boolean!
   rejectJobApplication(applicationId: Int!, barbershopId: Int!): JobOpeningType!
   removeAppointmentTip(barbershopId: Int!, tipId: Int!): Boolean!
   removeBarbershopGalleryPhoto(barbershopId: Int!, id: Int!): Boolean!

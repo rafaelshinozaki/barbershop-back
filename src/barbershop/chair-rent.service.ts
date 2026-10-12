@@ -21,6 +21,7 @@ import { currentPricing } from '../pricing/pricing';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 import { supportEmail } from '../common/app-urls';
+import { timeZoneForOwner } from '../common/owner-timezone';
 
 const MIN_RENT = 1;
 const MAX_RENT = 100_000;
@@ -1023,6 +1024,7 @@ export class ChairRentService {
           InvoiceURL: `${front}/rent-receipt/${payment.id}?b=${payment.link.memberBarbershopId}`,
           SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
+          TimeZone: await timeZoneForOwner(this.prisma, user.id),
         },
         subject: {
           pt: `Recibo do aluguel da cadeira — ${number}`,
@@ -1063,6 +1065,7 @@ export class ChairRentService {
           InvoiceURL: invoice.hosted_invoice_url,
           SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
+          TimeZone: await timeZoneForOwner(this.prisma, user.id),
         },
         subject: {
           pt: `Recibo do aluguel da cadeira — ${invoice.number ?? invoice.id}`,

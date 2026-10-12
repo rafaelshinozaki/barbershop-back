@@ -154,6 +154,20 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A nota deve ser um número inteiro entre 1 e 5.': 'RATING_MUST_WHOLE_NUMBER_FROM',
   'Sem acesso a esta rede': 'NOT_ACCESS_NETWORK',
   'O valor do cartão-presente deve ser maior que zero': 'GIFT_CARD_AMOUNT_MUST_GREATER',
+  'A validade do cartão-presente não pode ser no passado': 'GIFT_CARD_EXPIRY_CANNOT_BE_PAST',
+  'Este pacote já teve sessão usada. Estorne o que sobrou em vez de apagar a venda.':
+    'PACKAGE_SALE_ALREADY_USED',
+  'Este cartão-presente já foi usado. Estorne o que sobrou em vez de apagar a venda.':
+    'GIFT_CARD_SALE_ALREADY_USED',
+  'O valor de uma venda de pacote ou cartão-presente não pode ser alterado.':
+    'ISSUED_SALE_VALUE_LOCKED',
+  'Não sobrou valor para estornar.': 'NOTHING_LEFT_TO_REFUND',
+  'Esta venda não é de pacote nem de cartão-presente.': 'SALE_NOT_PACKAGE_OR_GIFT_CARD',
+  'O pacote não foi usado. Apague a venda para cancelar.': 'PACKAGE_UNUSED_DELETE_INSTEAD',
+  'O cartão-presente não foi usado. Apague a venda para cancelar.':
+    'GIFT_CARD_UNUSED_DELETE_INSTEAD',
+  'O pacote mudou. Tente de novo.': 'PACKAGE_CHANGED_RETRY',
+  'O cartão-presente mudou. Tente de novo.': 'GIFT_CARD_CHANGED_RETRY',
   'Unidade não encontrada nesta rede': 'LOCATION_NOT_FOUND_NETWORK',
   'Cartão-presente não encontrado': 'GIFT_CARD_NOT_FOUND',
   'Este cartão-presente está inativo': 'GIFT_CARD_INACTIVE',
@@ -163,6 +177,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Plano não encontrado': 'PLAN_NOT_FOUND',
   'Salve um cartão antes de assinar': 'SAVE_CARD_BEFORE_SUBSCRIBING',
   'Você já tem uma assinatura ativa neste plano': 'ALREADY_ACTIVE_SUBSCRIPTION_PLAN',
+  'Você já tem um horário nesse período': 'ALREADY_HAVE_APPOINTMENT_THIS_PERIOD',
+  'Você já tem 5 horários marcados. Cancele um para marcar outro.':
+    'ALREADY_HAVE_FIVE_UPCOMING_APPOINTMENTS',
   'Assinatura não encontrada': 'SUBSCRIPTION_NOT_FOUND',
   'Assinatura não está ativa': 'SUBSCRIPTION_NOT_ACTIVE',
   'Assinatura não tem sessões restantes neste ciclo': 'SUBSCRIPTION_NO_SESSIONS_LEFT_CYCLE',

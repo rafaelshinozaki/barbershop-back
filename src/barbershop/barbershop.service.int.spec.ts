@@ -528,6 +528,80 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.clientPackage.deleteMany({ where: { servicePackageId: offer.id } });
       await prisma.servicePackage.delete({ where: { id: offer.id } });
     });
+
+    it('pontos de fidelidade incluem o sinal e o pagamento pelo app', async () => {
+      const customer = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Pagou no app', phone: `11${RUN}pts` },
+      });
+      const appt = await book(at(day, '09:30'), { customerId: customer.id });
+      await prisma.appointment.update({
+        where: { id: appt!.id },
+        data: {
+          depositAmount: new Decimal(30),
+          depositPaid: true,
+          prepaidAmount: new Decimal(50),
+          prepaidAt: new Date(),
+        },
+      });
+      const sale = await service.createSale(A.ownerId, A.shopId, {
+        customerId: customer.id,
+        appointmentId: appt!.id,
+        saleType: 'SERVICE',
+        items: [
+          {
+            itemType: 'SERVICE',
+            serviceId: A.serviceId,
+            quantity: 1,
+            unitPrice: 80,
+            totalPrice: 80,
+          },
+        ],
+        subtotal: 80,
+        total: 80,
+        paymentStatus: 'PAID',
+      });
+      // O caixa fica em 0 (30 de sinal + 50 pelo app), mas os pontos saem dos 80
+      expect(Number(sale.total)).toBe(0);
+      expect(sale.loyaltyPointsEarned).toBe(80);
+      const after = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
+      expect(after.loyaltyPoints).toBe(80);
+      await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
+      await prisma.sale.delete({ where: { id: sale.id } });
+    });
+
+    it('cartão-presente não nasce vencido, e assinatura já cancelada não chama a Stripe', async () => {
+      await expect(
+        service.createGiftCard(A.ownerId, A.networkId, {
+          initialValue: 20,
+          expiresAt: new Date('2000-01-01'),
+        }),
+      ).rejects.toThrow('não pode ser no passado');
+
+      const account = await prisma.clientAccount.create({
+        data: { email: `sub-${RUN}@test.local`, name: 'Assinante', password: null },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: `Plano ${RUN}`,
+          price: new Decimal(10),
+        },
+      });
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: A.shopId,
+          clientAccountId: account.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_${RUN}`,
+          status: 'CANCELED',
+        },
+      });
+      await expect(service.cancelMySubscription(account.id, sub.id)).resolves.toBe(true);
+      await prisma.clientSubscription.delete({ where: { id: sub.id } });
+      await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+      await prisma.clientAccount.delete({ where: { id: account.id } });
+    });
   });
 
   // ============ Conflito de horário ============
@@ -658,6 +732,37 @@ describe('BarbershopService (integração com o banco)', () => {
         where: { barberId: A.barberId, startAt: new Date(startAt) },
       });
       expect(count).toBe(1);
+    });
+
+    it('o mesmo telefone não marca dois horários ao mesmo tempo nem passa de 5 futuros', async () => {
+      const phone = `11${RUN}91`;
+      const booking = (time: string, barberId = A.barberId) =>
+        service.createPublicAppointment({
+          barbershopId: A.shopId,
+          barberId,
+          serviceIds: [A.serviceId],
+          startAt: at(day, time).toISOString(),
+          customerName: 'Mesmo cliente',
+          customerPhone: phone,
+        });
+      await booking('10:00');
+      await expect(booking('10:00', A.otherBarberId)).rejects.toThrow(
+        'Você já tem um horário nesse período',
+      );
+      // Outra formatação do telefone é a mesma pessoa
+      await expect(
+        service.createPublicAppointment({
+          barbershopId: A.shopId,
+          barberId: A.otherBarberId,
+          serviceIds: [A.serviceId],
+          startAt: at(day, '10:00').toISOString(),
+          customerName: 'Mesmo cliente',
+          customerPhone: `${phone.slice(0, 4)}-${phone.slice(4)}`,
+        }),
+      ).rejects.toThrow('Você já tem um horário nesse período');
+
+      for (const time of ['11:00', '12:00', '14:00', '15:00']) await booking(time);
+      await expect(booking('16:00', A.otherBarberId)).rejects.toThrow('Você já tem 5 horários');
     });
   });
 
@@ -1260,6 +1365,131 @@ describe('BarbershopService (integração com o banco)', () => {
       await sale({ paymentStatus: 'PENDING' });
       const c = await prisma.customer.findUnique({ where: { id: A.customerId } });
       expect(c?.loyaltyPoints).toBe(100);
+    });
+
+    it('apagar a venda do pacote ou do cartão desfaz o que não foi usado; o resto se estorna', async () => {
+      const modules = jest
+        .spyOn(service as never as { canAccessModule: () => Promise<boolean> }, 'canAccessModule')
+        .mockResolvedValue(true);
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote Estorno',
+          totalSessions: 4,
+          price: new Decimal(120),
+        },
+      });
+      try {
+        await service.purchaseClientPackage(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          servicePackageId: offer.id,
+          paymentMethod: 'PIX',
+        });
+        const unused = await prisma.clientPackage.findFirstOrThrow({
+          where: { servicePackageId: offer.id, status: 'ACTIVE' },
+        });
+        expect(unused.saleId).toBeTruthy();
+        await expect(
+          service.refundIssuedRemainder(A.ownerId, A.shopId, unused.saleId!),
+        ).rejects.toThrow('não foi usado');
+        await service.deleteSale(A.ownerId, A.shopId, unused.saleId!);
+        expect(
+          (await prisma.clientPackage.findUnique({ where: { id: unused.id } }))?.status,
+        ).toBe('CANCELLED');
+        expect(await prisma.sale.findUnique({ where: { id: unused.saleId! } })).toBeNull();
+
+        await service.purchaseClientPackage(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          servicePackageId: offer.id,
+          paymentMethod: 'PIX',
+        });
+        const used = await prisma.clientPackage.findFirstOrThrow({
+          where: { servicePackageId: offer.id, status: 'ACTIVE' },
+        });
+        await service.debitClientPackageSession(A.ownerId, A.shopId, used.id);
+        await expect(service.deleteSale(A.ownerId, A.shopId, used.saleId!)).rejects.toThrow(
+          'já teve sessão usada',
+        );
+        await service.refundIssuedRemainder(A.ownerId, A.shopId, used.saleId!);
+        const refunded = await prisma.sale.findUnique({
+          where: { id: used.saleId! },
+          include: { items: true },
+        });
+        expect(Number(refunded?.total)).toBe(30);
+        expect(Number(refunded?.items[0]?.totalPrice)).toBe(30);
+        const afterPkg = await prisma.clientPackage.findUnique({ where: { id: used.id } });
+        expect(afterPkg).toMatchObject({ status: 'COMPLETED', usedSessions: 1, totalSessions: 1 });
+        await expect(
+          service.refundIssuedRemainder(A.ownerId, A.shopId, used.saleId!),
+        ).rejects.toThrow('Não sobrou valor');
+
+        const intact = await service.createGiftCard(A.ownerId, A.networkId, {
+          initialValue: 80,
+          barbershopId: A.shopId,
+          paymentMethod: 'CASH',
+        });
+        const intactRow = await prisma.giftCard.findUniqueOrThrow({ where: { id: intact.id } });
+        expect(intactRow.saleId).toBeTruthy();
+        await service.deleteSale(A.ownerId, A.shopId, intactRow.saleId!);
+        const intactAfter = await prisma.giftCard.findUnique({ where: { id: intact.id } });
+        expect(intactAfter).toMatchObject({ isActive: false });
+        expect(Number(intactAfter?.remainingValue)).toBe(0);
+        expect(await prisma.sale.findUnique({ where: { id: intactRow.saleId! } })).toBeNull();
+
+        const partial = await service.createGiftCard(A.ownerId, A.networkId, {
+          initialValue: 100,
+          barbershopId: A.shopId,
+          paymentMethod: 'CASH',
+        });
+        const partialRow = await prisma.giftCard.findUniqueOrThrow({ where: { id: partial.id } });
+        await sale({
+          giftCardCode: partial.code,
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: 40,
+              totalPrice: 40,
+            },
+          ],
+          subtotal: 40,
+          total: 40,
+        });
+        await expect(service.deleteSale(A.ownerId, A.shopId, partialRow.saleId!)).rejects.toThrow(
+          'já foi usado',
+        );
+        await service.refundIssuedRemainder(A.ownerId, A.shopId, partialRow.saleId!);
+        expect(
+          Number((await prisma.sale.findUnique({ where: { id: partialRow.saleId! } }))?.total),
+        ).toBe(40);
+        const cardAfter = await prisma.giftCard.findUnique({ where: { id: partial.id } });
+        expect(Number(cardAfter?.remainingValue)).toBe(0);
+        expect(cardAfter?.isActive).toBe(false);
+
+        const pending = await service.createGiftCard(A.ownerId, A.networkId, {
+          initialValue: 25,
+          barbershopId: A.shopId,
+        });
+        const pendingRow = await prisma.giftCard.findUniqueOrThrow({ where: { id: pending.id } });
+        await expect(
+          service.updateSale(A.ownerId, A.shopId, pendingRow.saleId!, { total: 1 }),
+        ).rejects.toThrow('não pode ser alterado');
+        const paid = await service.updateSale(A.ownerId, A.shopId, pendingRow.saleId!, {
+          paymentStatus: 'PAID',
+          paymentMethod: 'PIX',
+        });
+        expect(paid?.paymentStatus).toBe('PAID');
+        expect(Number(paid?.total)).toBe(25);
+
+        const ordinary = await sale();
+        await expect(
+          service.refundIssuedRemainder(A.ownerId, A.shopId, ordinary.id),
+        ).rejects.toThrow('não é de pacote');
+      } finally {
+        modules.mockRestore();
+      }
     });
   });
 

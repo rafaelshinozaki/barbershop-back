@@ -31,6 +31,7 @@ import { AppPaymentsService } from '../barbershop/app-payments.service';
 import { currentPricing } from '../pricing/pricing';
 import { fromMinorUnits } from '../common/money-units';
 import { supportEmail } from '../common/app-urls';
+import { timeZoneForOwner } from '../common/owner-timezone';
 
 @ApiTags('stripe')
 @Controller('stripe')
@@ -243,6 +244,7 @@ export class StripeController {
       InvoiceURL: invoice.hosted_invoice_url,
       SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
+      TimeZone: await timeZoneForOwner(this.prisma, subscription.user.id),
     };
 
     try {

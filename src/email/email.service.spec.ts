@@ -69,11 +69,30 @@ describe('EmailService.render', () => {
 
   it('formata valor e data no padrão de cada idioma', async () => {
     const pt = (await service.render('recurring_payment_success', sample, 'x', 'pt')).html;
-    expect(pt).toContain('R$ 49,90');
+    expect(pt).toContain('R$\u00a049,90');
     expect(pt).toContain('04/03/2030');
     const en = (await service.render('recurring_payment_success', sample, 'x', 'en')).html;
     expect(en).toContain('R$49.90');
     expect(en).toContain('3/4/2030');
+  });
+
+  it('formata a data no fuso de quem recebe', async () => {
+    // 02:00 UTC é 23:00 do dia anterior em São Paulo
+    const late = {
+      ...sample,
+      DueDate: new Date('2030-03-04T02:00:00Z'),
+      PaymentDate: new Date('2030-03-04T02:00:00Z'),
+      TimeZone: 'America/Sao_Paulo',
+    };
+    const pt = (await service.render('recurring_payment_success', late, 'x', 'pt')).html;
+    expect(pt).toContain('03/03/2030');
+    const noZone = {
+      ...sample,
+      DueDate: new Date('2030-03-04T02:00:00Z'),
+      PaymentDate: new Date('2030-03-04T02:00:00Z'),
+    };
+    const fallback = (await service.render('recurring_payment_success', noZone, 'x', 'pt')).html;
+    expect(fallback).toContain('03/03/2030');
   });
 
   it('normaliza o idioma salvo e deduz o do cliente pelo país da unidade', () => {

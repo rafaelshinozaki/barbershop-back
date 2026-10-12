@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import Handlebars from 'handlebars';
 import { ConfigService } from '@nestjs/config';
+import { safeTimeZone } from '../common/timezone.util';
 import { isLocalized, LOCALE, Lang, Localized, normalizeLang, pick } from './language';
 import type { EmailAttachment } from '../queue/notification-jobs';
 
@@ -100,10 +101,17 @@ export class EmailService {
       Object.entries(context).map(([k, v]) => [k, isLocalized(v) ? v[lang] : v]),
     );
     const locale = LOCALE[lang];
-    const date = (value: unknown) => {
+    // Fuso de quem recebe (TimeZone no contexto, ou o segundo argumento do
+    // helper). Sem isso a data saía no fuso do servidor (UTC): um pagamento
+    // às 22h em Brasília aparecia no dia seguinte.
+    const date = (value: unknown, maybeTz?: unknown) => {
       if (value === undefined || value === null || value === '') return '';
       const d = value instanceof Date ? value : new Date(value as string);
-      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(locale);
+      if (Number.isNaN(d.getTime())) return String(value);
+      const fromArg = typeof maybeTz === 'string' ? maybeTz : null;
+      const fromCtx =
+        typeof localizedContext.TimeZone === 'string' ? localizedContext.TimeZone : null;
+      return d.toLocaleDateString(locale, { timeZone: safeTimeZone(fromArg ?? fromCtx) });
     };
     const money = (value: unknown, currency?: unknown) => {
       const n = Number(value);

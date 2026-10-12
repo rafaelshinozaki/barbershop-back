@@ -9,6 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { clientBadges } from './badges';
+import { LOCALE, normalizeLang } from '../email/language';
+import { safeTimeZone } from '../common/timezone.util';
 
 export type RatingSide = 'unit' | 'professional';
 
@@ -231,9 +233,14 @@ export class CustomerRatingService {
     for (const [userId, appts] of byUser) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, fullName: true },
+        select: {
+          email: true,
+          fullName: true,
+          userSystemConfig: { select: { language: true } },
+        },
       });
       if (!user?.email) continue;
+      const lang = normalizeLang(user.userSystemConfig?.language);
       try {
         await this.notificationQueue.email(
           {
@@ -246,10 +253,10 @@ export class CustomerRatingService {
               Appointments: appts.map((a) => ({
                 Customer: a.customer.name.split(' ')[0],
                 Shop: a.barbershop.name,
-                Time: a.startAt.toLocaleTimeString('pt-BR', {
+                Time: a.startAt.toLocaleTimeString(LOCALE[lang], {
                   hour: '2-digit',
                   minute: '2-digit',
-                  timeZone: a.barbershop.timezone,
+                  timeZone: safeTimeZone(a.barbershop.timezone),
                 }),
               })),
               RateURL: `${front}/rate-clients`,
