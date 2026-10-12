@@ -1729,7 +1729,125 @@ export class BarbershopService {
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
     await this.cancelChairRentsOfBarbershops([id]);
+    await this.cancelFutureAppointmentsOfBarbershops([id]);
     await this.prisma.barbershop.delete({ where: { id } });
+  }
+
+  /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
+  async getBarbershopDeletionPreview(userId: number, id: number) {
+    await this.ensureBarbershopAccess(userId, id, 'owner');
+    const [impact, activeClientSubscriptions] = await Promise.all([
+      this.deletionImpact([id]),
+      this.prisma.clientSubscription.count({
+        where: { barbershopId: id, status: { not: 'CANCELED' } },
+      }),
+    ]);
+    return { ...impact, activeClientSubscriptions };
+  }
+
+  private futureAppointmentsWhere(barbershopIds: number[]): Prisma.AppointmentWhereInput {
+    return {
+      barbershopId: { in: barbershopIds },
+      startAt: { gt: new Date() },
+      status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+    };
+  }
+
+  /**
+   * Horários futuros das unidades e o que foi pago por eles pelo app (sinal e
+   * atendimento), que volta pro cliente se as unidades forem apagadas. Por
+   * moeda: uma rede pode ter unidades em países diferentes.
+   */
+  async deletionImpact(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return { futureAppointments: 0, onlineRefunds: [] };
+    const appts = await this.prisma.appointment.findMany({
+      where: this.futureAppointmentsWhere(barbershopIds),
+      select: {
+        depositPaid: true,
+        depositPaidAt: true,
+        depositAmount: true,
+        depositRefundedAt: true,
+        prepaidAt: true,
+        prepaidAmount: true,
+        prepaidRefundedAt: true,
+        prepaidRefundedAmount: true,
+        barbershop: { select: { currency: true } },
+      },
+    });
+    const byCurrency = new Map<string, number>();
+    for (const a of appts) {
+      let back = 0;
+      if (a.depositPaid && a.depositPaidAt && !a.depositRefundedAt) {
+        back += Number(a.depositAmount ?? 0);
+      }
+      if (a.prepaidAt && !a.prepaidRefundedAt) {
+        back += Number(a.prepaidAmount ?? 0) - Number(a.prepaidRefundedAmount ?? 0);
+      }
+      if (back > 0) {
+        const currency = a.barbershop.currency;
+        byCurrency.set(currency, round2((byCurrency.get(currency) ?? 0) + back));
+      }
+    }
+    return {
+      futureAppointments: appts.length,
+      onlineRefunds: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+    };
+  }
+
+  /**
+   * Antes de apagar unidades (ou a conta do dono): os horários futuros são
+   * cancelados, o que o cliente pagou pelo app volta e ele recebe o e-mail de
+   * cancelamento (com o convite que tira o evento da agenda). Antes o cascade
+   * apagava tudo calado e o dinheiro ficava. Estorno que falha interrompe a
+   * exclusão (nada é apagado), como nas assinaturas.
+   */
+  async cancelFutureAppointmentsOfBarbershops(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return;
+    const appts = await this.prisma.appointment.findMany({
+      where: this.futureAppointmentsWhere(barbershopIds),
+      select: {
+        id: true,
+        depositPaid: true,
+        depositPaidAt: true,
+        prepaidAt: true,
+        customer: { select: { email: true } },
+        barbershop: { select: { country: true } },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+    for (const a of appts) {
+      let refunded = false;
+      if (a.depositPaid && a.depositPaidAt)
+        refunded = (await this.refundOnlineDeposit(a.id)) || refunded;
+      if (a.prepaidAt) refunded = (await this.refundPrepayment(a.id)) || refunded;
+      await this.prisma.appointment.update({
+        where: { id: a.id },
+        data: { status: 'CANCELLED' },
+      });
+      const to = a.customer.email;
+      if (!to) continue;
+      const lang = langForCountry(a.barbershop.country);
+      const reason = {
+        pt: 'A unidade encerrou o atendimento pelo app.',
+        en: 'The business stopped taking bookings through the app.',
+        es: 'La unidad dejó de atender por la app.',
+      }[lang];
+      const money = {
+        pt: ' O que você pagou pelo app foi devolvido.',
+        en: ' What you paid through the app has been refunded.',
+        es: ' Lo que pagaste por la app fue devuelto.',
+      }[lang];
+      // O e-mail é montado agora (enfileirado com tudo pronto): depois de
+      // apagar não há mais o horário pra carregar
+      await this.sendAppointmentEmail(
+        a.id,
+        'appointment_cancelled',
+        to,
+        refunded ? reason + money : reason,
+      ).catch((err) =>
+        this.logger.error(`Erro ao avisar o cancelamento do agendamento #${a.id}:`, err),
+      );
+    }
   }
 
   /**

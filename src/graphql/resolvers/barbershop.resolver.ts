@@ -1,7 +1,19 @@
 import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
 import { AdminProfessionalType } from '../types/public-booking.type';
-import { Resolver, Query, Mutation, Args, Int, Float, ResolveField, Parent } from '@nestjs/graphql';
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  Int,
+  Float,
+  ResolveField,
+  Parent,
+  ObjectType,
+  Field,
+} from '@nestjs/graphql';
+import { DeletionRefundType } from './account-deletion.resolver';
 import { UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
@@ -103,6 +115,18 @@ import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { BackofficeArea, RequireArea } from '../../auth/backoffice-areas';
 
+@ObjectType()
+export class BarbershopDeletionPreviewType {
+  @Field(() => Int)
+  futureAppointments: number;
+
+  @Field(() => [DeletionRefundType])
+  onlineRefunds: DeletionRefundType[];
+
+  @Field(() => Int)
+  activeClientSubscriptions: number;
+}
+
 @Resolver(() => Barbershop)
 export class BarbershopResolver {
   constructor(
@@ -171,6 +195,16 @@ export class BarbershopResolver {
     ] as const;
     if (addressKeys.some((k) => input[k] !== undefined)) void this.geocoding.locate(id);
     return shop;
+  }
+
+  /** O que apagar a unidade leva junto (horários, dinheiro do app, assinaturas) */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => BarbershopDeletionPreviewType)
+  async barbershopDeletionPreview(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getBarbershopDeletionPreview(user.id, id);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

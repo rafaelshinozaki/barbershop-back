@@ -19,6 +19,15 @@ import { AccountDeletionService } from '../../barbershop/account-deletion.servic
 import { ThrottleAuth } from '../../common/decorators/throttle.decorator';
 
 @ObjectType()
+export class DeletionRefundType {
+  @Field()
+  currency: string;
+
+  @Field()
+  amount: number;
+}
+
+@ObjectType()
 export class AccountDeletionPreviewType {
   /** Unidades apagadas junto (a pessoa é dona) */
   @Field(() => [String])
@@ -27,6 +36,14 @@ export class AccountDeletionPreviewType {
   /** Assinaturas de serviço de clientes que serão canceladas */
   @Field(() => Int)
   activeClientSubscriptions: number;
+
+  /** Horários futuros dessas unidades: cancelados, com aviso ao cliente */
+  @Field(() => Int)
+  futureAppointments: number;
+
+  /** Pago pelo app nesses horários, devolvido aos clientes (por moeda) */
+  @Field(() => [DeletionRefundType])
+  onlineRefunds: DeletionRefundType[];
 
   /** true = confirma com a senha; false (login social) = digitando o e-mail */
   @Field()

@@ -20,6 +20,10 @@ export interface AccountDeletionPreview {
   barbershops: string[];
   /** Clientes com assinatura de serviço ativa nessas unidades (serão canceladas) */
   activeClientSubscriptions: number;
+  /** Horários futuros dessas unidades (cancelados, com aviso ao cliente) */
+  futureAppointments: number;
+  /** Pago pelo app nesses horários, que volta pros clientes (por moeda) */
+  onlineRefunds: Array<{ currency: string; amount: number }>;
   /** Conta com senha confirma com a senha; login social, digitando o e-mail */
   requiresPassword: boolean;
   /** Admin do sistema não se exclui por aqui (outro admin faz) */
@@ -82,9 +86,11 @@ export class AccountDeletionService {
           where: { barbershopId: { in: shops.map((s) => s.id) }, status: { not: 'CANCELED' } },
         })
       : 0;
+    const impact = await this.barbershopService.deletionImpact(shops.map((s) => s.id));
     return {
       barbershops: shops.map((s) => s.name),
       activeClientSubscriptions,
+      ...impact,
       requiresPassword: user.provider === 'local',
       blocked: user.role?.name === Role.SYSTEM_ADMIN,
     };
@@ -131,6 +137,8 @@ export class AccountDeletionService {
     // pior cenário
     await this.barbershopService.cancelClientSubscriptionsOfBarbershops(shopIds);
     await this.barbershopService.cancelChairRentsOfBarbershops(shopIds);
+    // Horários futuros: cancela, devolve o pago pelo app e avisa o cliente
+    await this.barbershopService.cancelFutureAppointmentsOfBarbershops(shopIds);
     const activePlans = await this.prisma.subscription.findMany({
       where: { userId, status: PLANO_STATUS.ACTIVE },
     });

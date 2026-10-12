@@ -23,7 +23,12 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     deleteCustomer: async (id: string) => {
       stripeCalls.push(`delete:${id}`);
     },
+    createRefund: async (intentId: string, amount?: number) => {
+      stripeCalls.push(`refund:${intentId}:${amount ?? 'all'}`);
+      return { id: `re_${intentId}` };
+    },
   };
+  const emails: any[] = [];
   const s3Deleted: string[] = [];
   const s3 = { deleteObject: async (key: string) => void s3Deleted.push(key) };
   const stub = {} as never;
@@ -33,7 +38,10 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     stub,
     { isConfigured: () => false } as never,
     stripe as never,
-    stub,
+    {
+      email: async (job: unknown) => void emails.push(job),
+      whatsapp: async () => undefined,
+    } as never,
     { notify: () => undefined } as never,
   );
   const service = new AccountDeletionService(
@@ -211,6 +219,8 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     expect(preview).toEqual({
       barbershops: [shop.name],
       activeClientSubscriptions: 1,
+      futureAppointments: 0,
+      onlineRefunds: [],
       requiresPassword: true,
       blocked: false,
     });
@@ -268,6 +278,71 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     await expect(
       prisma.user.update({ where: { id: again.id }, data: { email: owner.email } }),
     ).resolves.toBeTruthy();
+  });
+
+  it('horários futuros: cancelados, o pago pelo app volta e o cliente é avisado antes de apagar', async () => {
+    const owner = await createUser('agenda', ownerRoleId);
+    const { shop, customer } = await createBusiness(owner.id, 'agenda');
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: { email: `cli-agenda-${RUN}@test.local` },
+    });
+    const barber = await prisma.barber.create({
+      data: { barbershopId: shop.id, name: 'Profissional', phone: `12${RUN}`.slice(0, 14) },
+    });
+    const service_ = await prisma.barbershopService.create({
+      data: { barbershopId: shop.id, name: 'Corte', durationMinutes: 30, price: 80 },
+    });
+    const start = new Date(Date.now() + 3 * 86_400_000);
+    const appt = await prisma.appointment.create({
+      data: {
+        barbershopId: shop.id,
+        customerId: customer.id,
+        barberId: barber.id,
+        startAt: start,
+        endAt: new Date(start.getTime() + 30 * 60_000),
+        status: 'CONFIRMED',
+        depositPaid: true,
+        depositPaidAt: new Date(),
+        depositAmount: 20,
+        depositPaymentIntentId: `pi_dep_${RUN}`,
+        prepaidAt: new Date(),
+        prepaidAmount: 60,
+        prepaidPaymentIntentId: `pi_pre_${RUN}`,
+        services: { create: [{ serviceId: service_.id, quantity: 1, unitPrice: 80 }] },
+      },
+    });
+    // Horário que já passou não entra
+    await prisma.appointment.create({
+      data: {
+        barbershopId: shop.id,
+        customerId: customer.id,
+        barberId: barber.id,
+        startAt: new Date(Date.now() - 86_400_000),
+        endAt: new Date(Date.now() - 86_400_000 + 30 * 60_000),
+        status: 'COMPLETED',
+      },
+    });
+
+    const preview = await service.preview(owner.id);
+    expect(preview).toMatchObject({
+      futureAppointments: 1,
+      onlineRefunds: [{ currency: 'BRL', amount: 80 }],
+    });
+
+    stripeCalls.length = 0;
+    emails.length = 0;
+    await service.deleteAccount(owner.id, { password: PASSWORD });
+
+    expect(stripeCalls).toEqual(
+      expect.arrayContaining([`refund:pi_dep_${RUN}:all`, `refund:pi_pre_${RUN}:6000`]),
+    );
+    const cancelled = emails.find((e) => e.template === 'appointment_cancelled');
+    expect(cancelled.to).toBe(`cli-agenda-${RUN}@test.local`);
+    expect(cancelled.context.Reason).toMatch(/devolvido/);
+    expect(cancelled.attachments[0].contentType).toContain('method=CANCEL');
+    expect(cancelled.attachments[0].content).toContain(`UID:appointment-${appt.id}@barbershop`);
+    expect(await prisma.appointment.count({ where: { id: appt.id } })).toBe(0);
   });
 
   it('funcionário: o perfil de barbeiro fica na empresa, desligado da conta', async () => {
