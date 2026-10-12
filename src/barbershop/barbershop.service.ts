@@ -150,6 +150,10 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
 /** Recepção não atende: não aparece pra agendar nem recebe agendamento */
 /** Até quantos dias à frente o "próximo horário disponível" procura */
 const NEXT_AVAILABLE_DAYS = 60;
+/** Agendamento online: até quantos dias à frente (lista, próximo livre e criação) */
+export const PUBLIC_BOOKING_WINDOW_DAYS = 90;
+/** Grade da lista de horários (a criação só aceita horário nela) */
+const SLOT_GRANULARITY_MIN = 15;
 /** Quanto tempo o horário fica reservado esperando o sinal online */
 export const DEPOSIT_HOLD_MINUTES = 15;
 /** Quem atende: marcado pra atender, ou sem marcação e fora da recepção */
@@ -4885,6 +4889,12 @@ export class BarbershopService {
       select: { timezone: true },
     });
     const timeZone = safeTimeZone(shop?.timezone);
+    // Além da janela do agendamento online, nada (a criação também recusa)
+    const lastDay = addDaysStr(
+      toZonedParts(new Date(), timeZone).dateStr,
+      PUBLIC_BOOKING_WINDOW_DAYS,
+    );
+    if (dateStr > lastDay) return [];
 
     if (barberId != null) {
       const barber = await this.prisma.barber.findFirst({
@@ -4937,9 +4947,15 @@ export class BarbershopService {
       !!fromDate &&
       /^\d{4}-\d{2}-\d{2}$/.test(fromDate) &&
       !isNaN(Date.parse(`${fromDate}T00:00:00Z`));
-    // Data no passado vira hoje; muito longe não varre o ano inteiro
-    const start =
-      valid && fromDate > today && fromDate <= addDaysStr(today, 365) ? fromDate : today;
+    // Data no passado vira hoje; além da janela do agendamento online, nada
+    const lastDay = addDaysStr(today, PUBLIC_BOOKING_WINDOW_DAYS);
+    if (valid && fromDate > lastDay) return null;
+    const start = valid && fromDate > today ? fromDate : today;
+    const daysLeft =
+      Math.round(
+        (Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000,
+      ) + 1;
+    maxDays = Math.min(maxDays, daysLeft);
 
     // Expediente, fechamentos, horários e folgas do período inteiro, de uma vez.
     const week =
@@ -5168,7 +5184,6 @@ export class BarbershopService {
 
     const now = new Date();
     const slots: string[] = [];
-    const SLOT_GRANULARITY_MIN = 15;
 
     for (
       let minutes = windowStartMin;
@@ -5216,11 +5231,25 @@ export class BarbershopService {
     if (isNaN(startAt.getTime()) || startAt <= new Date()) {
       throw new BadRequestException('Horário inválido');
     }
+    const timeZone = safeTimeZone(barbershop.timezone);
+    const local = toZonedParts(startAt, timeZone);
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    if (local.dateStr > addDaysStr(today, PUBLIC_BOOKING_WINDOW_DAYS)) {
+      throw new BadRequestException('Esse dia ainda não está aberto para agendamento online');
+    }
     const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
-    const local = toZonedParts(startAt, safeTimeZone(barbershop.timezone));
     const window = await this.getWorkingWindowOn(barbershop.id, barberId, local.dateStr);
     if (!window) throw new BadRequestException('Profissional não atende nesse dia');
     const startMin = local.minutesOfDay;
+    // Só os horários da lista (grade a partir do início do expediente): pela
+    // API dava pra marcar 14:07 e deixar buracos de minutos na agenda
+    if (
+      startAt.getUTCSeconds() !== 0 ||
+      startAt.getUTCMilliseconds() !== 0 ||
+      (startMin - this.toMinutes(window.start)) % SLOT_GRANULARITY_MIN !== 0
+    ) {
+      throw new BadRequestException('Escolha um dos horários da lista');
+    }
     const endMin = startMin + durationMinutes;
     if (startMin < this.toMinutes(window.start) || endMin > this.toMinutes(window.end)) {
       throw new BadRequestException('Horário fora do expediente do profissional');
