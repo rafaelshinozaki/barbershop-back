@@ -283,6 +283,8 @@ describe('Chat do atendimento (integração)', () => {
     expect(inbox.find((i) => i.kind === 'professional')).toMatchObject({
       unread: 2,
       lastMessage: 'Até amanhã',
+      // A data do atendimento sai no fuso da unidade
+      timezone: 'America/Sao_Paulo',
     });
     // Abrir marca como lidas
     await chat.threads(apptId, { side: 'client', clientAccountId: accountId });

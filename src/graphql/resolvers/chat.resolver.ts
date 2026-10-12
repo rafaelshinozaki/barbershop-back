@@ -87,6 +87,10 @@ export class ChatInboxItemType {
   @Field()
   startAt: Date;
 
+  /** Fuso da unidade (a data do atendimento é mostrada nele) */
+  @Field(() => String, { nullable: true })
+  timezone: string | null;
+
   @Field(() => Date, { nullable: true })
   lastMessageAt: Date | null;
 
