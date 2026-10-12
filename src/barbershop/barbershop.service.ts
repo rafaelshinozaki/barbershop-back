@@ -2073,6 +2073,20 @@ export class BarbershopService {
     ) {
       await this.ensureSeatFor(barbershopId, barber.userId);
     }
+    // Desmarcar "Ativo" na edição é o mesmo que remover da equipe: cancela o
+    // convite pendente e avisa dono e gerente dos horários que ficaram
+    if (barber.isActive && data.isActive === false) {
+      const [updated] = await this.prisma.$transaction([
+        this.prisma.barber.update({ where: { id: barberId }, data }),
+        this.prisma.employeeInvite.updateMany({
+          where: { barberId, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        }),
+      ]);
+      this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
+      await this.warnFutureAppointments(barbershopId, barber.name, barberId, now);
+      return updated;
+    }
     return this.prisma.barber.update({ where: { id: barberId }, data });
   }
 
