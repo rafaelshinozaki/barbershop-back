@@ -10,6 +10,7 @@ import { AccountLinkService } from './account-link.service';
 import { ClientSuspensionService } from './client-suspension.service';
 import { ClientAuthController } from './client-auth.controller';
 import { GraphQLClientJwtAuthGuard } from './guards/graphql-client-jwt-auth.guard';
+import { OptionalClientJwtAuthGuard } from './guards/optional-client-jwt-auth.guard';
 import { ClientGoogleStrategy } from './strategies/client-google.strategy';
 import { ClientFacebookStrategy } from './strategies/client-facebook.strategy';
 import { ClientAppleStrategy } from './strategies/client-apple.strategy';
@@ -39,6 +40,7 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
     AccountLinkService,
     ClientSuspensionService,
     GraphQLClientJwtAuthGuard,
+    OptionalClientJwtAuthGuard,
     ClientGoogleStrategy,
     ClientFacebookStrategy,
     ClientAppleStrategy,
@@ -51,6 +53,7 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
     AccountLinkService,
     ClientSuspensionService,
     GraphQLClientJwtAuthGuard,
+    OptionalClientJwtAuthGuard,
   ],
 })
 export class ClientAuthModule {}

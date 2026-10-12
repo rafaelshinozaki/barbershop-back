@@ -4,7 +4,7 @@ import { UseGuards } from '@nestjs/common';
 import { UserService } from '../../auth/users/users.service';
 import { User, UserSystemConfig, TrialStatus } from '../types/user.type';
 import { PaginatedLoginHistory, PaginatedActiveSessions } from '../types/notification.type';
-import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
+import { GraphQLJwtAuthGuard, OptionalAuth } from '../../auth/guards/graphql-jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { Roles } from '../../auth/roles.decorator';
@@ -61,6 +61,18 @@ export class UserResolver {
     });
 
     return activeSubscription?.status || user.membership || 'FREE';
+  }
+
+  /**
+   * Checagem de sessão do carregamento da página: sem sessão devolve null em
+   * vez de erro. O `me` respondia "No authentication token found" a cada
+   * visita anônima (página pública, cadastro), enchendo o console e o Sentry.
+   */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @OptionalAuth()
+  @Query(() => User, { nullable: true })
+  async currentUser(@CurrentUser() user?: UserDTO) {
+    return user?.id ? this.me(user) : null;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

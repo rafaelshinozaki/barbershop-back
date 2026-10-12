@@ -2,6 +2,7 @@ import { Resolver, Query, Mutation, Args, Context, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { ClientAuthService } from '@/client-auth/client-auth.service';
 import { GraphQLClientJwtAuthGuard } from '@/client-auth/guards/graphql-client-jwt-auth.guard';
+import { OptionalClientJwtAuthGuard } from '@/client-auth/guards/optional-client-jwt-auth.guard';
 import { CurrentClient, CurrentClientUser } from '@/client-auth/current-client.decorator';
 import {
   ClientAccountType,
@@ -133,6 +134,16 @@ export class ClientAuthResolver {
     const { res } = context;
     this.clientAuthService.clearCookie(res);
     return true;
+  }
+
+  /** Há cliente logado? Sem sessão devolve null (o `clientMe` dá erro) */
+  @UseGuards(OptionalClientJwtAuthGuard)
+  @Query(() => ClientAccountType, { nullable: true })
+  async clientSession(
+    @CurrentClient() client?: CurrentClientUser,
+  ): Promise<ClientAccountType | null> {
+    if (!client?.id) return null;
+    return this.clientAuthService.getById(client.id).catch(() => null);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)

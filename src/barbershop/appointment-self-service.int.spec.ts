@@ -7,7 +7,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, BOOKING_GRACE_MINUTES } from './barbershop.service';
 import { createAppointmentToken } from './appointment-link';
 
 // O link é assinado com o segredo do servidor; o job de testes do CI não tem .env
@@ -220,6 +220,11 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
   it('dentro da janela da política de cancelamento só falando com a barbearia', async () => {
     const appt = await book('17:00', `11${RUN}6`.slice(0, 14));
     const token = createAppointmentToken(appt!.id);
+    // Agendado há uma hora: o prazo de arrependimento já passou
+    await prisma.appointment.update({
+      where: { id: appt!.id },
+      data: { createdAt: new Date(Date.now() - 3_600_000) },
+    });
     // Política de 10 dias: o horário (daqui a uma semana) já está dentro dela
     await prisma.network.update({
       where: { id: networkId },
@@ -241,6 +246,31 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
     }
   });
 
+  it('logo depois de agendar, desfaz pelo link mesmo dentro da janela (arrependimento)', async () => {
+    const appt = await book('13:00', `11${RUN}9`.slice(0, 14));
+    const token = createAppointmentToken(appt!.id);
+    await prisma.network.update({
+      where: { id: networkId },
+      data: { lateCancellationWindowHours: 240 },
+    });
+    try {
+      const managed = await service.getManagedAppointment(token);
+      expect(managed.canChange).toBe(true);
+      // O prazo mostrado é o fim do arrependimento
+      expect(new Date(managed.changeDeadline).getTime()).toBe(
+        appt!.createdAt.getTime() + BOOKING_GRACE_MINUTES * 60_000,
+      );
+      await service.cancelManagedAppointment(token);
+      expect((await prisma.appointment.findUniqueOrThrow({ where: { id: appt!.id } })).status).toBe(
+        'CANCELLED',
+      );
+    } finally {
+      await prisma.network.update({
+        where: { id: networkId },
+        data: { lateCancellationWindowHours: 24 },
+      });
+    }
+  });
   it('conta do cliente: próximos horários com o link de gerenciar, só os dele e só os que valem', async () => {
     const account = await prisma.clientAccount.create({
       data: {

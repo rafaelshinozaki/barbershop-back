@@ -197,6 +197,20 @@ describe('Conta do cliente final (integração com o banco)', () => {
     const token = lastToken(victimEmail, 'verify_email');
     const account = await service.verifyEmail(token);
     expect(account.emailVerifiedAt).toBeTruthy();
+    // Horário que ainda não aconteceu fica em "Próximos horários", não no histórico
+    const barber = await prisma.barber.create({
+      data: { barbershopId: shopId, name: 'Futuro', phone: '11944444444' },
+    });
+    await prisma.appointment.create({
+      data: {
+        barbershopId: shopId,
+        customerId: victimCustomerId,
+        barberId: barber.id,
+        startAt: new Date(Date.now() + 86_400_000),
+        endAt: new Date(Date.now() + 90_000_000),
+        status: 'CONFIRMED',
+      },
+    });
     const history = await historyOf(account.id);
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ type: 'SALE', total: 80 });

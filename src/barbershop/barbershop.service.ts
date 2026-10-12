@@ -94,6 +94,9 @@ import { toMinorUnits } from '../common/money-units';
 /** Agenda da franquia: período máximo pedido (6 semanas = visão de mês) */
 export const NETWORK_AGENDA_MAX_DAYS = 43;
 /** Teto de segurança de agendamentos por período na agenda da franquia */
+/** Minutos depois de agendar em que o cliente desfaz pelo link mesmo dentro da janela */
+export const BOOKING_GRACE_MINUTES = 15;
+
 export const NETWORK_AGENDA_CAP = 2000;
 
 const NETWORK_ACCENT_COLORS = [
@@ -5359,7 +5362,15 @@ export class BarbershopService {
       throw new NotFoundException('Link inválido ou agendamento não encontrado');
     }
     const windowHours = appt.barbershop.network.lateCancellationWindowHours;
-    const changeDeadline = new Date(appt.startAt.getTime() - windowHours * 3600000);
+    const policyDeadline = new Date(appt.startAt.getTime() - windowHours * 3600000);
+    // Prazo de arrependimento: logo depois de agendar, desfazer pelo link vale
+    // sempre (até o horário). Antes quem marcava perto do horário já abria o
+    // link com "o prazo passou"
+    const graceEnd = Math.min(
+      appt.createdAt.getTime() + BOOKING_GRACE_MINUTES * 60_000,
+      appt.startAt.getTime(),
+    );
+    const changeDeadline = new Date(Math.max(policyDeadline.getTime(), graceEnd));
     const canChange = appt.status === 'CONFIRMED' && new Date() < changeDeadline;
     return { appt, windowHours, changeDeadline, canChange };
   }
