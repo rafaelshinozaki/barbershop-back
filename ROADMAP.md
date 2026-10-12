@@ -813,6 +813,49 @@ O código do backoffice-back (`allowed-operations.json`: 41 consultas e 37 alter
 
 **Decidido** (dono da plataforma, 2026-10-12): corrigir dados de base da unidade (fuso, moeda, país, slug) e transferir a propriedade são as duas exceções à regra "fora do backoffice, de propósito". As duas exigem motivo, avisam o dono por e-mail e no sininho e entram no Histórico da unidade como "Equipe da plataforma" (o nome do funcionário fica só no Registro de ações). Fora delas, a equipe continua sem mexer em dado do negócio.
 
+#### Mais operações que faltam (segundo levantamento, 2026-10-12)
+
+Conferido no código: o pedido de suporte (`SupportTicket`) não tem responsável, prioridade nem nota interna. Não há campo de anotação da equipe em conta ou unidade. Os modelos de e-mail e as categorias de serviço estão no código.
+
+**Suporte**
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Atribuir o pedido a alguém da equipe** | Sem responsável, duas pessoas respondem o mesmo pedido ou ninguém responde. Filtro "meus pedidos" e "sem responsável". | `support.reply` | **P1** |
+| **Nota interna** (no pedido e na ficha da pessoa ou da unidade) | A equipe não tem onde deixar "já reclamou 3 vezes, ofereci 1 mês grátis". A nota não aparece pro cliente e fica no Registro de ações. | `support.read` vê, `support.reply` escreve | **P1** |
+| **Prioridade e tempo de espera** | A fila não mostra há quanto tempo o pedido espera nem separa o urgente (pagamento, segurança). Inclui tempo de primeira resposta e de resolução por atendente. | `support.read` | P2 |
+| **Respostas prontas** | Textos salvos pras perguntas mais comuns, em pt, en e es, editáveis pelo Coordenador. | `support.reply` usa, Coordenador edita | P2 |
+
+**Sucesso do cliente**
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Unidades em risco** | Lista de quem parou de agendar, está com o plano em atraso, não entra há 14 dias ou caiu muito de movimento, pra ligar antes do cancelamento. Cada unidade com o motivo e um botão pra registrar o contato (nota interna). | `users.read` | **P1** |
+| **Funil de entrada** | Cadastro → criou a unidade → cadastrou serviço → primeiro agendamento → primeira cobrança. Quantos travam em cada passo e quem são, pro suporte ajudar. | `metrics.read` (números), `users.read` (nomes) | P2 |
+| **Contas de recebimento travadas** | Quem começou a conta de recebimento (Stripe Connect) e parou no meio, ou teve a conta bloqueada (`chargesEnabled`/`payoutsEnabled` falso). Sem ela, a unidade não recebe pelo app. | `finance.read` | P2 |
+
+**Conteúdo e configuração**
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Editar os textos dos e-mails** | Os modelos (confirmação, lembrete, cancelamento) estão no código, e trocar uma frase pede deploy. Edição com prévia nos três idiomas, mantendo as variáveis (`{{CustomerName}}`). | só admin | P3 |
+| **Termos de uso e privacidade com versão** | Não há registro de qual versão cada pessoa aceitou, nem novo aceite quando o texto muda (a LGPD pede pra provar o consentimento). | só admin | P2 |
+| **Categorias de serviço** | A lista (`TreatmentCategory`) é fixa no código. Categoria nova pede migração e deploy. | só admin | P3 |
+
+**Segurança e fraude**
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Sinais de fraude** | Lista automática de comportamento estranho: muitos cartões recusados numa unidade, muitos agendamentos do mesmo telefone em várias unidades, cupom usado por várias contas do mesmo aparelho ou IP. Cada sinal leva à ficha. | `clients.suspend`, `users.edit` | P2 |
+| **Revisão periódica de acessos** | Lista de quem tem cada cargo na equipe da plataforma e há quanto tempo não entra, com aviso mensal ao Super admin pra tirar o acesso de quem saiu. | só admin | P2 |
+
+**Operação**
+
+| Operação | Por que falta | Quem | Prioridade |
+|---|---|---|---|
+| **Resumo semanal por e-mail** | Toda segunda, pro dono da plataforma: receita, unidades novas, cancelamentos, pedidos de suporte e alertas da semana, sem abrir o backoffice. Usa os números da Tela de resultados. | só admin recebe | P2 |
+| **Agendar envio de avisos e e-mails** | Hoje o envio é na hora. "Segunda às 9h" fica como pedido agendado, que dá pra cancelar até a hora. | `notify.send` | P3 |
+
 ### Tela de resultados: lucro e números da plataforma — 🆕 (pedido do dono da plataforma em 2026-10-12)
 
 **O que existe hoje:** o Painel mostra uma "receita" que é a soma de todas as cobranças de plano pagas desde o começo (`Payment` concluído, `backofficeStats.revenue`). Não tem período, não desconta estorno nem a tarifa da Stripe, e não inclui as outras fontes de receita. O resto do Painel é contagem de contas, crescimento e retenção do marketplace. A receita do Destaque fica numa aba à parte, e a taxa estimada dos pagamentos pelo app, em outra tela.
