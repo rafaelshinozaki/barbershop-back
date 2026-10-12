@@ -1564,3 +1564,20 @@ Testado de ponta a ponta no app com o seed de demonstração: agendamento pela p
 102. 🆕 **Página pública gera erro de login a cada visita anônima** (front: página da unidade): sem cliente logado, a página dispara consultas da área do cliente e recebe três erros de GraphQL ("No authentication token found", duas vezes "Cliente não autenticado."). Não aparece pra quem visita, mas enche o console e o Sentry, e cada visita gasta três consultas à toa. **Fazer:** só consultar os dados do cliente quando houver sessão de cliente (`skip`).
 103. 🆕 **Abas da conversa estouram o cartão no celular** (front: página do agendamento, abas "Com <unidade>" / "Com <profissional>"): com nome um pouco maior, a segunda aba passa da borda do cartão em 375 px. **Fazer:** abas que quebram linha ou rolam de lado, com o nome cortado por reticências.
 104. 🆕 **Link inválido é beco sem saída** (front: página do agendamento e página de avaliação): com link vencido, adulterado ou de agendamento apagado, a página mostra só "Este link é inválido…", sem cabeçalho e sem nenhum caminho. Quem cai num e-mail antigo não tem como chegar à unidade, à busca ou à área do cliente. **Fazer:** links pra "Buscar um negócio" e "Entrar na minha conta" (onde os próximos horários estão), na mesma linha do item 82.
+
+### Décima sétima rodada (2026-10-12): cadastro do dono
+
+O cadastro "Tenho um estabelecimento" foi percorrido no celular (375 px), passo a passo, até o último botão (o captcha não carrega no ambiente de teste).
+
+105. 🆕 **O estado não aparece pela sigla** (front: autocomplete de estado no cadastro, `personal-info-tab.tsx` e `address-fields.tsx`): digitar "SP" no campo Estado sugere só "Espírito Santo" (o nome contém "sp"), e não São Paulo. No Brasil, quase todo mundo digita a sigla. **Fazer:** buscar também pela sigla (UF), com a sigla exata primeiro.
+106. 🆕 **Botões de tema e idioma ficam por cima do formulário** (front: botões fixos no canto do layout público): no celular, os dois botões ficam presos no canto de cima e, ao rolar, cobrem o fim dos campos (e-mail, abas do cadastro, tipo de estabelecimento). **Fazer:** botões no fluxo da página (no cabeçalho, que rola junto), ou só no topo.
+107. 🆕 **"Próximo" travado sem dizer o que falta** (front: `SignupRefactored.tsx`): o botão fica desabilitado até tudo estar válido, sem apontar o campo que falta, e a aba só mostra um "!". Duas situações deixam a pessoa sem entender:
+    - **País em branco:** o país não vem preenchido (nem pelo idioma do navegador). Documento, telefone e CEP ficam cinza até escolher o país, sem dizer por quê.
+    - **Endereço depois do CEP:** Estado, Cidade, Rua e Bairro só aparecem depois que a busca do CEP termina. Com o serviço lento ou fora do ar, nada aparece por vários segundos.
+
+    A tela de cadastro também dispara a mesma consulta sem sessão do item 102. **Fazer:**
+    - Botão sempre clicável, levando ao primeiro campo com problema e mostrando a mensagem dele.
+    - País sugerido pelo idioma do navegador.
+    - Campos de endereço visíveis desde o começo, com a busca do CEP só preenchendo.
+108. 🆕 **Captcha que não carrega prende a pessoa no último passo** (front: `password-terms-tab.tsx`): quando o script do captcha não carrega (bloqueador, rede da empresa, lentidão), o espaço dele fica vazio e "Concluir" só mostra o aviso "Por favor, complete o captcha". Não há explicação nem jeito de tentar de novo. **Fazer:** detectar a falha ao carregar e mostrar "Não foi possível carregar a verificação. Tentar de novo", com um botão que recarrega o widget.
+109. 🆕 **Cadastro pede dado repetido e usa termo técnico** (front: passo "Dados do estabelecimento"): o endereço não tem campo "Número" (vai na Rua ou no Complemento). O segundo passo pede de novo CEP e telefone, sem "usar os mesmos dados pessoais". "Slug (URL amigável)" é jargão. **Fazer:** campo Número, a opção "mesmo endereço e telefone", e trocar "Slug" por "Endereço da sua página" com a prévia (`…/u/salao-teste-ui`).
