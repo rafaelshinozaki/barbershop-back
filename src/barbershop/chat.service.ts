@@ -14,6 +14,7 @@ import { BarbershopService, currentEngagement, type AccessLevel } from './barber
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ModerationService } from './moderation.service';
 import { PushService } from '../push/push.service';
+import { supportEmail } from '../common/app-urls';
 
 export type ChatKind = 'unit' | 'professional';
 export const CHAT_KINDS: ChatKind[] = ['unit', 'professional'];
@@ -371,7 +372,7 @@ export class ChatService {
             }),
             ChatURL: `${appointmentManageUrl(appt.id, appt.linkVersion)}#chat`,
             AppName: 'Barbershop',
-            SupportEmail: 'suporte@barbershop.com.br',
+            SupportEmail: supportEmail(),
             Year: new Date().getFullYear(),
           },
           subject: {

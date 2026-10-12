@@ -375,6 +375,15 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  */
 export const STAFF_APPOINTMENT_SOURCES = ['PHONE', 'WALK_IN'] as const;
 
+/**
+ * Venda paga num período, pelo dia em que foi paga (`paidAt`). Venda antiga
+ * sem `paidAt` cai pela criação. Antes o faturamento usava a criação: venda
+ * lançada pendente ontem e paga hoje contava como de ontem
+ */
+export function paidInRange(range: Prisma.DateTimeFilter): Prisma.SaleWhereInput {
+  return { OR: [{ paidAt: range }, { paidAt: null, createdAt: range }] };
+}
+
 export const CLOSED_CASH_SALE_MESSAGE =
   'Essa venda é de um caixa já fechado. Lance a correção no caixa aberto.';
 
@@ -1021,7 +1030,7 @@ export class BarbershopService {
             where: {
               barbershopId: { in: shopIds },
               paymentStatus: 'PAID',
-              createdAt: { gte: start, lt: end },
+              ...paidInRange({ gte: start, lt: end }),
               ...(opts.revenueBarberIds ? { barberId: { in: opts.revenueBarberIds } } : {}),
             },
             _sum: { total: true },
@@ -1232,7 +1241,7 @@ export class BarbershopService {
       where: {
         barbershopId: { in: barbershopIds },
         paymentStatus: 'PAID',
-        createdAt: { gte: startOfMonth },
+        ...paidInRange({ gte: startOfMonth }),
       },
       _sum: { total: true },
     });
@@ -1252,7 +1261,7 @@ export class BarbershopService {
           where: {
             barbershopId: { in: barbershopIds },
             paymentStatus: 'PAID',
-            createdAt: { gte: prevRange.start, lt: prevUntil },
+            ...paidInRange({ gte: prevRange.start, lt: prevUntil }),
           },
           _sum: { total: true },
         })
@@ -1264,7 +1273,7 @@ export class BarbershopService {
       where: {
         barbershopId: { in: barbershopIds },
         paymentStatus: 'PAID',
-        createdAt: { gte: startOfMonth },
+        ...paidInRange({ gte: startOfMonth }),
       },
       _sum: { total: true },
     });
@@ -1288,7 +1297,7 @@ export class BarbershopService {
         where: {
           barbershopId: { in: barbershopIds },
           paymentStatus: 'PAID',
-          createdAt: { gte: start, lt: end },
+          ...paidInRange({ gte: start, lt: end }),
         },
         _sum: { total: true },
       });
@@ -2676,16 +2685,31 @@ export class BarbershopService {
   // os pontos de fidelidade dele), ou usar barbeiro/serviço/produto de outra
   // unidade, só trocando o id na requisição.
   private async ensureCustomerOfNetwork(networkId: number, customerId: number) {
+    // Ficha excluída (anonimizada) não recebe agendamento, venda nem fila
     const customer = await this.prisma.customer.findFirst({
-      where: { id: customerId, networkId },
+      where: { id: customerId, networkId, deletedAt: null },
       select: { id: true },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
   }
 
-  private async ensureBarberOfBarbershop(barbershopId: number, barberId: number) {
+  /**
+   * Profissional desta unidade que atende. Com `active`, também precisa
+   * estar ativo (agendar ou mover horário pra ele); a venda não pede, pra
+   * ainda dar pra cobrar o atendimento de quem já saiu
+   */
+  private async ensureBarberOfBarbershop(
+    barbershopId: number,
+    barberId: number,
+    opts: { active?: boolean } = {},
+  ) {
     const barber = await this.prisma.barber.findFirst({
-      where: { id: barberId, barbershopId, ...BOOKABLE_STAFF },
+      where: {
+        id: barberId,
+        barbershopId,
+        ...BOOKABLE_STAFF,
+        ...(opts.active ? { isActive: true } : {}),
+      },
       select: { id: true },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
@@ -2867,7 +2891,7 @@ export class BarbershopService {
       throw new ForbiddenException('Seu cargo só permite agendar na sua própria agenda.');
     }
     await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
-    await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
     await this.ensureItemsOfBarbershop(
       barbershopId,
       data.services.map((s) => s.serviceId),
@@ -3138,7 +3162,9 @@ export class BarbershopService {
       throw new ForbiddenException('Seu cargo só permite mexer na sua própria agenda.');
     }
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
-    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    if (data.barberId && data.barberId !== appointment.barberId) {
+      await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
+    }
     if (
       data.status != null &&
       data.status !== appointment.status &&
@@ -5255,7 +5281,9 @@ export class BarbershopService {
       template === 'appointment_confirmation'
         ? `appointment-confirmation-${appt.id}`
         : template === 'appointment_cancelled'
-        ? `appointment-cancelled-${appt.id}`
+        ? // A cada cancelamento (cancelado, reativado e cancelado de novo no
+          // mesmo dia mandava só o primeiro: a fila guarda o id por 24 h)
+          `appointment-cancelled-${appt.id}-${appt.updatedAt.getTime()}`
         : `appointment-rescheduled-${appt.id}-${appt.startAt.getTime()}`,
     );
   }
@@ -6323,7 +6351,7 @@ export class BarbershopService {
     );
     const price = await this.stripeService.createPrice(
       product.id,
-      Math.round(data.price * 100),
+      toMinorUnits(data.price, barbershop.currency),
       barbershop.currency.toLowerCase(),
       { interval: 'month' },
     );
@@ -6365,7 +6393,7 @@ export class BarbershopService {
     if (data.price != null && Number(plan.price) !== data.price && plan.stripeProductId) {
       const newPrice = await this.stripeService.createPrice(
         plan.stripeProductId,
-        Math.round(data.price * 100),
+        toMinorUnits(data.price, barbershop.currency),
         barbershop.currency.toLowerCase(),
         { interval: 'month' },
       );
@@ -7624,9 +7652,9 @@ export class BarbershopService {
         where: {
           barbershopId,
           paymentStatus: 'PAID',
-          createdAt: { gte: from, lte: to },
+          ...paidInRange({ gte: from, lte: to }),
         },
-        select: { total: true, paymentMethod: true, createdAt: true },
+        select: { total: true, paymentMethod: true, createdAt: true, paidAt: true },
       }),
       this.prisma.expense.findMany({
         where: { barbershopId, expenseDate: { gte: from, lte: to } },
@@ -7664,7 +7692,7 @@ export class BarbershopService {
     sales.forEach((s) => {
       // Dia no fuso da unidade — em UTC, venda depois das 21h em Brasília
       // caía no dia seguinte do gráfico
-      const key = toZonedParts(s.createdAt, timeZone).dateStr;
+      const key = toZonedParts(s.paidAt ?? s.createdAt, timeZone).dateStr;
       byDay.set(key, (byDay.get(key) ?? 0) + Number(s.total));
     });
     const sortedDays = Array.from(byDay.keys()).sort();
@@ -8167,7 +8195,7 @@ export class BarbershopService {
         }),
         this.prisma.saleItem.findMany({
           where: {
-            sale: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+            sale: { barbershopId, paymentStatus: 'PAID', ...paidInRange({ gte: from, lte: to }) },
           },
           include: {
             service: { select: { id: true, name: true } },
@@ -8178,14 +8206,14 @@ export class BarbershopService {
           where: {
             barbershopId,
             paymentStatus: 'PAID',
-            createdAt: { gte: from, lte: to },
+            ...paidInRange({ gte: from, lte: to }),
             customerId: { not: null },
           },
           select: { customerId: true },
           distinct: ['customerId'],
         }),
         this.prisma.sale.findMany({
-          where: { barbershopId, paymentStatus: 'PAID', createdAt: { gte: from, lte: to } },
+          where: { barbershopId, paymentStatus: 'PAID', ...paidInRange({ gte: from, lte: to }) },
           select: {
             total: true,
             barberId: true,

@@ -210,7 +210,8 @@ export class TipService {
     const appt = await this.appointmentByToken(token);
     const dest = await this.destinations(appt);
     const given = await this.prisma.appointmentTip.findMany({
-      where: { appointmentId: appt.id, method: 'STRIPE' },
+      // Estornada não conta como dada
+      where: { appointmentId: appt.id, method: 'STRIPE', refundedAt: null },
       orderBy: { createdAt: 'asc' },
       select: { destination: true, amount: true },
     });
@@ -315,7 +316,15 @@ export class TipService {
   async remove(userId: number, barbershopId: number, tipId: number) {
     const tip = await this.prisma.appointmentTip.findFirst({
       where: { id: tipId, barbershopId },
-      select: { id: true, appointmentId: true, payEntryId: true, method: true },
+      select: {
+        id: true,
+        appointmentId: true,
+        payEntryId: true,
+        method: true,
+        destination: true,
+        receivedByUnit: true,
+        createdByUserId: true,
+      },
     });
     if (!tip) throw new NotFoundException('Caixinha não encontrada');
     if (tip.method === 'STRIPE') {
@@ -324,7 +333,18 @@ export class TipService {
       );
     }
     const appt = await this.loadAppointment(barbershopId, tip.appointmentId);
-    await this.ensureCanManage(userId, appt);
+    const { desk } = await this.ensureCanManage(userId, appt);
+    // O profissional apaga só a caixinha que ele mesmo registrou, e não a da
+    // unidade nem a recebida pela unidade onde só a recepção registra (a
+    // mesma regra do add). Antes apagava qualquer uma do atendimento
+    if (
+      !desk &&
+      (tip.createdByUserId !== userId ||
+        tip.destination === 'unit' ||
+        (tip.receivedByUnit && !appt.barbershop.staffRecordsUnitTips))
+    ) {
+      throw new ForbiddenException('Essa caixinha só a recepção (ou quem registrou) pode apagar');
+    }
     if (tip.payEntryId != null) {
       const entry = await this.prisma.barberPayEntry.findUnique({
         where: { id: tip.payEntryId },
@@ -354,6 +374,7 @@ export class TipService {
       amount: Decimal;
       currency: string;
       receivedByUnit: boolean;
+      refundedAt?: Date | null;
       barber: { name: string } | null;
     },
     payoutId: number | null | undefined,
@@ -368,6 +389,7 @@ export class TipService {
       receivedByUnit: tip.receivedByUnit,
       barberName: tip.barber?.name ?? null,
       paidOut: payoutId != null,
+      refunded: tip.refundedAt != null,
     };
   }
 

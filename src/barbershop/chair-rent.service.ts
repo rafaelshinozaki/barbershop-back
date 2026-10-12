@@ -20,6 +20,7 @@ import { BarbershopService } from './barbershop.service';
 import { currentPricing } from '../pricing/pricing';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 import { fromMinorUnits, toMinorUnits } from '../common/money-units';
+import { supportEmail } from '../common/app-urls';
 
 const MIN_RENT = 1;
 const MAX_RENT = 100_000;
@@ -1020,7 +1021,7 @@ export class ChairRentService {
           Currency: payment.currency,
           DueDate: payment.dueDate ?? payment.paidAt ?? new Date(),
           InvoiceURL: `${front}/rent-receipt/${payment.id}?b=${payment.link.memberBarbershopId}`,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         subject: {
@@ -1060,7 +1061,7 @@ export class ChairRentService {
           Currency: currency,
           DueDate: new Date(invoice.created * 1000),
           InvoiceURL: invoice.hosted_invoice_url,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         subject: {

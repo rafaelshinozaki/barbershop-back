@@ -6,6 +6,7 @@ import { CouponsService } from './coupons.service';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomInt } from 'crypto';
 import { CHANGE_PASSWORD_CODE_EXPIRY_MINUTES, CHANGE_PASSWORD_MAX_ATTEMPTS } from '@/common';
+import { supportEmail } from '../common/app-urls';
 
 const EMAIL_NOT_CONFIRMED = 'Confirme seu e-mail antes de convidar alguém.';
 
@@ -168,7 +169,7 @@ export class FriendInviteService {
         FullName: user.fullName,
         AppName: 'Barbershop',
         VerificationCode: code,
-        SupportEmail: 'suporte@barbershop.com.br',
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       },
       { pt: 'Confirme seu e-mail', en: 'Confirm your email', es: 'Confirma tu correo' },

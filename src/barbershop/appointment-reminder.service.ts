@@ -66,6 +66,8 @@ export class AppointmentReminderService {
         data: { reminderSentAt: new Date() },
       });
       if (claimed.count === 0) continue; // outra execução já pegou
+      // O id do envio leva o horário: remarcado no mesmo dia, o lembrete do
+      // horário novo não é descartado como repetido (a fila guarda 24 h)
 
       const serviceNames =
         appt.services
@@ -112,7 +114,7 @@ export class AppointmentReminderService {
               meta: 'appointment-reminder',
               to: appt.customer.email,
             },
-            `appointment-reminder-email-${appt.id}`,
+            `appointment-reminder-email-${appt.id}-${appt.startAt.getTime()}`,
           );
         }
 
@@ -132,7 +134,7 @@ export class AppointmentReminderService {
                 time: appointmentTime,
               },
             },
-            `appointment-reminder-whatsapp-${appt.id}`,
+            `appointment-reminder-whatsapp-${appt.id}-${appt.startAt.getTime()}`,
           );
         }
         enqueued++;

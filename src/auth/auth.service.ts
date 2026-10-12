@@ -11,6 +11,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import { UserDTO } from './users/dto/user.dto';
 import { IpLocationService } from '@/common/ip-location.service';
+import { supportEmail } from '../common/app-urls';
 
 @Injectable()
 export class AuthService {
@@ -89,7 +90,7 @@ export class AuthService {
         DeviceType: deviceType,
         Browser: browser,
         OS: os,
-        SupportEmail: 'suporte@barbershop.com.br',
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
 

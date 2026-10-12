@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
+import { supportEmail } from '../common/app-urls';
 
 const MAX_REASON = 500;
 
@@ -105,7 +106,7 @@ export class ClientSuspensionService {
           Reason: account.suspendedReason,
           SupportURL: `${front}/support`,
           AppName: 'Barbershop',
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         {

@@ -20,6 +20,7 @@ import { ClientAccountDTO } from './dto/client-account.dto';
 import { AccountLinkService } from './account-link.service';
 import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
+import { supportEmail } from '../common/app-urls';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -187,7 +188,7 @@ export class ClientAuthService {
           FullName: account.name,
           AppName: 'Barbershop',
           VerifyURL: `${this.frontendUrl()}/client/verify-email?token=${token}`,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         { pt: 'Confirme seu e-mail', en: 'Confirm your email', es: 'Confirma tu correo' },
@@ -261,7 +262,7 @@ export class ClientAuthService {
           AppName: 'Barbershop',
           ResetURL: `${this.frontendUrl()}/client/reset-password?token=${token}`,
           ExpirationHours: RESET_PASSWORD_TTL_HOURS,
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         { pt: 'Redefinição de senha', en: 'Password reset', es: 'Restablecimiento de contraseña' },

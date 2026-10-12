@@ -36,6 +36,9 @@ export class AppointmentTipType {
 
   @Field({ description: 'Já entrou num pagamento do profissional (não dá mais pra apagar)' })
   paidOut: boolean;
+
+  @Field({ description: 'Caixinha paga pelo app e estornada (não conta como recebida)' })
+  refunded: boolean;
 }
 
 /** Caixinha do atendimento, registrada na mão pela equipe (item 11 do roadmap) */

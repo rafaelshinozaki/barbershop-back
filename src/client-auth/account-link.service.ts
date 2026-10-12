@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
 import { assertNotSuspended } from './suspension';
+import { supportEmail } from '../common/app-urls';
 
 type StaffUser = {
   id: number;
@@ -117,7 +118,7 @@ export class AccountLinkService {
         {
           FullName: account.name,
           AppName: 'Barbershop',
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         {

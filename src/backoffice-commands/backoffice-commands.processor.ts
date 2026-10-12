@@ -29,8 +29,9 @@ import {
   SEARCH_CACHE_BUMP,
   SUPPORT_REPLY_EMAIL,
 } from './commands';
+import { supportEmail } from '../common/app-urls';
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'suporte@barbershop.com.br';
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || supportEmail();
 
 /**
  * Executa os comandos da API do backoffice (ver commands.ts): e-mail de

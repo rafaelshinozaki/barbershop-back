@@ -38,6 +38,7 @@ import {
   LOGIN_CODE_MAX_ATTEMPTS,
 } from '@/common';
 import { createHash, randomInt, randomUUID } from 'crypto';
+import { appUrl, supportEmail } from '../../common/app-urls';
 
 // Link de redefinição: no banco fica só o hash (quem lê o banco não consegue
 // usar o link), como já é no fluxo do cliente final
@@ -363,8 +364,8 @@ export class UserService {
         const context = {
           FullName: newUser.fullName,
           AppName: 'Barbershop',
-          LoginURL: 'https://app.barbershop.com/login',
-          SupportEmail: 'suporte@barbershop.com.br',
+          LoginURL: appUrl('/login'),
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         };
 
@@ -847,8 +848,8 @@ export class UserService {
         const context = {
           FullName: user.fullName,
           AppName: 'Barbershop',
-          LoginURL: 'https://app.barbershop.com/login',
-          SupportEmail: 'suporte@barbershop.com.br',
+          LoginURL: appUrl('/login'),
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         };
 
@@ -1047,7 +1048,7 @@ export class UserService {
         AppName: 'Barbershop',
         ResetURL: resetURL,
         ExpirationHours: 2,
-        SupportEmail: 'suporte@barbershop.com.br',
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
 
@@ -1200,7 +1201,7 @@ export class UserService {
       const context = {
         FullName: user.fullName,
         AppName: 'Barbershop',
-        SupportEmail: 'suporte@barbershop.com.br',
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
 
@@ -1255,7 +1256,7 @@ export class UserService {
     const context = {
       FullName: user.fullName,
       AppName: 'Barbershop',
-      SupportEmail: 'suporte@barbershop.com.br',
+      SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
     };
 
@@ -1633,7 +1634,7 @@ export class UserService {
       FullName: user.fullName,
       AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@barbershop.com.br',
+      SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
     };
 
@@ -1753,7 +1754,7 @@ export class UserService {
       const context = {
         FullName: user.fullName,
         AppName: 'Barbershop',
-        SupportEmail: 'suporte@barbershop.com.br',
+        SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
 
@@ -1788,7 +1789,7 @@ export class UserService {
       FullName: user.fullName,
       AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@barbershop.com.br',
+      SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
     };
 
@@ -1857,7 +1858,7 @@ export class UserService {
       FullName: user.fullName,
       AppName: 'Barbershop',
       VerificationCode: code,
-      SupportEmail: 'suporte@barbershop.com.br',
+      SupportEmail: supportEmail(),
       Year: new Date().getFullYear(),
     };
 
@@ -2385,8 +2386,8 @@ export class UserService {
           const context = {
             FullName: newUser.fullName,
             AppName: 'Barbershop',
-            LoginURL: 'https://app.barbershop.com/login',
-            SupportEmail: 'suporte@barbershop.com.br',
+            LoginURL: appUrl('/login'),
+            SupportEmail: supportEmail(),
             Year: new Date().getFullYear(),
           };
 
@@ -2538,8 +2539,8 @@ export class UserService {
         const context = {
           FullName: userData.fullName,
           AppName: 'Barbershop',
-          UpgradeURL: 'https://app.barbershop.com/plans',
-          SupportEmail: 'suporte@barbershop.com.br',
+          UpgradeURL: appUrl('/pricing'),
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         };
 

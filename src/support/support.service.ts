@@ -17,6 +17,7 @@ import { Role } from '@/auth/interfaces/roles';
 import { supportTicketUrl, verifySupportToken } from '@/barbershop/appointment-link';
 import { backofficeUrl } from '../common/cors-origins';
 import { assertCaptcha } from '../common/captcha';
+import { supportEmail } from '../common/app-urls';
 
 export const SUPPORT_CATEGORIES = ['account', 'booking', 'payment', 'safety', 'other'] as const;
 export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
@@ -318,7 +319,7 @@ export class SupportService {
           TicketURL: supportTicketUrl(ticket.id),
           TicketId: ticket.id,
           AppName: 'Barbershop',
-          SupportEmail: 'suporte@barbershop.com.br',
+          SupportEmail: supportEmail(),
           Year: new Date().getFullYear(),
         },
         received
