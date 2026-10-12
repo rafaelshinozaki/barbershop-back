@@ -221,6 +221,7 @@ export class AppointmentSeriesService {
             timeZone,
             country,
           ),
+          created.map((c) => c.id),
         )
         .catch((err) => this.logger.error(`Erro ao confirmar a série ${seriesId}:`, err));
     }
@@ -309,6 +310,7 @@ export class AppointmentSeriesService {
             timeZone,
             country,
           ),
+          allowed.map((t) => t.id),
         )
         .catch((err) => this.logger.error(`Erro ao avisar cancelamento da série:`, err));
     }

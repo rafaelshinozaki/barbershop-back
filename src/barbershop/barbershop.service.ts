@@ -3456,6 +3456,24 @@ export class BarbershopService {
         'Este horário tem sinal pago online. Cancele (o sinal é estornado) em vez de excluir.',
       );
     }
+    // Horário futuro que o cliente já tinha recebido (e posto na agenda pelo
+    // convite): avisa e apaga o evento do calendário dele. O e-mail é montado
+    // antes de apagar (depois não há mais o que carregar)
+    if (appointment.status === 'CONFIRMED' && appointment.startAt > new Date()) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: appointment.customerId },
+        select: { email: true },
+      });
+      if (customer?.email) {
+        await this.sendAppointmentEmail(
+          appointmentId,
+          'appointment_cancelled',
+          customer.email,
+        ).catch((err) =>
+          this.logger.error(`Erro ao avisar exclusão do agendamento #${appointmentId}:`, err),
+        );
+      }
+    }
     await this.prisma.appointment.delete({ where: { id: appointmentId } });
   }
 
@@ -5242,6 +5260,8 @@ export class BarbershopService {
     to: string,
     reason?: string | null,
     seriesDates?: string[],
+    /** Série: todos os horários cancelados saem do calendário do cliente */
+    seriesAppointmentIds?: number[],
   ) {
     return this.sendAppointmentEmail(
       appointmentId,
@@ -5249,17 +5269,24 @@ export class BarbershopService {
       to,
       reason,
       seriesDates,
+      seriesAppointmentIds,
     );
   }
 
-  /** Série recorrente: uma confirmação só, com todas as datas */
-  notifySeriesConfirmed(firstAppointmentId: number, to: string, seriesDates: string[]) {
+  /** Série recorrente: uma confirmação só, com todas as datas (e um evento por data no convite) */
+  notifySeriesConfirmed(
+    firstAppointmentId: number,
+    to: string,
+    seriesDates: string[],
+    seriesAppointmentIds?: number[],
+  ) {
     return this.sendAppointmentEmail(
       firstAppointmentId,
       'appointment_confirmation',
       to,
       null,
       seriesDates,
+      seriesAppointmentIds,
     );
   }
 
@@ -5270,17 +5297,27 @@ export class BarbershopService {
     reason?: string | null,
     /** Datas da série recorrente (já formatadas), listadas no e-mail */
     seriesDates?: string[],
+    /** Horários da série: todos vão no convite de calendário */
+    seriesAppointmentIds?: number[],
   ) {
+    const include = {
+      customer: true,
+      barber: true,
+      barbershop: { include: { network: true } },
+      services: { include: { service: true } },
+    } as const;
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
-      include: {
-        customer: true,
-        barber: true,
-        barbershop: { include: { network: true } },
-        services: { include: { service: true } },
-      },
+      include,
     });
     if (!appt) return;
+    const inviteAppointments = seriesAppointmentIds?.length
+      ? await this.prisma.appointment.findMany({
+          where: { id: { in: seriesAppointmentIds }, barbershopId: appt.barbershopId },
+          include,
+          orderBy: { startAt: 'asc' },
+        })
+      : [appt];
     const shop = appt.barbershop;
     // Cliente não tem idioma salvo: língua do país da unidade
     const lang = langForCountry(shop.country);
@@ -5341,7 +5378,13 @@ export class BarbershopService {
         to,
         // Convite de calendário: o Gmail (e os outros) mostram o evento com o
         // nome do serviço e põem na agenda; no cancelamento, apagam
-        attachments: [appointmentInvite(appt, { name: appt.customer.name, email: to })],
+        attachments: [
+          appointmentInvite(
+            inviteAppointments,
+            { name: appt.customer.name, email: to },
+            { cancelled: template === 'appointment_cancelled' },
+          ),
+        ],
       },
       // Uma confirmação por agendamento; remarcação, uma por novo horário
       template === 'appointment_confirmation'

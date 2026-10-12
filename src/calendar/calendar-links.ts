@@ -46,20 +46,23 @@ export function appointmentEvent(a: AppointmentForEvent): IcsEvent {
  * o evento quando o horário muda e apaga quando é cancelado.
  */
 export function appointmentInvite(
-  a: AppointmentForEvent,
+  /** Um horário, ou todos os de uma série recorrente (um evento cada) */
+  appointments: AppointmentForEvent | AppointmentForEvent[],
   customer: { name: string; email: string },
+  /** E-mail de cancelamento (ou horário excluído): o app apaga os eventos */
+  opts: { cancelled?: boolean } = {},
 ): { filename: string; content: string; contentType: string } {
+  const list = Array.isArray(appointments) ? appointments : [appointments];
   const from = process.env.EMAIL_FROM || 'noreply@barbershop.app';
-  const cancelled = a.status === 'CANCELLED';
+  const cancelled = opts.cancelled ?? list.every((a) => a.status === 'CANCELLED');
   const method = cancelled ? 'CANCEL' : 'REQUEST';
   const content = buildCalendar(
-    [
-      {
-        ...appointmentEvent(a),
-        organizer: { name: a.barbershop.name, email: from },
-        attendee: customer,
-      },
-    ],
+    list.map((a) => ({
+      ...appointmentEvent(a),
+      cancelled,
+      organizer: { name: a.barbershop.name, email: from },
+      attendee: customer,
+    })),
     { method },
   );
   return {
