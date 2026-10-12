@@ -23,6 +23,7 @@ describe('Consentimento para dados de saúde (integração)', () => {
     { notify: () => undefined } as never,
   );
   let ownerId: number;
+  let otherOwnerId: number;
   let networkId: number;
   let shopId: number;
   let customerId: number;
@@ -80,8 +81,23 @@ describe('Consentimento para dados de saúde (integração)', () => {
     customerId = (
       await prisma.customer.create({ data: { networkId, name: 'Cliente', phone: '11911110000' } })
     ).id;
+    // Outra rede tem outro dono (uma rede por dono)
+    const otherOwner = await prisma.user.create({
+      data: {
+        email: `saude-outro-${RUN}@test.local`,
+        password: 'x',
+        fullName: 'Dono De Fora',
+        idDocNumber: `o${RUN}`.slice(-20),
+        phone: `+5512${RUN}`.slice(0, 20),
+        gender: 'male',
+        birthdate: new Date('1990-01-01'),
+        readTerms: true,
+        roleId,
+      },
+    });
+    otherOwnerId = otherOwner.id;
     const otherNetwork = await prisma.network.create({
-      data: { ownerUserId: ownerId, name: `Outra Rede ${RUN}` },
+      data: { ownerUserId: otherOwner.id, name: `Outra Rede ${RUN}` },
     });
     otherNetworkCustomerId = (
       await prisma.customer.create({
@@ -93,10 +109,11 @@ describe('Consentimento para dados de saúde (integração)', () => {
   afterAll(async () => {
     await prisma.consentForm.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
-    await prisma.customer.deleteMany({ where: { network: { ownerUserId: ownerId } } });
-    await prisma.network.deleteMany({ where: { ownerUserId: ownerId } });
+    const owners = [ownerId, otherOwnerId];
+    await prisma.customer.deleteMany({ where: { network: { ownerUserId: { in: owners } } } });
+    await prisma.network.deleteMany({ where: { ownerUserId: { in: owners } } });
     await prisma.subscription.deleteMany({ where: { userId: ownerId } });
-    await prisma.user.deleteMany({ where: { id: ownerId } });
+    await prisma.user.deleteMany({ where: { id: { in: owners } } });
     await prisma.$disconnect();
   });
 

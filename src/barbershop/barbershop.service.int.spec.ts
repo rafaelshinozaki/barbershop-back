@@ -1395,9 +1395,9 @@ describe('BarbershopService (integração com o banco)', () => {
           service.refundIssuedRemainder(A.ownerId, A.shopId, unused.saleId!),
         ).rejects.toThrow('não foi usado');
         await service.deleteSale(A.ownerId, A.shopId, unused.saleId!);
-        expect(
-          (await prisma.clientPackage.findUnique({ where: { id: unused.id } }))?.status,
-        ).toBe('CANCELLED');
+        expect((await prisma.clientPackage.findUnique({ where: { id: unused.id } }))?.status).toBe(
+          'CANCELLED',
+        );
         expect(await prisma.sale.findUnique({ where: { id: unused.saleId! } })).toBeNull();
 
         await service.purchaseClientPackage(A.ownerId, A.shopId, {
@@ -1668,7 +1668,8 @@ describe('BarbershopService (integração com o banco)', () => {
         saleId = sale.id;
         expect(Number(sale.total)).toBe(0);
         expect(
-          (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } })).usedThisCycle,
+          (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } }))
+            .usedThisCycle,
         ).toBe(1);
         await expect(
           service.createSale(A.ownerId, A.shopId, {
@@ -1900,9 +1901,9 @@ describe('BarbershopService (integração com o banco)', () => {
           where: { clientPackageId: bought.id, saleId: sale.id, undoneAt: null },
         });
         expect(use.usedByUserId).toBe(A.ownerId);
-        await expect(
-          service.undoClientPackageUse(A.ownerId, A.shopId, use.id),
-        ).rejects.toThrow('Apague a venda');
+        await expect(service.undoClientPackageUse(A.ownerId, A.shopId, use.id)).rejects.toThrow(
+          'Apague a venda',
+        );
 
         await service.deleteSale(A.ownerId, A.shopId, sale.id);
         checkoutSaleId = null;

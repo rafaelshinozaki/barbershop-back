@@ -247,7 +247,7 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
   });
 
   it('logo depois de agendar, desfaz pelo link mesmo dentro da janela (arrependimento)', async () => {
-    const appt = await book('13:00', `11${RUN}9`.slice(0, 14));
+    const appt = await book('13:00', `119${RUN}`.slice(0, 14));
     const token = createAppointmentToken(appt!.id);
     await prisma.network.update({
       where: { id: networkId },

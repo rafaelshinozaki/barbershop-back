@@ -436,7 +436,8 @@ export const ISSUED_SALE_VALUE_LOCKED_MESSAGE =
   'O valor de uma venda de pacote ou cartão-presente não pode ser alterado.';
 export const NOTHING_LEFT_TO_REFUND_MESSAGE = 'Não sobrou valor para estornar.';
 export const SALE_NOT_ISSUED_MESSAGE = 'Esta venda não é de pacote nem de cartão-presente.';
-export const PACKAGE_UNUSED_DELETE_MESSAGE = 'O pacote não foi usado. Apague a venda para cancelar.';
+export const PACKAGE_UNUSED_DELETE_MESSAGE =
+  'O pacote não foi usado. Apague a venda para cancelar.';
 export const GIFT_CARD_UNUSED_DELETE_MESSAGE =
   'O cartão-presente não foi usado. Apague a venda para cancelar.';
 export const PACKAGE_CHANGED_MESSAGE = 'O pacote mudou. Tente de novo.';
@@ -6880,7 +6881,10 @@ export class BarbershopService {
     const paidOutAutomatically = round2(
       payments
         .filter((p) => p.settledViaConnect)
-        .reduce((sum, p) => sum + Number(p.amount) - feeOf(Number(p.amount), p.platformFeePercent), 0),
+        .reduce(
+          (sum, p) => sum + Number(p.amount) - feeOf(Number(p.amount), p.platformFeePercent),
+          0,
+        ),
     );
     const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
     return {
@@ -7326,11 +7330,7 @@ export class BarbershopService {
     const packageRedeem = data.clientPackageId
       ? await this.preparePackageSession(barbershopId, data)
       : null;
-    if (
-      clubRedeem &&
-      packageRedeem &&
-      clubRedeem.serviceId === packageRedeem.serviceId
-    ) {
+    if (clubRedeem && packageRedeem && clubRedeem.serviceId === packageRedeem.serviceId) {
       throw new BadRequestException('Use o clube ou o pacote neste serviço, não os dois.');
     }
     const discount = data.discountAmount ?? 0;
@@ -8556,9 +8556,7 @@ export class BarbershopService {
           servicePackageId: pkg.id,
           totalSessions: pkg.totalSessions,
           saleId: sale.id,
-          expiresAt: pkg.validityDays
-            ? new Date(Date.now() + pkg.validityDays * 86_400_000)
-            : null,
+          expiresAt: pkg.validityDays ? new Date(Date.now() + pkg.validityDays * 86_400_000) : null,
         },
         include: { servicePackage: { include: { service: true } } },
       });
@@ -8688,7 +8686,9 @@ export class BarbershopService {
     if (!use) throw new NotFoundException('Baixa não encontrada');
     if (use.undoneAt) throw new BadRequestException('Esta baixa já foi desfeita.');
     if (use.saleId) {
-      throw new BadRequestException('A baixa deste pacote está na venda. Apague a venda para desfazer.');
+      throw new BadRequestException(
+        'A baixa deste pacote está na venda. Apague a venda para desfazer.',
+      );
     }
     const restored = await this.prisma.clientPackage.updateMany({
       where: { id: use.clientPackageId, usedSessions: { gt: 0 } },
