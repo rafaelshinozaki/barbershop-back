@@ -363,6 +363,37 @@ export class PaymentsService {
     return { subscription: updated, paymentIntent: undefined };
   }
 
+  /**
+   * Plano trocado pela equipe no backoffice (o banco já mudou): a assinatura
+   * antiga da Stripe passa pro preço do plano novo a partir da próxima
+   * fatura, sem cobrar diferença. Sem assinatura na Stripe, nada a fazer.
+   */
+  async syncStripePlanPrice(userIds: number[]) {
+    const subs = await this.prisma.subscription.findMany({
+      where: {
+        userId: { in: userIds },
+        status: PLANO_STATUS.ACTIVE,
+        stripeSubscriptionId: { not: null },
+      },
+      include: { plan: true },
+    });
+    for (const sub of subs) {
+      const id = must(sub.stripeSubscriptionId, 'assinatura na Stripe');
+      if (!sub.plan.stripePriceId) {
+        this.logger.warn(`Plano ${sub.plan.name} sem preço na Stripe: assinatura ${id} não mudou`);
+        continue;
+      }
+      const current = await this.stripeService.getSubscription(id);
+      const item = current.items.data[0];
+      if (!item || item.price?.id === sub.plan.stripePriceId) continue;
+      await this.stripeService.updateSubscription(id, {
+        items: [{ id: item.id, price: sub.plan.stripePriceId }],
+        proration_behavior: 'none',
+      });
+      this.logger.log(`Assinatura ${id} no preço do plano ${sub.plan.name} (backoffice)`);
+    }
+  }
+
   /** Troca o preço (ou só as opções) da assinatura antiga na Stripe */
   private async updateStripeSubscription(
     stripeSubscriptionId: string,

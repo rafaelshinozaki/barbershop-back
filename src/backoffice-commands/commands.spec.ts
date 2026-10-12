@@ -6,6 +6,7 @@ import {
   parseEmailSend,
   parseModerationNotifyOwner,
   parseNotificationsCreated,
+  parsePlanSyncStripe,
   parseSupportReplyEmail,
 } from './commands';
 
@@ -113,6 +114,12 @@ describe('comando de aviso da moderação', () => {
 });
 
 describe('comando de execução de pedido confirmado', () => {
+  it('plan.sync_stripe: só as pessoas', () => {
+    expect(parsePlanSyncStripe({ userIds: [1, 2], extra: 1 })).toEqual({ userIds: [1, 2] });
+    expect(() => parsePlanSyncStripe({ userIds: [] })).toThrow(/pessoas/);
+    expect(() => parsePlanSyncStripe({ userIds: ['1'] })).toThrow(/pessoas/);
+  });
+
   it('approval.execute: só o número do pedido', () => {
     expect(parseApprovalExecute({ approvalId: 3, extra: 1 })).toEqual({ approvalId: 3 });
     expect(() => parseApprovalExecute({ approvalId: '3' })).toThrow(/pedido/);
@@ -131,6 +138,7 @@ describe('processador dos comandos', () => {
     const backoffice = { sendEmailNotification: jest.fn().mockResolvedValue(true) };
     const moderation = { notifyOwner: jest.fn().mockResolvedValue(undefined) };
     const approvals = { executeConfirmed: jest.fn().mockResolvedValue(undefined) };
+    const payments = { syncStripePlanPrice: jest.fn().mockResolvedValue(undefined) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
@@ -141,6 +149,7 @@ describe('processador dos comandos', () => {
       backoffice as never,
       moderation as never,
       approvals as never,
+      payments as never,
     );
     return {
       processor,
@@ -153,6 +162,7 @@ describe('processador dos comandos', () => {
       backoffice,
       moderation,
       approvals,
+      payments,
     };
   };
 
@@ -168,6 +178,7 @@ describe('processador dos comandos', () => {
       backoffice,
       moderation,
       approvals,
+      payments,
     } = make();
     await processor.process({
       name: 'support.reply_email',
@@ -204,6 +215,8 @@ describe('processador dos comandos', () => {
     expect(moderation.notifyOwner).toHaveBeenCalledWith('photo', 8, 'hide');
     await processor.process({ name: 'approval.execute', data: { approvalId: 5 } } as never);
     expect(approvals.executeConfirmed).toHaveBeenCalledWith(5);
+    await processor.process({ name: 'plan.sync_stripe', data: { userIds: [7] } } as never);
+    expect(payments.syncStripePlanPrice).toHaveBeenCalledWith([7]);
     expect(email.sendCustomerEmail).not.toHaveBeenCalled();
   });
 

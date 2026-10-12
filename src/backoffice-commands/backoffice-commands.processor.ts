@@ -11,6 +11,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
 import { ModerationService } from '../barbershop/moderation.service';
 import { ApprovalService } from '../backoffice/approval.service';
+import { PaymentsService } from '../payments/payments.service';
 import {
   ADMIN_NOTIFICATION_EMAIL,
   APPROVAL_EXECUTE,
@@ -24,6 +25,8 @@ import {
   parseEmailSend,
   parseModerationNotifyOwner,
   parseNotificationsCreated,
+  parsePlanSyncStripe,
+  PLAN_SYNC_STRIPE,
   parseSupportReplyEmail,
   PRICING_RELOAD,
   SEARCH_CACHE_BUMP,
@@ -39,8 +42,8 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || supportEmail();
  * (resposta do suporte com o link assinado, suspensão de conta de cliente,
  * cache da busca depois do Destaque, preços relidos depois de salvos, avisos
  * em tempo real, o e-mail da equipe pra contas do app e o aviso ao dono do
- * que a moderação ocultou ou devolveu, e a execução de pedido de confirmação
- * aprovado).
+ * que a moderação ocultou ou devolveu, a execução de pedido de confirmação
+ * aprovado e o preço da Stripe do plano trocado pela equipe).
  */
 @Processor(BACKOFFICE_COMMANDS_QUEUE, { concurrency: 5 })
 export class BackofficeCommandsProcessor extends WorkerHost {
@@ -56,6 +59,7 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly backoffice: BackofficeService,
     private readonly moderation: ModerationService,
     private readonly approvals: ApprovalService,
+    private readonly payments: PaymentsService,
   ) {
     super();
   }
@@ -94,6 +98,11 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     if (job.name === MODERATION_NOTIFY_OWNER) {
       const cmd = parseModerationNotifyOwner(job.data);
       await this.moderation.notifyOwner(cmd.targetType, cmd.targetId, cmd.action);
+      return;
+    }
+    if (job.name === PLAN_SYNC_STRIPE) {
+      const cmd = parsePlanSyncStripe(job.data);
+      await this.payments.syncStripePlanPrice(cmd.userIds);
       return;
     }
     if (job.name === SEARCH_CACHE_BUMP) {

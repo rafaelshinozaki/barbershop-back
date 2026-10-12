@@ -1,4 +1,5 @@
 import { isLocalized, type Localized } from '../email/language';
+import { safeAppLink } from '../common/app-urls';
 
 /**
  * Contrato dos comandos que a API do backoffice manda pela fila
@@ -153,7 +154,8 @@ export function parseAdminNotificationEmail(data: unknown): AdminNotificationEma
   if (!subject) throw new Error(`${ADMIN_NOTIFICATION_EMAIL}: assunto inválido`);
   const message = text(d.message, 20000);
   if (!message) throw new Error(`${ADMIN_NOTIFICATION_EMAIL}: mensagem inválida`);
-  const actionUrl = text(d.actionUrl, 2000);
+  // Só link do próprio app (o backoffice-back já confere; aqui de novo)
+  const actionUrl = safeAppLink(text(d.actionUrl, 2000));
   const actionText = text(d.actionText, 200);
   const type = text(d.type, 20);
   return {
@@ -205,4 +207,17 @@ export function parseApprovalExecute(data: unknown): ApprovalExecuteCommand {
   const d = (data ?? {}) as Record<string, unknown>;
   if (!positiveInt(d.approvalId)) throw new Error(`${APPROVAL_EXECUTE}: pedido inválido`);
   return { approvalId: d.approvalId };
+}
+
+/**
+ * Plano trocado pela API do backoffice (Financeiro, um a um ou em lote): o
+ * back passa a assinatura antiga da Stripe pro preço do plano novo. Sem isso
+ * quem foi rebaixado continuava pagando o plano maior (e o contrário).
+ */
+export const PLAN_SYNC_STRIPE = 'plan.sync_stripe';
+export type PlanSyncStripeCommand = { userIds: number[] };
+
+export function parsePlanSyncStripe(data: unknown): PlanSyncStripeCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  return { userIds: userIdsOf(PLAN_SYNC_STRIPE, d.userIds) };
 }
