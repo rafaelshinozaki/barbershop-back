@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { createWaitlistLeaveToken } from './appointment-link';
 import { ClosureService } from './closure.service';
+import { WAITLIST_OFFER_MINUTES } from './barbershop.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -313,6 +314,34 @@ describe('Lista de espera online (integração)', () => {
     // O dia da equipe não mudou: continua aguardando
     expect(await statusOf(staffEntry.id)).toBe('WAITING');
 
+    // Quem foi avisado não agendou: o horário oferecido vai pra quem entrou depois
+    const offered = (
+      await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: waiting.entryId } })
+    ).offeredStartAt;
+    expect(offered).not.toBeNull();
+    const laterCustomer = await prisma.customer.create({
+      data: {
+        networkId,
+        name: 'Depois',
+        phone: `3${RUN.slice(-9)}8`,
+        email: `depois-${RUN}@test.local`,
+      },
+    });
+    const later = await barbershops.createWaitlistEntry(ownerId, shopId, {
+      customerId: laterCustomer.id,
+      barberId: ana,
+      date: new Date(`${offDay}T00:00:00Z`),
+    });
+    await prisma.waitlistEntry.update({
+      where: { id: waiting.entryId },
+      data: { notifiedAt: new Date(Date.now() - (WAITLIST_OFFER_MINUTES + 1) * 60_000) },
+    });
+    expect(await barbershops.passExpiredWaitlistOffers()).toBe(1);
+    expect(await statusOf(later.id)).toBe('NOTIFIED');
+    expect(
+      (await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: later.id } })).offeredStartAt,
+    ).toEqual(offered);
+
     // Fechamento removido: o dia reabre e avisa quem espera nele
     const closedDay = addDays(monday, 16);
     await prisma.barbershopClosure.create({
@@ -328,5 +357,88 @@ describe('Lista de espera online (integração)', () => {
     await closures.remove(ownerId, shopId, closedDay);
     expect(await waitFor(async () => (await statusOf(onClosed.entryId)) === 'NOTIFIED')).toBe(true);
     await barbershops.cancelWaitlistEntry(ownerId, shopId, staffEntry.id);
+  });
+  it('avisado que não agenda no prazo: o horário livre vai pro próximo; excluir também avisa', async () => {
+    const day = addDays(monday, 21);
+    const date = new Date(`${day}T00:00:00Z`);
+    const person = async (label: string, n: number) =>
+      (
+        await prisma.customer.create({
+          data: {
+            networkId,
+            name: `Fila ${label}`,
+            phone: `4${RUN.slice(-9)}${n}`,
+            email: `fila-${label}-${RUN}@test.local`,
+          },
+        })
+      ).id;
+    const [first, second, third] = [
+      await person('um', 1),
+      await person('dois', 2),
+      await person('tres', 3),
+    ];
+    const entry = async (customer: number) =>
+      (
+        await barbershops.createWaitlistEntry(ownerId, shopId, {
+          customerId: customer,
+          barberId: ana,
+          date,
+        })
+      ).id;
+    const e1 = await entry(first);
+    const e2 = await entry(second);
+    const e3 = await entry(third);
+    const get = (id: number) => prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
+    const expire = (id: number) =>
+      prisma.waitlistEntry.update({
+        where: { id },
+        data: { notifiedAt: new Date(Date.now() - (WAITLIST_OFFER_MINUTES + 1) * 60_000) },
+      });
+
+    // Excluir o horário (não só cancelar) libera a vaga e avisa o primeiro
+    const appt = await barbershops.createAppointment(ownerId, shopId, {
+      customerId,
+      barberId: ana,
+      startAt: at(day, '11:00'),
+      endAt: at(day, '11:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    emails.length = 0;
+    await barbershops.deleteAppointment(ownerId, shopId, appt!.id);
+    expect(await waitFor(async () => (await get(e1)).status === 'NOTIFIED')).toBe(true);
+    expect(await get(e1)).toMatchObject({
+      offeredStartAt: at(day, '11:00'),
+      offeredBarberId: ana,
+      offeredServiceIds: [serviceId],
+    });
+    expect((await get(e2)).status).toBe('WAITING');
+
+    // Ainda no prazo: ninguém mais é avisado
+    expect(await barbershops.passExpiredWaitlistOffers()).toBe(0);
+    expect((await get(e2)).status).toBe('WAITING');
+
+    // Prazo vencido e horário livre: vai pro segundo, e só uma vez
+    await expire(e1);
+    emails.length = 0;
+    expect(await barbershops.passExpiredWaitlistOffers()).toBe(1);
+    expect((await get(e2)).status).toBe('NOTIFIED');
+    expect((await get(e1)).offeredStartAt).toBeNull();
+    expect(emails.find((e) => e.template === 'waitlist_slot_available')?.to).toBe(
+      `fila-dois-${RUN}@test.local`,
+    );
+    expect(await barbershops.passExpiredWaitlistOffers()).toBe(0);
+
+    // O horário foi agendado: vencido o prazo do segundo, o terceiro não é avisado
+    await barbershops.createAppointment(ownerId, shopId, {
+      customerId: second,
+      barberId: ana,
+      startAt: at(day, '11:00'),
+      endAt: at(day, '11:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await expire(e2);
+    expect(await barbershops.passExpiredWaitlistOffers()).toBe(0);
+    expect((await get(e3)).status).toBe('WAITING');
+    expect((await get(e2)).offeredStartAt).toBeNull();
   });
 });

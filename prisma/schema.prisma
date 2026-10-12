@@ -1289,6 +1289,11 @@ model WaitlistEntry {
   notes        String?
   status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED
   notifiedAt   DateTime?
+  // Horário oferecido no último aviso: sem agendar no prazo, passa pro
+  // próximo da fila (null = já passou ou não há o que passar)
+  offeredStartAt    DateTime?
+  offeredBarberId   Int?
+  offeredServiceIds Int[]     @default([])
   // staff (a equipe pôs) ou online (o cliente entrou pela tela de agendamento)
   source       String             @default("staff")
   // E-mail informado ao entrar online: o aviso vai para ele
@@ -1300,6 +1305,7 @@ model WaitlistEntry {
 
   @@index([barbershopId, status, date])
   @@index([customerId])
+  @@index([status, notifiedAt])
 }
 
 // Histórico de campanhas de marketing (Message Blast) — disparo segmentado

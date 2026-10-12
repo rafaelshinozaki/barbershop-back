@@ -249,6 +249,8 @@ const WAITLIST_MAX_ONLINE_PER_CUSTOMER = 5;
 const WAITLIST_MAX_ONLINE_PER_EMAIL_DAY = 5;
 /** Quantas entradas conferir a cada mudança de agenda (as mais antigas primeiro) */
 const WAITLIST_OPENING_MAX_ENTRIES = 200;
+/** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
+export const WAITLIST_OFFER_MINUTES = 30;
 
 /** Onde a agenda pode ter aberto: um profissional (ou todos) e um período */
 export type WaitlistOpeningScope = { barberId?: number | null; from?: string; to?: string };
@@ -3710,7 +3712,20 @@ export class BarbershopService {
         );
       }
     }
+    const services = await this.prisma.appointmentService.findMany({
+      where: { appointmentId },
+      select: { serviceId: true },
+    });
     await this.prisma.appointment.delete({ where: { id: appointmentId } });
+    // Excluir também libera a vaga (cancelar já avisava a lista de espera)
+    if (appointment.status === 'CONFIRMED' || appointment.status === 'PENDING_PAYMENT') {
+      this.checkWaitlistOnCancellation(barbershopId, { ...appointment, services }).catch((err) =>
+        this.logger.error(
+          `Erro ao verificar lista de espera do agendamento #${appointmentId}:`,
+          err,
+        ),
+      );
+    }
   }
 
   /**
@@ -4192,7 +4207,13 @@ export class BarbershopService {
       if (c.serviceId != null && !serviceIds.includes(c.serviceId)) continue;
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: c.id, status: 'WAITING' },
-        data: { status: 'NOTIFIED', notifiedAt: new Date() },
+        data: {
+          status: 'NOTIFIED',
+          notifiedAt: new Date(),
+          offeredStartAt: appointment.startAt,
+          offeredBarberId: appointment.barberId,
+          offeredServiceIds: serviceIds,
+        },
       });
       if (claimed.count === 1) {
         match = c;
@@ -4203,6 +4224,75 @@ export class BarbershopService {
     // Quem está na tela da lista de espera vê a entrada virar "avisado"
     this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
     await this.sendWaitlistNotice(match, appointment.startAt, localDate);
+  }
+
+  /**
+   * Quem foi avisado e não agendou no prazo: se o horário continua livre,
+   * avisa o próximo da fila. Antes, o aviso ia só pra primeira pessoa e,
+   * sem resposta, o horário ficava vago. Roda a cada poucos minutos.
+   */
+  async passExpiredWaitlistOffers() {
+    const now = new Date();
+    const expired = await this.prisma.waitlistEntry.findMany({
+      where: {
+        status: 'NOTIFIED',
+        notifiedAt: { lte: new Date(now.getTime() - WAITLIST_OFFER_MINUTES * 60_000) },
+        offeredStartAt: { gt: now },
+      },
+      select: {
+        id: true,
+        barbershopId: true,
+        offeredStartAt: true,
+        offeredBarberId: true,
+        offeredServiceIds: true,
+        barbershop: { select: { timezone: true } },
+      },
+      orderBy: { notifiedAt: 'asc' },
+      take: 100,
+    });
+    let passed = 0;
+    for (const e of expired) {
+      const startAt = e.offeredStartAt;
+      if (!startAt) continue;
+      // Uma vez só (duas execuções juntas não passam a mesma vaga duas vezes)
+      const claimed = await this.prisma.waitlistEntry.updateMany({
+        where: { id: e.id, offeredStartAt: startAt },
+        data: { offeredStartAt: null },
+      });
+      if (claimed.count === 0) continue;
+      try {
+        if (e.offeredBarberId != null) {
+          const taken = await this.prisma.appointment.findFirst({
+            where: {
+              barberId: e.offeredBarberId,
+              status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+              startAt: { lte: startAt },
+              endAt: { gt: startAt },
+            },
+            select: { id: true },
+          });
+          if (taken) continue;
+          await this.checkWaitlistOnCancellation(e.barbershopId, {
+            startAt,
+            barberId: e.offeredBarberId,
+            services: e.offeredServiceIds.map((serviceId) => ({ serviceId })),
+          });
+        } else {
+          // Horário que abriu na escala: só ele conta como novo (os outros
+          // livres do dia já estavam livres e não avisam ninguém)
+          const day = toZonedParts(startAt, safeTimeZone(e.barbershop.timezone)).dateStr;
+          const scope = { from: day, to: day };
+          const before = await this.waitlistOpeningSnapshot(e.barbershopId, scope);
+          const offered = startAt.toISOString();
+          for (const slots of before.values()) slots.delete(offered);
+          await this.checkWaitlistOnOpening(e.barbershopId, scope, before);
+        }
+        passed++;
+      } catch (err) {
+        this.logger.error(`Erro ao passar a vaga da lista de espera #${e.id}:`, err);
+      }
+    }
+    return passed;
   }
 
   /**
@@ -4230,7 +4320,14 @@ export class BarbershopService {
       // Condicional: a equipe pode ter mexido na entrada enquanto isso
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: entry.id, status: 'WAITING' },
-        data: { status: 'NOTIFIED', notifiedAt: new Date() },
+        data: {
+          status: 'NOTIFIED',
+          notifiedAt: new Date(),
+          // Horário aberto na escala: sem profissional definido
+          offeredStartAt: new Date(slot),
+          offeredBarberId: null,
+          offeredServiceIds: [],
+        },
       });
       if (claimed.count === 0) continue;
       taken.add(slot);
