@@ -127,7 +127,17 @@ export class TipService {
     }
     const amount = new Decimal(round2(input.amount));
 
+    // Dinheiro que fica na gaveta: a da unidade e a do profissional deixada
+    // no balcão. Entra no caixa aberto pra bater no fechamento
+    const inDrawer = method === 'CASH' && (destination === 'unit' || receivedByUnit);
+
     const tip = await this.prisma.$transaction(async (tx) => {
+      const cashSession = inDrawer
+        ? await tx.cashSession.findFirst({
+            where: { barbershopId, status: 'OPEN' },
+            select: { id: true },
+          })
+        : null;
       let payEntryId: number | null = null;
       if (receivedByUnit) {
         const entry = await tx.barberPayEntry.create({
@@ -156,6 +166,7 @@ export class TipService {
           currency: appt.barbershop.currency,
           receivedByUnit,
           payEntryId,
+          cashSessionId: cashSession?.id ?? null,
           createdByUserId: userId,
         },
         include: { barber: { select: { name: true } } },
@@ -324,6 +335,7 @@ export class TipService {
         destination: true,
         receivedByUnit: true,
         createdByUserId: true,
+        cashSessionId: true,
       },
     });
     if (!tip) throw new NotFoundException('Caixinha não encontrada');
@@ -344,6 +356,15 @@ export class TipService {
         (tip.receivedByUnit && !appt.barbershop.staffRecordsUnitTips))
     ) {
       throw new ForbiddenException('Essa caixinha só a recepção (ou quem registrou) pode apagar');
+    }
+    if (tip.cashSessionId != null) {
+      const session = await this.prisma.cashSession.findUnique({
+        where: { id: tip.cashSessionId },
+        select: { status: true },
+      });
+      if (session?.status === 'CLOSED') {
+        throw new BadRequestException('Essa caixinha é de um caixa já fechado; não dá pra apagar');
+      }
     }
     if (tip.payEntryId != null) {
       const entry = await this.prisma.barberPayEntry.findUnique({
