@@ -447,7 +447,7 @@ export class ChatService {
         appointment: {
           select: {
             startAt: true,
-            barbershop: { select: { id: true, name: true } },
+            barbershop: { select: { id: true, name: true, timezone: true } },
             customer: { select: { name: true } },
           },
         },
@@ -461,6 +461,8 @@ export class ChatService {
       title: t.appointment.customer.name,
       subtitle: t.appointment.barbershop.name,
       startAt: t.appointment.startAt,
+      // A data do atendimento sai no fuso da unidade (não no de quem lê)
+      timezone: t.appointment.barbershop.timezone,
       lastMessageAt: t.lastMessageAt,
       lastMessage: t.messages[0]?.body ?? null,
       unread: unread.get(t.id) ?? 0,
@@ -481,7 +483,7 @@ export class ChatService {
         appointment: {
           select: {
             startAt: true,
-            barbershop: { select: { id: true, name: true } },
+            barbershop: { select: { id: true, name: true, timezone: true } },
             barber: { select: { name: true } },
           },
         },
@@ -495,6 +497,8 @@ export class ChatService {
       title: t.kind === 'unit' ? t.appointment.barbershop.name : t.appointment.barber.name,
       subtitle: t.appointment.barbershop.name,
       startAt: t.appointment.startAt,
+      // A data do atendimento sai no fuso da unidade (não no de quem lê)
+      timezone: t.appointment.barbershop.timezone,
       lastMessageAt: t.lastMessageAt,
       lastMessage: t.messages[0]?.body ?? null,
       unread: unread.get(t.id) ?? 0,

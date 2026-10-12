@@ -856,6 +856,7 @@ type ChatInboxItemType {
   lastMessageAt: DateTime
   startAt: DateTime!
   subtitle: String!
+  timezone: String
   title: String!
   unread: Int!
 }
