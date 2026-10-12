@@ -762,7 +762,7 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 | **Pedidos do titular (LGPD)** (`/privacy-requests`) | Suporte | Acesso, correção, exclusão e portabilidade pedidos por e-mail/suporte, com prazo de 15 dias e resposta registrada | `privacyRequests`, `createPrivacyRequest`, `updatePrivacyRequest` | ✅ Fase 3 |
 | **Saúde do sistema** (`/health`) | Admin | Último minuto da API: requests, p95, erros, CPU, memória, banco, Redis, filas (BullMQ) e operações mais lentas | `systemHealth`, `backupStatus`, `runBackupNow` | ✅ |
 
-**Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
+**Fora do backoffice, de propósito:** operações da conta de cada negócio (agenda, clientes, fichas, pagamentos da equipe) ficam no app das barbearias. Exceções decididas em 2026-10-12: corrigir fuso, moeda, país e slug da unidade, e transferir a propriedade (ver "Operações que faltam"). A equipe não entra "como" o negócio (sem personificar). Para ajudar, usa a ficha só leitura. A ficha de saúde e o texto das conversas só aparecem quando vêm anexados a uma denúncia.
 
 **Operações antigas a tirar** ✅ (feito): `changeUserPlan`, `changeMultipleUsersPlan`, `setUserActive`, `setMultipleUsersActive` e `removeUser` do `user.resolver` (só admin) duplicam as do `backoffice.resolver`, que declaram área. Saem do back e da lista da API do backoffice. `GET /stripe/test` também sai.
 
@@ -811,7 +811,7 @@ O código do backoffice-back (`allowed-operations.json`: 41 consultas e 37 alter
 | **Liga/desliga de funções sem deploy** | Atendimento a domicílio (`HOME_SERVICE_ENABLED`) e outras chaves estão no `.env`. Ligar pra uma cidade ou desligar numa emergência pede deploy. Ficaria em `PlatformSetting`, como Preços e taxas. | `pricing.manage` (só admin) | P3 |
 | **Aviso geral no app** (manutenção, instabilidade) | O sininho é por pessoa. Uma faixa no topo pra todo mundo ("manutenção às 23h") não existe. | `notify.send` | P3 |
 
-**Decisão a tomar:** a correção de fuso e moeda e a transferência de propriedade mexem em dado do negócio, o que a regra acima ("fora do backoffice, de propósito") evita. A proposta é abrir exceção só pra esses dois, sempre com motivo, aviso ao dono e registro no Histórico da unidade como "Equipe da plataforma".
+**Decidido** (dono da plataforma, 2026-10-12): corrigir dados de base da unidade (fuso, moeda, país, slug) e transferir a propriedade são as duas exceções à regra "fora do backoffice, de propósito". As duas exigem motivo, avisam o dono por e-mail e no sininho e entram no Histórico da unidade como "Equipe da plataforma" (o nome do funcionário fica só no Registro de ações). Fora delas, a equipe continua sem mexer em dado do negócio.
 
 ### Tirar o backoffice do projeto principal
 
