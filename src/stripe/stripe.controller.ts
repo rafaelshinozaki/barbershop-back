@@ -194,10 +194,15 @@ export class StripeController {
         },
       });
 
+      // Renovação paga: o plano menor agendado (changePlan) entra agora
+      const renewal = invoice.billing_reason === 'subscription_cycle';
       await this.prisma.subscription.update({
         where: { id: subscription.id },
         data: {
           status: PLANO_STATUS.ACTIVE,
+          ...(renewal && subscription.pendingPlanId != null
+            ? { planId: subscription.pendingPlanId, pendingPlanId: null }
+            : {}),
         },
       });
     }

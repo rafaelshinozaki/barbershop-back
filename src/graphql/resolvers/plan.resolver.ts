@@ -12,8 +12,8 @@ import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { PlanDTO } from '../../plan/dto/plan.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PaymentsService } from '../../payments/payments.service';
 import { StripeService } from '../../stripe/stripe.service';
-import { PLANO_STATUS } from '../../common/contants';
 
 @Resolver(() => Plan)
 export class PlanResolver {
@@ -21,6 +21,7 @@ export class PlanResolver {
     private readonly planService: PlanService,
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
+    private readonly payments: PaymentsService,
   ) {}
 
   @Query(() => [Plan])
@@ -118,6 +119,7 @@ export class PlanResolver {
       ...subscription,
       startSubDate: subscription.startSubDate.toISOString(),
       cancelationDate: subscription.cancelationDate?.toISOString(),
+      currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
       createdAt: subscription.createdAt.toISOString(),
       updatedAt: subscription.updatedAt.toISOString(),
       plan: {
@@ -164,33 +166,9 @@ export class PlanResolver {
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async cancelSubscription(@CurrentUser() user: UserDTO) {
+    // O mesmo caminho do backoffice: vale até o fim do período pago
     try {
-      // Buscar assinatura ativa do usuário
-      const subscription = await this.prisma.subscription.findFirst({
-        where: {
-          userId: user.id,
-          status: PLANO_STATUS.ACTIVE,
-        },
-      });
-
-      if (!subscription) {
-        throw new Error('Nenhuma assinatura ativa encontrada');
-      }
-
-      // Cancelar no Stripe se tiver stripeSubscriptionId
-      if (subscription.stripeSubscriptionId) {
-        await this.stripeService.cancelSubscription(subscription.stripeSubscriptionId);
-      }
-
-      // Atualizar status no banco
-      await this.prisma.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: PLANO_STATUS.INACTIVE,
-          cancelationDate: new Date(),
-        },
-      });
-
+      await this.payments.unsubscribe(user.id);
       return true;
     } catch (error) {
       throw new Error(`Erro ao cancelar assinatura: ${error.message}`);

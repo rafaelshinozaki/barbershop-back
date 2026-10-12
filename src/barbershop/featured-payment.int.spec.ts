@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { DEFAULT_PRICING, setCurrentPricing } from '../pricing/pricing';
 import { featuredOffer, FeaturedPaymentService } from './featured-payment.service';
+import { AppPaymentsService } from './app-payments.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const DAY = 86_400_000;
@@ -242,6 +243,45 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
     await expect(featured.confirm(proUserId, second.purchaseId)).rejects.toThrow(
       'Compra não encontrada',
     );
+  });
+
+  it('estornada na Stripe (ou disputa perdida): os dias da compra saem e ela não volta a valer', async () => {
+    const appPayments = new AppPaymentsService(prisma, barbershops, stripe as never);
+    const buy = await featured.start(ownerId, 'barbershop', shopId);
+    const row = await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: buy.purchaseId } });
+    const piId = row.stripePaymentIntentId!;
+    pay(piId);
+    await featured.finalize(intents.get(piId) as never);
+    const until = async () =>
+      (
+        await prisma.barbershop.findUniqueOrThrow({ where: { id: shopId } })
+      ).featuredUntil!.getTime();
+    const paidUntil = await until();
+
+    // Estorno parcial não desfaz
+    await appPayments.syncStripeRefund({
+      payment_intent: piId,
+      amount_refunded: 100,
+      refunded: false,
+      currency: 'brl',
+    } as never);
+    expect(await until()).toBe(paidUntil);
+
+    await appPayments.syncStripeRefund({
+      payment_intent: piId,
+      amount_refunded: SHOP_PRICE,
+      refunded: true,
+      currency: 'brl',
+    } as never);
+    expect(await until()).toBe(paidUntil - FEATURED_DAYS * DAY);
+    expect(
+      (await prisma.featuredPurchase.findUniqueOrThrow({ where: { id: buy.purchaseId } })).status,
+    ).toBe('refunded');
+    // Evento repetido e pagamento confirmado de novo: nada muda
+    await appPayments.revokePlatformPurchase(piId);
+    expect(await featured.finalize(intents.get(piId) as never)).toBe(false);
+    expect(await featured.confirm(ownerId, buy.purchaseId)).toBe(false);
+    expect(await until()).toBe(paidUntil - FEATURED_DAYS * DAY);
   });
 
   it('profissional: só o próprio e com a página pública; sem Stripe fica indisponível', async () => {

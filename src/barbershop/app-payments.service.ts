@@ -312,6 +312,8 @@ export class AppPaymentsService {
       create: { stripeDisputeId: dispute.id, ...data },
       update: data,
     });
+    // Disputa perdida: o dinheiro voltou ao cliente, como um estorno
+    if (dispute.status === 'lost' && intent) await this.revokePlatformPurchase(intent);
   }
 
   /**
@@ -333,6 +335,49 @@ export class AppPaymentsService {
     await this.syncDepositRefund(paymentIntentId, refunded, currency, charge.refunded, now);
     await this.syncPrepaidRefund(paymentIntentId, refunded, charge.refunded, now);
     await this.syncTipRefund(paymentIntentId, refunded, currency, charge.refunded, now);
+    // Compra da plataforma (Destaque, taxa da vaga): só o estorno total desfaz
+    if (charge.refunded) await this.revokePlatformPurchase(paymentIntentId, now);
+  }
+
+  /**
+   * Destaque ou taxa da vaga estornados (ou disputa perdida): a compra deixa
+   * de valer. O Destaque perde os dias que ela tinha somado (o que já passou
+   * não volta; termina agora, no máximo) e a taxa da vaga deixa de contar
+   * como paga. Antes os dois continuavam valendo depois do estorno.
+   */
+  async revokePlatformPurchase(paymentIntentId: string, now = new Date()) {
+    const purchase = await this.prisma.featuredPurchase.findUnique({
+      where: { stripePaymentIntentId: paymentIntentId },
+      select: { id: true, status: true, ownerType: true, ownerId: true, days: true },
+    });
+    if (purchase?.status === 'paid') {
+      const claimed = await this.prisma.featuredPurchase.updateMany({
+        where: { id: purchase.id, status: 'paid' },
+        data: { status: 'refunded' },
+      });
+      if (claimed.count > 0) {
+        const table = purchase.ownerType === 'barbershop' ? '"Barbershop"' : '"Professional"';
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE ${table}
+              SET "featuredUntil" = LEAST("featuredUntil",
+                    GREATEST("featuredUntil" - ($1 || ' days')::interval, $3::timestamp))
+            WHERE id = $2 AND "featuredUntil" IS NOT NULL`,
+          String(purchase.days),
+          purchase.ownerId,
+          now,
+        );
+        this.logger.warn(`Destaque #${purchase.id} estornado: os dias da compra saíram`);
+      }
+    }
+    const fee = await this.prisma.jobApplication.updateMany({
+      where: { feePaymentIntentId: paymentIntentId, feePaidAt: { not: null }, feeRefundedAt: null },
+      // Sem o id do pagamento, o mesmo pagamento repetido não volta a valer
+      // (como na taxa devolvida quando o aceite falha)
+      data: { feePaidAt: null, feeRefundedAt: now, feePaymentIntentId: null },
+    });
+    if (fee.count > 0) {
+      this.logger.warn(`Taxa da vaga estornada (pagamento ${paymentIntentId})`);
+    }
   }
 
   private async syncDepositRefund(

@@ -33,12 +33,15 @@ describe('AppPaymentsService.syncStripeRefund', () => {
       updateMany: jest.fn(async () => ({ count: 1 })),
       row: null as null | { id: number; amount: number; refundedAt: Date | null },
     };
+    // Destaque e taxa da vaga: nada com esse pagamento
+    const featuredPurchase = { findUnique: jest.fn(async () => null) };
+    const jobApplication = { updateMany: jest.fn(async () => ({ count: 0 })) };
     const service = new AppPaymentsService(
-      { appointment, appointmentTip } as never,
+      { appointment, appointmentTip, featuredPurchase, jobApplication } as never,
       {} as never,
       {} as never,
     );
-    return { service, appointment, appointmentTip };
+    return { service, appointment, appointmentTip, jobApplication };
   }
 
   it('marca o sinal estornado no painel', async () => {
@@ -49,6 +52,19 @@ describe('AppPaymentsService.syncStripeRefund', () => {
       expect.objectContaining({
         where: { id: 4, depositRefundedAt: null },
         data: expect.objectContaining({ depositPaid: false }),
+      }),
+    );
+  });
+
+  it('taxa da vaga estornada deixa de contar como paga (só no estorno total)', async () => {
+    const { service, jobApplication } = setup();
+    await service.syncStripeRefund(charge({ refunded: false, amount_refunded: 100 }));
+    expect(jobApplication.updateMany).not.toHaveBeenCalled();
+    await service.syncStripeRefund(charge({}));
+    expect(jobApplication.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { feePaymentIntentId: 'pi_1', feePaidAt: { not: null }, feeRefundedAt: null },
+        data: expect.objectContaining({ feePaidAt: null, feePaymentIntentId: null }),
       }),
     );
   });

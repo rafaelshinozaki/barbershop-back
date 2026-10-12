@@ -1,8 +1,14 @@
 // src\payments\payments.service.ts
 import { must } from '../common/must';
 import { PAGAMENTO_STATUS, PLANO_STATUS, MEMBERSHIP_STATUS } from '@/common';
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { addDays, addYears, format } from 'date-fns';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
+import { addDays, addYears } from 'date-fns';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { StripeService } from '../stripe/stripe.service';
@@ -10,6 +16,7 @@ import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
 import Stripe from 'stripe';
 import { appUrl, supportEmail } from '../common/app-urls';
+import { BarbershopService } from '../barbershop/barbershop.service';
 
 /** Cupom aplicado no checkout do plano (valores em reais). */
 interface CheckoutCoupon {
@@ -54,6 +61,16 @@ function addCycle(from: Date, billingCycle: string) {
   return billingCycle === 'YEARLY' ? addYears(from, 1) : addDays(from, 30);
 }
 
+/** Duração do ciclo, pra proporção da troca de plano */
+function cycleMs(billingCycle: string) {
+  return (billingCycle === 'YEARLY' ? 365 : 30) * 86400_000;
+}
+
+/** Preço por mês, pra saber se a troca sobe ou desce de plano */
+function monthlyPrice(plan: { price: Prisma.Decimal | number; billingCycle: string }) {
+  return Number(plan.price) / (plan.billingCycle === 'YEARLY' ? 12 : 1);
+}
+
 function couponFromMetadata(metadata?: Record<string, string>): CheckoutCoupon | undefined {
   const couponId = Number(metadata?.couponId);
   if (!couponId) return undefined;
@@ -73,6 +90,8 @@ export class PaymentsService {
     private readonly stripeService: StripeService,
     private readonly emailService: EmailService,
     private readonly couponsService: CouponsService,
+    // Confere o uso (unidades, vagas) antes de agendar um plano menor
+    @Optional() private readonly barbershops?: BarbershopService,
   ) {}
 
   async getAll(userId: number) {
@@ -225,6 +244,13 @@ export class PaymentsService {
     return { success: true };
   }
 
+  /**
+   * Troca de plano. Subir cobra na hora a diferença proporcional ao que falta
+   * do período (no cartão salvo) e só então libera o limite novo. Descer
+   * confere se o uso de hoje cabe no plano menor e agenda a troca pra
+   * renovação: o plano atual vale até lá. Antes o limite mudava na hora e o
+   * preço só na renovação (dava pra usar o maior o mês todo e voltar na véspera).
+   */
   async changePlan(userId: number, newPlanId: number) {
     const subscription = await this.prisma.subscription.findFirst({
       where: { userId, AND: { status: PLANO_STATUS.ACTIVE } },
@@ -240,83 +266,263 @@ export class PaymentsService {
       throw new BadRequestException('Plan not found');
     }
 
-    if (!newPlan.stripePriceId) {
+    // Mesmo plano: desfaz o que estava agendado (plano menor ou cancelamento)
+    if (subscription.planId === newPlanId) {
+      if (!subscription.pendingPlanId && !subscription.cancelAtPeriodEnd) return subscription;
+      if (subscription.stripeSubscriptionId && subscription.cancelAtPeriodEnd) {
+        await this.updateStripeSubscription(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: false,
+        });
+      }
+      const updated = await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { pendingPlanId: null, cancelAtPeriodEnd: false, cancelationDate: null },
+      });
+      return { subscription: updated, paymentIntent: undefined };
+    }
+
+    if (Number(newPlan.price) <= 0) {
+      throw new BadRequestException(
+        'Para voltar ao plano gratuito, cancele a assinatura: o plano atual vale até o vencimento',
+      );
+    }
+    const now = new Date();
+    if (
+      Number(subscription.plan.price) <= 0 ||
+      (!subscription.stripeSubscriptionId && !subscription.currentPeriodEnd)
+    ) {
+      throw new BadRequestException('Assine o plano pelo pagamento');
+    }
+    if (
+      !subscription.stripeSubscriptionId &&
+      subscription.currentPeriodEnd &&
+      subscription.currentPeriodEnd <= now
+    ) {
+      throw new BadRequestException('Regularize o pagamento do plano antes de trocar');
+    }
+    if (subscription.stripeSubscriptionId && !newPlan.stripePriceId) {
       throw new BadRequestException('New plan does not have a Stripe price ID configured');
     }
 
-    if (subscription.planId === newPlanId) {
-      return subscription;
-    }
-
-    const priceDiff = Number(newPlan.price) - Number(subscription.plan.price);
-
-    // Atualizar assinatura no Stripe com proration_behavior: 'none' para não cobrar imediatamente
-    if (subscription.stripeSubscriptionId) {
-      try {
-        // O item a trocar é o si_… da assinatura (o sub_… dava "No such
-        // subscription item" e a troca de plano sempre falhava)
-        const current = await this.stripeService.getSubscription(subscription.stripeSubscriptionId);
-        const itemId = current.items.data[0]?.id;
-        if (!itemId) throw new Error('Assinatura sem item no Stripe');
-        await this.stripeService.updateSubscription(subscription.stripeSubscriptionId, {
-          items: [{ id: itemId, price: newPlan.stripePriceId }],
-          proration_behavior: 'none', // Não cobra imediatamente, apenas no próximo vencimento
+    // Mensal → anual sobe na hora (o período recomeça); anual → mensal fica
+    // pra renovação (o anual já pago vale até o fim)
+    const oldCycle = subscription.plan.billingCycle;
+    const upgrade =
+      oldCycle === newPlan.billingCycle
+        ? monthlyPrice(newPlan) > monthlyPrice(subscription.plan)
+        : newPlan.billingCycle === 'YEARLY';
+    if (!upgrade) {
+      // Plano menor: o uso de hoje tem de caber nele
+      await this.barbershops?.assertUsageFitsPlan(userId, newPlan.name);
+      if (subscription.stripeSubscriptionId) {
+        // O preço novo vale a partir da próxima fatura; o plano no banco
+        // muda quando ela é paga (webhook)
+        await this.updateStripeSubscription(subscription.stripeSubscriptionId, {
+          price: must(newPlan.stripePriceId, 'preço do plano na Stripe'),
+          proration_behavior: 'none',
+          cancel_at_period_end: false,
         });
-      } catch (error) {
-        this.logger.error(`Failed to update Stripe subscription: ${error.message}`);
-        throw new BadRequestException('Failed to update subscription in Stripe');
       }
+      const updated = await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { pendingPlanId: newPlanId, cancelAtPeriodEnd: false, cancelationDate: null },
+      });
+      this.logger.log(
+        `Plan change for user ${userId}: ${subscription.plan.name} -> ${newPlan.name} at renewal`,
+      );
+      return { subscription: updated, paymentIntent: undefined, scheduled: true };
     }
 
-    // Atualizar o plano no banco de dados
+    // Plano maior: cobra a diferença antes de liberar
+    let currentPeriodEnd = subscription.currentPeriodEnd;
+    if (subscription.stripeSubscriptionId) {
+      // A Stripe fatura a proporção na hora e recusa se o cartão não passar
+      await this.updateStripeSubscription(subscription.stripeSubscriptionId, {
+        price: must(newPlan.stripePriceId, 'preço do plano na Stripe'),
+        proration_behavior: 'always_invoice',
+        payment_behavior: 'error_if_incomplete',
+        cancel_at_period_end: false,
+      });
+    } else {
+      currentPeriodEnd = await this.chargeUpgrade(subscription, newPlan, now);
+    }
+
     const updated = await this.prisma.subscription.update({
       where: { id: subscription.id },
-      data: { planId: newPlanId },
+      data: {
+        planId: newPlanId,
+        pendingPlanId: null,
+        cancelAtPeriodEnd: false,
+        cancelationDate: null,
+        currentPeriodEnd,
+      },
     });
-
-    // O preço novo vale a partir do próximo vencimento (a renovação cobra o
-    // plano atual). Antes a diferença virava um pagamento "pendente" que o
-    // job cobrava todo dia — a pendência nunca era baixada.
     this.logger.log(
-      `Plan change for user ${userId}: ${subscription.plan.name} -> ${newPlan.name} (price diff ${priceDiff}, from next renewal)`,
+      `Plan change for user ${userId}: ${subscription.plan.name} -> ${newPlan.name} (upgrade, charged now)`,
     );
-
     return { subscription: updated, paymentIntent: undefined };
   }
 
+  /** Troca o preço (ou só as opções) da assinatura antiga na Stripe */
+  private async updateStripeSubscription(
+    stripeSubscriptionId: string,
+    opts: {
+      price?: string;
+      proration_behavior?: Stripe.SubscriptionUpdateParams.ProrationBehavior;
+      payment_behavior?: Stripe.SubscriptionUpdateParams.PaymentBehavior;
+      cancel_at_period_end?: boolean;
+    },
+  ) {
+    const { price, ...rest } = opts;
+    try {
+      let items: Stripe.SubscriptionUpdateParams.Item[] | undefined;
+      if (price) {
+        // O item a trocar é o si_… da assinatura (o sub_… dava "No such
+        // subscription item" e a troca de plano sempre falhava)
+        const current = await this.stripeService.getSubscription(stripeSubscriptionId);
+        const itemId = current.items.data[0]?.id;
+        if (!itemId) throw new Error('Assinatura sem item no Stripe');
+        items = [{ id: itemId, price }];
+      }
+      return await this.stripeService.updateSubscription(stripeSubscriptionId, {
+        ...(items ? { items } : {}),
+        ...rest,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to update Stripe subscription: ${error.message}`);
+      throw new BadRequestException(
+        'Não foi possível atualizar a assinatura na Stripe (o cartão pode ter sido recusado)',
+      );
+    }
+  }
+
+  /**
+   * Plano cobrado por nós: cobra no cartão salvo a diferença proporcional.
+   * Mesmo ciclo: (novo − atual) × o que falta do período, vencimento igual.
+   * Ciclo diferente (mensal ↔ anual): o plano novo menos o crédito do que
+   * falta do atual, e o período recomeça hoje. Devolve o vencimento.
+   */
+  private async chargeUpgrade(
+    sub: {
+      id: number;
+      userId: number;
+      currentPeriodEnd: Date | null;
+      plan: { price: Prisma.Decimal; billingCycle: string };
+    },
+    newPlan: { id: number; price: Prisma.Decimal; billingCycle: string },
+    now: Date,
+  ): Promise<Date> {
+    const end = must(sub.currentPeriodEnd, 'vencimento do plano');
+    const oldPrice = Number(sub.plan.price);
+    const newPrice = Number(newPlan.price);
+    const left = (cycle: string) =>
+      Math.min(1, Math.max(0, end.getTime() - now.getTime()) / cycleMs(cycle));
+    let amount: number;
+    let periodEnd: Date;
+    if (sub.plan.billingCycle === newPlan.billingCycle) {
+      amount = (newPrice - oldPrice) * left(newPlan.billingCycle);
+      periodEnd = end;
+    } else {
+      amount = newPrice - oldPrice * left(sub.plan.billingCycle);
+      periodEnd = addCycle(now, newPlan.billingCycle);
+    }
+    amount = roundMoney(Math.max(0, amount));
+    if (amount < MIN_STRIPE_CHARGE) return periodEnd;
+
+    const user = await this.prisma.user.findUnique({ where: { id: sub.userId } });
+    const paymentMethodId = user?.stripeCustomerId
+      ? await this.stripeService.getDefaultPaymentMethodId(user.stripeCustomerId)
+      : null;
+    if (!user?.stripeCustomerId || !paymentMethodId) {
+      throw new BadRequestException('Cadastre um cartão para trocar de plano');
+    }
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await this.stripeService.chargeOffSession({
+        amount: Math.round(amount * 100),
+        currency: 'brl',
+        customerId: user.stripeCustomerId,
+        paymentMethodId,
+        metadata: {
+          kind: 'plan_upgrade',
+          subscriptionId: String(sub.id),
+          userId: String(sub.userId),
+          planId: String(newPlan.id),
+        },
+        idempotencyKey: `upgrade:${sub.id}:${newPlan.id}:${end.toISOString()}`,
+      });
+    } catch (error: any) {
+      this.logger.warn(`Upgrade do plano recusado (assinatura ${sub.id}): ${error?.message}`);
+      throw new BadRequestException(
+        'O cartão salvo recusou a diferença do plano. Troque o cartão e tente de novo.',
+      );
+    }
+    if (paymentIntent.status !== 'succeeded') {
+      throw new BadRequestException(
+        'A cobrança da diferença do plano não foi concluída. Troque o cartão e tente de novo.',
+      );
+    }
+    // Uma vez só, mesmo se a mesma cobrança voltar (mesma chave)
+    const recorded = await this.prisma.payment.findFirst({
+      where: { transactionId: paymentIntent.id },
+    });
+    if (!recorded) {
+      await this.prisma.payment.create({
+        data: {
+          subscriptionId: sub.id,
+          amount: new Prisma.Decimal(amount),
+          paymentDate: now,
+          nextPaymentDate: periodEnd,
+          paymentMethod: 'stripe',
+          transactionId: paymentIntent.id,
+          status: PAGAMENTO_STATUS.COMPLETED,
+        },
+      });
+    }
+    return periodEnd;
+  }
+
+  /**
+   * Cancelar o plano: um caminho só (tela e backoffice). O plano pago vale
+   * até o fim do período e não renova; aí volta pro gratuito. Antes cortava
+   * na hora (dias pagos perdidos), a tela não voltava a conta pra FREE e o
+   * backoffice marcava cancelado mesmo se a Stripe recusasse.
+   */
   async unsubscribe(userId: number) {
     const lastActiveSub = await this.prisma.subscription.findFirst({
       where: { userId, AND: { status: PLANO_STATUS.ACTIVE } },
+      include: { plan: true },
     });
 
     if (!lastActiveSub) {
       throw new NotFoundException('You do not have any active subscription');
     }
+    if (Number(lastActiveSub.plan.price) <= 0) {
+      throw new BadRequestException('O plano gratuito não tem o que cancelar');
+    }
+    if (lastActiveSub.cancelAtPeriodEnd) return lastActiveSub;
 
+    let endsAt = lastActiveSub.currentPeriodEnd;
     if (lastActiveSub.stripeSubscriptionId) {
-      try {
-        await this.stripeService.cancelSubscription(lastActiveSub.stripeSubscriptionId);
-      } catch (error) {
-        this.logger.error(`Failed to cancel stripe subscription for userId: ${userId}`, error);
-      }
+      // A Stripe encerra no fim do período e manda customer.subscription.deleted
+      const live = await this.updateStripeSubscription(lastActiveSub.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+      endsAt = new Date(live.current_period_end * 1000);
     }
 
-    const startDay = format(lastActiveSub.startSubDate, 'd');
     const subscription = await this.prisma.subscription.update({
       where: { id: lastActiveSub.id },
       data: {
-        status: PLANO_STATUS.INACTIVE,
-        cancelationDate: addDays(
-          new Date(new Date().getFullYear(), new Date().getMonth(), +startDay + 1),
-          +30,
-        ),
+        cancelAtPeriodEnd: true,
+        pendingPlanId: null,
+        cancelationDate: endsAt ?? new Date(),
       },
     });
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { membership: MEMBERSHIP_STATUS.FREE },
-    });
+    // Sem vencimento conhecido: não há período a respeitar
+    if (!endsAt || endsAt <= new Date()) {
+      await this.expireSubscription(lastActiveSub.id, userId);
+    }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (user) {
@@ -828,6 +1034,23 @@ export class PaymentsService {
     }
     const periodEnd = sub.currentPeriodEnd;
     const keyPrefix = `${sub.id}:${periodEnd.toISOString()}:`;
+
+    // Cancelado pelo dono: o período pago acabou, volta pro gratuito
+    if (sub.cancelAtPeriodEnd) {
+      await this.expireSubscription(sub.id, sub.userId);
+      return 'expired';
+    }
+    // Plano menor agendado: entra agora, e a renovação já cobra o preço dele
+    if (sub.pendingPlanId != null) {
+      const switched = await this.prisma.subscription.updateMany({
+        where: { id: sub.id, pendingPlanId: sub.pendingPlanId },
+        data: { planId: sub.pendingPlanId, pendingPlanId: null },
+      });
+      if (switched.count > 0) {
+        sub.plan = await this.prisma.plan.findUniqueOrThrow({ where: { id: sub.pendingPlanId } });
+        sub.planId = sub.pendingPlanId;
+      }
+    }
 
     // Plano gratuito: só avança o período
     const price = Number(sub.plan.price);
