@@ -194,8 +194,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'O serviço do pacote entra na venda sem cobrar uma sessão.': 'PACKAGE_SERVICE_MUST_BE_FREE',
   'A venda não tem o serviço coberto por este pacote.': 'SALE_MISSING_PACKAGE_SERVICE',
   'Esta baixa já foi desfeita.': 'PACKAGE_USE_ALREADY_UNDONE',
-  'A baixa deste pacote está na venda. Apague a venda para desfazer.':
-    'PACKAGE_USE_UNDO_VIA_SALE',
+  'A baixa deste pacote está na venda. Apague a venda para desfazer.': 'PACKAGE_USE_UNDO_VIA_SALE',
   'Baixa não encontrada': 'PACKAGE_USE_NOT_FOUND',
   'Status inválido': 'INVALID_STATUS',
   'Cliente da fila não encontrado': 'QUEUE_CLIENT_NOT_FOUND',
