@@ -62,6 +62,18 @@ export class Subscription {
   @Field(() => String, { nullable: true })
   stripeSubscriptionId?: string | null;
 
+  // Pago até / próximo vencimento
+  @Field(() => String, { nullable: true })
+  currentPeriodEnd?: string | null;
+
+  // Cancelado: vale até currentPeriodEnd e não renova
+  @Field(() => Boolean, { nullable: true })
+  cancelAtPeriodEnd?: boolean | null;
+
+  // Plano menor agendado pra renovação
+  @Field(() => Int, { nullable: true })
+  pendingPlanId?: number | null;
+
   @Field()
   createdAt: string;
 

@@ -109,6 +109,7 @@ export class PaymentResolver {
         ...subscription,
         startSubDate: subscription.startSubDate.toISOString(),
         cancelationDate: subscription.cancelationDate?.toISOString(),
+        currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
         createdAt: subscription.createdAt.toISOString(),
         updatedAt: subscription.updatedAt.toISOString(),
         plan: {

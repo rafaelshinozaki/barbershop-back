@@ -204,6 +204,7 @@ export class FeaturedPaymentService {
     });
     if (!purchase) throw new NotFoundException('Compra não encontrada');
     if (purchase.status === 'paid') return true;
+    if (purchase.status === 'refunded') return false;
     if (!purchase.stripePaymentIntentId) throw new BadRequestException('Pagamento não iniciado');
     return this.finalize(await this.stripe.retrievePaymentIntent(purchase.stripePaymentIntentId));
   }
@@ -220,6 +221,8 @@ export class FeaturedPaymentService {
       return false;
     }
     if (purchase.status === 'paid') return true;
+    // Estornada: o pagamento repetido (tela ou webhook) não devolve os dias
+    if (purchase.status === 'refunded') return false;
     // O pagamento tem de ser desta compra e do valor dela
     if (
       intent.metadata?.kind !== KIND ||
@@ -232,7 +235,7 @@ export class FeaturedPaymentService {
       return false;
     }
     const claimed = await this.prisma.featuredPurchase.updateMany({
-      where: { id: purchase.id, status: { not: 'paid' } },
+      where: { id: purchase.id, status: { notIn: ['paid', 'refunded'] } },
       data: { status: 'paid', paidAt: new Date(), stripePaymentIntentId: intent.id },
     });
     if (claimed.count === 0) return true;

@@ -586,6 +586,32 @@ export class BarbershopService {
     });
   }
 
+  /**
+   * Confere se o que a rede do dono usa hoje cabe no plano (unidades e vagas
+   * de quem atende). Usado antes de agendar a troca pra um plano menor.
+   */
+  async assertUsageFitsPlan(ownerUserId: number, planName: string) {
+    const limits = getPlanLimits(planName);
+    const shops = await this.prisma.barbershop.findMany({
+      where: { network: { ownerUserId }, practiceKind: 'shop' },
+      select: { id: true, name: true },
+    });
+    if (shops.length > limits.maxBarbershops) {
+      throw new BadRequestException(
+        `O plano ${planName} permite ${limits.maxBarbershops} unidade(s) e a rede tem ${shops.length}. Desative unidades antes de trocar.`,
+      );
+    }
+    if (!Number.isFinite(limits.maxBarbersPerShop)) return;
+    for (const shop of shops) {
+      const used = await this.countPlanSeats(shop.id);
+      if (used > limits.maxBarbersPerShop) {
+        throw new BadRequestException(
+          `O plano ${planName} permite ${limits.maxBarbersPerShop} profissional(is) que atendem por unidade e "${shop.name}" tem ${used}. Ajuste a equipe antes de trocar.`,
+        );
+      }
+    }
+  }
+
   /** Uso das vagas do plano na unidade (null = sem limite) */
   async getPlanSeatUsage(userId: number, barbershopId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');

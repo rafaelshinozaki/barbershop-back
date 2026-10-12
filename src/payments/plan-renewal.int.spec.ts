@@ -188,6 +188,11 @@ describe('Cobrança dos planos (integração com o banco)', () => {
     expect(
       await prisma.payment.count({ where: { subscriptionId: sub.id, status: 'PENDING' } }),
     ).toBe(0);
+    // Subir de plano cobrou na hora a diferença do que falta do período (~30 dias)
+    expect(charges).toHaveLength(1);
+    expect(charges[0].amount).toBeGreaterThan(9_900);
+    expect(charges[0].amount).toBeLessThanOrEqual(10_000);
+    charges.length = 0;
 
     const before = await expireBy(0.01);
     // Agendamento + botão "processar" do backoffice (várias vezes) ao mesmo tempo
