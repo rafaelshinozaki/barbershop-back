@@ -517,6 +517,9 @@ model Barbershop {
   // /u/:slug e não é mais editável depois de criado); precisa ser um label
   // de DNS válido (minúsculas, números, hífen — validado no service).
   subdomain      String?   @unique
+  // Unidade encerrada pelo dono: some da equipe, das listas e da página
+  // pública, mas o histórico (vendas, pagamentos, repasses) fica no banco
+  closedAt       DateTime?
   // Sinal pago online (cartão, Stripe) ao agendar pela página pública: o
   // horário fica reservado até pagar. Desligado, a equipe marca o sinal na mão
   onlineDeposit  Boolean   @default(false)

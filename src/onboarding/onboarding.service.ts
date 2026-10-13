@@ -36,7 +36,10 @@ export class OnboardingService {
   private async links(userId: number): Promise<Link[]> {
     const [owned, staff] = await Promise.all([
       this.prisma.barbershop.findMany({
-        where: { OR: [{ ownerUserId: userId }, { network: { ownerUserId: userId } }] },
+        where: {
+          closedAt: null,
+          OR: [{ ownerUserId: userId }, { network: { ownerUserId: userId } }],
+        },
         select: { id: true, name: true, createdAt: true, practiceKind: true },
       }),
       this.prisma.barber.findMany({
