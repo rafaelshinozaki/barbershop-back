@@ -10,6 +10,9 @@
 export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A conversa deste atendimento foi encerrada.': 'CHAT_EXPIRED',
   'O profissional deste horário mudou. Fale com a unidade.': 'CHAT_BARBER_CHANGED',
+  'Quem cancelou: cliente ou unidade': 'INVALID_CANCELLED_BY',
+  'Informe a forma de pagamento': 'PAYMENT_METHOD_REQUIRED',
+  'Esta taxa não está pendente': 'FEE_NOT_PENDING',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

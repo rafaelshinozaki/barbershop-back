@@ -671,6 +671,10 @@ export class UpdateAppointmentInput {
   /** Ao cancelar: estorna o sinal pago online (padrão: sim) */
   @Field({ nullable: true })
   refundDeposit?: boolean;
+
+  /** Ao cancelar: quem cancelou, `client` ou `business`. Só o cliente gera taxa de cancelamento tardio */
+  @Field({ nullable: true })
+  cancelledBy?: string;
 }
 
 // ============ WalkIn ============

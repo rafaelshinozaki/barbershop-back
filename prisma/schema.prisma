@@ -714,6 +714,8 @@ model NoShowFee {
   reason        String    // LATE_CANCELLATION, NO_SHOW
   status        String    @default("PENDING") // PENDING, COLLECTED, WAIVED
   collectedAt   DateTime?
+  // Venda lançada no caixa quando a taxa foi recebida
+  saleId        Int?      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barbershop    Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)

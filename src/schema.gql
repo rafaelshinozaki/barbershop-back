@@ -2248,7 +2248,7 @@ type Mutation {
   logout: Boolean!
   logoutOtherSessions: Boolean!
   markAllNotificationsAsRead: CommonResponse!
-  markNoShowFeeCollected(barbershopId: Int!, id: Int!): Boolean!
+  markNoShowFeeCollected(barbershopId: Int!, id: Int!, paymentMethod: String): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
   moderateReview(hide: Boolean!, reviewId: Int!): Boolean!
   myPaymentDashboardLink: PaymentAccountLinkType!
@@ -4103,6 +4103,7 @@ type UpcomingPaymentDetail {
 
 input UpdateAppointmentInput {
   barberId: Int
+  cancelledBy: String
   customerId: Int
   endAt: String
   notes: String

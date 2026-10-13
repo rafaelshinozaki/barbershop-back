@@ -340,8 +340,9 @@ export class BarbershopResolver {
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('id', { type: () => Int }) id: number,
     @CurrentUser() user: UserDTO,
+    @Args('paymentMethod', { type: () => String, nullable: true }) paymentMethod?: string,
   ) {
-    return this.barbershopService.markNoShowFeeCollected(user.id, barbershopId, id);
+    return this.barbershopService.markNoShowFeeCollected(user.id, barbershopId, id, paymentMethod);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1057,7 +1058,7 @@ export class BarbershopResolver {
     @Args('input') input: UpdateAppointmentInput,
     @CurrentUser() user: UserDTO,
   ) {
-    const { refundDeposit, ...rest } = input;
+    const { refundDeposit, cancelledBy, ...rest } = input;
     const data: any = { ...rest };
     if (input.startAt) data.startAt = new Date(input.startAt);
     if (input.endAt) data.endAt = new Date(input.endAt);
@@ -1070,6 +1071,7 @@ export class BarbershopResolver {
       : null;
     const result = await this.barbershopService.updateAppointment(user.id, barbershopId, id, data, {
       refundDeposit: refundDeposit ?? true,
+      cancelledBy,
     });
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     if (input.status && before && before.status !== input.status) {
