@@ -1412,13 +1412,39 @@ describe('BarbershopService (integração com o banco)', () => {
         await expect(service.deleteSale(A.ownerId, A.shopId, used.saleId!)).rejects.toThrow(
           'já teve sessão usada',
         );
+        // O caixa da venda já fechou: o estorno vai pro caixa aberto de hoje
+        const usedSale = await prisma.sale.findUniqueOrThrow({ where: { id: used.saleId! } });
+        const oldCash = await prisma.cashSession.create({
+          data: {
+            barbershopId: A.shopId,
+            openedByUserId: A.ownerId,
+            openingBalance: new Decimal(0),
+            status: 'CLOSED',
+            closedAt: new Date(),
+          },
+        });
+        await prisma.sale.update({
+          where: { id: usedSale.id },
+          data: { cashSessionId: oldCash.id },
+        });
         await service.refundIssuedRemainder(A.ownerId, A.shopId, used.saleId!);
-        const refunded = await prisma.sale.findUnique({
+        // A venda original fica como foi; o estorno é um lançamento de hoje
+        const original = await prisma.sale.findUniqueOrThrow({
           where: { id: used.saleId! },
           include: { items: true },
         });
-        expect(Number(refunded?.total)).toBe(30);
-        expect(Number(refunded?.items[0]?.totalPrice)).toBe(30);
+        expect(Number(original.total)).toBe(120);
+        const refundSale = await prisma.sale.findFirstOrThrow({
+          where: { barbershopId: A.shopId, saleType: 'REFUND', customerId: A.customerId },
+          orderBy: { id: 'desc' },
+        });
+        expect(Number(refundSale.total)).toBe(-90);
+        expect(refundSale.paymentMethod).toBe('PIX');
+        await expect(service.deleteSale(A.ownerId, A.shopId, refundSale.id)).rejects.toThrow(
+          'Estorno não pode',
+        );
+        await prisma.sale.update({ where: { id: usedSale.id }, data: { cashSessionId: null } });
+        await prisma.cashSession.delete({ where: { id: oldCash.id } });
         const afterPkg = await prisma.clientPackage.findUnique({ where: { id: used.id } });
         expect(afterPkg).toMatchObject({ status: 'COMPLETED', usedSessions: 1, totalSessions: 1 });
         await expect(
@@ -1464,7 +1490,17 @@ describe('BarbershopService (integração com o banco)', () => {
         await service.refundIssuedRemainder(A.ownerId, A.shopId, partialRow.saleId!);
         expect(
           Number((await prisma.sale.findUnique({ where: { id: partialRow.saleId! } }))?.total),
-        ).toBe(40);
+        ).toBe(100);
+        expect(
+          Number(
+            (
+              await prisma.sale.findFirstOrThrow({
+                where: { barbershopId: A.shopId, saleType: 'REFUND' },
+                orderBy: { id: 'desc' },
+              })
+            ).total,
+          ),
+        ).toBe(-60);
         const cardAfter = await prisma.giftCard.findUnique({ where: { id: partial.id } });
         expect(Number(cardAfter?.remainingValue)).toBe(0);
         expect(cardAfter?.isActive).toBe(false);

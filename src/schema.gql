@@ -565,8 +565,10 @@ type BarbershopCustomer {
 
 type BarbershopDeletionPreviewType {
   activeClientSubscriptions: Int!
+  activePackages: Int!
   futureAppointments: Int!
   onlineRefunds: [DeletionRefundType!]!
+  packageRefunds: [DeletionRefundType!]!
 }
 
 type BarbershopPhotoType {
