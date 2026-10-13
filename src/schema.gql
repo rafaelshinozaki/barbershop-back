@@ -228,6 +228,7 @@ type Appointment {
   createdAt: String!
   customerId: Int!
   customerName: String
+  customerPhone: String
   depositAmount: Float
   depositPaid: Boolean!
   depositPaidAt: DateTime
@@ -3338,7 +3339,7 @@ type Query {
   barbershopChangeLog(actorId: Int, actorKind: String, barbershopId: Int!, entityType: String, from: DateTime, limit: Int, offset: Int, to: DateTime): ChangeLogPageType!
   barbershopChangeLogActors(barbershopId: Int!): [ChangeLogActorType!]!
   barbershopClosures(barbershopId: Int!): [ClosureType!]!
-  barbershopCustomers(barbershopId: Int!, search: String): [BarbershopCustomer!]!
+  barbershopCustomers(barbershopId: Int!, limit: Int, offset: Int, search: String): [BarbershopCustomer!]!
   barbershopDeletionPreview(id: Int!): BarbershopDeletionPreviewType!
   barbershopJobOpenings(barbershopId: Int!): [JobOpeningType!]!
   barbershopNoShowFees(barbershopId: Int!): [NoShowFeeType!]!
@@ -3351,7 +3352,7 @@ type Query {
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
   barbershopReviews(barbershopId: Int!): [ReviewType!]!
-  barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, startAt: String): [Sale!]!
+  barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, limit: Int, offset: Int, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopSubscribers(barbershopId: Int!): [ClientSubscriptionType!]!
   barbershopTimeOffs(barbershopId: Int!, endAt: String!, startAt: String!): [BarberTimeOffType!]!

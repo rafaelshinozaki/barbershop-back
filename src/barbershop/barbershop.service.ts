@@ -3344,9 +3344,14 @@ export class BarbershopService {
       skip: filters?.offset ?? 0,
     });
     const canSee = await this.contactVisibility(userId, barbershop);
-    return appointments.map(({ sale, ...a }) =>
-      this.hideAppointmentContact(canSee, { ...a, saleId: sale?.id ?? null }),
-    );
+    return appointments.map(({ sale, ...a }) => {
+      const appt = this.hideAppointmentContact(canSee, { ...a, saleId: sale?.id ?? null });
+      return {
+        ...appt,
+        customerName: appt.customer?.name ?? null,
+        customerPhone: appt.customer?.phone || null,
+      };
+    });
   }
 
   /**

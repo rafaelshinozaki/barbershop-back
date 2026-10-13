@@ -723,10 +723,14 @@ export class Appointment {
   @Field(() => Int)
   barbershopId: number;
 
-  // Só na agenda da franquia (networkAppointments): o nome — sem telefone,
-  // que segue as regras de contato de cada cargo
+  // O nome do cliente, pra agenda não depender da lista de clientes (que
+  // vem paginada). Na agenda da franquia vem sem telefone
   @Field(() => String, { nullable: true })
   customerName?: string | null;
+
+  // Telefone do cliente na agenda da unidade: vazio pra quem não vê contato
+  @Field(() => String, { nullable: true })
+  customerPhone?: string | null;
 
   @Field(() => String, { nullable: true })
   barberName?: string | null;

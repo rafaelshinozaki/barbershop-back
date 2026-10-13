@@ -127,6 +127,13 @@ export class BarbershopDeletionPreviewType {
   activeClientSubscriptions: number;
 }
 
+/** Página de lista (clientes, vendas): no máximo 200 por vez */
+const MAX_PAGE = 200;
+const pageArgs = (limit?: number | null, offset?: number | null) => ({
+  limit: limit == null ? undefined : Math.min(Math.max(1, Math.floor(limit)), MAX_PAGE),
+  offset: offset == null ? undefined : Math.max(0, Math.floor(offset)),
+});
+
 @Resolver(() => Barbershop)
 export class BarbershopResolver {
   constructor(
@@ -377,8 +384,13 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('search', { nullable: true }) search?: string,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
   ) {
-    return this.barbershopService.getCustomers(user.id, barbershopId, { search });
+    return this.barbershopService.getCustomers(user.id, barbershopId, {
+      search: search?.trim() || undefined,
+      ...pageArgs(limit, offset),
+    });
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1251,11 +1263,14 @@ export class BarbershopResolver {
     @Args('startAt', { nullable: true }) startAt?: string,
     @Args('endAt', { nullable: true }) endAt?: string,
     @Args('customerId', { type: () => Int, nullable: true }) customerId?: number,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
   ) {
     return this.barbershopService.getSales(user.id, barbershopId, {
       from: startAt ? new Date(startAt) : undefined,
       to: endAt ? new Date(endAt) : undefined,
       customerId,
+      ...pageArgs(limit, offset),
     });
   }
 
