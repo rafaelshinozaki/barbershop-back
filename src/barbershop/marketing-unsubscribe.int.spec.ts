@@ -6,7 +6,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, MARKETING_EMAILS_PER_30_DAYS } from './barbershop.service';
 import { EmailService } from '../email/email.service';
 import { createUnsubscribeToken, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import { MarketingUnsubscribeController } from './marketing-unsubscribe.controller';
@@ -91,8 +91,10 @@ describe('Descadastro do marketing (integração com o banco)', () => {
 
   afterAll(async () => {
     await prisma.marketingCampaign.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.appointment.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.network.delete({ where: { id: networkId } });
-    await prisma.$executeRaw`DELETE FROM "User" WHERE id = ${ownerId}`;
+    await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%${RUN}@test.local`}`;
     await prisma.$disconnect();
     process.env = env;
   });
@@ -140,6 +142,8 @@ describe('Descadastro do marketing (integração com o banco)', () => {
     ).toBe(true);
 
     queued.length = 0;
+    // Uma campanha por dia: a do teste anterior sai pra este disparo valer
+    await prisma.marketingCampaign.deleteMany({ where: { barbershopId: shopId } });
     await service.sendMarketingBlast(ownerId, shopId, {
       message: 'Outra promoção',
       segment: 'ALL',
@@ -158,5 +162,97 @@ describe('Descadastro do marketing (integração com o banco)', () => {
     await expect(
       service.unsubscribeFromMarketing(`${customerId}.inventado`),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('gerente manda só pra quem foi atendido na unidade, sem bloqueados; uma por dia e teto mensal', async () => {
+    const role = await prisma.role.findFirstOrThrow({ where: { name: 'BarbershopOwner' } });
+    const managerId = (
+      await prisma.user.create({
+        data: {
+          email: `mkt-gerente-${RUN}@test.local`,
+          password: 'x',
+          fullName: 'Gerente',
+          idDocNumber: `mktg${RUN}`.slice(-20),
+          phone: `+5521${RUN}`.slice(0, 20),
+          gender: 'male',
+          birthdate: new Date('1990-01-01'),
+          readTerms: true,
+          roleId: role.id,
+        },
+      })
+    ).id;
+    const barber = await prisma.barber.create({
+      data: {
+        barbershopId: shopId,
+        name: 'Gerente',
+        phone: '11977776666',
+        userId: managerId,
+        staffType: 'manager',
+      },
+    });
+    const person = (label: string, extra: object = {}) =>
+      prisma.customer.create({
+        data: {
+          networkId,
+          name: label,
+          email: `${label}-${RUN}@test.local`,
+          phone: `119${label.length}${RUN}`.slice(0, 13),
+          ...extra,
+        },
+      });
+    const served = await person('atendido');
+    const elsewhere = await person('outra-unidade');
+    const blocked = await person('bloqueado', { blockedAt: new Date(), blockedReason: 'Ofensas' });
+    for (const c of [served, blocked]) {
+      await prisma.appointment.create({
+        data: {
+          barbershopId: shopId,
+          barberId: barber.id,
+          customerId: c.id,
+          startAt: new Date(Date.now() - 86_400_000),
+          endAt: new Date(Date.now() - 86_400_000 + 1_800_000),
+          status: 'COMPLETED',
+        },
+      });
+    }
+    await prisma.marketingCampaign.deleteMany({ where: { barbershopId: shopId } });
+    queued.length = 0;
+    await service.sendMarketingBlast(managerId, shopId, {
+      message: 'Só da unidade',
+      segment: 'ALL',
+      sendEmail: true,
+      sendWhatsapp: false,
+    });
+    const to = queued.map((j) => j.to);
+    expect(to).toContain(served.email);
+    expect(to).not.toContain(elsewhere.email);
+    expect(to).not.toContain(blocked.email);
+
+    // Outra no mesmo dia: recusada
+    await expect(
+      service.sendMarketingBlast(ownerId, shopId, {
+        message: 'De novo',
+        segment: 'ALL',
+        sendEmail: true,
+        sendWhatsapp: false,
+      }),
+    ).rejects.toThrow('últimas 24 horas');
+
+    // Teto de e-mails em 30 dias (a campanha de ontem já quase esgotou)
+    await prisma.marketingCampaign.updateMany({
+      where: { barbershopId: shopId },
+      data: {
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+        emailQueuedCount: MARKETING_EMAILS_PER_30_DAYS,
+      },
+    });
+    await expect(
+      service.sendMarketingBlast(ownerId, shopId, {
+        message: 'Mais uma',
+        segment: 'ALL',
+        sendEmail: true,
+        sendWhatsapp: false,
+      }),
+    ).rejects.toThrow('limite de e-mails');
   });
 });

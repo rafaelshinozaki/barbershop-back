@@ -13,6 +13,11 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Quem cancelou: cliente ou unidade': 'INVALID_CANCELLED_BY',
   'Informe a forma de pagamento': 'PAYMENT_METHOD_REQUIRED',
   'Esta taxa não está pendente': 'FEE_NOT_PENDING',
+  'Esta unidade já enviou uma campanha nas últimas 24 horas. Tente amanhã.':
+    'MARKETING_DAILY_LIMIT',
+  'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.':
+    'MARKETING_MONTHLY_LIMIT',
+  'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

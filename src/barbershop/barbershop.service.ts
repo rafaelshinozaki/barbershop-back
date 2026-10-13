@@ -249,6 +249,15 @@ const WAITLIST_MAX_ONLINE_PER_CUSTOMER = 5;
 const WAITLIST_MAX_ONLINE_PER_EMAIL_DAY = 5;
 /** Quantas entradas conferir a cada mudança de agenda (as mais antigas primeiro) */
 const WAITLIST_OPENING_MAX_ENTRIES = 200;
+/** Letras do código de indicação (sem 0/O e 1/I, que se confundem) */
+const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** Campanhas de marketing: uma por dia por unidade, e um teto de e-mails em 30 dias */
+const MARKETING_MIN_INTERVAL_HOURS = 24;
+export const MARKETING_EMAILS_PER_30_DAYS = 5000;
+export const MARKETING_DAILY_LIMIT_MESSAGE =
+  'Esta unidade já enviou uma campanha nas últimas 24 horas. Tente amanhã.';
+export const MARKETING_MONTHLY_LIMIT_MESSAGE =
+  'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.';
 /** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
 export const WAITLIST_OFFER_MINUTES = 30;
 
@@ -4550,8 +4559,26 @@ export class BarbershopService {
     barbershopId: number,
     segment: string,
     inactiveDays?: number,
+    networkWide = false,
   ) {
-    const baseWhere = { networkId, isActive: true, marketingOptOut: false, deletedAt: null };
+    // Bloqueado pela unidade não recebe. Gerente manda só pra quem já foi
+    // atendido na unidade; a rede inteira é só do dono (antes o gerente de
+    // uma unidade disparava pros clientes de todas)
+    const baseWhere: Prisma.CustomerWhereInput = {
+      networkId,
+      isActive: true,
+      marketingOptOut: false,
+      deletedAt: null,
+      blockedAt: null,
+      ...(networkWide
+        ? {}
+        : {
+            OR: [
+              { appointments: { some: { barbershopId } } },
+              { sales: { some: { barbershopId } } },
+            ],
+          }),
+    };
 
     if (segment === 'INACTIVE') {
       const days = inactiveDays ?? 60;
@@ -4607,6 +4634,7 @@ export class BarbershopService {
       barbershopId,
       segment,
       inactiveDays,
+      barbershop.accessLevel === 'owner',
     );
     return { recipientCount: customers.length };
   }
@@ -4633,11 +4661,20 @@ export class BarbershopService {
     },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    // Uma campanha por dia por unidade: disparos repetidos derrubam a
+    // reputação de envio do domínio da plataforma (todas as unidades)
+    const since = new Date(Date.now() - MARKETING_MIN_INTERVAL_HOURS * 3_600_000);
+    const recent = await this.prisma.marketingCampaign.findFirst({
+      where: { barbershopId, createdAt: { gte: since } },
+      select: { id: true },
+    });
+    if (recent) throw new BadRequestException(MARKETING_DAILY_LIMIT_MESSAGE);
     const customers = await this.resolveMarketingSegment(
       barbershop.networkId,
       barbershopId,
       data.segment,
       data.inactiveDays,
+      barbershop.accessLevel === 'owner',
     );
 
     // Cria a campanha primeiro e enfileira um envio por cliente — antes o
@@ -4653,6 +4690,19 @@ export class BarbershopService {
             .map((c) => normalizePhoneToE164(c.phone))
             .filter((phone): phone is string => !!phone)
         : [];
+
+    if (emailRecipients.length > 0) {
+      const sent = await this.prisma.marketingCampaign.aggregate({
+        where: { barbershopId, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+        _sum: { emailQueuedCount: true },
+      });
+      if (
+        (sent._sum.emailQueuedCount ?? 0) + emailRecipients.length >
+        MARKETING_EMAILS_PER_30_DAYS
+      ) {
+        throw new BadRequestException(MARKETING_MONTHLY_LIMIT_MESSAGE);
+      }
+    }
 
     const campaign = await this.prisma.marketingCampaign.create({
       data: {
@@ -5553,11 +5603,13 @@ export class BarbershopService {
       // Falha silenciosa em código inválido/de outra rede/auto-indicação: não
       // vale travar o agendamento por causa de um link de indicação quebrado.
       if (input.referralCode) {
-        const referrerId = this.decodeReferralCode(input.referralCode);
-        if (referrerId && referrerId !== customer.id) {
-          const referrer = await this.prisma.customer.findFirst({
-            where: { id: referrerId, networkId },
-          });
+        const code = input.referralCode.trim().toUpperCase();
+        const referrer = code
+          ? await this.prisma.customer.findFirst({
+              where: { referralCode: code, networkId, deletedAt: null },
+            })
+          : null;
+        if (referrer && referrer.id !== customer.id) {
           if (referrer) {
             await this.prisma.customerReferral.create({
               data: { networkId, referrerId: referrer.id, referredId: customer.id },
@@ -6791,16 +6843,37 @@ export class BarbershopService {
 
   // ============ INDICAÇÃO ENTRE CLIENTES ============
 
-  // Código de indicação = base36 do id do Customer — decodificável sem
-  // round-trip no banco (não precisa de coluna própria nem checar colisão,
-  // já que id já é único).
-  private encodeReferralCode(customerId: number): string {
-    return customerId.toString(36).toUpperCase();
-  }
-
-  private decodeReferralCode(code: string): number | null {
-    const id = parseInt(code, 36);
-    return Number.isFinite(id) && id > 0 ? id : null;
+  /**
+   * Código de indicação da ficha: aleatório, criado na primeira vez que é
+   * pedido. Antes era o id do cliente em base 36 ("1", "2", "A"...), fácil
+   * de adivinhar e que revelava quantos clientes a rede tinha.
+   */
+  private async referralCodeOf(customer: { id: number; referralCode: string | null }) {
+    if (customer.referralCode) return customer.referralCode;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = Array.from(
+        { length: 8 },
+        () => REFERRAL_CODE_CHARS[randomInt(REFERRAL_CODE_CHARS.length)],
+      ).join('');
+      const saved = await this.prisma.customer
+        .updateMany({
+          where: { id: customer.id, referralCode: null },
+          data: { referralCode: code },
+        })
+        .catch((err: { code?: string }) => {
+          if (err?.code === 'P2002') return { count: -1 };
+          throw err;
+        });
+      if (saved.count === 1) return code;
+      if (saved.count === 0) {
+        const current = await this.prisma.customer.findUnique({
+          where: { id: customer.id },
+          select: { referralCode: true },
+        });
+        if (current?.referralCode) return current.referralCode;
+      }
+    }
+    throw new BadRequestException('Não foi possível gerar o código de indicação. Tente de novo.');
   }
 
   async getCustomerReferralInfo(userId: number, barbershopId: number, customerId: number) {
@@ -6821,7 +6894,7 @@ export class BarbershopService {
     });
 
     return {
-      referralCode: this.encodeReferralCode(customer.id),
+      referralCode: await this.referralCodeOf(customer),
       referralBonusPoints: barbershop.network.referralBonusPoints,
       referralsCount: referralsMade.length,
       pointsEarnedFromReferrals: referralsMade.reduce((sum, r) => sum + (r.pointsAwarded ?? 0), 0),
@@ -7752,6 +7825,7 @@ export class BarbershopService {
             loyaltyDiscountAmount > 0 ? new Decimal(loyaltyDiscountAmount) : null,
           depositApplied: depositApplied > 0 ? new Decimal(depositApplied) : null,
           prepaidApplied: prepaidApplied > 0 ? new Decimal(prepaidApplied) : null,
+          clientSubscriptionId: clubRedeem?.id ?? null,
         },
       });
       // Cobrou o atendimento: ele está concluído
@@ -8218,6 +8292,22 @@ export class BarbershopService {
     await this.prisma.$transaction(async (tx) => {
       await this.cancelIssuedIfUnused(tx, saleId);
       await this.restorePackageUses(tx, saleId, userId);
+      // Taxa de falta lançada por esta venda: volta a ficar pendente
+      await tx.noShowFee.updateMany({
+        where: { saleId },
+        data: { status: 'PENDING', collectedAt: null, saleId: null },
+      });
+      // Sessão do clube usada nesta venda volta, se ainda é o mesmo ciclo
+      if (existing.clientSubscriptionId != null) {
+        await tx.clientSubscription.updateMany({
+          where: {
+            id: existing.clientSubscriptionId,
+            usedThisCycle: { gt: 0 },
+            OR: [{ currentPeriodStart: null }, { currentPeriodStart: { lte: existing.createdAt } }],
+          },
+          data: { usedThisCycle: { decrement: 1 } },
+        });
+      }
       if (existing.giftCardId && existing.giftCardAmountApplied) {
         await tx.giftCard.update({
           where: { id: existing.giftCardId },
@@ -9209,6 +9299,63 @@ export class BarbershopService {
    * por tipo > da unidade "tudo"). Sem checagem de acesso: quem chama checa.
    * Usado no relatório de comissões e no pagamento da equipe.
    */
+  /**
+   * Valor de uma sessão coberta (serviço com preço 0 na venda): no pacote, o
+   * que o cliente pagou dividido pelas sessões; no clube, o preço do serviço.
+   */
+  private async coveredSessionValues(
+    sales: Array<{ id: number; clientSubscriptionId: number | null }>,
+  ) {
+    const uses = await this.prisma.clientPackageUse.findMany({
+      where: { saleId: { in: sales.map((s) => s.id) }, undoneAt: null },
+      select: {
+        saleId: true,
+        clientPackage: {
+          select: {
+            totalSessions: true,
+            sale: { select: { total: true } },
+            servicePackage: { select: { serviceId: true, price: true, totalSessions: true } },
+          },
+        },
+      },
+    });
+    const bySale = new Map<number, { serviceId: number; value: number }>();
+    for (const u of uses) {
+      const pkg = u.clientPackage;
+      const paid = pkg.sale ? Number(pkg.sale.total) : Number(pkg.servicePackage.price);
+      const sessions = pkg.sale ? pkg.totalSessions : pkg.servicePackage.totalSessions;
+      if (u.saleId != null && sessions > 0) {
+        bySale.set(u.saleId, { serviceId: pkg.servicePackage.serviceId, value: paid / sessions });
+      }
+    }
+    const subIds = [
+      ...new Set(sales.map((s) => s.clientSubscriptionId).filter((id): id is number => id != null)),
+    ];
+    const clubService = new Map(
+      (
+        await this.prisma.clientSubscription.findMany({
+          where: { id: { in: subIds } },
+          select: { id: true, plan: { select: { serviceId: true } } },
+        })
+      ).map((s) => [s.id, s.plan.serviceId]),
+    );
+    return (
+      sale: { id: number; clientSubscriptionId: number | null },
+      item: { serviceId: number | null; service: { price: Prisma.Decimal } | null },
+    ) => {
+      const pkg = bySale.get(sale.id);
+      if (pkg && pkg.serviceId === item.serviceId) return pkg.value;
+      if (
+        sale.clientSubscriptionId != null &&
+        clubService.get(sale.clientSubscriptionId) === item.serviceId &&
+        item.service
+      ) {
+        return Number(item.service.price);
+      }
+      return 0;
+    };
+  }
+
   async computeCommissions(barbershopId: number, from: Date, to: Date) {
     const [rules, sales, barbers] = await Promise.all([
       this.prisma.commissionRule.findMany({ where: { barbershopId } }),
@@ -9224,11 +9371,12 @@ export class BarbershopService {
             { paidAt: null, createdAt: { gte: from, lte: to } },
           ],
         },
-        include: { items: true },
+        include: { items: { include: { service: { select: { price: true } } } } },
       }),
       this.prisma.barber.findMany({ where: { barbershopId } }),
     ]);
     const barberNameMap = new Map(barbers.map((b) => [b.id, b.name]));
+    const sessionValue = await this.coveredSessionValues(sales);
 
     const resolvePercentage = (barberId: number, itemType: string): number => {
       const exact = rules.find((r) => r.barberId === barberId && r.itemType === itemType);
@@ -9273,6 +9421,18 @@ export class BarbershopService {
       const discount = Number(sale.discountAmount ?? 0);
       const factor = itemsSum > 0 ? Math.max(0, itemsSum - discount) / itemsSum : 0;
       for (const item of sale.items) {
+        // Serviço coberto pelo pacote ou pelo clube entra com preço 0: a
+        // comissão sai sobre o valor da sessão (antes quem atendia não
+        // recebia nada por esses atendimentos)
+        const covered =
+          item.itemType === 'SERVICE' && Number(item.totalPrice) === 0 && item.serviceId != null
+            ? sessionValue(sale, item)
+            : 0;
+        if (covered > 0) {
+          const pct = resolvePercentage(barberId, 'SERVICE');
+          acc.serviceCommission += (covered * item.quantity * pct) / 100;
+          continue;
+        }
         const total = Number(item.totalPrice) * factor;
         const pct = resolvePercentage(barberId, item.itemType);
         if (item.itemType === 'PRODUCT') {

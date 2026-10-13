@@ -154,4 +154,16 @@ describe('Listas de clientes e agenda (integração)', () => {
     });
     expect(basicView[0]).toMatchObject({ customerName: 'Zé Último', customerPhone: null });
   });
+
+  it('código de indicação aleatório, o mesmo a cada pedido', async () => {
+    const c = await prisma.customer.create({
+      data: { networkId, name: 'Indica', phone: `6${RUN.slice(-10)}` },
+    });
+    const first = await shops.getCustomerReferralInfo(ownerId, shopId, c.id);
+    expect(first.referralCode).toMatch(/^[A-Z2-9]{8}$/);
+    expect(first.referralCode).not.toBe(c.id.toString(36).toUpperCase());
+    expect((await shops.getCustomerReferralInfo(ownerId, shopId, c.id)).referralCode).toBe(
+      first.referralCode,
+    );
+  });
 });

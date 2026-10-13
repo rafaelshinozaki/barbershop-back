@@ -232,5 +232,13 @@ describe('Taxa de falta (integração)', () => {
     // Já recebida: desfazer a falta não apaga
     await shops.updateAppointment(ownerId, shopId, id, { status: 'COMPLETED' });
     expect((await feeOf(id))?.status).toBe('COLLECTED');
+
+    // Apagar a venda da taxa: a taxa volta a ficar pendente
+    await shops.deleteSale(ownerId, shopId, sale.id);
+    expect(await prisma.noShowFee.findUniqueOrThrow({ where: { id: fee.id } })).toMatchObject({
+      status: 'PENDING',
+      saleId: null,
+      collectedAt: null,
+    });
   });
 });
