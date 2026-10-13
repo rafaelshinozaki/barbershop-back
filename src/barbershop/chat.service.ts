@@ -23,6 +23,11 @@ const MAX_BODY = 2000;
 const CLIENT_EMAIL_EVERY_MS = 30 * 60_000;
 const DESK_LEVELS: AccessLevel[] = ['reception', 'manager', 'owner'];
 const INBOX_SIZE = 50;
+/** Dias depois do atendimento em que a conversa ainda recebe mensagem (depois, só leitura) */
+export const CHAT_OPEN_DAYS_AFTER = 7;
+export const CHAT_EXPIRED_MESSAGE = 'A conversa deste atendimento foi encerrada.';
+export const CHAT_BARBER_CHANGED_MESSAGE =
+  'O profissional deste horário mudou. Fale com a unidade.';
 
 /** Quem está vendo: o cliente (pela conta ou pelo link do e-mail) ou alguém da equipe */
 export type ChatViewer =
@@ -89,6 +94,8 @@ export class ChatService {
           },
         },
         barber: { select: { id: true, name: true, userId: true } },
+        // A conversa com o profissional fica com quem a abriu (ver professionalOf)
+        chatThreads: { where: { kind: 'professional' }, select: { barberId: true } },
         customer: {
           select: {
             id: true,
@@ -117,6 +124,26 @@ export class ChatService {
     return appt.barbershop.practiceKind === 'solo' ? ['professional'] : ['unit', 'professional'];
   }
 
+  /**
+   * De quem é a conversa com o profissional: de quem a abriu. Se a equipe
+   * trocou o profissional do horário, o novo não lê o que o cliente escreveu
+   * pro anterior, e o anterior continua lendo (só leitura).
+   */
+  private async professionalOf(appt: Appt) {
+    const pinned = appt.chatThreads[0]?.barberId;
+    if (pinned == null || pinned === appt.barber.id) return { ...appt.barber, current: true };
+    const barber = await this.prisma.barber.findUnique({
+      where: { id: pinned },
+      select: { id: true, name: true, userId: true },
+    });
+    return { id: pinned, name: barber?.name ?? '', userId: barber?.userId ?? null, current: false };
+  }
+
+  /** Passou o prazo depois do atendimento: a conversa fica só de leitura */
+  private expired(appt: Appt) {
+    return appt.endAt.getTime() + CHAT_OPEN_DAYS_AFTER * 86_400_000 < Date.now();
+  }
+
   /** Quais conversas desse atendimento quem está vendo pode abrir */
   private async allowedKinds(appt: Appt, viewer: ChatViewer): Promise<ChatKind[]> {
     const kinds = this.kindsOf(appt);
@@ -132,13 +159,14 @@ export class ChatService {
       return byToken || byAccount ? kinds : [];
     }
     const out: ChatKind[] = [];
-    const needsLevel = kinds.includes('unit') || appt.barber.userId === viewer.userId;
+    const professional = await this.professionalOf(appt);
+    const needsLevel = kinds.includes('unit') || professional.userId === viewer.userId;
     const level = needsLevel
       ? await this.barbershops.getMyAccessLevel(viewer.userId, appt.barbershop.id)
       : null;
     if (kinds.includes('unit') && level && DESK_LEVELS.includes(level)) out.push('unit');
     // Quem saiu da unidade (ou freelancer fora do período) não lê a conversa
-    if (appt.barber.userId === viewer.userId && level) out.push('professional');
+    if (professional.userId === viewer.userId && level) out.push('professional');
     return out;
   }
 
@@ -153,9 +181,9 @@ export class ChatService {
   }
 
   /** Nome do outro lado, como aparece no título da conversa */
-  private titleFor(appt: Appt, kind: ChatKind, viewer: ChatViewer) {
+  private titleFor(appt: Appt, kind: ChatKind, viewer: ChatViewer, professionalName: string) {
     if (viewer.side === 'staff') return appt.customer.name;
-    return kind === 'unit' ? appt.barbershop.name : appt.barber.name;
+    return kind === 'unit' ? appt.barbershop.name : professionalName;
   }
 
   /**
@@ -170,6 +198,8 @@ export class ChatService {
     });
     const now = new Date();
     const readField = viewer.side === 'client' ? 'clientReadAt' : 'staffReadAt';
+    const professional = await this.professionalOf(appt);
+    const expired = this.expired(appt);
     const opened = threads.filter((t) => t.messages.length);
     if (opened.length) {
       await this.prisma.chatThread.updateMany({
@@ -182,12 +212,15 @@ export class ChatService {
       return {
         appointmentId,
         kind,
-        title: this.titleFor(appt, kind, viewer),
+        title: this.titleFor(appt, kind, viewer, professional.name),
         startAt: appt.startAt,
-        // Cancelado, encerrado pela moderação ou cliente bloqueado pela unidade: só leitura
+        // Cancelado, encerrado pela moderação, fora do prazo, profissional
+        // trocado ou cliente bloqueado pela unidade: só leitura
         canSend:
           appt.status !== 'CANCELLED' &&
           !thread?.closedAt &&
+          !expired &&
+          !(kind === 'professional' && !professional.current) &&
           !(viewer.side === 'client' && appt.customer.blockedAt),
         reported: !!thread?.retainUntil,
         closed: !!thread?.closedAt,
@@ -223,6 +256,10 @@ export class ChatService {
     }
     if (viewer.side === 'client' && appt.customer.blockedAt) {
       throw new ForbiddenException('A unidade não recebe mensagens deste cliente.');
+    }
+    if (this.expired(appt)) throw new BadRequestException(CHAT_EXPIRED_MESSAGE);
+    if (kind === 'professional' && !(await this.professionalOf(appt)).current) {
+      throw new BadRequestException(CHAT_BARBER_CHANGED_MESSAGE);
     }
     const existing = await this.prisma.chatThread.findUnique({
       where: { appointmentId_kind: { appointmentId, kind } },
@@ -490,11 +527,24 @@ export class ChatService {
       },
     });
     const unread = await this.unreadCounts(threads, 'client');
+    // Conversa com o profissional: o nome de quem a abriu (pode ter sido trocado)
+    const pinnedIds = [...new Set(threads.map((t) => t.barberId).filter((id) => id != null))];
+    const pinned = new Map(
+      (
+        await this.prisma.barber.findMany({
+          where: { id: { in: pinnedIds as number[] } },
+          select: { id: true, name: true },
+        })
+      ).map((b) => [b.id, b.name]),
+    );
     return threads.map((t) => ({
       appointmentId: t.appointmentId,
       barbershopId: t.appointment.barbershop.id,
       kind: t.kind,
-      title: t.kind === 'unit' ? t.appointment.barbershop.name : t.appointment.barber.name,
+      title:
+        t.kind === 'unit'
+          ? t.appointment.barbershop.name
+          : (t.barberId != null && pinned.get(t.barberId)) || t.appointment.barber.name,
       subtitle: t.appointment.barbershop.name,
       startAt: t.appointment.startAt,
       // A data do atendimento sai no fuso da unidade (não no de quem lê)
