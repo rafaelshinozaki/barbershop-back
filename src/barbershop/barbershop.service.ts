@@ -3450,9 +3450,12 @@ export class BarbershopService {
       notes: string;
       status: string;
     }>,
-    opts: { refundDeposit?: boolean } = {},
+    opts: { refundDeposit?: boolean; cancelledBy?: string } = {},
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    if (opts.cancelledBy != null && !['client', 'business'].includes(opts.cancelledBy)) {
+      throw new BadRequestException('Quem cancelou: cliente ou unidade');
+    }
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
     });
@@ -3593,8 +3596,11 @@ export class BarbershopService {
     // filosofia do sinal e do cartão-presente) — só calcula e registra o
     // valor devido, não cobra sozinho. Best-effort: nunca bloqueia a
     // mutation nem falha o cancelamento em si.
+    // Cancelamento pela unidade (profissional doente, imprevisto) não é culpa
+    // do cliente: sem taxa
     if (
-      (data.status === 'CANCELLED' || data.status === 'NO_SHOW') &&
+      (data.status === 'NO_SHOW' ||
+        (data.status === 'CANCELLED' && opts.cancelledBy !== 'business')) &&
       appointment.status !== data.status
     ) {
       this.recordNoShowFee(barbershopId, updated, data.status).catch((err) =>
@@ -3603,6 +3609,18 @@ export class BarbershopService {
           err,
         ),
       );
+    }
+
+    // Falta ou cancelamento desfeito (marcado por engano): a taxa pendente sai.
+    // Já cobrada fica (o dinheiro entrou no caixa; a devolução é outra venda)
+    if (
+      (appointment.status === 'NO_SHOW' || appointment.status === 'CANCELLED') &&
+      data.status != null &&
+      data.status !== appointment.status &&
+      data.status !== 'NO_SHOW' &&
+      data.status !== 'CANCELLED'
+    ) {
+      await this.prisma.noShowFee.deleteMany({ where: { appointmentId, status: 'PENDING' } });
     }
 
     // A equipe mudou o horário ou cancelou: o cliente fica sabendo (antes só
@@ -6796,13 +6814,46 @@ export class BarbershopService {
     }));
   }
 
-  async markNoShowFeeCollected(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+  /**
+   * Taxa recebida: entra como venda paga no caixa aberto (antes só mudava a
+   * situação e o dinheiro sumia do faturamento). Da recepção pra cima.
+   */
+  async markNoShowFeeCollected(
+    userId: number,
+    barbershopId: number,
+    id: number,
+    paymentMethod?: string | null,
+  ) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    if (!paymentMethod) throw new BadRequestException('Informe a forma de pagamento');
     const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
     if (!fee) throw new NotFoundException('Taxa não encontrada');
-    await this.prisma.noShowFee.update({
-      where: { id },
-      data: { status: 'COLLECTED', collectedAt: new Date() },
+    const openSession = await this.prisma.cashSession.findFirst({
+      where: { barbershopId, status: 'OPEN' },
+      select: { id: true },
+    });
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      // Só a pendente (dois cliques não lançam duas vendas)
+      const claimed = await tx.noShowFee.updateMany({
+        where: { id, status: 'PENDING' },
+        data: { status: 'COLLECTED', collectedAt: now },
+      });
+      if (claimed.count === 0) throw new BadRequestException('Esta taxa não está pendente');
+      const sale = await tx.sale.create({
+        data: {
+          barbershopId,
+          customerId: fee.customerId,
+          cashSessionId: openSession?.id,
+          saleType: 'NO_SHOW_FEE',
+          subtotal: fee.amount,
+          total: fee.amount,
+          paymentStatus: 'PAID',
+          paymentMethod,
+          paidAt: now,
+        },
+      });
+      await tx.noShowFee.update({ where: { id }, data: { saleId: sale.id } });
     });
     return true;
   }
