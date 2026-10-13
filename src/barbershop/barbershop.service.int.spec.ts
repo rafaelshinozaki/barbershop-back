@@ -1656,6 +1656,7 @@ describe('BarbershopService (integração com o banco)', () => {
           total: 40,
           paymentStatus: 'PAID',
           paymentMethod: 'CASH',
+          barberId: A.barberId,
           clientSubscriptionId: sub.id,
         };
         await expect(service.createSale(A.ownerId, A.shopId, paid)).rejects.toThrow('sem cobrar');
@@ -1671,6 +1672,30 @@ describe('BarbershopService (integração com o banco)', () => {
           (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } }))
             .usedThisCycle,
         ).toBe(1);
+        // Quem atendeu recebe comissão sobre o preço do serviço (antes: zero)
+        const servicePrice = Number(
+          (await prisma.barbershopService.findUniqueOrThrow({ where: { id: A.serviceId } })).price,
+        );
+        const rule = await prisma.commissionRule.create({
+          data: {
+            barbershopId: A.shopId,
+            barberId: A.barberId,
+            itemType: 'SERVICE',
+            percentage: 50,
+          },
+        });
+        try {
+          const report = await service.computeCommissions(
+            A.shopId,
+            new Date(Date.now() - 60_000),
+            new Date(Date.now() + 60_000),
+          );
+          const row = report.rows.find((r) => r.barberId === A.barberId);
+          expect(row?.serviceCommission).toBeCloseTo(servicePrice / 2);
+          expect(row?.totalServiceSales).toBe(0);
+        } finally {
+          await prisma.commissionRule.delete({ where: { id: rule.id } });
+        }
         await expect(
           service.createSale(A.ownerId, A.shopId, {
             ...paid,
@@ -1884,6 +1909,7 @@ describe('BarbershopService (integração com o banco)', () => {
           total: 40,
           paymentStatus: 'PAID',
           paymentMethod: 'CASH',
+          barberId: A.barberId,
           clientPackageId: bought.id,
         };
         await expect(service.createSale(A.ownerId, A.shopId, paid)).rejects.toThrow('sem cobrar');
@@ -1897,6 +1923,27 @@ describe('BarbershopService (integração com o banco)', () => {
         expect(Number(sale.total)).toBe(0);
         const afterUse = await prisma.clientPackage.findUniqueOrThrow({ where: { id: bought.id } });
         expect(afterUse.usedSessions).toBe(1);
+        // Sessão do pacote: comissão sobre o que o cliente pagou por sessão (80 / 2)
+        const rule = await prisma.commissionRule.create({
+          data: {
+            barbershopId: A.shopId,
+            barberId: A.barberId,
+            itemType: 'SERVICE',
+            percentage: 50,
+          },
+        });
+        try {
+          const report = await service.computeCommissions(
+            A.shopId,
+            new Date(Date.now() - 60_000),
+            new Date(Date.now() + 60_000),
+          );
+          expect(report.rows.find((r) => r.barberId === A.barberId)?.serviceCommission).toBeCloseTo(
+            20,
+          );
+        } finally {
+          await prisma.commissionRule.delete({ where: { id: rule.id } });
+        }
         const use = await prisma.clientPackageUse.findFirstOrThrow({
           where: { clientPackageId: bought.id, saleId: sale.id, undoneAt: null },
         });

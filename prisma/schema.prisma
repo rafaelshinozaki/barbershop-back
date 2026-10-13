@@ -651,6 +651,8 @@ model Customer {
   marketingOptOut Boolean         @default(false) // não incluir em campanhas de marketing (Message Blast)
   // Bloqueado pela unidade (vale pra rede toda): não agenda online nem manda mensagem no chat
   blockedAt       DateTime?
+  // Código de indicação (aleatório, criado na primeira vez que é pedido)
+  referralCode    String?   @unique
   blockedReason   String?
   blockedByUserId Int?
   // Apagada pela unidade: os dados pessoais saem, mas a ficha fica (sem nome)
@@ -1495,6 +1497,9 @@ model Sale {
   depositApplied Decimal?
   // Parte paga antes pelo app (Appointment.prepaidAmount), descontada
   prepaidApplied Decimal?
+  // Sessão do clube usada nesta venda (o serviço entra com preço 0; a
+  // comissão de quem atendeu sai sobre o preço do serviço)
+  clientSubscriptionId Int?
   barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer       Customer?  @relation(fields: [customerId], references: [id])
   barber         Barber?    @relation(fields: [barberId], references: [id])
