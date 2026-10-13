@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RetentionService } from '../privacy/retention.service';
 import { createAppointmentToken } from './appointment-link';
 import { BarbershopService } from './barbershop.service';
-import { ChatService } from './chat.service';
+import { CHAT_OPEN_DAYS_AFTER, ChatService } from './chat.service';
 import { ModerationService } from './moderation.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -431,6 +431,47 @@ describe('Chat do atendimento (integração)', () => {
     expect((await chat.threads(apptId, link))[0].canSend).toBe(true);
     await expect(book({ customerPhone: customer.phone })).rejects.not.toBeInstanceOf(
       ForbiddenException,
+    );
+  });
+
+  it('profissional trocado: a conversa fica com quem a abriu; fecha dias depois do atendimento', async () => {
+    const customer = await prisma.customer.findFirstOrThrow({
+      where: { email: `chat-ficha-${RUN}@test.local` },
+    });
+    const [pro, other] = await Promise.all([
+      prisma.barber.findFirstOrThrow({ where: { barbershopId: shopIds[0], userId: proId } }),
+      prisma.barber.findFirstOrThrow({ where: { barbershopId: shopIds[0], userId: otherId } }),
+    ]);
+    const id = await appointment(shopIds[0], pro.id, customer.id);
+    const link = { ...byLink, manageToken: createAppointmentToken(id) };
+    await chat.send(id, 'professional', 'Só pra você: tenho alergia', link);
+
+    // A equipe troca o profissional: o novo não lê, o anterior lê sem responder
+    await prisma.appointment.update({ where: { id }, data: { barberId: other.id } });
+    await expect(chat.threads(id, staff(otherId))).rejects.toBeInstanceOf(NotFoundException);
+    const old = await chat.threads(id, staff(proId));
+    expect(old[0]).toMatchObject({ kind: 'professional', canSend: false });
+    expect(old[0].messages[0].body).toBe('Só pra você: tenho alergia');
+    // O cliente vê com quem falou, só leitura; mensagem nova vai pela unidade
+    const client = await chat.threads(id, link);
+    expect(client.find((t) => t.kind === 'professional')).toMatchObject({
+      title: 'Pro do Chat',
+      canSend: false,
+    });
+    await expect(chat.send(id, 'professional', 'oi?', link)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await chat.send(id, 'unit', 'Quem vai me atender?', link);
+
+    // Atendimento de dias atrás: só leitura
+    const past = new Date(Date.now() - (CHAT_OPEN_DAYS_AFTER + 1) * 24 * HOUR);
+    await prisma.appointment.update({
+      where: { id },
+      data: { startAt: past, endAt: new Date(past.getTime() + HOUR) },
+    });
+    expect((await chat.threads(id, link)).every((t) => !t.canSend)).toBe(true);
+    await expect(chat.send(id, 'unit', 'Ainda dá?', link)).rejects.toBeInstanceOf(
+      BadRequestException,
     );
   });
 

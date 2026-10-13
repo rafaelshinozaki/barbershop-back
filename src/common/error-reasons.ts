@@ -8,6 +8,8 @@
  * ela continua saindo como está.
  */
 export const ERROR_REASONS: Readonly<Record<string, string>> = {
+  'A conversa deste atendimento foi encerrada.': 'CHAT_EXPIRED',
+  'O profissional deste horário mudou. Fale com a unidade.': 'CHAT_BARBER_CHANGED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
