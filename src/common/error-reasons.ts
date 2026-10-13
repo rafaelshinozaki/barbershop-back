@@ -18,6 +18,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.':
     'MARKETING_MONTHLY_LIMIT',
   'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',
+  'Estorno não pode ser alterado nem apagado.': 'REFUND_SALE_LOCKED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

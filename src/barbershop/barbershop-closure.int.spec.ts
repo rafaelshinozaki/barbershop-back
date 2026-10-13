@@ -129,11 +129,45 @@ describe('Encerrar unidade (integração)', () => {
       data: { barbershopId: shopId, customerId, date: new Date(Date.now() + 3 * 86_400_000) },
     });
     expect((await shops.getMyBarbershops(basicId)).map((s) => s.id)).toContain(shopId);
+    // Pacote com 1 de 4 sessões usada, vendido por 120: faltam 90 pra devolver
+    const svc = await prisma.barbershopService.findFirstOrThrow({
+      where: { barbershopId: shopId },
+    });
+    const offer = await prisma.servicePackage.create({
+      data: {
+        barbershopId: shopId,
+        serviceId: svc.id,
+        name: 'Pacote 4',
+        totalSessions: 4,
+        price: new Decimal(120),
+      },
+    });
+    const pkg = await prisma.clientPackage.create({
+      data: {
+        barbershopId: shopId,
+        customerId,
+        servicePackageId: offer.id,
+        totalSessions: 4,
+        usedSessions: 1,
+      },
+    });
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: { featuredUntil: new Date(Date.now() + 10 * 86_400_000) },
+    });
+    expect(await shops.getBarbershopDeletionPreview(ownerId, shopId)).toMatchObject({
+      activePackages: 1,
+      packageRefunds: [{ currency: 'BRL', amount: 90 }],
+    });
 
     await shops.deleteBarbershop(ownerId, shopId);
+    expect((await prisma.clientPackage.findUniqueOrThrow({ where: { id: pkg.id } })).status).toBe(
+      'CANCELLED',
+    );
 
     const closed = await prisma.barbershop.findUniqueOrThrow({ where: { id: shopId } });
     expect(closed.closedAt).not.toBeNull();
+    expect(closed.featuredUntil).toBeNull();
     expect(closed.isActive).toBe(false);
     expect(closed.slug).not.toBe(`close-${RUN}`);
     // O histórico financeiro continua lá

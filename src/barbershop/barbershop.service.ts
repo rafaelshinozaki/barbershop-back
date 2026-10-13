@@ -440,6 +440,10 @@ export function paidInRange(range: Prisma.DateTimeFilter): Prisma.SaleWhereInput
   return { OR: [{ paidAt: range }, { paidAt: null, createdAt: range }] };
 }
 
+/** Estorno do saldo de pacote ou cartão-presente: lançamento negativo, de hoje */
+export const REFUND_SALE_TYPE = 'REFUND';
+export const REFUND_SALE_LOCKED_MESSAGE = 'Estorno não pode ser alterado nem apagado.';
+
 export const CLOSED_CASH_SALE_MESSAGE =
   'Essa venda é de um caixa já fechado. Lance a correção no caixa aberto.';
 
@@ -1765,6 +1769,8 @@ export class BarbershopService {
           isActive: false,
           slug: `${shop.slug}--encerrada-${id}`,
           subdomain: null,
+          // Destaque pago da unidade não tem mais onde aparecer
+          featuredUntil: null,
         },
       }),
       // A equipe perde o acesso (e some das agendas e caixas de entrada)
@@ -1774,19 +1780,58 @@ export class BarbershopService {
         data: { status: 'CANCELLED', offeredStartAt: null },
       }),
       this.prisma.employeeInvite.deleteMany({ where: { barbershopId: id, status: 'PENDING' } }),
+      // Pacote pago fora do app (dinheiro, PIX): a unidade devolve o que
+      // não foi usado (a prévia mostra quanto); aqui ele deixa de valer
+      this.prisma.clientPackage.updateMany({
+        where: { barbershopId: id, status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
+      }),
     ]);
   }
 
   /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
   async getBarbershopDeletionPreview(userId: number, id: number) {
     await this.ensureBarbershopAccess(userId, id, 'owner');
-    const [impact, activeClientSubscriptions] = await Promise.all([
+    const [impact, activeClientSubscriptions, packages] = await Promise.all([
       this.deletionImpact([id]),
       this.prisma.clientSubscription.count({
         where: { barbershopId: id, status: { not: 'CANCELED' } },
       }),
+      this.activePackagesOf(id),
     ]);
-    return { ...impact, activeClientSubscriptions };
+    return { ...impact, activeClientSubscriptions, ...packages };
+  }
+
+  /**
+   * Pacotes ativos da unidade e o que falta devolver aos clientes (sessões
+   * não usadas × o que foi pago por sessão), por moeda.
+   */
+  private async activePackagesOf(barbershopId: number) {
+    const packages = await this.prisma.clientPackage.findMany({
+      where: { barbershopId, status: 'ACTIVE' },
+      select: {
+        totalSessions: true,
+        usedSessions: true,
+        sale: { select: { total: true } },
+        servicePackage: { select: { price: true, totalSessions: true } },
+        barbershop: { select: { currency: true } },
+      },
+    });
+    const byCurrency = new Map<string, number>();
+    for (const p of packages) {
+      const paid = p.sale ? Number(p.sale.total) : Number(p.servicePackage.price);
+      const left = Math.max(0, p.totalSessions - p.usedSessions);
+      if (p.totalSessions <= 0 || left === 0) continue;
+      const currency = p.barbershop.currency;
+      byCurrency.set(
+        currency,
+        round2((byCurrency.get(currency) ?? 0) + (paid * left) / p.totalSessions),
+      );
+    }
+    return {
+      activePackages: packages.length,
+      packageRefunds: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+    };
   }
 
   private futureAppointmentsWhere(barbershopIds: number[]): Prisma.AppointmentWhereInput {
@@ -8151,6 +8196,9 @@ export class BarbershopService {
         },
       });
       if (!existing) throw new BadRequestException('Venda não encontrada');
+      if (existing.saleType === REFUND_SALE_TYPE) {
+        throw new BadRequestException(REFUND_SALE_LOCKED_MESSAGE);
+      }
       // Pacote e cartão guardam o valor vendido. Receber a pendente (situação
       // e forma) continua permitido; mudar o total deixaria o saldo diferente
       // do que a venda diz.
@@ -8283,6 +8331,9 @@ export class BarbershopService {
       include: { cashSession: { select: { status: true } } },
     });
     if (!existing) throw new BadRequestException('Venda não encontrada');
+    if (existing.saleType === REFUND_SALE_TYPE) {
+      throw new BadRequestException(REFUND_SALE_LOCKED_MESSAGE);
+    }
     if (existing.cashSession?.status === 'CLOSED') {
       throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
     }
@@ -8421,7 +8472,12 @@ export class BarbershopService {
         include: { cashSession: { select: { status: true } } },
       });
       if (!existing) throw new BadRequestException('Venda não encontrada');
-      if (existing.cashSession?.status === 'CLOSED') {
+      // Venda paga: o estorno é um lançamento novo, de hoje, no caixa aberto
+      // (a venda original fica como foi; antes ela era reescrita e o
+      // faturamento do dia antigo mudava, ou o estorno era recusado com o
+      // caixa dela já fechado). Pendente: nada foi pago, ajusta a própria venda
+      const paid = existing.paymentStatus === 'PAID';
+      if (!paid && existing.cashSession?.status === 'CLOSED') {
         throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
       }
       const issued = await tx.clientPackage.findUnique({ where: { saleId } });
@@ -8474,34 +8530,77 @@ export class BarbershopService {
               existing.customerId,
             )
           : 0;
-      await tx.sale.update({
-        where: { id: saleId },
-        data: {
-          subtotal: amount,
-          discountAmount: new Decimal(0),
-          taxAmount: new Decimal(0),
-          total: amount,
-          ...(prevEarned > 0 ? { loyaltyPointsEarned: nextEarned || null } : {}),
-        },
-      });
+      if (paid) {
+        const refund = round2(Number(existing.total) - newTotal);
+        if (refund > 0) {
+          const openSession = await tx.cashSession.findFirst({
+            where: { barbershopId, status: 'OPEN' },
+            select: { id: true },
+          });
+          const value = new Decimal(-refund);
+          await tx.sale.create({
+            data: {
+              barbershopId,
+              customerId: existing.customerId,
+              cashSessionId: openSession?.id ?? null,
+              saleType: REFUND_SALE_TYPE,
+              subtotal: value,
+              total: value,
+              paymentStatus: 'PAID',
+              paymentMethod: existing.paymentMethod,
+              paidAt: new Date(),
+              items: {
+                create: [
+                  {
+                    itemType: issued ? 'PACKAGE' : 'GIFT_CARD',
+                    quantity: 1,
+                    unitPrice: value,
+                    totalPrice: value,
+                    notes: `Estorno do saldo da venda #${saleId}`,
+                  },
+                ],
+              },
+            },
+          });
+        }
+        if (prevEarned > 0) {
+          await tx.sale.update({
+            where: { id: saleId },
+            data: { loyaltyPointsEarned: nextEarned || null },
+          });
+        }
+      } else {
+        await tx.sale.update({
+          where: { id: saleId },
+          data: {
+            subtotal: amount,
+            discountAmount: new Decimal(0),
+            taxAmount: new Decimal(0),
+            total: amount,
+            ...(prevEarned > 0 ? { loyaltyPointsEarned: nextEarned || null } : {}),
+          },
+        });
+      }
       if (prevEarned > 0 && existing.customerId && nextEarned !== prevEarned) {
         await tx.customer.update({
           where: { id: existing.customerId },
           data: { loyaltyPoints: { increment: nextEarned - prevEarned } },
         });
       }
-      const items = await tx.saleItem.findMany({ where: { saleId }, orderBy: { id: 'asc' } });
-      if (items[0]) {
-        await tx.saleItem.update({
-          where: { id: items[0].id },
-          data: { unitPrice: amount, totalPrice: amount },
-        });
-      }
-      for (const extra of items.slice(1)) {
-        await tx.saleItem.update({
-          where: { id: extra.id },
-          data: { unitPrice: new Decimal(0), totalPrice: new Decimal(0) },
-        });
+      if (!paid) {
+        const items = await tx.saleItem.findMany({ where: { saleId }, orderBy: { id: 'asc' } });
+        if (items[0]) {
+          await tx.saleItem.update({
+            where: { id: items[0].id },
+            data: { unitPrice: amount, totalPrice: amount },
+          });
+        }
+        for (const extra of items.slice(1)) {
+          await tx.saleItem.update({
+            where: { id: extra.id },
+            data: { unitPrice: new Decimal(0), totalPrice: new Decimal(0) },
+          });
+        }
       }
     });
     return true;
