@@ -667,7 +667,7 @@ export class BarbershopService {
   async assertUsageFitsPlan(ownerUserId: number, planName: string) {
     const limits = getPlanLimits(planName);
     const shops = await this.prisma.barbershop.findMany({
-      where: { network: { ownerUserId }, practiceKind: 'shop' },
+      where: { network: { ownerUserId }, practiceKind: 'shop', closedAt: null },
       select: { id: true, name: true },
     });
     if (shops.length > limits.maxBarbershops) {
@@ -749,9 +749,12 @@ export class BarbershopService {
     barbershop: {
       id: number;
       ownerUserId: number | null;
+      closedAt?: Date | null;
       network?: { ownerUserId: number } | null;
     },
   ): Promise<AccessLevel | null> {
+    // Encerrada: ninguém mais mexe (o histórico fica só pra consulta da plataforma)
+    if (barbershop.closedAt) return null;
     if (barbershop.ownerUserId === userId || barbershop.network?.ownerUserId === userId) {
       return 'owner';
     }
@@ -1314,6 +1317,7 @@ export class BarbershopService {
     const barbershops = await this.prisma.barbershop.findMany({
       where: {
         ...(barbershopId != null ? { id: barbershopId } : {}),
+        closedAt: null,
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
@@ -1541,7 +1545,7 @@ export class BarbershopService {
     const network = await this.findOrCreateNetwork(userId);
     const limits = await this.getPlanLimitsForOwner(userId);
     const currentCount = await this.prisma.barbershop.count({
-      where: { networkId: network.id, practiceKind: 'shop' },
+      where: { networkId: network.id, practiceKind: 'shop', closedAt: null },
     });
     if (currentCount >= limits.maxBarbershops) {
       throw new BadRequestException(
@@ -1605,6 +1609,7 @@ export class BarbershopService {
     // de fato via ensureBarbershopAccess (que já checa os três casos).
     return this.prisma.barbershop.findMany({
       where: {
+        closedAt: null,
         OR: [
           { ownerUserId: userId },
           { network: { ownerUserId: userId } },
@@ -1729,14 +1734,38 @@ export class BarbershopService {
     return trimmed;
   }
 
+  /**
+   * "Excluir unidade" encerra em vez de apagar: o cascade levava junto
+   * vendas, pagamentos pelo app e repasses, e a contabilidade perdia o
+   * histórico. A unidade some da equipe, das listas e da página pública; o
+   * slug e o subdomínio ficam livres pra outra unidade.
+   */
   async deleteBarbershop(userId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, id, 'owner');
+    const shop = await this.ensureBarbershopAccess(userId, id, 'owner');
     // Antes as assinaturas dos clientes sumiam do banco junto com a unidade
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
     await this.cancelChairRentsOfBarbershops([id]);
     await this.cancelFutureAppointmentsOfBarbershops([id]);
-    await this.prisma.barbershop.delete({ where: { id } });
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.barbershop.update({
+        where: { id },
+        data: {
+          closedAt: now,
+          isActive: false,
+          slug: `${shop.slug}--encerrada-${id}`,
+          subdomain: null,
+        },
+      }),
+      // A equipe perde o acesso (e some das agendas e caixas de entrada)
+      this.prisma.barber.updateMany({ where: { barbershopId: id }, data: { isActive: false } }),
+      this.prisma.waitlistEntry.updateMany({
+        where: { barbershopId: id, status: { in: ['WAITING', 'NOTIFIED'] } },
+        data: { status: 'CANCELLED', offeredStartAt: null },
+      }),
+      this.prisma.employeeInvite.deleteMany({ where: { barbershopId: id, status: 'PENDING' } }),
+    ]);
   }
 
   /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
