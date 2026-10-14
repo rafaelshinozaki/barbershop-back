@@ -1725,3 +1725,15 @@ Foram lidas as 96 tabelas do `schema.prisma` (relações, `onDelete`, chaves ún
      - `Appointment` também não tem índice por `barberId` + `startAt` fora da unidade: os horários livres de quem atende em várias unidades buscam `barberId in (...)` sem a unidade.
      
      Com poucos dados não aparece; com alguns anos de vendas, os relatórios leem a tabela inteira. **Fazer:** `@@index([barbershopId, paidAt])` em `Sale`, `@@index([customerId, startAt])` e `@@index([barberId, startAt])` em `Appointment`, e conferir com `EXPLAIN` no teste de carga.
+
+### Vigésima sexta rodada (2026-10-14): escopo das consultas e situação do agendamento
+
+Foi feita uma varredura de todas as funções que leem, alteram ou apagam pelo id (back inteiro) e de todos os resolvers sem proteção de login que recebem id. Além dos casos do item 154, as funções de escala, folga, fotos, espaço compartilhado, aluguel, chat do cliente, avaliações, pacotes, planos, despesas e estoque já conferem a unidade (ou descobrem a unidade pelo próprio registro antes de conferir o acesso).
+
+157. 🆕 **Horário já cobrado pode virar "cancelado" ou "faltou", e o dinheiro sai duas vezes** (back: `updateAppointment`): a mudança de situação não olha se o horário já tem venda.
+     - Um atendimento concluído e cobrado, se marcado como cancelado pela equipe, estorna pelo Stripe o sinal e o que foi pago pelo app (`refundOnlineDeposit`, `refundPrepayment`). A venda continua paga, com `depositApplied` e `prepaidApplied`, e o faturamento conta um dinheiro que voltou para o cliente.
+     - Marcado como "faltou", gera a taxa de falta para quem foi atendido e pagou.
+     - O e-mail de cancelamento também sai.
+     
+     **Fazer:** horário com venda não muda para cancelado nem para faltou ("apague ou estorne a venda antes"). Só volta para outra situação depois que a venda sair.
+158. 🆕 **Agendamento aceita sala ou cadeira de outra unidade** (back: `createAppointment`, `updateAppointment`): o `resourceId` não é conferido contra a unidade. A checagem de conflito filtra pela unidade do horário, então passa, e o horário fica ligado ao recurso de outra empresa (o nome dele aparece na agenda, e a trava de agenda é compartilhada com a outra unidade). **Fazer:** conferir `resource.barbershopId` (e `isActive`) antes, como já é feito com profissional, cliente e serviços.
