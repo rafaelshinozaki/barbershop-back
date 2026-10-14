@@ -329,6 +329,7 @@ export class AppPaymentsService {
     // Na moeda da cobrança (a Stripe manda na menor unidade: centavo, ou a
     // própria unidade nas moedas sem centavos)
     const refunded = fromMinorUnits(charge.amount_refunded ?? 0, charge.currency);
+    if (refunded > 0) await this.syncClubPaymentRefund(charge, refunded);
     if (!paymentIntentId || refunded <= 0) return;
     const now = new Date();
     const currency = charge.currency;
@@ -337,6 +338,23 @@ export class AppPaymentsService {
     await this.syncTipRefund(paymentIntentId, refunded, currency, charge.refunded, now);
     // Compra da plataforma (Destaque, taxa da vaga): só o estorno total desfaz
     if (charge.refunded) await this.revokePlatformPurchase(paymentIntentId, now);
+  }
+
+  /**
+   * Fatura do clube estornada (resto do ciclo ao encerrar a unidade, ou pelo
+   * painel do Stripe): grava o total devolvido, que sai do repasse. Só sobe:
+   * evento atrasado com valor menor não desfaz.
+   */
+  private async syncClubPaymentRefund(charge: Stripe.Charge, refunded: number) {
+    const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+    if (!invoiceId) return;
+    await this.prisma.clientSubscriptionPayment.updateMany({
+      where: {
+        stripeInvoiceId: invoiceId,
+        OR: [{ refundedAmount: null }, { refundedAmount: { lt: refunded } }],
+      },
+      data: { refundedAmount: refunded },
+    });
   }
 
   /**

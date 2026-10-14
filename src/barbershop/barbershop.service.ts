@@ -1848,7 +1848,9 @@ export class BarbershopService {
    * moeda: uma rede pode ter unidades em países diferentes.
    */
   async deletionImpact(barbershopIds: number[]) {
-    if (barbershopIds.length === 0) return { futureAppointments: 0, onlineRefunds: [] };
+    if (barbershopIds.length === 0) {
+      return { futureAppointments: 0, onlineRefunds: [], clubRefunds: [] };
+    }
     const appts = await this.prisma.appointment.findMany({
       where: this.futureAppointmentsWhere(barbershopIds),
       select: {
@@ -1877,9 +1879,15 @@ export class BarbershopService {
         byCurrency.set(currency, round2((byCurrency.get(currency) ?? 0) + back));
       }
     }
+    // Resto do ciclo pago do clube, que volta pro cartão do cliente
+    const clubByCurrency = new Map<string, number>();
+    for (const r of await this.unusedClubCycles(barbershopIds)) {
+      clubByCurrency.set(r.currency, round2((clubByCurrency.get(r.currency) ?? 0) + r.amount));
+    }
     return {
       futureAppointments: appts.length,
       onlineRefunds: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+      clubRefunds: [...clubByCurrency].map(([currency, amount]) => ({ currency, amount })),
     };
   }
 
@@ -1943,10 +1951,13 @@ export class BarbershopService {
    * Cancela na hora, no Stripe, as assinaturas de serviço dos clientes das
    * unidades (antes de apagar a unidade ou a conta do dono). Assinatura que
    * o Stripe já não conhece não impede nada; outro erro interrompe, pra não
-   * apagar a unidade deixando a cobrança rodando.
+   * apagar a unidade deixando a cobrança rodando. O resto do ciclo já pago
+   * volta pro cartão do cliente (unusedClubCycles).
    */
   async cancelClientSubscriptionsOfBarbershops(barbershopIds: number[]) {
     if (barbershopIds.length === 0) return;
+    // Calculado antes de cancelar: depois a assinatura já não está ACTIVE
+    const refunds = await this.unusedClubCycles(barbershopIds);
     const subs = await this.prisma.clientSubscription.findMany({
       where: { barbershopId: { in: barbershopIds }, status: { not: 'CANCELED' } },
       select: { id: true, stripeSubscriptionId: true },
@@ -1961,6 +1972,115 @@ export class BarbershopService {
         where: { id: sub.id },
         data: { status: 'CANCELED', canceledAt: new Date(), cancelAtPeriodEnd: false },
       });
+    }
+    for (const refund of refunds) await this.refundUnusedClubCycle(refund);
+  }
+
+  /**
+   * Parte do ciclo pago do clube que o cliente não vai usar: o tempo que
+   * falta do ciclo ou, no plano com sessões contadas, as sessões que
+   * sobraram (o menor dos dois, pra não devolver o que ele já usou). Tira o
+   * que já foi estornado antes.
+   */
+  async unusedClubCycles(barbershopIds: number[], now = new Date()) {
+    if (barbershopIds.length === 0) return [];
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: { barbershopId: { in: barbershopIds }, status: 'ACTIVE' },
+      select: {
+        connectAccountId: true,
+        usedThisCycle: true,
+        plan: { select: { sessionsPerCycle: true } },
+        barbershop: { select: { currency: true } },
+        payments: {
+          where: { status: 'SUCCEEDED', periodEnd: { gt: now } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            stripeInvoiceId: true,
+            amount: true,
+            refundedAmount: true,
+            periodStart: true,
+            periodEnd: true,
+          },
+        },
+      },
+    });
+    const result: Array<{
+      payment: (typeof subs)[number]['payments'][number];
+      connected: boolean;
+      currency: string;
+      amount: number;
+    }> = [];
+    for (const sub of subs) {
+      const payment = sub.payments[0];
+      if (!payment?.periodStart || !payment.periodEnd) continue;
+      const length = payment.periodEnd.getTime() - payment.periodStart.getTime();
+      if (length <= 0) continue;
+      let share = Math.min(1, (payment.periodEnd.getTime() - now.getTime()) / length);
+      const sessions = sub.plan.sessionsPerCycle;
+      if (sessions != null && sessions > 0) {
+        share = Math.min(share, Math.max(0, sessions - sub.usedThisCycle) / sessions);
+      }
+      const paid = Number(payment.amount);
+      const left = paid - Number(payment.refundedAmount ?? 0);
+      const amount = round2(Math.min(left, paid * share));
+      if (amount <= 0) continue;
+      result.push({
+        payment,
+        connected: sub.connectAccountId != null,
+        currency: sub.barbershop.currency,
+        amount,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Devolve pelo Stripe o resto do ciclo do clube. Marca antes (condicional:
+   * duas chamadas juntas não devolvem duas vezes) e desfaz se o Stripe
+   * recusar. Erro não impede encerrar a unidade: a assinatura já foi
+   * cancelada e o estorno fica no log pra ser feito à mão.
+   */
+  private async refundUnusedClubCycle(refund: {
+    payment: { id: number; stripeInvoiceId: string; refundedAmount: Prisma.Decimal | null };
+    connected: boolean;
+    currency: string;
+    amount: number;
+  }) {
+    const { payment } = refund;
+    const before = payment.refundedAmount;
+    const after = round2(Number(before ?? 0) + refund.amount);
+    const claimed = await this.prisma.clientSubscriptionPayment.updateMany({
+      where: { id: payment.id, refundedAmount: before },
+      data: { refundedAmount: after },
+    });
+    if (claimed.count === 0) return;
+    try {
+      const invoice = await this.stripeService.getInvoice(payment.stripeInvoiceId);
+      const intentId =
+        typeof invoice.payment_intent === 'string'
+          ? invoice.payment_intent
+          : invoice.payment_intent?.id;
+      if (!intentId) throw new Error(`Fatura ${payment.stripeInvoiceId} sem pagamento`);
+      await this.stripeService.createRefund(
+        intentId,
+        toMinorUnits(refund.amount, refund.currency),
+        'requested_by_customer',
+        `club-close-refund-${payment.id}-${Math.round(after * 100)}`,
+        // Foi pra conta da unidade: desfaz a transferência e devolve a taxa
+        refund.connected,
+      );
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'charge_already_refunded') return;
+      await this.prisma.clientSubscriptionPayment.updateMany({
+        where: { id: payment.id, refundedAmount: after },
+        data: { refundedAmount: before },
+      });
+      this.logger.error(
+        `Resto do ciclo do clube não devolvido (pagamento ${payment.id}, ${refund.amount} ${refund.currency})`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -7320,18 +7440,18 @@ export class BarbershopService {
     const current = currentPricing().platformFeePercent;
     const feeOf = (amount: number, percent: { toString(): string } | null) =>
       (amount * Number(percent ?? current)) / 100;
-    const grossAmount = round2(payments.reduce((sum, p) => sum + Number(p.amount), 0));
+    // O que voltou pro cliente não entra (nem a taxa sobre ele)
+    const netOf = (p: (typeof payments)[number]) =>
+      Number(p.amount) - Number(p.refundedAmount ?? 0);
+    const grossAmount = round2(payments.reduce((sum, p) => sum + netOf(p), 0));
     const platformFeeAmount = round2(
-      payments.reduce((sum, p) => sum + feeOf(Number(p.amount), p.platformFeePercent), 0),
+      payments.reduce((sum, p) => sum + feeOf(netOf(p), p.platformFeePercent), 0),
     );
     // O que o Stripe já mandou pra conta conectada não é mais devido
     const paidOutAutomatically = round2(
       payments
         .filter((p) => p.settledViaConnect)
-        .reduce(
-          (sum, p) => sum + Number(p.amount) - feeOf(Number(p.amount), p.platformFeePercent),
-          0,
-        ),
+        .reduce((sum, p) => sum + netOf(p) - feeOf(netOf(p), p.platformFeePercent), 0),
     );
     const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
     return {

@@ -123,6 +123,10 @@ export class BarbershopDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   onlineRefunds: DeletionRefundType[];
 
+  // Resto do ciclo pago do clube, devolvido ao cartão do cliente
+  @Field(() => [DeletionRefundType])
+  clubRefunds: DeletionRefundType[];
+
   // Pacotes ativos: pagos fora do app, a unidade devolve o que não foi usado
   @Field(() => Int)
   activePackages: number;

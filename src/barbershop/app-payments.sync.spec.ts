@@ -36,13 +36,34 @@ describe('AppPaymentsService.syncStripeRefund', () => {
     // Destaque e taxa da vaga: nada com esse pagamento
     const featuredPurchase = { findUnique: jest.fn(async () => null) };
     const jobApplication = { updateMany: jest.fn(async () => ({ count: 0 })) };
+    const clientSubscriptionPayment = { updateMany: jest.fn(async () => ({ count: 0 })) };
     const service = new AppPaymentsService(
-      { appointment, appointmentTip, featuredPurchase, jobApplication } as never,
+      {
+        appointment,
+        appointmentTip,
+        featuredPurchase,
+        jobApplication,
+        clientSubscriptionPayment,
+      } as never,
       {} as never,
       {} as never,
     );
-    return { service, appointment, appointmentTip, jobApplication };
+    return { service, appointment, appointmentTip, jobApplication, clientSubscriptionPayment };
   }
+
+  it('fatura do clube estornada guarda o total devolvido (só sobe)', async () => {
+    const { service, clientSubscriptionPayment } = setup();
+    await service.syncStripeRefund(
+      charge({ invoice: 'in_1', amount_refunded: 2500, currency: 'brl', refunded: false }),
+    );
+    expect(clientSubscriptionPayment.updateMany).toHaveBeenCalledWith({
+      where: {
+        stripeInvoiceId: 'in_1',
+        OR: [{ refundedAmount: null }, { refundedAmount: { lt: 25 } }],
+      },
+      data: { refundedAmount: 25 },
+    });
+  });
 
   it('marca o sinal estornado no painel', async () => {
     const { service, appointment } = setup();
