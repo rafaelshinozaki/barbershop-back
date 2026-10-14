@@ -262,7 +262,12 @@ describe('Agendamento recorrente (integração)', () => {
       'CANCELLED',
       'CANCELLED',
     ]);
-    await until(() => emails.some((e) => e.template === 'appointment_cancelled'));
+    // O aviso da lista de espera sai em outra tarefa e pode chegar depois
+    await until(
+      () =>
+        emails.some((e) => e.template === 'appointment_cancelled') &&
+        emails.some((e) => e.template === 'waitlist_slot_available'),
+    );
     await settle();
     const cancelledEmails = emails.filter((e) => e.template === 'appointment_cancelled');
     expect(cancelledEmails).toHaveLength(1);

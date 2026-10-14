@@ -45,6 +45,10 @@ export class AccountDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   onlineRefunds: DeletionRefundType[];
 
+  /** Resto do ciclo pago do clube, devolvido ao cartão do cliente */
+  @Field(() => [DeletionRefundType])
+  clubRefunds: DeletionRefundType[];
+
   /** true = confirma com a senha; false (login social) = digitando o e-mail */
   @Field()
   requiresPassword: boolean;

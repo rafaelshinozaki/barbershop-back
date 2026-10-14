@@ -1758,6 +1758,9 @@ model ClientSubscriptionPayment {
   platformFeePercent Decimal?
   // true = o Stripe já liquidou na conta conectada; não entra no "a repassar"
   settledViaConnect Boolean @default(false)
+  // Quanto já voltou pro cliente (resto do ciclo ao encerrar a unidade, ou
+  // estorno feito no painel do Stripe). Sai do repasse.
+  refundedAmount  Decimal?
   status          String // SUCCEEDED, FAILED
   periodStart     DateTime?
   periodEnd       DateTime?

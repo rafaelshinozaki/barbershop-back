@@ -24,6 +24,8 @@ export interface AccountDeletionPreview {
   futureAppointments: number;
   /** Pago pelo app nesses horários, que volta pros clientes (por moeda) */
   onlineRefunds: Array<{ currency: string; amount: number }>;
+  /** Resto do ciclo pago do clube, que volta pro cartão do cliente (por moeda) */
+  clubRefunds: Array<{ currency: string; amount: number }>;
   /** Conta com senha confirma com a senha; login social, digitando o e-mail */
   requiresPassword: boolean;
   /** Admin do sistema não se exclui por aqui (outro admin faz) */

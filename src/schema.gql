@@ -6,6 +6,7 @@ type AccountDeletionPreviewType {
   activeClientSubscriptions: Int!
   barbershops: [String!]!
   blocked: Boolean!
+  clubRefunds: [DeletionRefundType!]!
   futureAppointments: Int!
   onlineRefunds: [DeletionRefundType!]!
   requiresPassword: Boolean!
@@ -566,6 +567,7 @@ type BarbershopCustomer {
 type BarbershopDeletionPreviewType {
   activeClientSubscriptions: Int!
   activePackages: Int!
+  clubRefunds: [DeletionRefundType!]!
   futureAppointments: Int!
   onlineRefunds: [DeletionRefundType!]!
   packageRefunds: [DeletionRefundType!]!

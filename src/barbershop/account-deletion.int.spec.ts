@@ -221,6 +221,7 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       activeClientSubscriptions: 1,
       futureAppointments: 0,
       onlineRefunds: [],
+      clubRefunds: [],
       requiresPassword: true,
       blocked: false,
     });
