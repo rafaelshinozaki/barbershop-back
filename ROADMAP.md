@@ -1737,3 +1737,15 @@ Foi feita uma varredura de todas as funções que leem, alteram ou apagam pelo i
      
      **Fazer:** horário com venda não muda para cancelado nem para faltou ("apague ou estorne a venda antes"). Só volta para outra situação depois que a venda sair.
 158. 🆕 **Agendamento aceita sala ou cadeira de outra unidade** (back: `createAppointment`, `updateAppointment`): o `resourceId` não é conferido contra a unidade. A checagem de conflito filtra pela unidade do horário, então passa, e o horário fica ligado ao recurso de outra empresa (o nome dele aparece na agenda, e a trava de agenda é compartilhada com a outra unidade). **Fazer:** conferir `resource.barbershopId` (e `isActive`) antes, como já é feito com profissional, cliente e serviços.
+
+### Vigésima sétima rodada (2026-10-14): importação, painel da rede
+
+Foram lidos os cupons e o checkout do plano do dono, a renovação dos planos, o convite de amigo, o leitor de planilha da importação, os períodos dos relatórios e o painel da rede. O cupom só vale no checkout: o antigo `applyCoupon` em cima de um pagamento já foi desligado (`CouponsService.applyCoupon` ficou sem uso e pode sair).
+
+159. 🆕 **Importação: horários antigos disparam o pedido de avaliação, e o leitor erra preço e data fora do padrão brasileiro** (back: `import-sheet.ts`, `ReviewRequestService.enqueueDueRequests`):
+     - Um horário passado entra como `COMPLETED` (origem `HISTORY`). O pedido de avaliação pega todo `COMPLETED` dos últimos 3 dias sem olhar a origem. Importar a planilha da semana manda "Como foi?" para clientes atendidos no sistema antigo, que nunca receberam nada do app.
+     - O preço "1.200" (milhar com ponto, sem vírgula) vira 1,20.
+     - A data é sempre lida como dia/mês: em unidade dos Estados Unidos, 03/04 vira 3 de abril em vez de 4 de março.
+     
+     **Fazer:** o pedido de avaliação ignora a origem `HISTORY` (e `IMPORT`). O preço com ponto e três casas depois dele é milhar. A ordem de dia e mês segue o país da unidade, com aviso na prévia quando a data for ambígua.
+160. 🆕 **Painel da rede soma moedas diferentes e usa o fuso da primeira unidade** (back: painel da rede do dono, `getDashboard`): cada unidade tem a própria moeda (`Barbershop.currency`), mas o faturamento do mês, o comparativo de 6 meses e o "por unidade" somam todos os valores num número só. Esse número sai com a moeda e o fuso da primeira unidade. Uma rede com uma unidade no Brasil e outra em Portugal mostra R$ 10.000 quando são R$ 5.000 mais € 5.000, e o "mês" começa à meia-noite de São Paulo para as duas. **Fazer:** totais por moeda (como já é feito na prévia de encerrar a unidade) e o mês de cada unidade no fuso dela. Se a rede tiver uma moeda só, nada muda na tela.
