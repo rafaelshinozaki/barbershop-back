@@ -1775,3 +1775,9 @@ Foram lidas as consultas e escritas do backoffice-back (que lê o banco direto) 
      - Os pagamentos do clube (`ClientSubscriptionPayment`) não entram na lista, nem os estornos deles (`refundedAmount`, item 128). O Financeiro não vê o dinheiro do clube que caiu na plataforma nem o que voltou para o cliente ao encerrar a unidade, e é ele quem registra o repasse manual.
      
      **Fazer:** totais por moeda. Tipo "clube" na lista, com o valor estornado.
+
+### Trigésima rodada (2026-10-14): tempo real, identidade, busca, sitemap, avisos
+
+Foram lidos o tempo real (assinaturas GraphQL), a verificação de identidade (o nome do documento contra o da conta, e a verificação refeita quando o nome muda pelo app ou pelo backoffice), a busca pública de unidades e profissionais, o sitemap e a escolha de quem recebe os avisos de atividade (já filtra quem está ativo e no período do vínculo). Só um detalhe pequeno.
+
+164. 🆕 **Tempo real guarda as unidades da pessoa do momento em que a conexão abriu** (back: `RealtimeResolver.networkActivity`): a lista de unidades que a pessoa pode ouvir é calculada uma vez, quando a tela conecta. Quem é desligado continua recebendo os avisos de "algo mudou" da unidade até a página recarregar. Quem entra numa unidade nova não recebe os dela até recarregar. Os avisos levam só o tipo do que mudou (sem dados), então não vaza conteúdo, mas a tela de quem saiu continua se atualizando. **Fazer:** conferir o acesso a cada aviso (com cache curto), ou derrubar a conexão quando a pessoa sai da equipe (a sessão já cai).
