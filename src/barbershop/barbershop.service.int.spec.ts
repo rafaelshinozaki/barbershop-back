@@ -1161,6 +1161,133 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(Number(after?.remainingValue)).toBe(0);
     });
 
+    it('editar a venda mantém o que o cartão-presente abateu (item 137)', async () => {
+      const card = await prisma.giftCard.create({
+        data: {
+          networkId: A.networkId,
+          code: `INT${RUN}E`,
+          initialValue: new Decimal(30),
+          remainingValue: new Decimal(30),
+        },
+      });
+      const s = await sale({ giftCardCode: card.code, paymentStatus: 'PENDING' });
+      expect(Number(s.total)).toBe(70);
+      const line = (price: number) => ({
+        items: [
+          {
+            itemType: 'SERVICE',
+            serviceId: A.serviceId,
+            quantity: 1,
+            unitPrice: price,
+            totalPrice: price,
+          },
+        ],
+        subtotal: price,
+        discountAmount: 0,
+        taxAmount: 0,
+        total: price,
+      });
+      // A tela manda o total cheio ao receber: continua 70
+      const paid = await service.updateSale(A.ownerId, A.shopId, s.id, {
+        ...line(100),
+        paymentStatus: 'PAID',
+        paymentMethod: 'PIX',
+      });
+      expect(Number(paid?.total)).toBe(70);
+      const cheaper = await service.updateSale(A.ownerId, A.shopId, s.id, line(90));
+      expect(Number(cheaper?.total)).toBe(60);
+      await expect(service.updateSale(A.ownerId, A.shopId, s.id, line(20))).rejects.toThrow(
+        'menor do que já foi pago',
+      );
+    });
+
+    it('tipo, situação e forma de pagamento só dos valores conhecidos (item 139)', async () => {
+      await expect(sale({ saleType: 'REFUND' })).rejects.toThrow('Tipo de venda inválido');
+      await expect(sale({ paymentMethod: 'cash' })).rejects.toThrow('Forma de pagamento inválida');
+      await expect(sale({ paymentStatus: 'REFUNDED' })).rejects.toThrow(
+        'Situação de pagamento inválida',
+      );
+      await expect(
+        sale({
+          items: [{ itemType: 'GIFT_CARD', quantity: 1, unitPrice: 100, totalPrice: 100 }],
+        }),
+      ).rejects.toThrow('Tipo de item inválido');
+      const s = await sale();
+      await expect(
+        service.updateSale(A.ownerId, A.shopId, s.id, { paymentStatus: 'PARTIAL' }),
+      ).rejects.toThrow('Situação de pagamento inválida');
+
+      // Venda de pacote "para receber depois": recebe (item 138), mas o tipo não muda
+      const pkg = await prisma.sale.create({
+        data: {
+          barbershopId: A.shopId,
+          saleType: 'PACKAGE',
+          subtotal: new Decimal(200),
+          total: new Decimal(200),
+          paymentStatus: 'PENDING',
+          items: {
+            create: [
+              {
+                itemType: 'PACKAGE',
+                quantity: 1,
+                unitPrice: new Decimal(200),
+                totalPrice: new Decimal(200),
+              },
+            ],
+          },
+        },
+      });
+      await expect(
+        service.updateSale(A.ownerId, A.shopId, pkg.id, { saleType: 'SERVICE' }),
+      ).rejects.toThrow('não mudam');
+      const received = await service.updateSale(A.ownerId, A.shopId, pkg.id, {
+        paymentStatus: 'PAID',
+        paymentMethod: 'PIX',
+      });
+      expect(received?.paymentStatus).toBe('PAID');
+      expect(received?.paidAt).not.toBeNull();
+      expect(Number(received?.total)).toBe(200);
+    });
+
+    it('faturamento soma o sinal, o pago pelo app e o sinal retido (item 146)', async () => {
+      const from = new Date(Date.now() - 2 * 86_400_000);
+      const to = new Date(Date.now() + 86_400_000);
+      const before = await service.getFinancialSummary(A.ownerId, A.shopId, from, to);
+      const method = (r: typeof before, key: string) =>
+        r.revenueByPaymentMethod.find((m) => m.category === key)?.total ?? 0;
+      await prisma.sale.create({
+        data: {
+          barbershopId: A.shopId,
+          saleType: 'SERVICE',
+          subtotal: new Decimal(100),
+          total: new Decimal(50),
+          depositApplied: new Decimal(30),
+          prepaidApplied: new Decimal(20),
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH',
+          paidAt: new Date(),
+        },
+      });
+      // Faltou e o sinal ficou com a unidade
+      await prisma.appointment.create({
+        data: {
+          barbershopId: A.shopId,
+          barberId: A.barberId,
+          customerId: A.customerId,
+          startAt: new Date(Date.now() - 86_400_000),
+          endAt: new Date(Date.now() - 86_400_000 + 1_800_000),
+          status: 'NO_SHOW',
+          depositPaid: true,
+          depositPaidAt: new Date(Date.now() - 2 * 86_400_000 + 3_600_000),
+          depositAmount: new Decimal(15),
+        },
+      });
+      const after = await service.getFinancialSummary(A.ownerId, A.shopId, from, to);
+      expect(Math.round((after.totalRevenue - before.totalRevenue) * 100) / 100).toBe(115);
+      expect(method(after, 'DEPOSIT') - method(before, 'DEPOSIT')).toBe(45);
+      expect(method(after, 'APP') - method(before, 'APP')).toBe(20);
+    });
+
     it('apagar a venda devolve o saldo do cartão-presente; caixa aberto é um só', async () => {
       const card = await prisma.giftCard.create({
         data: {
