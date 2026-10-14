@@ -1749,3 +1749,13 @@ Foram lidos os cupons e o checkout do plano do dono, a renovação dos planos, o
      
      **Fazer:** o pedido de avaliação ignora a origem `HISTORY` (e `IMPORT`). O preço com ponto e três casas depois dele é milhar. A ordem de dia e mês segue o país da unidade, com aviso na prévia quando a data for ambígua.
 160. 🆕 **Painel da rede soma moedas diferentes e usa o fuso da primeira unidade** (back: painel da rede do dono, `getDashboard`): cada unidade tem a própria moeda (`Barbershop.currency`), mas o faturamento do mês, o comparativo de 6 meses e o "por unidade" somam todos os valores num número só. Esse número sai com a moeda e o fuso da primeira unidade. Uma rede com uma unidade no Brasil e outra em Portugal mostra R$ 10.000 quando são R$ 5.000 mais € 5.000, e o "mês" começa à meia-noite de São Paulo para as duas. **Fazer:** totais por moeda (como já é feito na prévia de encerrar a unidade) e o mês de cada unidade no fuso dela. Se a rede tiver uma moeda só, nada muda na tela.
+
+### Vigésima oitava rodada (2026-10-14): permissões do backoffice, Connect, nota do cliente, histórico
+
+Foram lidas as permissões por área de todas as operações do backoffice dentro do back (só as de admin da plataforma ficam sem área, como esperado), a conta de recebimento (Connect), a nota de conduta do cliente, o histórico de alterações (escopo por cargo), o registro e a retenção dos e-mails enviados e a fila de atendimento por ordem de chegada. Nada grave; ficam os pequenos abaixo.
+
+161. 🆕 **Pequenos, achados na leitura do código:**
+     - **Conta de recebimento criada em dobro** (`ConnectService.startOnboarding`): dois cliques juntos em "Receber pelo app" criam duas contas no Stripe. A segunda gravação esbarra na chave única (`ownerType + ownerId`) e devolve erro 500, e a conta extra fica órfã no Stripe. **Fazer:** trava por dono (como no clube) ou chave de idempotência na criação.
+     - **Item de venda aceita histórico de atendimento de outra unidade** (`createSale`, `updateSale`): o `serviceHistoryId` dos itens não é conferido contra a unidade (o serviço e o produto são). **Fazer:** conferir junto com `ensureItemsOfBarbershop`.
+     - **Fila por ordem de chegada: o profissional básico muda a situação de qualquer cliente da fila** (`updateWalkInStatus`): a função só exige estar na equipe. **Fazer:** o mesmo nível de quem agenda pelos outros (recepção para cima), ou só os da própria fila para o básico.
+     - **Função sem uso** (`CouponsService.applyCoupon`): aplicava cupom num pagamento sem validar o cupom nem o dono. O caminho público já foi desligado (`applyCouponToPayment` recusa); a função ficou sem chamada. **Fazer:** apagar, para não voltar a ser usada por engano.
