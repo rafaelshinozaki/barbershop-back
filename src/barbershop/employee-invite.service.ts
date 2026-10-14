@@ -103,8 +103,22 @@ export class EmployeeInviteService {
         status: 'PENDING',
       },
     });
-    if (existingInvite) {
+    if (existingInvite && existingInvite.expiresAt >= new Date()) {
       throw new BadRequestException('Já existe um convite pendente para este email nesta unidade');
+    }
+    // Vencido não trava um convite novo. O cadastro nasceu só do convite
+    // e ninguém aceitou, então sai da equipe ativa.
+    if (existingInvite) {
+      await this.prisma.$transaction([
+        this.prisma.employeeInvite.update({
+          where: { id: existingInvite.id },
+          data: { status: 'EXPIRED' },
+        }),
+        this.prisma.barber.updateMany({
+          where: { id: existingInvite.barberId, userId: null },
+          data: { isActive: false },
+        }),
+      ]);
     }
 
     const phone = input.phone.trim();
@@ -187,6 +201,41 @@ export class EmployeeInviteService {
       this.logger.error(`Convite ${invite.id}: e-mail não enviado`, error as Error);
     }
     return { barber, invite, emailSent };
+  }
+
+  /**
+   * Reenvia o convite pendente da mesma pessoa: novo link e mais 30 dias.
+   * Vale também quando o prazo já acabou.
+   */
+  async resendInvite(userId: number, barbershopId: number, barberId: number) {
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const invite = await this.prisma.employeeInvite.findFirst({
+      where: { barberId, barbershopId, status: 'PENDING' },
+      include: { barber: { select: { isActive: true } } },
+    });
+    if (!invite || !invite.barber?.isActive) {
+      throw new BadRequestException('Não há convite pendente para reenviar.');
+    }
+    const inviteToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+    const updated = await this.prisma.employeeInvite.update({
+      where: { id: invite.id },
+      data: { inviteToken, expiresAt, inviterId: userId },
+      include: {
+        inviter: { select: { fullName: true } },
+        barbershop: { select: { name: true, country: true } },
+        barber: { select: { staffType: true } },
+      },
+    });
+    let emailSent = true;
+    try {
+      await this.sendEmployeeInviteEmail(updated);
+    } catch (error) {
+      emailSent = false;
+      this.logger.error(`Convite ${updated.id}: reenvio não saiu`, error as Error);
+    }
+    return { invite: updated, emailSent };
   }
 
   /**

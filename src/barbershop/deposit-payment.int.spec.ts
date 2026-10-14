@@ -11,6 +11,7 @@ import { DepositPaymentService } from './deposit-payment.service';
 import { ConnectService } from './connect.service';
 import { PrepaymentService } from './prepayment.service';
 import { createAppointmentToken } from './appointment-link';
+import { currentPricing, setCurrentPricing } from '../pricing/pricing';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -622,6 +623,36 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect((await connect.barbershopDashboardLink(ownerId, shopId)).url).toBe(
       `https://connect.stripe.com/express/acct_${RUN}`,
     );
+  });
+
+  it('a taxa do sinal fica a da cobrança, e o repasse manual baixa o devido', async () => {
+    const saved = { ...currentPricing() };
+    const before = await deposits.payoutReport(ownerId, shopId);
+    const booked = await paidBooking('17:00');
+    const row = await load(booked.id);
+    expect(Number(row.depositPlatformFeePercent)).toBe(saved.platformFeePercent);
+    setCurrentPricing({ ...saved, platformFeePercent: 40 });
+    try {
+      const after = await deposits.payoutReport(ownerId, shopId);
+      const addedGross = after.grossAmount - before.grossAmount;
+      const addedFee = after.platformFeeAmount - before.platformFeeAmount;
+      expect(addedGross).toBe(Number(row.depositAmount));
+      expect(addedFee).toBeCloseTo((addedGross * saved.platformFeePercent) / 100, 2);
+      await prisma.depositPayout.create({
+        data: {
+          barbershopId: shopId,
+          amount: new Decimal(5),
+          paidAt: new Date(),
+          recordedByEmail: 'fin@test.local',
+        },
+      });
+      const withPayout = await deposits.payoutReport(ownerId, shopId);
+      expect(withPayout.paidOutManually).toBe(5);
+      expect(withPayout.netOwedToBarbershop).toBeCloseTo(after.netOwedToBarbershop - 5, 2);
+    } finally {
+      setCurrentPricing(saved);
+      await prisma.depositPayout.deleteMany({ where: { barbershopId: shopId } });
+    }
   });
 
   it('pagar o atendimento pelo app: direto na unidade; desconta na conta; cancelado, volta', async () => {

@@ -88,7 +88,7 @@ import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { currentPricing } from '../pricing/pricing';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
-import { toMinorUnits } from '../common/money-units';
+import { moneyCap, toMinorUnits } from '../common/money-units';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
 /** Agenda da franquia: período máximo pedido (6 semanas = visão de mês) */
@@ -285,11 +285,12 @@ const SEARCH_CANDIDATE_LIMIT = 5000;
 
 // Valores de dinheiro que vêm da tela: número de verdade, sem negativo e com
 // teto. Um total negativo com cartão-presente "debitava" um valor negativo
-// (o saldo subia) e pontos negativos "resgatados" viravam pontos ganhos
+// (o saldo subia) e pontos negativos "resgatados" viravam pontos ganhos.
+// O teto é 1.000.000 na moeda "forte" e acompanha moneyScale nas outras.
 const MAX_MONEY = 1_000_000;
-function checkMoney(label: string, value: number | null | undefined) {
+function checkMoney(label: string, value: number | null | undefined, currency?: string | null) {
   if (value == null) return;
-  if (!Number.isFinite(value) || value < 0 || value > MAX_MONEY) {
+  if (!Number.isFinite(value) || value < 0 || value > moneyCap(MAX_MONEY, currency)) {
     throw new BadRequestException(`${label} inválido`);
   }
 }
@@ -340,18 +341,21 @@ function loyaltyEarnedFor(
   if (perUnit <= 0) return 0;
   return Math.floor(total * perUnit);
 }
-function checkSaleAmounts(data: {
-  subtotal?: number;
-  discountAmount?: number;
-  taxAmount?: number;
-  total?: number;
-  loyaltyPointsRedeemed?: number;
-  items?: Array<{ quantity: number; unitPrice: number; totalPrice: number }>;
-}) {
-  checkMoney('Subtotal', data.subtotal);
-  checkMoney('Desconto', data.discountAmount);
-  checkMoney('Imposto', data.taxAmount);
-  checkMoney('Total', data.total);
+function checkSaleAmounts(
+  data: {
+    subtotal?: number;
+    discountAmount?: number;
+    taxAmount?: number;
+    total?: number;
+    loyaltyPointsRedeemed?: number;
+    items?: Array<{ quantity: number; unitPrice: number; totalPrice: number }>;
+  },
+  currency?: string | null,
+) {
+  checkMoney('Subtotal', data.subtotal, currency);
+  checkMoney('Desconto', data.discountAmount, currency);
+  checkMoney('Imposto', data.taxAmount, currency);
+  checkMoney('Total', data.total, currency);
   const points = data.loyaltyPointsRedeemed;
   if (points != null && (!Number.isInteger(points) || points < 0)) {
     throw new BadRequestException('Pontos inválidos');
@@ -360,8 +364,8 @@ function checkSaleAmounts(data: {
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1000) {
       throw new BadRequestException('Quantidade inválida');
     }
-    checkMoney('Preço', item.unitPrice);
-    checkMoney('Preço', item.totalPrice);
+    checkMoney('Preço', item.unitPrice, currency);
+    checkMoney('Preço', item.totalPrice, currency);
   }
 }
 
@@ -2085,7 +2089,7 @@ export class BarbershopService {
       select: {
         connectAccountId: true,
         usedThisCycle: true,
-        plan: { select: { sessionsPerCycle: true } },
+        sessionsPerCycle: true,
         barbershop: { select: { currency: true } },
         payments: {
           where: { status: 'SUCCEEDED', periodEnd: { gt: now } },
@@ -2114,7 +2118,7 @@ export class BarbershopService {
       const length = payment.periodEnd.getTime() - payment.periodStart.getTime();
       if (length <= 0) continue;
       let share = Math.min(1, (payment.periodEnd.getTime() - now.getTime()) / length);
-      const sessions = sub.plan.sessionsPerCycle;
+      const sessions = sub.sessionsPerCycle;
       if (sessions != null && sessions > 0) {
         share = Math.min(share, Math.max(0, sessions - sub.usedThisCycle) / sessions);
       }
@@ -2528,14 +2532,29 @@ export class BarbershopService {
   }
 
   async getBarbers(userId: number, barbershopId: number, activeOnly?: boolean) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
     const where: any = { barbershopId };
     if (activeOnly) where.isActive = true;
-    return this.prisma.barber.findMany({
+    // O link do convite entra na equipe: só gerente e dono recebem
+    const canInvite = ACCESS_RANK[shop.accessLevel] >= ACCESS_RANK.manager;
+    const barbers = await this.prisma.barber.findMany({
       where,
       orderBy: { name: 'asc' },
-      include: { schedules: true },
+      include: {
+        schedules: true,
+        employeeInvites: {
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { inviteToken: true, expiresAt: true },
+        },
+      },
     });
+    return barbers.map(({ employeeInvites, ...barber }) => ({
+      ...barber,
+      pendingInviteToken: canInvite ? employeeInvites[0]?.inviteToken ?? null : null,
+      pendingInviteExpiresAt: canInvite ? employeeInvites[0]?.expiresAt ?? null : null,
+    }));
   }
 
   async updateBarber(
@@ -7283,7 +7302,7 @@ export class BarbershopService {
     data: { serviceId: number; name: string; price: number; sessionsPerCycle?: number },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
-    checkMoney('Preço', data.price);
+    checkMoney('Preço', data.price, barbershop.currency);
     checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
     await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const service = await this.prisma.barbershopService.findFirst({
@@ -7321,21 +7340,28 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     id: number,
-    data: Partial<{ name: string; price: number; sessionsPerCycle: number; isActive: boolean }>,
+    data: Partial<{
+      name: string;
+      price: number;
+      sessionsPerCycle: number | null;
+      isActive: boolean;
+    }>,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id, barbershopId },
     });
     if (!plan) throw new NotFoundException('Plano não encontrado');
-    checkMoney('Preço', data.price);
+    checkMoney('Preço', data.price, barbershop.currency);
     checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
 
     let stripePriceId = plan.stripePriceId;
     // Stripe Price é imutável — se o valor mudou, cria um Price novo e
     // aponta o plano pra ele (assinaturas já ativas continuam no Price
     // antigo, o que é o comportamento correto: não muda o valor de quem já
-    // assinou).
+    // assinou). O limite de sessões também fica na assinatura; mudar aqui
+    // vale só para quem assinar depois. Vazio (null) é ilimitado.
+
     if (data.price != null && Number(plan.price) !== data.price && plan.stripeProductId) {
       const newPrice = await this.stripeService.createPrice(
         plan.stripeProductId,
@@ -7429,7 +7455,7 @@ export class BarbershopService {
     if (sub.status !== 'ACTIVE') {
       throw new BadRequestException('Assinatura não está ativa');
     }
-    const limit = sub.plan.sessionsPerCycle;
+    const limit = sub.sessionsPerCycle;
     if (limit != null && sub.usedThisCycle >= limit) {
       throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
     }
@@ -7590,7 +7616,7 @@ export class BarbershopService {
       serviceId: s.plan?.serviceId ?? null,
       serviceName: s.plan?.service?.name ?? null,
       price: s.plan ? Number(s.plan.price) : null,
-      sessionsPerCycle: s.plan?.sessionsPerCycle ?? null,
+      sessionsPerCycle: s.sessionsPerCycle ?? null,
       status: s.status,
       currentPeriodStart: s.currentPeriodStart?.toISOString(),
       currentPeriodEnd: s.currentPeriodEnd?.toISOString(),
@@ -7697,6 +7723,7 @@ export class BarbershopService {
             currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
             connectAccountId: destination,
             applicationFeePercent: destination != null ? new Decimal(feePercent) : null,
+            sessionsPerCycle: plan.sessionsPerCycle,
           },
         });
         return { stripeSubscription, subscription };
@@ -7761,7 +7788,7 @@ export class BarbershopService {
     if (subscription.status !== 'ACTIVE') {
       throw new BadRequestException('Assinatura não está ativa');
     }
-    const limit = subscription.plan.sessionsPerCycle;
+    const limit = subscription.sessionsPerCycle;
     // Baixa condicional: dois cliques juntos (ou dois barbeiros) não passam
     // do limite — antes os dois liam o mesmo saldo e gravavam +1 cada
     const { count } = await this.prisma.clientSubscription.updateMany({
@@ -7894,6 +7921,33 @@ export class BarbershopService {
 
   // ============ SALES ============
 
+  /**
+   * Bônus de quem indicou: só na primeira vez que a venda do indicado passa
+   * a paga, e só se houve gasto em dinheiro (sinal, pago pelo app ou o que
+   * sobrou no caixa). Sessão de graça, cartão-presente e pontos não contam.
+   */
+  private async completeReferralIfPaid(
+    tx: Prisma.TransactionClient,
+    network: { loyaltyEnabled: boolean; referralBonusPoints: number },
+    customerId: number | null | undefined,
+    moneyPaid: number,
+  ) {
+    if (!customerId || !network.loyaltyEnabled || moneyPaid <= 0) return;
+    const referral = await tx.customerReferral.findUnique({ where: { referredId: customerId } });
+    if (!referral || referral.completedAt) return;
+    const bonusPoints = network.referralBonusPoints;
+    const claimed = await tx.customerReferral.updateMany({
+      where: { id: referral.id, completedAt: null },
+      data: { completedAt: new Date(), pointsAwarded: bonusPoints },
+    });
+    if (claimed.count === 1 && bonusPoints > 0) {
+      await tx.customer.update({
+        where: { id: referral.referrerId },
+        data: { loyaltyPoints: { increment: bonusPoints } },
+      });
+    }
+  }
+
   async createSale(
     userId: number,
     barbershopId: number,
@@ -7924,9 +7978,9 @@ export class BarbershopService {
       clientPackageId?: number;
     },
   ) {
-    checkSaleAmounts(data);
-    checkSaleKinds({ ...data, paymentStatus: data.paymentStatus ?? 'PENDING' });
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    checkSaleAmounts(data, barbershop.currency);
+    checkSaleKinds({ ...data, paymentStatus: data.paymentStatus ?? 'PENDING' });
     // Barbeiro: a venda é dele (como na listagem, que só mostra as dele).
     // Antes dava pra lançar em nome de um colega (e a comissão ia junto) ou
     // cobrar o atendimento de outro
@@ -8013,6 +8067,9 @@ export class BarbershopService {
 
     let loyaltyDiscountAmount = 0;
     if (data.loyaltyPointsRedeemed && data.loyaltyPointsRedeemed > 0) {
+      if (!barbershop.network.loyaltyEnabled) {
+        throw new BadRequestException('O programa de fidelidade está desligado.');
+      }
       if (!data.customerId) {
         throw new BadRequestException('Selecione um cliente para resgatar pontos de fidelidade');
       }
@@ -8179,31 +8236,13 @@ export class BarbershopService {
         }
       }
 
-      // Indicação entre clientes: o referrer só ganha o bônus quando o
-      // indicado completa a PRIMEIRA venda paga (não no cadastro) — evita
-      // indicação fake sem gasto real. Um cliente só pode ter uma indicação
-      // pendente (referredId é único), então não há risco de premiar mais de
-      // uma vez por engano em vendas futuras.
-      if (data.paymentStatus === 'PAID' && data.customerId && barbershop?.network.loyaltyEnabled) {
-        const referral = await tx.customerReferral.findUnique({
-          where: { referredId: data.customerId },
-        });
-        if (referral && !referral.completedAt) {
-          // Marca primeiro, só se ainda está pendente: duas vendas pagas ao
-          // mesmo tempo davam o bônus duas vezes (cada uma contava "1 venda
-          // paga"); e venda criada pendente e paga depois nunca dava
-          const bonusPoints = barbershop.network.referralBonusPoints;
-          const claimed = await tx.customerReferral.updateMany({
-            where: { id: referral.id, completedAt: null },
-            data: { completedAt: new Date(), pointsAwarded: bonusPoints },
-          });
-          if (claimed.count === 1 && bonusPoints > 0) {
-            await tx.customer.update({
-              where: { id: referral.referrerId },
-              data: { loyaltyPoints: { increment: bonusPoints } },
-            });
-          }
-        }
+      if (data.paymentStatus === 'PAID') {
+        await this.completeReferralIfPaid(
+          tx,
+          barbershop.network,
+          data.customerId,
+          loyaltyMoneyBase(finalTotal, depositApplied, prepaidApplied),
+        );
       }
       await tx.saleItem.createMany({
         data: data.items.map((item) => ({
@@ -8380,8 +8419,8 @@ export class BarbershopService {
       paymentMethod?: string;
     },
   ) {
-    checkSaleAmounts(data);
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkSaleAmounts(data, barbershop.currency);
     // Como na criação: cliente, profissional e itens têm de ser desta
     // unidade/rede (senão a venda aponta pra dado de outra empresa)
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
@@ -8530,6 +8569,19 @@ export class BarbershopService {
             data: { loyaltyPoints: { increment: delta } },
           });
         }
+      }
+
+      if (existing.paymentStatus !== 'PAID' && nextStatus === 'PAID') {
+        await this.completeReferralIfPaid(
+          tx,
+          barbershop.network,
+          nextCustomerId,
+          loyaltyMoneyBase(
+            nextTotal,
+            Number(existing.depositApplied ?? 0),
+            Number(existing.prepaidApplied ?? 0),
+          ),
+        );
       }
 
       if (data.items) {
@@ -8866,8 +8918,8 @@ export class BarbershopService {
   }
 
   async openCashSession(userId: number, barbershopId: number, openingBalance: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
-    checkMoney('Troco inicial', openingBalance);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    checkMoney('Troco inicial', openingBalance, shop.currency);
     // Um caixa aberto por unidade: dois cliques juntos abriam dois (a
     // checagem e a criação eram passos separados)
     const session = await this.prisma.$transaction(async (tx) => {
@@ -8900,8 +8952,8 @@ export class BarbershopService {
     barbershopId: number,
     data: { countedBalance: number; notes?: string },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
-    checkMoney('Valor contado', data.countedBalance);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    checkMoney('Valor contado', data.countedBalance, shop.currency);
     const session = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -8982,9 +9034,9 @@ export class BarbershopService {
       expenseDate?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     if (!(data.amount > 0)) throw new BadRequestException('Valor da despesa inválido');
-    checkMoney('Valor da despesa', data.amount);
+    checkMoney('Valor da despesa', data.amount, shop.currency);
     const openSession = await this.prisma.cashSession.findFirst({
       where: { barbershopId, status: 'OPEN' },
     });
@@ -9269,8 +9321,8 @@ export class BarbershopService {
       validityDays?: number | null;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
-    checkMoney('Preço', data.price);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkMoney('Preço', data.price, shop.currency);
     checkSessionCount('Sessões', data.totalSessions);
     checkSessionCount('Validade', data.validityDays);
     await this.ensureModuleAccess(barbershopId, 'packages');
@@ -9304,10 +9356,10 @@ export class BarbershopService {
       validityDays: number | null;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const pkg = await this.prisma.servicePackage.findFirst({ where: { id, barbershopId } });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
-    checkMoney('Preço', data.price);
+    checkMoney('Preço', data.price, shop.currency);
     checkSessionCount('Sessões', data.totalSessions);
     if (data.validityDays != null) checkSessionCount('Validade', data.validityDays);
     const { price, ...rest } = data;

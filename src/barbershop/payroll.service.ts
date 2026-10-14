@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { moneyCap } from '../common/money-units';
 import { nextDateStr, safeTimeZone, toZonedParts, zonedTimeToUtc } from '../common/timezone.util';
 import {
   BarbershopService,
@@ -54,6 +55,7 @@ export const ENTRY_TYPES = ['TIP', 'ADVANCE', 'BONUS', 'DEDUCTION'] as const;
 export type EntryType = (typeof ENTRY_TYPES)[number];
 export const PAY_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
 
+/** Teto do valor fixo e do lançamento, em real. Nas outras moedas, moneyCap. */
 const MAX_AMOUNT = 1_000_000;
 const MAX_PERIOD_DAYS = 400;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -154,7 +156,7 @@ export class PayrollService {
     barberId: number,
     data: { payType: string; fixedAmount?: number | null; payPeriod?: string | null },
   ) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     await this.barberOf(barbershopId, barberId);
     if (!(PAY_TYPES as readonly string[]).includes(data.payType)) {
       throw new BadRequestException('Forma de pagamento inválida');
@@ -165,7 +167,7 @@ export class PayrollService {
     }
     const needsFixed = data.payType !== 'COMMISSION';
     const fixed = data.fixedAmount ?? null;
-    if (needsFixed && (fixed == null || !(fixed > 0) || fixed > MAX_AMOUNT)) {
+    if (needsFixed && (fixed == null || !(fixed > 0) || fixed > moneyCap(MAX_AMOUNT, shop.currency))) {
       throw new BadRequestException('Informe o valor fixo');
     }
     const fixedAmount = needsFixed && fixed != null ? new Decimal(round2(fixed)) : null;
@@ -235,7 +237,7 @@ export class PayrollService {
     if (!(ENTRY_TYPES as readonly string[]).includes(data.type)) {
       throw new BadRequestException('Tipo de lançamento inválido');
     }
-    if (!(data.amount > 0) || data.amount > MAX_AMOUNT) {
+    if (!(data.amount > 0) || data.amount > moneyCap(MAX_AMOUNT, shop.currency)) {
       throw new BadRequestException('Valor inválido');
     }
     const isAdvance = data.type === 'ADVANCE';

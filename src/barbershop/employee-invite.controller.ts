@@ -16,6 +16,16 @@ export class EmployeeInviteController {
     return this.employeeInviteService.createInvite(req.user.id, body);
   }
 
+  /** Novo prazo e novo link do mesmo convite (também o que já venceu). */
+  @Post('resend')
+  @UseGuards(JwtAuthGuard)
+  async resendInvite(
+    @Request() req: any,
+    @Body() body: { barbershopId: number; barberId: number },
+  ) {
+    return this.employeeInviteService.resendInvite(req.user.id, body.barbershopId, body.barberId);
+  }
+
   @Get('validate/:inviteToken')
   async validateInvite(@Param('inviteToken') inviteToken: string) {
     return this.employeeInviteService.validateInvite(inviteToken);

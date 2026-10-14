@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -128,7 +129,11 @@ export class DepositPaymentService {
       // Outra aba criou junto: fica o primeiro gravado, este é cancelado
       const saved = await this.prisma.appointment.updateMany({
         where: { id: appt.id, depositPaymentIntentId: appt.depositPaymentIntentId },
-        data: { depositPaymentIntentId: created.id, depositStripeAccountId: destination },
+        data: {
+          depositPaymentIntentId: created.id,
+          depositStripeAccountId: destination,
+          depositPlatformFeePercent: new Decimal(currentPricing().platformFeePercent),
+        },
       });
       if (saved.count === 0) {
         await this.stripe.cancelPaymentIntent(created.id).catch(() => undefined);
@@ -184,6 +189,11 @@ export class DepositPaymentService {
         depositPaidAt: new Date(),
         depositPaymentIntentId: intent.id,
         holdExpiresAt: null,
+        // A taxa da cobrança (gravada ao criar o pagamento). Se o pagamento
+        // começou antes dessa coluna existir, fica a taxa de agora.
+        ...(appt.depositPlatformFeePercent == null
+          ? { depositPlatformFeePercent: new Decimal(currentPricing().platformFeePercent) }
+          : {}),
       },
     });
     if (confirmed.count === 1) {
@@ -363,28 +373,56 @@ export class DepositPaymentService {
    */
   async payoutReport(userId: number, barbershopId: number, startDate?: string, endDate?: string) {
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    const paid = await this.prisma.appointment.findMany({
-      where: {
-        barbershopId,
-        depositPaid: true,
-        depositPaymentIntentId: { not: null },
-        depositPaidAt: reportPeriod(safeTimeZone(shop.timezone), startDate, endDate),
-      },
-      select: { depositAmount: true, depositStripeAccountId: true },
-    });
-    const grossAmount = paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
-    const platformFeeAmount = Math.round(grossAmount * currentPricing().platformFeePercent) / 100;
+    const period = reportPeriod(safeTimeZone(shop.timezone), startDate, endDate);
+    const [paid, payouts] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          barbershopId,
+          depositPaid: true,
+          depositRefundedAt: null,
+          depositPaymentIntentId: { not: null },
+          depositPaidAt: period,
+        },
+        select: {
+          depositAmount: true,
+          depositStripeAccountId: true,
+          depositPlatformFeePercent: true,
+        },
+      }),
+      this.prisma.depositPayout.findMany({
+        where: { barbershopId, paidAt: period },
+      }),
+    ]);
+    // Cada sinal com a taxa de quando foi cobrado. Centavos arredondados.
+    const current = currentPricing().platformFeePercent;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const feeOf = (amount: number, percent: { toString(): string } | null) =>
+      round2((amount * Number(percent ?? current)) / 100);
+    const grossAmount = round2(paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0));
+    const platformFeeAmount = round2(
+      paid.reduce((sum, a) => sum + feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent), 0),
+    );
     // Os que caíram direto na conta da unidade (Connect) já foram repassados
-    const direct = paid.filter((a) => a.depositStripeAccountId);
-    const directGross = direct.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0);
-    const directFee = Math.round(directGross * currentPricing().platformFeePercent) / 100;
+    const paidOutAutomatically = round2(
+      paid
+        .filter((a) => a.depositStripeAccountId)
+        .reduce(
+          (sum, a) =>
+            sum + Number(a.depositAmount ?? 0) - feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
+          0,
+        ),
+    );
+    const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
     return {
       paymentsCount: paid.length,
       grossAmount,
-      platformFeePercentage: currentPricing().platformFeePercent,
+      platformFeePercentage: grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
       platformFeeAmount,
-      netOwedToBarbershop: grossAmount - platformFeeAmount - (directGross - directFee),
-      paidOutAutomatically: directGross - directFee,
+      paidOutAutomatically,
+      paidOutManually,
+      netOwedToBarbershop: round2(
+        grossAmount - platformFeeAmount - paidOutAutomatically - paidOutManually,
+      ),
     };
   }
 

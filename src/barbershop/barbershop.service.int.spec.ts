@@ -1361,6 +1361,35 @@ describe('BarbershopService (integração com o banco)', () => {
       await service.openCashSession(A.ownerId, A.shopId, 0);
     });
 
+    it('teto de dinheiro acompanha a moeda', async () => {
+      await expect(
+        service.createExpense(A.ownerId, A.shopId, {
+          category: 'OTHER',
+          description: 'Acima do real',
+          amount: 1_000_001,
+        }),
+      ).rejects.toThrow('inválido');
+      await prisma.barbershop.update({ where: { id: A.shopId }, data: { currency: 'COP' } });
+      try {
+        const expense = await service.createExpense(A.ownerId, A.shopId, {
+          category: 'OTHER',
+          description: 'Salário mínimo em peso',
+          amount: 1_500_000,
+        });
+        expect(Number(expense.amount)).toBe(1_500_000);
+        await prisma.expense.delete({ where: { id: expense.id } });
+        await expect(
+          service.createExpense(A.ownerId, A.shopId, {
+            category: 'OTHER',
+            description: 'Acima do peso',
+            amount: 1_000_000_001,
+          }),
+        ).rejects.toThrow('inválido');
+      } finally {
+        await prisma.barbershop.update({ where: { id: A.shopId }, data: { currency: 'BRL' } });
+      }
+    });
+
     it('despesa de caixa fechado ou do pagamento da equipe não se apaga por fora', async () => {
       await prisma.cashSession.updateMany({
         where: { barbershopId: A.shopId, status: 'OPEN' },
@@ -1493,6 +1522,105 @@ describe('BarbershopService (integração com o banco)', () => {
       await sale({ paymentStatus: 'PENDING' });
       const c = await prisma.customer.findUnique({ where: { id: A.customerId } });
       expect(c?.loyaltyPoints).toBe(100);
+    });
+
+    it('indicação completa quando a venda passa a paga, e venda de R$ 0 não completa', async () => {
+      const referrer = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Quem indicou', phone: `7${RUN}`, loyaltyPoints: 0 },
+      });
+      const referred = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Indicado', phone: `8${RUN}`, loyaltyPoints: 0 },
+      });
+      const freeCustomer = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Sem gasto', phone: `9${RUN}`, loyaltyPoints: 0 },
+      });
+      const paidNow = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Pago na hora', phone: `4${RUN}`, loyaltyPoints: 0 },
+      });
+      await prisma.customerReferral.createMany({
+        data: [referred, freeCustomer, paidNow].map((c) => ({
+          networkId: A.networkId,
+          referrerId: referrer.id,
+          referredId: c.id,
+        })),
+      });
+      const saleIds: number[] = [];
+      try {
+        const pending = await sale({ customerId: referred.id, paymentStatus: 'PENDING' });
+        saleIds.push(pending.id);
+        expect(
+          (await prisma.customerReferral.findUniqueOrThrow({ where: { referredId: referred.id } }))
+            .completedAt,
+        ).toBeNull();
+        await service.updateSale(A.ownerId, A.shopId, pending.id, {
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH',
+        });
+        const done = await prisma.customerReferral.findUniqueOrThrow({
+          where: { referredId: referred.id },
+        });
+        expect(done.completedAt).toBeTruthy();
+        expect(done.pointsAwarded).toBe(50);
+
+        const free = await service.createSale(A.ownerId, A.shopId, {
+          customerId: freeCustomer.id,
+          saleType: 'SERVICE',
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: 0,
+              totalPrice: 0,
+            },
+          ],
+          subtotal: 0,
+          total: 0,
+          paymentStatus: 'PAID',
+          paymentMethod: 'CASH',
+        });
+        saleIds.push(free.id);
+        expect(
+          (
+            await prisma.customerReferral.findUniqueOrThrow({
+              where: { referredId: freeCustomer.id },
+            })
+          ).completedAt,
+        ).toBeNull();
+
+        const now = await sale({ customerId: paidNow.id });
+        saleIds.push(now.id);
+        expect(
+          (await prisma.customerReferral.findUniqueOrThrow({ where: { referredId: paidNow.id } }))
+            .completedAt,
+        ).toBeTruthy();
+        expect(
+          (await prisma.customer.findUniqueOrThrow({ where: { id: referrer.id } })).loyaltyPoints,
+        ).toBe(100);
+      } finally {
+        for (const id of saleIds) await service.deleteSale(A.ownerId, A.shopId, id);
+        await prisma.customer.deleteMany({
+          where: { id: { in: [referrer.id, referred.id, freeCustomer.id, paidNow.id] } },
+        });
+      }
+    });
+
+    it('não resgata pontos com a fidelidade desligada', async () => {
+      await prisma.network.update({
+        where: { id: A.networkId },
+        data: { loyaltyEnabled: false },
+      });
+      try {
+        await expect(sale({ loyaltyPointsRedeemed: 50 })).rejects.toThrow('desligado');
+        expect(
+          (await prisma.customer.findUniqueOrThrow({ where: { id: A.customerId } })).loyaltyPoints,
+        ).toBe(100);
+      } finally {
+        await prisma.network.update({
+          where: { id: A.networkId },
+          data: { loyaltyEnabled: true },
+        });
+      }
     });
 
     it('apagar a venda do pacote ou do cartão desfaz o que não foi usado; o resto se estorna', async () => {
@@ -1708,13 +1836,13 @@ describe('BarbershopService (integração com o banco)', () => {
         1,
       );
 
-      // Sessões: limite 2, cinco débitos ao mesmo tempo → só 2 passam
-      await prisma.clientSubscriptionPlan.update({
-        where: { id: plan.id },
-        data: { sessionsPerCycle: 2 },
-      });
+      // Sessões: limite 2 gravado na assinatura, cinco débitos ao mesmo tempo → só 2 passam
       const sub = await prisma.clientSubscription.findFirstOrThrow({
         where: { clientAccountId: client.id },
+      });
+      await prisma.clientSubscription.update({
+        where: { id: sub.id },
+        data: { sessionsPerCycle: 2 },
       });
       const redeems = await Promise.allSettled(
         [1, 2, 3, 4, 5].map(() =>
@@ -1730,6 +1858,55 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.clientSubscription.deleteMany({ where: { clientAccountId: client.id } });
       await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
       await prisma.clientAccount.delete({ where: { id: client.id } });
+    });
+
+    it('limite do plano vale pra quem assinar depois; vazio volta a ilimitado', async () => {
+      const client = await prisma.clientAccount.create({
+        data: { email: `limite-${RUN}@test.local`, name: 'Limite', stripeCustomerId: 'cus_limite' },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Mensal limite',
+          price: new Decimal(40),
+          sessionsPerCycle: 2,
+          stripeProductId: `prod_limite_${RUN}`,
+          stripePriceId: `price_limite_${RUN}`,
+        },
+      });
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: A.shopId,
+          clientAccountId: client.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_limite_${RUN}`,
+          status: 'ACTIVE',
+          sessionsPerCycle: 2,
+        },
+      });
+      try {
+        await service.updateSubscriptionPlan(A.ownerId, A.shopId, plan.id, {
+          sessionsPerCycle: null,
+        });
+        expect(
+          (await prisma.clientSubscriptionPlan.findUniqueOrThrow({ where: { id: plan.id } }))
+            .sessionsPerCycle,
+        ).toBeNull();
+        expect(
+          (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } }))
+            .sessionsPerCycle,
+        ).toBe(2);
+        await service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id);
+        await service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id);
+        await expect(
+          service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id),
+        ).rejects.toThrow('não tem sessões');
+      } finally {
+        await prisma.clientSubscription.deleteMany({ where: { clientAccountId: client.id } });
+        await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+        await prisma.clientAccount.delete({ where: { id: client.id } });
+      }
     });
 
     it('pacote de 3 sessões: cinco débitos simultâneos usam 3 e o pacote fecha', async () => {
@@ -1786,6 +1963,7 @@ describe('BarbershopService (integração com o banco)', () => {
           planId: plan.id,
           stripeSubscriptionId: `sub_club_${RUN}`,
           status: 'ACTIVE',
+          sessionsPerCycle: 1,
         },
       });
       let saleId: number | null = null;

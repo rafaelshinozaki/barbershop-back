@@ -113,6 +113,7 @@ describe('Clube ao encerrar a unidade (integração)', () => {
       });
       const periodStart = new Date(now - startedDaysAgo * DAY);
       const periodEnd = new Date(periodStart.getTime() + 30 * DAY);
+      const offer = await prisma.clientSubscriptionPlan.findUniqueOrThrow({ where: { id: planId } });
       const sub = await prisma.clientSubscription.create({
         data: {
           barbershopId: shopId,
@@ -120,6 +121,7 @@ describe('Clube ao encerrar a unidade (integração)', () => {
           planId,
           stripeSubscriptionId: `sub_${label}_${RUN}`,
           status: 'ACTIVE',
+          sessionsPerCycle: offer.sessionsPerCycle,
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,
           ...extra,

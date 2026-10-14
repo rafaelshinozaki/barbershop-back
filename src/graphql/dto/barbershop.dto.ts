@@ -943,7 +943,7 @@ export class UpdateSubscriptionPlanInput {
   @IsOptional()
   @IsInt()
   @Min(1)
-  sessionsPerCycle?: number;
+  sessionsPerCycle?: number | null;
 
   @Field({ nullable: true })
   isActive?: boolean;

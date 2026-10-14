@@ -225,6 +225,52 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     ).toBe(1);
   });
 
+  it('reenvia o convite vencido no mesmo cadastro, e vencido não bloqueia um novo', async () => {
+    const shop = shops[0];
+    const email = `mu-reenvio-${RUN}@test.local`;
+    const created = await invites.createInvite(shop.ownerId, {
+      barbershopId: shop.shopId,
+      email,
+      name: 'Reenvio',
+      phone: '11900000011',
+      role: 'BarbershopEmployee',
+    });
+    const oldToken = created.invite.inviteToken;
+    await prisma.employeeInvite.update({
+      where: { id: created.invite.id },
+      data: { expiresAt: new Date(Date.now() - DAY) },
+    });
+
+    const resent = await invites.resendInvite(shop.ownerId, shop.shopId, created.barber.id);
+    expect(resent.invite.inviteToken).not.toBe(oldToken);
+    expect(resent.invite.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(resent.invite.barberId).toBe(created.barber.id);
+    await expect(invites.validateInvite(oldToken)).rejects.toThrow('não encontrado');
+    await expect(invites.validateInvite(resent.invite.inviteToken)).resolves.toMatchObject({
+      valid: true,
+      email,
+    });
+
+    await prisma.employeeInvite.update({
+      where: { id: resent.invite.id },
+      data: { expiresAt: new Date(Date.now() - DAY) },
+    });
+    const again = await invites.createInvite(shop.ownerId, {
+      barbershopId: shop.shopId,
+      email,
+      name: 'Reenvio de novo',
+      phone: '11900000012',
+      role: 'BarbershopEmployee',
+    });
+    expect(again.barber.id).not.toBe(created.barber.id);
+    expect(
+      (await prisma.barber.findUniqueOrThrow({ where: { id: created.barber.id } })).isActive,
+    ).toBe(false);
+    expect(
+      (await prisma.employeeInvite.findUniqueOrThrow({ where: { id: resent.invite.id } })).status,
+    ).toBe('EXPIRED');
+  });
+
   it('desmarcar "Ativo" na edição: cancela o convite pendente e avisa dos horários marcados', async () => {
     const shop = shops[0];
     const { barber, invite } = await invites.createInvite(shop.ownerId, {

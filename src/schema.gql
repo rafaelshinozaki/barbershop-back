@@ -415,6 +415,10 @@ type Barber {
   id: Int!
   isActive: Boolean!
   name: String!
+  pendingInviteExpiresAt: DateTime
+
+  """Link do convite ainda pendente. Só gerente e dono recebem."""
+  pendingInviteToken: String
   phone: String!
   specialization: String
   specialties: [TreatmentCategory!]!

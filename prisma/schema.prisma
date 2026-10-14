@@ -602,6 +602,7 @@ model Barbershop {
   clientSubscriptionPlans ClientSubscriptionPlan[]
   clientSubscriptions     ClientSubscription[]
   subscriptionPayouts     SubscriptionPayout[]
+  depositPayouts          DepositPayout[]
   socialConnection        SocialConnection?
   socialPageChoices       SocialPageChoice[]
   socialPosts             SocialPost[]
@@ -683,9 +684,9 @@ model Customer {
 // Indicação entre clientes de uma mesma rede: um Customer (referrer) indica
 // outro (referred), que ganha o registro ao ser criado com o código de
 // indicação do primeiro. O referrer só ganha os pontos de fidelidade
-// (Network.referralBonusPoints) quando o indicado completa a primeira venda
-// paga — não no cadastro, pra evitar indicação fake sem gasto real (ver
-// createSale). referredId é único: cada cliente só pode ter sido indicado
+// (Network.referralBonusPoints) quando a venda do indicado passa a paga e
+// houve gasto em dinheiro — não no cadastro, e não numa venda de R$ 0 (ver
+// completeReferralIfPaid). referredId é único: cada cliente só pode ter sido indicado
 // uma vez.
 model CustomerReferral {
   id            Int       @id @default(autoincrement())
@@ -1222,6 +1223,9 @@ model Appointment {
   // Sinal pago direto na conta da unidade (Stripe Connect): o repasse já
   // foi feito pelo Stripe, com a taxa da plataforma descontada
   depositStripeAccountId String?
+  // Taxa da plataforma na hora em que o sinal foi cobrado. Mudar a taxa
+  // depois não mexe no que já foi pago.
+  depositPlatformFeePercent Decimal?
   // Atendimento pago antes pelo app (Stripe Connect, direto na conta da
   // unidade): o preço menos o sinal. Descontado ao fechar a conta; volta
   // inteiro se o horário for cancelado.
@@ -1729,6 +1733,9 @@ model ClientSubscription {
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
   usedThisCycle        Int       @default(0) // resetado a cada invoice.payment_succeeded (novo ciclo)
+  // Copiado do plano na assinatura. Mudar o plano depois não mexe em quem
+  // já assinou (como o preço no Stripe). Vazio = ilimitado.
+  sessionsPerCycle     Int?
   cancelAtPeriodEnd    Boolean   @default(false)
   canceledAt           DateTime?
   // Conta Connect no momento da assinatura. Preenchido = o Stripe manda o
@@ -1772,6 +1779,21 @@ model ClientSubscriptionPayment {
 // Repasse manual da assinatura que caiu na plataforma (quem da equipe do
 // backoffice pagou, quando e quanto). A unidade vê a soma no relatório.
 model SubscriptionPayout {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  barbershopId    Int
+  amount          Decimal
+  paidAt          DateTime
+  note            String?
+  recordedByEmail String
+  barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, paidAt])
+}
+
+// Repasse manual do sinal que caiu na plataforma (quem da equipe do
+// backoffice pagou, quando e quanto). A unidade vê a soma no relatório.
+model DepositPayout {
   id              Int      @id @default(autoincrement())
   createdAt       DateTime @default(now())
   barbershopId    Int

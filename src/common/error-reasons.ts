@@ -242,6 +242,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Este horário não pode ser cobrado': 'APPOINTMENT_CANNOT_CHARGED',
   'Selecione um cliente para resgatar pontos de fidelidade': 'SELECT_CLIENT_REDEEM_LOYALTY_POINTS',
   'Cliente não tem pontos de fidelidade suficientes': 'CLIENT_NOT_ENOUGH_LOYALTY_POINTS',
+  'O programa de fidelidade está desligado.': 'LOYALTY_PROGRAM_OFF',
   'O saldo do cartão-presente mudou enquanto a venda era registrada. Tente de novo.':
     'GIFT_CARD_BALANCE_CHANGED_WHILE',
   'Este atendimento já foi cobrado': 'APPOINTMENT_ALREADY_BEEN_CHARGED',
@@ -316,6 +317,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Essa pessoa já está na equipe desta unidade': 'PERSON_ALREADY_LOCATIONS_TEAM',
   'Já existe um convite pendente para este email nesta unidade':
     'ALREADY_PENDING_INVITE_EMAIL_LOCATION',
+  'Não há convite pendente para reenviar.': 'NO_PENDING_INVITE_TO_RESEND',
   'Convite não encontrado': 'INVITE_NOT_FOUND',
   'Este convite já foi utilizado': 'INVITE_ALREADY_BEEN_USED',
   'Este convite expirou': 'INVITE_EXPIRED',

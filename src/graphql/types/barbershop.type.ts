@@ -414,6 +414,13 @@ export class Barber {
   @Field({ nullable: true })
   email?: string;
 
+  /** Link do convite ainda pendente. Só gerente e dono recebem. */
+  @Field({ nullable: true })
+  pendingInviteToken?: string | null;
+
+  @Field(() => Date, { nullable: true })
+  pendingInviteExpiresAt?: Date | null;
+
   @Field({ nullable: true })
   avatarUrl?: string;
 

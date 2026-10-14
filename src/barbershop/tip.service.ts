@@ -12,13 +12,14 @@ import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { appointmentLinkCovers, verifyReviewToken } from './appointment-link';
-import { fromMinorUnits, toMinorUnits } from '../common/money-units';
+import { fromMinorUnits, moneyCap, moneyScale, toMinorUnits } from '../common/money-units';
 
 export const TIP_DESTINATIONS = ['professional', 'unit'] as const;
 export const TIP_METHODS = ['CASH', 'PIX', 'CARD'] as const;
 export type TipDestination = (typeof TIP_DESTINATIONS)[number];
 export type TipMethod = (typeof TIP_METHODS)[number];
 
+/** Caixinha registrada à mão. Nas moedas fracas o teto acompanha (moneyScale). */
 const MAX_TIP = 10_000;
 /**
  * Caixinha pelo app: de 1 a 500 na moeda da unidade. Nas moedas em que a
@@ -26,23 +27,8 @@ const MAX_TIP = 10_000;
  * limite acompanha a moeda: 500 ienes ou 500 pesos colombianos não pagam
  * nem um café, e 1 iene fica abaixo do mínimo que a Stripe cobra.
  */
-const APP_TIP_SCALE: Record<string, number> = {
-  JPY: 100,
-  KRW: 1000,
-  CLP: 1000,
-  PYG: 5000,
-  VND: 20000,
-  UGX: 3000,
-  XAF: 500,
-  XOF: 500,
-  XPF: 100,
-  COP: 1000,
-  ARS: 1000,
-  IDR: 10000,
-  HUF: 100,
-};
 export function appTipLimits(currency: string | null | undefined) {
-  const scale = APP_TIP_SCALE[(currency ?? '').toUpperCase()] ?? 1;
+  const scale = moneyScale(currency);
   return { min: 1 * scale, max: 500 * scale };
 }
 const TIP_KIND = 'appointment_tip';
@@ -102,10 +88,10 @@ export class TipService {
     if (!(TIP_METHODS as readonly string[]).includes(input.method)) {
       throw new BadRequestException('Forma da caixinha inválida');
     }
-    if (!(input.amount > 0) || input.amount > MAX_TIP) {
+    const appt = await this.loadAppointment(barbershopId, appointmentId);
+    if (!(input.amount > 0) || input.amount > moneyCap(MAX_TIP, appt.barbershop.currency)) {
       throw new BadRequestException('Valor da caixinha inválido');
     }
-    const appt = await this.loadAppointment(barbershopId, appointmentId);
     if (appt.status !== 'COMPLETED') {
       throw new BadRequestException('Só dá pra registrar caixinha de atendimento concluído');
     }
