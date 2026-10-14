@@ -1787,3 +1787,11 @@ Foram lidos o tempo real (assinaturas GraphQL), a verificação de identidade (o
 Foram lidos os modelos de e-mail (só `admin_notification` usa HTML sem escape, e o texto vindo dos avisos de atividade já passa por `escapeHtml`; o resto vem da equipe da plataforma), a denúncia e a moderação de conteúdo público e a publicação agendada nas redes sociais.
 
 165. 🆕 **Unidade encerrada continua publicando nas redes sociais** (back: `deleteBarbershop`; `SocialService.publishPost`; continuação dos itens 128 e 150): encerrar a unidade não desconecta o Facebook/Instagram (`SocialConnection` fica com o token) nem cancela as postagens agendadas (`SocialPost` em `SCHEDULED`). A rotina publica no dia marcado, com o link de agendar para uma página que não existe mais. O token da página também fica guardado sem uso. **Fazer:** no encerramento, cancelar as postagens agendadas (situação "cancelada pelo encerramento") e apagar a conexão. A publicação também recusa unidade encerrada.
+
+### Trigésima segunda rodada (2026-10-14): front — moeda, datas e validações
+
+Foram procurados no front a moeda fixa (só os planos da plataforma usam real; as telas da unidade passam a moeda dela), as datas lidas sem fuso (os horários da página pública já saem no fuso da unidade) e as validações que existem só na tela.
+
+166. 🆕 **Pequenos, achados na leitura do front:**
+     - **Idade mínima do convite da equipe só na tela e só pelo ano** (front: `AcceptEmployeeInvite.tsx`; back: `acceptInvite`): a conta é "ano de hoje − ano de nascimento". Quem nasceu em 31/12/2013 passa como 13 anos em outubro de 2026. O back não confere idade nenhuma (pela API passa qualquer data). **Fazer:** idade pelo dia e mês, conferida também no back, com a idade mínima de trabalho definida (no Brasil, 16, ou 14 como aprendiz).
+     - **Preço dos planos sempre no formato brasileiro** (front: `PricingTable`, `StripeCheckout`, `Invoice`, `ListPayments`, `FinancialIssues`): `formatCurrency(valor)` sem o idioma usa `pt-BR`. Quem usa o app em inglês ou espanhol vê "R$ 49,90" no formato brasileiro. A moeda (real) está certa. **Fazer:** passar o idioma da tela.
