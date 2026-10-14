@@ -1759,3 +1759,19 @@ Foram lidas as permissões por área de todas as operações do backoffice dentr
      - **Item de venda aceita histórico de atendimento de outra unidade** (`createSale`, `updateSale`): o `serviceHistoryId` dos itens não é conferido contra a unidade (o serviço e o produto são). **Fazer:** conferir junto com `ensureItemsOfBarbershop`.
      - **Fila por ordem de chegada: o profissional básico muda a situação de qualquer cliente da fila** (`updateWalkInStatus`): a função só exige estar na equipe. **Fazer:** o mesmo nível de quem agenda pelos outros (recepção para cima), ou só os da própria fila para o básico.
      - **Função sem uso** (`CouponsService.applyCoupon`): aplicava cupom num pagamento sem validar o cupom nem o dono. O caminho público já foi desligado (`applyCouponToPayment` recusa); a função ficou sem chamada. **Fazer:** apagar, para não voltar a ser usada por engano.
+
+### Vigésima nona rodada (2026-10-14): backoffice-back e suspensão de conta
+
+Foram lidas as consultas e escritas do backoffice-back (que lê o banco direto) depois das mudanças recentes do banco (unidade encerrada, valor devolvido do clube, vendas) e a desativação de conta pela equipe da plataforma. A desativação (sozinha, em lote e pela edição) já derruba as sessões e as notificações no celular.
+
+162. 🆕 **Conta do dono desativada pela plataforma: as unidades continuam no ar e cobrando** (back: `setUserActive`, `setMultipleUsersActive`, página pública, agendamento online, busca; backoffice-back: `users-writes.ts`): desativar a conta só tira o acesso dela. As unidades do dono continuam:
+     - na busca e na página pública;
+     - aceitando agendamento online, com sinal cobrado e caindo na conta de recebimento dele;
+     - cobrando o clube dos clientes todo mês.
+     
+     O perfil do profissional já some com a conta desativada; a unidade não. Quando a plataforma suspende alguém por fraude, os clientes dele continuam pagando. **Fazer:** dono desativado tira as unidades da busca e da página pública e recusa agendamento online e venda do clube. O que já está marcado fica, com aviso no backoffice de quantos horários e assinaturas estão ativos. Reativar volta tudo.
+163. 🆕 **Backoffice "Pagamentos pelo app": total em moedas misturadas e o clube de fora** (backoffice-back: `finance.ts`, `appPayments`):
+     - O total, o estornado e a taxa estimada somam sinal, atendimento pago e caixinha de todas as unidades num número só, sem olhar a moeda (o mesmo problema do item 160, no backoffice).
+     - Os pagamentos do clube (`ClientSubscriptionPayment`) não entram na lista, nem os estornos deles (`refundedAmount`, item 128). O Financeiro não vê o dinheiro do clube que caiu na plataforma nem o que voltou para o cliente ao encerrar a unidade, e é ele quem registra o repasse manual.
+     
+     **Fazer:** totais por moeda. Tipo "clube" na lista, com o valor estornado.
