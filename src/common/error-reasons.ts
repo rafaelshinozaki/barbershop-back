@@ -19,6 +19,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'MARKETING_MONTHLY_LIMIT',
   'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',
   'Estorno não pode ser alterado nem apagado.': 'REFUND_SALE_LOCKED',
+  'Tipo de venda inválido': 'SALE_TYPE_INVALID',
+  'Tipo de item inválido': 'SALE_ITEM_TYPE_INVALID',
+  'Situação de pagamento inválida': 'PAYMENT_STATUS_INVALID',
+  'O tipo e os itens desta venda não mudam. Apague e lance de novo.': 'SALE_TYPE_LOCKED',
+  'O valor ficou menor do que já foi pago com sinal, app, cartão-presente ou pontos.':
+    'SALE_BELOW_APPLIED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

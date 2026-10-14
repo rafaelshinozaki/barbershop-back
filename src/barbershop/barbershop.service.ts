@@ -530,6 +530,96 @@ export function issuedSaleValueChanged(
   );
 }
 
+/**
+ * O que a equipe lança à mão. Pacote, cartão-presente, taxa de falta e
+ * estorno nascem nas próprias telas (com o saldo, a taxa ou o estorno ligados)
+ */
+const STAFF_SALE_TYPES = ['SERVICE', 'PRODUCT', 'MIXED'];
+const STAFF_SALE_ITEM_TYPES = ['SERVICE', 'PRODUCT'];
+/** Formas de pagamento de venda (só CASH entra na conferência do caixa) */
+export const SALE_PAYMENT_METHODS = [
+  'CASH',
+  'CARD',
+  'CREDIT_CARD',
+  'DEBIT_CARD',
+  'PIX',
+  'TRANSFER',
+  'OTHER',
+];
+const STAFF_PAYMENT_STATUSES = ['PENDING', 'PAID'];
+export const SALE_TYPE_INVALID_MESSAGE = 'Tipo de venda inválido';
+export const SALE_ITEM_TYPE_INVALID_MESSAGE = 'Tipo de item inválido';
+export const PAYMENT_STATUS_INVALID_MESSAGE = 'Situação de pagamento inválida';
+export const PAYMENT_METHOD_INVALID_MESSAGE = 'Forma de pagamento inválida';
+export const SALE_TYPE_LOCKED_MESSAGE =
+  'O tipo e os itens desta venda não mudam. Apague e lance de novo.';
+export const SALE_BELOW_APPLIED_MESSAGE =
+  'O valor ficou menor do que já foi pago com sinal, app, cartão-presente ou pontos.';
+
+/**
+ * Tipo, itens, situação e forma de pagamento só dos valores conhecidos.
+ * Antes era texto livre: dava pra criar um "estorno" que não se apaga,
+ * trocar o tipo de uma venda de pacote pra mudar o valor dela, ou gravar
+ * "cash" e ficar fora da conferência do caixa. Na edição, o que vem igual ao
+ * gravado passa (venda antiga com outra situação continua editável).
+ */
+export function checkSaleKinds(
+  data: {
+    saleType?: string;
+    items?: Array<{ itemType: string }>;
+    paymentStatus?: string;
+    paymentMethod?: string | null;
+  },
+  existing?: { saleType: string; paymentStatus: string; paymentMethod: string | null },
+) {
+  const lockedType = existing != null && !STAFF_SALE_TYPES.includes(existing.saleType);
+  if (data.saleType !== undefined && data.saleType !== existing?.saleType) {
+    if (lockedType) throw new BadRequestException(SALE_TYPE_LOCKED_MESSAGE);
+    if (!STAFF_SALE_TYPES.includes(data.saleType)) {
+      throw new BadRequestException(SALE_TYPE_INVALID_MESSAGE);
+    }
+  }
+  if (data.items !== undefined) {
+    if (lockedType) throw new BadRequestException(SALE_TYPE_LOCKED_MESSAGE);
+    if (data.items.some((i) => !STAFF_SALE_ITEM_TYPES.includes(i.itemType))) {
+      throw new BadRequestException(SALE_ITEM_TYPE_INVALID_MESSAGE);
+    }
+  }
+  if (
+    data.paymentStatus !== undefined &&
+    data.paymentStatus !== existing?.paymentStatus &&
+    !STAFF_PAYMENT_STATUSES.includes(data.paymentStatus)
+  ) {
+    throw new BadRequestException(PAYMENT_STATUS_INVALID_MESSAGE);
+  }
+  if (
+    data.paymentMethod != null &&
+    data.paymentMethod !== existing?.paymentMethod &&
+    !SALE_PAYMENT_METHODS.includes(data.paymentMethod)
+  ) {
+    throw new BadRequestException(PAYMENT_METHOD_INVALID_MESSAGE);
+  }
+}
+
+/** Faturamento de vendas pagas: o cobrado na hora mais o que já tinha sido pago antes. */
+export const SALE_REVENUE_SUM = {
+  total: true,
+  depositApplied: true,
+  prepaidApplied: true,
+} as const;
+/**
+ * O total gravado desconta o sinal e o atendimento pago pelo app; esse
+ * dinheiro entrou antes e não está em nenhuma outra venda. Sem somar, um
+ * atendimento de 100 com 30 de sinal aparecia como 70 no faturamento.
+ */
+export function saleRevenue(sum: {
+  total: Prisma.Decimal | number | null;
+  depositApplied?: Prisma.Decimal | number | null;
+  prepaidApplied?: Prisma.Decimal | number | null;
+}) {
+  return Number(sum.total ?? 0) + Number(sum.depositApplied ?? 0) + Number(sum.prepaidApplied ?? 0);
+}
+
 export function assertStaffAppointmentSource(source: string | null | undefined) {
   if (source != null && !(STAFF_APPOINTMENT_SOURCES as readonly string[]).includes(source)) {
     throw new BadRequestException('Origem do agendamento inválida');
@@ -1160,7 +1250,13 @@ export class BarbershopService {
         },
       }),
       opts.revenueBarberIds && opts.revenueBarberIds.length === 0
-        ? Promise.resolve({ _sum: { total: null as Decimal | null } })
+        ? Promise.resolve({
+            _sum: {
+              total: null as Decimal | null,
+              depositApplied: null as Decimal | null,
+              prepaidApplied: null as Decimal | null,
+            },
+          })
         : this.prisma.sale.aggregate({
             where: {
               barbershopId: { in: shopIds },
@@ -1168,7 +1264,7 @@ export class BarbershopService {
               ...paidInRange({ gte: start, lt: end }),
               ...(opts.revenueBarberIds ? { barberId: { in: opts.revenueBarberIds } } : {}),
             },
-            _sum: { total: true },
+            _sum: SALE_REVENUE_SUM,
           }),
       opts.includeQueue
         ? this.prisma.walkIn.count({
@@ -1195,7 +1291,7 @@ export class BarbershopService {
 
     return {
       appointmentsToday,
-      revenueToday: Number(revenueAgg._sum.total ?? 0),
+      revenueToday: saleRevenue(revenueAgg._sum),
       walkInsWaiting,
       upcomingAppointments: upcoming.map((a) => {
         const event = this.appointmentDashboardEvent(a, 'next');
@@ -1379,9 +1475,9 @@ export class BarbershopService {
         paymentStatus: 'PAID',
         ...paidInRange({ gte: startOfMonth }),
       },
-      _sum: { total: true },
+      _sum: SALE_REVENUE_SUM,
     });
-    const revenueThisMonth = Number(revenueThisMonthResult._sum.total ?? 0);
+    const revenueThisMonth = saleRevenue(revenueThisMonthResult._sum);
 
     // Mesmo período do mês anterior (do dia 1 até o mesmo ponto do mês), pra
     // comparar sem dar "-100%" no começo do mês contra o mês anterior inteiro
@@ -1391,7 +1487,7 @@ export class BarbershopService {
     const prevUntil = new Date(
       Math.min(prevRange.start.getTime() + elapsedMs, prevRange.end.getTime()),
     );
-    const revenueSamePeriodLastMonth = Number(
+    const revenueSamePeriodLastMonth = saleRevenue(
       (
         await this.prisma.sale.aggregate({
           where: {
@@ -1399,9 +1495,9 @@ export class BarbershopService {
             paymentStatus: 'PAID',
             ...paidInRange({ gte: prevRange.start, lt: prevUntil }),
           },
-          _sum: { total: true },
+          _sum: SALE_REVENUE_SUM,
         })
-      )._sum.total ?? 0,
+      )._sum,
     );
 
     const revenueByShopRows = await this.prisma.sale.groupBy({
@@ -1411,10 +1507,10 @@ export class BarbershopService {
         paymentStatus: 'PAID',
         ...paidInRange({ gte: startOfMonth }),
       },
-      _sum: { total: true },
+      _sum: SALE_REVENUE_SUM,
     });
     const revenueByShop = new Map(
-      revenueByShopRows.map((row) => [row.barbershopId, Number(row._sum.total ?? 0)]),
+      revenueByShopRows.map((row) => [row.barbershopId, saleRevenue(row._sum)]),
     );
     const revenueByBarbershop = barbershops
       .map((shop) => ({ id: shop.id, name: shop.name, total: revenueByShop.get(shop.id) ?? 0 }))
@@ -1435,7 +1531,7 @@ export class BarbershopService {
           paymentStatus: 'PAID',
           ...paidInRange({ gte: start, lt: end }),
         },
-        _sum: { total: true },
+        _sum: SALE_REVENUE_SUM,
       });
       // Meio do mês em UTC só pra extrair rótulo/ano/mês do calendário
       const label = new Date(Date.UTC(year, month - 1 - i, 15));
@@ -1443,7 +1539,7 @@ export class BarbershopService {
         month: label.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
         monthIndex: label.getUTCMonth(),
         year: label.getUTCFullYear(),
-        total: Number(r._sum.total ?? 0),
+        total: saleRevenue(r._sum),
       });
     }
 
@@ -7098,6 +7194,7 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     if (!paymentMethod) throw new BadRequestException('Informe a forma de pagamento');
+    checkSaleKinds({ paymentMethod });
     const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
     if (!fee) throw new NotFoundException('Taxa não encontrada');
     const openSession = await this.prisma.cashSession.findFirst({
@@ -7828,6 +7925,7 @@ export class BarbershopService {
     },
   ) {
     checkSaleAmounts(data);
+    checkSaleKinds({ ...data, paymentStatus: data.paymentStatus ?? 'PENDING' });
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     // Barbeiro: a venda é dele (como na listagem, que só mostra as dele).
     // Antes dava pra lançar em nome de um colega (e a comissão ia junto) ou
@@ -8319,6 +8417,7 @@ export class BarbershopService {
       if (existing.saleType === REFUND_SALE_TYPE) {
         throw new BadRequestException(REFUND_SALE_LOCKED_MESSAGE);
       }
+      checkSaleKinds(data, existing);
       // Pacote e cartão guardam o valor vendido. Receber a pendente (situação
       // e forma) continua permitido; mudar o total deixaria o saldo diferente
       // do que a venda diz.
@@ -8358,6 +8457,24 @@ export class BarbershopService {
         });
       }
 
+      // A tela manda o total cheio (subtotal − desconto + acréscimo). O
+      // gravado desconta o que o cliente já pagou antes (sinal, pelo app,
+      // cartão-presente, pontos); antes a edição gravava o cheio e o cliente
+      // aparecia pagando duas vezes
+      let netTotal: number | undefined;
+      if (data.total !== undefined) {
+        const applied = round2(
+          Number(existing.depositApplied ?? 0) +
+            Number(existing.prepaidApplied ?? 0) +
+            Number(existing.giftCardAmountApplied ?? 0) +
+            Number(existing.loyaltyDiscountAmount ?? 0),
+        );
+        if (data.total + MONEY_TOLERANCE < applied) {
+          throw new BadRequestException(SALE_BELOW_APPLIED_MESSAGE);
+        }
+        netTotal = round2(Math.max(0, data.total - applied));
+      }
+
       const updateData: any = {};
       if (data.customerId !== undefined) updateData.customerId = data.customerId;
       if (data.barberId !== undefined) updateData.barberId = data.barberId;
@@ -8366,7 +8483,7 @@ export class BarbershopService {
       if (data.discountAmount !== undefined)
         updateData.discountAmount = new Decimal(data.discountAmount);
       if (data.taxAmount !== undefined) updateData.taxAmount = new Decimal(data.taxAmount);
-      if (data.total !== undefined) updateData.total = new Decimal(data.total);
+      if (netTotal !== undefined) updateData.total = new Decimal(netTotal);
       if (data.paymentStatus !== undefined) {
         updateData.paymentStatus = data.paymentStatus;
         if (data.paymentStatus === 'PAID' && existing.paymentStatus !== 'PAID') {
@@ -8382,7 +8499,7 @@ export class BarbershopService {
       if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
 
       const nextStatus = data.paymentStatus ?? existing.paymentStatus;
-      const nextTotal = data.total !== undefined ? data.total : Number(existing.total);
+      const nextTotal = netTotal !== undefined ? netTotal : Number(existing.total);
       const nextCustomerId = data.customerId !== undefined ? data.customerId : existing.customerId;
       const nextEarned = loyaltyEarnedFor(
         barbershop.network,
@@ -8956,15 +9073,25 @@ export class BarbershopService {
           paymentStatus: 'PAID',
           ...paidInRange({ gte: from, lte: to }),
         },
-        select: { total: true, paymentMethod: true, createdAt: true, paidAt: true },
+        select: {
+          total: true,
+          depositApplied: true,
+          prepaidApplied: true,
+          paymentMethod: true,
+          createdAt: true,
+          paidAt: true,
+        },
       }),
       this.prisma.expense.findMany({
         where: { barbershopId, expenseDate: { gte: from, lte: to } },
         select: { amount: true, category: true },
       }),
     ]);
+    const kept = await this.retainedPrepayments(barbershopId, { gte: from, lte: to });
 
-    const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
+    const totalRevenue =
+      sales.reduce((sum, s) => sum + saleRevenue(s), 0) +
+      kept.reduce((sum, k) => sum + k.deposit + k.prepaid, 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
     // Aluguel da cadeira que o espaço recebeu direto (PIX, dinheiro...). O
     // que entra pelo cartão fica na plataforma até o repasse
@@ -8979,10 +9106,20 @@ export class BarbershopService {
     });
     const chairRentIncome = Number(rent._sum.amount ?? 0);
 
+    // Sinal e pago pelo app em linhas próprias: entraram antes, não pela
+    // forma da venda
     const byMethod = new Map<string, number>();
+    const addTo = (key: string, value: number) => {
+      if (value) byMethod.set(key, round2((byMethod.get(key) ?? 0) + value));
+    };
     sales.forEach((s) => {
-      const key = s.paymentMethod ?? 'UNKNOWN';
-      byMethod.set(key, (byMethod.get(key) ?? 0) + Number(s.total));
+      addTo(s.paymentMethod ?? 'UNKNOWN', Number(s.total));
+      addTo('DEPOSIT', Number(s.depositApplied ?? 0));
+      addTo('APP', Number(s.prepaidApplied ?? 0));
+    });
+    kept.forEach((k) => {
+      addTo('DEPOSIT', k.deposit);
+      addTo('APP', k.prepaid);
     });
 
     const byCategory = new Map<string, number>();
@@ -8995,7 +9132,11 @@ export class BarbershopService {
       // Dia no fuso da unidade — em UTC, venda depois das 21h em Brasília
       // caía no dia seguinte do gráfico
       const key = toZonedParts(s.paidAt ?? s.createdAt, timeZone).dateStr;
-      byDay.set(key, (byDay.get(key) ?? 0) + Number(s.total));
+      byDay.set(key, round2((byDay.get(key) ?? 0) + saleRevenue(s)));
+    });
+    kept.forEach((k) => {
+      const key = toZonedParts(k.date, timeZone).dateStr;
+      byDay.set(key, round2((byDay.get(key) ?? 0) + k.deposit + k.prepaid));
     });
     const sortedDays = Array.from(byDay.keys()).sort();
 
@@ -9017,6 +9158,47 @@ export class BarbershopService {
         data: sortedDays.map((d) => byDay.get(d) ?? 0),
       },
     };
+  }
+
+  /**
+   * Sinal e atendimento pago pelo app que ficaram com a unidade sem virar
+   * venda: o cliente faltou ou cancelou fora do prazo e não houve estorno
+   * (ou só parte). Conta no dia do horário. Antes esse dinheiro não aparecia
+   * no faturamento.
+   */
+  private async retainedPrepayments(barbershopId: number, range: Prisma.DateTimeFilter) {
+    const appts = await this.prisma.appointment.findMany({
+      where: {
+        barbershopId,
+        status: { in: ['NO_SHOW', 'CANCELLED'] },
+        sale: null,
+        startAt: range,
+        OR: [
+          { depositPaid: true, depositPaidAt: { not: null }, depositRefundedAt: null },
+          { prepaidAt: { not: null }, prepaidRefundedAt: null },
+        ],
+      },
+      select: {
+        startAt: true,
+        depositPaid: true,
+        depositPaidAt: true,
+        depositAmount: true,
+        depositRefundedAt: true,
+        prepaidAt: true,
+        prepaidAmount: true,
+        prepaidRefundedAt: true,
+        prepaidRefundedAmount: true,
+      },
+    });
+    return appts.map((a) => ({
+      date: a.startAt,
+      deposit:
+        a.depositPaid && a.depositPaidAt && !a.depositRefundedAt ? Number(a.depositAmount ?? 0) : 0,
+      prepaid:
+        a.prepaidAt && !a.prepaidRefundedAt
+          ? Math.max(0, Number(a.prepaidAmount ?? 0) - Number(a.prepaidRefundedAmount ?? 0))
+          : 0,
+    }));
   }
 
   // ============ RESOURCES ============
@@ -9218,6 +9400,7 @@ export class BarbershopService {
       paymentMethod?: string | null;
     },
   ) {
+    checkSaleKinds({ paymentMethod: data.paymentMethod });
     const paid = !!data.paymentMethod;
     const openSession = paid
       ? await tx.cashSession.findFirst({

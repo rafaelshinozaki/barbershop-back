@@ -3,7 +3,12 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextDateStr, safeTimeZone, toZonedParts, zonedTimeToUtc } from '../common/timezone.util';
-import { BarbershopService, paidInRange } from './barbershop.service';
+import {
+  BarbershopService,
+  paidInRange,
+  SALE_REVENUE_SUM,
+  saleRevenue,
+} from './barbershop.service';
 
 export const PAY_TYPES = ['COMMISSION', 'FIXED', 'FIXED_PLUS_COMMISSION', 'GREATER_OF'] as const;
 export type PayType = (typeof PAY_TYPES)[number];
@@ -732,7 +737,7 @@ export class PayrollService {
       }),
       this.prisma.sale.aggregate({
         where: { barbershopId, paymentStatus: 'PAID', ...paidInRange({ gte: start, lte: end }) },
-        _sum: { total: true },
+        _sum: SALE_REVENUE_SUM,
       }),
     ]);
     const rows = barbers.map((b) => {
@@ -767,7 +772,7 @@ export class PayrollService {
         payoutsCount: payouts.filter((p) => p.barberId === b.id).length,
       };
     });
-    const totalRevenue = round2(Number(revenue._sum.total ?? 0));
+    const totalRevenue = round2(saleRevenue(revenue._sum));
     const totalPaid = round2(rows.reduce((s, r) => s + r.paid, 0));
     return {
       periodStart: start,
