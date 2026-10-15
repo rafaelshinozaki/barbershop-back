@@ -1,5 +1,5 @@
 import { Field, InputType } from '@nestjs/graphql';
-import { IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 @InputType()
 export class StartSoloPracticeInput {
@@ -30,4 +30,10 @@ export class StartSoloPracticeInput {
   @Field()
   @IsString()
   phone: string;
+
+  /** Fuso do navegador (IANA). O back só aceita se for um fuso do país. */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  timezone?: string;
 }

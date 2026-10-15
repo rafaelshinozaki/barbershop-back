@@ -93,6 +93,7 @@ export class UserService {
     fails: (email: string) => `auth:login-fails:${email}`,
     blocked: (email: string) => `auth:login-blocked:${email}`,
     code: (loginId: string) => `auth:login-code:${loginId}`,
+    codeAttempts: (loginId: string) => `auth:login-code-attempts:${loginId}`,
     codeByUser: (email: string) => `auth:login-code-user:${email}`,
     enable2fa: (email: string, code: string) => `auth:2fa-enable:${email}:${code}`,
   };
@@ -1849,7 +1850,12 @@ export class UserService {
     // Invalidar código anterior do mesmo usuário
     await this.withRedis(async () => {
       const previousLoginId = await this.redis.client.get(UserService.KEY.codeByUser(user.email));
-      if (previousLoginId) await this.redis.client.del(UserService.KEY.code(previousLoginId));
+      if (previousLoginId) {
+        await this.redis.client.del(
+          UserService.KEY.code(previousLoginId),
+          UserService.KEY.codeAttempts(previousLoginId),
+        );
+      }
     });
 
     const code = randomInt(100000, 1000000).toString();
@@ -1884,11 +1890,7 @@ export class UserService {
 
     const ttl = TWO_FACTOR_CODE_EXPIRY_MINUTES * 60;
     await this.withRedis(async () => {
-      await this.redis.setJson(
-        UserService.KEY.code(loginId),
-        { email: user.email, code, attempts: 0 },
-        ttl,
-      );
+      await this.redis.setJson(UserService.KEY.code(loginId), { email: user.email, code }, ttl);
       await this.redis.client.set(UserService.KEY.codeByUser(user.email), loginId, 'EX', ttl);
     });
 
@@ -1901,9 +1903,24 @@ export class UserService {
     this.logger.log(`Verifying login code - loginId: ${loginId}`);
 
     const codeKey = UserService.KEY.code(loginId);
+    const attemptsKey = UserService.KEY.codeAttempts(loginId);
+    // O contador é um INCR à parte (não um JSON lido e gravado de novo):
+    // tentativas em paralelo não leem o mesmo número. No limite, o código
+    // some antes da comparação, então a tentativa certa que chega junto
+    // também não passa.
+    const burned = await this.withRedis(async () => {
+      const used = Number((await this.redis.client.get(attemptsKey)) ?? 0);
+      if (used < LOGIN_CODE_MAX_ATTEMPTS) return false;
+      await this.redis.client.del(codeKey, attemptsKey);
+      return true;
+    });
+    if (burned) {
+      throw new UnauthorizedException('Invalid or expired verification code');
+    }
+
     // Expirado = chave já sumiu do Redis (TTL)
     const entry = await this.withRedis(() =>
-      this.redis.getJson<{ email: string; code: string; attempts: number }>(codeKey),
+      this.redis.getJson<{ email: string; code: string }>(codeKey),
     );
 
     if (!entry) {
@@ -1911,19 +1928,27 @@ export class UserService {
       throw new UnauthorizedException('Invalid verification code');
     }
     if (entry.code !== code) {
-      entry.attempts += 1;
-      this.logger.error(`Invalid verification code - code mismatch, attempts: ${entry.attempts}`);
-      if (entry.attempts >= LOGIN_CODE_MAX_ATTEMPTS) {
-        await this.withRedis(() => this.redis.client.del(codeKey));
-        throw new UnauthorizedException('Invalid or expired verification code');
-      }
-      await this.withRedis(() => this.redis.client.set(codeKey, JSON.stringify(entry), 'KEEPTTL'));
-      throw new UnauthorizedException('Invalid verification code');
+      const attempts = await this.withRedis(async () => {
+        const n = await this.redis.client.incr(attemptsKey);
+        if (n === 1) {
+          const ttl = await this.redis.client.ttl(codeKey);
+          if (ttl > 0) await this.redis.client.expire(attemptsKey, ttl);
+        }
+        if (n >= LOGIN_CODE_MAX_ATTEMPTS) await this.redis.client.del(codeKey, attemptsKey);
+        return n;
+      });
+      this.logger.error(`Invalid verification code - code mismatch, attempts: ${attempts}`);
+      throw new UnauthorizedException(
+        attempts >= LOGIN_CODE_MAX_ATTEMPTS
+          ? 'Invalid or expired verification code'
+          : 'Invalid verification code',
+      );
     }
     // Uso único: só a primeira verificação com o código certo consome a chave
     if ((await this.withRedis(() => this.redis.client.del(codeKey))) === 0) {
       throw new UnauthorizedException('Invalid verification code');
     }
+    await this.redis.client.del(attemptsKey).catch(() => undefined);
     await this.redis.client.del(UserService.KEY.codeByUser(entry.email)).catch(() => undefined);
     const { email } = entry;
     const user = await this.prisma.user.findFirst({

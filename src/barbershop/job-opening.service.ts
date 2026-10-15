@@ -2,10 +2,12 @@ import { must } from '../common/must';
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
+  forwardRef,
 } from '@nestjs/common';
 import type Stripe from 'stripe';
 import { TreatmentCategory } from '@prisma/client';
@@ -65,6 +67,7 @@ export class JobOpeningService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => BarbershopService))
     private readonly barbershops: BarbershopService,
     private readonly invites: EmployeeInviteService,
     private readonly realtime: RealtimeService,
@@ -724,6 +727,34 @@ export class JobOpeningService {
       ...(shop?.barbers.map((b) => b.userId) ?? []),
     ].filter((id): id is number => typeof id === 'number');
     return [...new Set(ids)];
+  }
+
+  /** Unidade encerrada: as vagas abertas fecham e quem esperava resposta é avisado. */
+  async closeOpeningsOfBarbershop(barbershopId: number) {
+    const openings = await this.prisma.jobOpening.findMany({
+      where: { barbershopId, status: 'open' },
+      select: { id: true, title: true },
+    });
+    for (const opening of openings) {
+      await this.prisma.jobOpening.updateMany({
+        where: { id: opening.id, status: 'open' },
+        data: { status: 'closed', closedAt: new Date() },
+      });
+      await this.rejectPending(opening.id, {
+        pt: {
+          title: 'Vaga encerrada',
+          message: `A vaga "${opening.title}" foi encerrada porque a unidade encerrou o atendimento.`,
+        },
+        en: {
+          title: 'Opening closed',
+          message: `The opening "${opening.title}" was closed because the location stopped operating.`,
+        },
+        es: {
+          title: 'Vacante cerrada',
+          message: `La vacante "${opening.title}" se cerró porque la unidad dejó de atender.`,
+        },
+      });
+    }
   }
 
   /** Quem ainda esperava resposta: recusa e avisa (vaga preenchida ou encerrada). */

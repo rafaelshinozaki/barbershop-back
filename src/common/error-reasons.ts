@@ -17,6 +17,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'MARKETING_DAILY_LIMIT',
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.':
     'MARKETING_MONTHLY_LIMIT',
+  'Quem saiu das campanhas só pode voltar a receber por conta própria.':
+    'MARKETING_OPT_IN_BY_CUSTOMER',
+  'Categoria não encontrada nesta unidade': 'CATEGORY_NOT_FOUND_LOCATION',
   'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',
   'Estorno não pode ser alterado nem apagado.': 'REFUND_SALE_LOCKED',
   'Tipo de venda inválido': 'SALE_TYPE_INVALID',

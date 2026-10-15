@@ -127,6 +127,10 @@ export class BarbershopDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   clubRefunds: DeletionRefundType[];
 
+  /** Aluguel da cadeira já vencido, que continua devido depois do encerramento */
+  @Field(() => [DeletionRefundType])
+  overdueChairRents: DeletionRefundType[];
+
   // Pacotes ativos: pagos fora do app, a unidade devolve o que não foi usado
   @Field(() => Int)
   activePackages: number;

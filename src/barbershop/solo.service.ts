@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { linkBarberToProfessional } from './professional';
 import { SOLO_PRODUCT_LIMIT, SOLO_SERVICE_LIMIT, soloUsage } from './solo';
 import { isProActive, proPriceLabel } from './pro';
+import { currencyForCountry, timezoneForPlace } from '../common/place-locale';
 
 export type StartSoloInput = {
   name: string;
@@ -12,6 +13,8 @@ export type StartSoloInput = {
   address: string;
   postalCode: string;
   phone: string;
+  /** Fuso do navegador. Vale se for um fuso do país; senão, país e estado decidem. */
+  timezone?: string | null;
 };
 
 export type SoloStatus = {
@@ -111,12 +114,15 @@ export class SoloService {
 
     let network = await this.prisma.network.findFirst({ where: { ownerUserId: userId } });
     if (!network) {
-      network = await this.prisma.network.create({ data: { ownerUserId: userId, city } });
+      network = await this.prisma.network.create({
+        data: { ownerUserId: userId, city, currency: currencyForCountry(country) },
+      });
     }
 
     const slug = await this.freeSlug(slugBase(name, userId));
     const networkId = network.id;
     const currency = network.currency;
+    const timezone = timezoneForPlace(country, state, input.timezone);
     const shop = await this.prisma
       .$transaction(async (tx) => {
         const created = await tx.barbershop.create({
@@ -131,7 +137,7 @@ export class SoloService {
             phone,
             email: user.email,
             practiceKind: 'solo',
-            timezone: 'America/Sao_Paulo',
+            timezone,
             currency,
             networkId,
             ownerUserId: userId,

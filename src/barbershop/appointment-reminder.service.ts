@@ -14,6 +14,7 @@ import { ReviewRequestService } from './review-request.service';
 import { CustomerRatingService } from './customer-rating.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { BarbershopService } from './barbershop.service';
+import { reminderCoveredByNotice } from './reminder-window';
 import type { Job } from 'bullmq';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
@@ -22,7 +23,7 @@ const BATCH_SIZE = 500;
 
 /** A confirmação já avisou: horário criado a menos de 24 h do início. */
 export function reminderCoveredByConfirmation(createdAt: Date, startAt: Date) {
-  return startAt.getTime() - createdAt.getTime() <= 24 * 60 * 60 * 1000;
+  return reminderCoveredByNotice(createdAt, startAt);
 }
 
 @Injectable()

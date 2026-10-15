@@ -577,6 +577,7 @@ type BarbershopDeletionPreviewType {
   clubRefunds: [DeletionRefundType!]!
   futureAppointments: Int!
   onlineRefunds: [DeletionRefundType!]!
+  overdueChairRents: [DeletionRefundType!]!
   packageRefunds: [DeletionRefundType!]!
 }
 
@@ -3928,6 +3929,9 @@ input StartSoloPracticeInput {
   phone: String!
   postalCode: String!
   state: String!
+
+  """Fuso do navegador (IANA). O back só aceita se for um fuso do país."""
+  timezone: String
 }
 
 type StatusDistribution {

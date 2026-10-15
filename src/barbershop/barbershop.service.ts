@@ -9,6 +9,7 @@ import {
   verifyWaitlistLeaveToken,
   waitlistLeaveUrl,
 } from './appointment-link';
+import { reminderSentAtAfterMove } from './reminder-window';
 import {
   Injectable,
   Logger,
@@ -16,6 +17,8 @@ import {
   BadRequestException,
   ForbiddenException,
   Optional,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { randomInt } from 'crypto';
 import { SearchCacheService } from './search-cache.service';
@@ -86,6 +89,7 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { normalizePhoneToE164, phoneDigitVariants } from '../common/phone.util';
 import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
+import { JobOpeningService } from './job-opening.service';
 import { currentPricing } from '../pricing/pricing';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
 import { moneyCap, toMinorUnits } from '../common/money-units';
@@ -654,6 +658,9 @@ export class BarbershopService {
     private readonly notificationQueue: NotificationQueueService,
     private readonly realtime: RealtimeService,
     @Optional() private readonly searchCache?: SearchCacheService,
+    @Optional()
+    @Inject(forwardRef(() => JobOpeningService))
+    private readonly jobs?: JobOpeningService,
   ) {}
 
   /**
@@ -1867,8 +1874,9 @@ export class BarbershopService {
     // Antes as assinaturas dos clientes sumiam do banco junto com a unidade
     // (cascade) mas continuavam ativas no Stripe — o cliente seguia pagando
     await this.cancelClientSubscriptionsOfBarbershops([id]);
-    await this.cancelChairRentsOfBarbershops([id]);
+    await this.endSharedLocationsOfBarbershops([id]);
     await this.cancelFutureAppointmentsOfBarbershops([id]);
+    await this.jobs?.closeOpeningsOfBarbershop(id);
     const now = new Date();
     await this.prisma.$transaction([
       this.prisma.barbershop.update({
@@ -1901,14 +1909,15 @@ export class BarbershopService {
   /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
   async getBarbershopDeletionPreview(userId: number, id: number) {
     await this.ensureBarbershopAccess(userId, id, 'owner');
-    const [impact, activeClientSubscriptions, packages] = await Promise.all([
+    const [impact, activeClientSubscriptions, packages, overdueChairRents] = await Promise.all([
       this.deletionImpact([id]),
       this.prisma.clientSubscription.count({
         where: { barbershopId: id, status: { not: 'CANCELED' } },
       }),
       this.activePackagesOf(id),
+      this.overdueChairRentsOf([id]),
     ]);
-    return { ...impact, activeClientSubscriptions, ...packages };
+    return { ...impact, activeClientSubscriptions, ...packages, overdueChairRents };
   }
 
   /**
@@ -2228,6 +2237,65 @@ export class BarbershopService {
     }
   }
 
+  /**
+   * Encerrar a unidade acaba com o espaço compartilhado dos dois lados.
+   * O aluguel no cartão é cancelado no Stripe. O cobrado à mão para de
+   * gerar mensalidade; a que vence depois do encerramento sai. A que já
+   * está atrasada fica (a prévia mostra).
+   */
+  async endSharedLocationsOfBarbershops(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return;
+    await this.cancelChairRentsOfBarbershops(barbershopIds);
+    const links = await this.prisma.sharedLocationMember.findMany({
+      where: {
+        status: { in: ['PENDING', 'ACTIVE'] },
+        OR: [
+          { hostBarbershopId: { in: barbershopIds } },
+          { memberBarbershopId: { in: barbershopIds } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (links.length === 0) return;
+    const ids = links.map((link) => link.id);
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.sharedLocationMember.updateMany({
+        where: { id: { in: ids } },
+        data: { status: 'REMOVED', respondedAt: now, rentStatus: 'NONE' },
+      }),
+      this.prisma.chairRentPayment.deleteMany({
+        where: { sharedLocationMemberId: { in: ids }, status: 'DUE', dueDate: { gt: now } },
+      }),
+    ]);
+  }
+
+  /** Mensalidade manual já vencida, que continua devida depois do encerramento. */
+  private async overdueChairRentsOf(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return [];
+    const payments = await this.prisma.chairRentPayment.findMany({
+      where: {
+        status: 'DUE',
+        dueDate: { lte: new Date() },
+        link: {
+          OR: [
+            { hostBarbershopId: { in: barbershopIds } },
+            { memberBarbershopId: { in: barbershopIds } },
+          ],
+        },
+      },
+      select: { amount: true, currency: true },
+    });
+    const byCurrency = new Map<string, number>();
+    for (const payment of payments) {
+      byCurrency.set(
+        payment.currency,
+        round2((byCurrency.get(payment.currency) ?? 0) + Number(payment.amount)),
+      );
+    }
+    return [...byCurrency].map(([currency, amount]) => ({ currency, amount }));
+  }
+
   // ============ CUSTOMER ============
 
   async createCustomer(
@@ -2316,6 +2384,25 @@ export class BarbershopService {
       where: { id: customerId, networkId: barbershop.networkId, deletedAt: null },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
+    // Quem saiu pelo link do e-mail só volta por conta própria (LGPD). A
+    // equipe pode marcar "não quer receber", e isso vale para as outras
+    // fichas da rede com o mesmo e-mail.
+    if (data.marketingOptOut === false && customer.marketingOptOut) {
+      throw new BadRequestException(
+        'Quem saiu das campanhas só pode voltar a receber por conta própria.',
+      );
+    }
+    const email = customer.email?.trim();
+    if (data.marketingOptOut === true && email) {
+      await this.prisma.customer.updateMany({
+        where: {
+          networkId: customer.networkId,
+          deletedAt: null,
+          email: { equals: email, mode: 'insensitive' },
+        },
+        data: { marketingOptOut: true },
+      });
+    }
     return this.prisma.customer.update({
       where: { id: customerId },
       data,
@@ -2830,6 +2917,10 @@ export class BarbershopService {
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.barbershopService.findFirst({
+      where: { id: serviceId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Serviço não encontrado');
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
     const depositAmount =
       data.depositAmount !== undefined
@@ -2845,6 +2936,10 @@ export class BarbershopService {
 
   async deleteService(userId: number, barbershopId: number, serviceId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.barbershopService.findFirst({
+      where: { id: serviceId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Serviço não encontrado');
     await this.prisma.barbershopService.delete({ where: { id: serviceId } });
   }
 
@@ -2882,6 +2977,10 @@ export class BarbershopService {
     data: Partial<{ name: string; icon?: string; color?: string; displayOrder?: number }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.productCategory.findFirst({
+      where: { id: categoryId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Categoria não encontrada nesta unidade');
     return this.prisma.productCategory.update({
       where: { id: categoryId },
       data: {
@@ -2895,6 +2994,10 @@ export class BarbershopService {
 
   async deleteProductCategory(userId: number, barbershopId: number, categoryId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.productCategory.findFirst({
+      where: { id: categoryId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Categoria não encontrada nesta unidade');
     await this.prisma.productCategory.delete({ where: { id: categoryId } });
   }
 
@@ -2915,6 +3018,7 @@ export class BarbershopService {
     },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
     return this.prisma.barbershopProduct.create({
       data: {
         barbershopId,
@@ -2955,6 +3059,11 @@ export class BarbershopService {
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Produto não encontrado');
+    if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
     const salePrice = data.salePrice !== undefined ? new Decimal(data.salePrice) : undefined;
     const costPrice = data.costPrice !== undefined ? new Decimal(data.costPrice) : undefined;
     const updateData: any = { ...data, salePrice, costPrice };
@@ -2967,7 +3076,19 @@ export class BarbershopService {
 
   async deleteProduct(userId: number, barbershopId: number, productId: number) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+    });
+    if (!current) throw new NotFoundException('Produto não encontrado');
     await this.prisma.barbershopProduct.delete({ where: { id: productId } });
+  }
+
+  private async categoryOfShop(barbershopId: number, categoryId: number) {
+    const category = await this.prisma.productCategory.findFirst({
+      where: { id: categoryId, barbershopId },
+    });
+    if (!category) throw new NotFoundException('Categoria não encontrada nesta unidade');
+    return category;
   }
 
   // ============ INVENTORY ============
@@ -3818,12 +3939,10 @@ export class BarbershopService {
     const newStart = new Date(data.startAt ?? appointment.startAt);
     const newEnd = new Date(data.endAt ?? appointment.endAt);
     if (newEnd <= newStart) throw new BadRequestException('O fim tem que ser depois do início');
-    // Horário novo: o lembrete vale pra ele (o do horário antigo já foi)
-    if (
-      newStart.getTime() !== appointment.startAt.getTime() &&
-      appointment.reminderSentAt != null
-    ) {
-      data = { ...data, reminderSentAt: null } as typeof data;
+    // Horário novo. Dentro de 24 h o e-mail de remarcação já é o lembrete;
+    // mais longe, o lembrete de 24 h volta a valer.
+    if (newStart.getTime() !== appointment.startAt.getTime()) {
+      data = { ...data, reminderSentAt: reminderSentAtAfterMove(newStart) } as typeof data;
     }
     const barberId = data.barberId ?? appointment.barberId;
     const resourceId = data.resourceId ?? appointment.resourceId ?? undefined;
@@ -4887,7 +5006,9 @@ export class BarbershopService {
       ]);
       const recentIds = new Set(recent.map((r) => r.customerId));
       const inactiveIds = ever.map((r) => r.customerId).filter((id) => !recentIds.has(id));
-      return this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } });
+      return this.uniqueByEmail(
+        await this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } }),
+      );
     }
 
     if (segment === 'BIRTHDAY_MONTH') {
@@ -4904,11 +5025,30 @@ export class BarbershopService {
       const customers = await this.prisma.customer.findMany({
         where: { ...baseWhere, birthDate: { not: null } },
       });
-      return customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth);
+      return this.uniqueByEmail(
+        customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth),
+      );
     }
 
     // ALL
-    return this.prisma.customer.findMany({ where: baseWhere });
+    return this.uniqueByEmail(await this.prisma.customer.findMany({ where: baseWhere }));
+  }
+
+  /** A mesma pessoa (mesmo e-mail, fichas duplicadas) recebe a campanha uma vez. */
+  private uniqueByEmail<T extends { email: string | null }>(customers: T[]): T[] {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const customer of customers) {
+      const email = customer.email?.trim().toLowerCase();
+      if (!email) {
+        out.push(customer);
+        continue;
+      }
+      if (seen.has(email)) continue;
+      seen.add(email);
+      out.push(customer);
+    }
+    return out;
   }
 
   async previewMarketingSegment(
@@ -5059,12 +5199,17 @@ export class BarbershopService {
       include: { network: { include: { barbershops: { take: 1, orderBy: { id: 'asc' } } } } },
     });
     if (!customer) throw new BadRequestException('Link de descadastro inválido');
-    if (!customer.marketingOptOut) {
-      await this.prisma.customer.update({
-        where: { id: customerId },
-        data: { marketingOptOut: true },
-      });
-    }
+    const email = customer.email?.trim();
+    await this.prisma.customer.updateMany({
+      where: {
+        networkId: customer.networkId,
+        marketingOptOut: false,
+        ...(email
+          ? { email: { equals: email, mode: 'insensitive' } }
+          : { id: customer.id }),
+      },
+      data: { marketingOptOut: true },
+    });
     return customer.network?.name || customer.network?.barbershops[0]?.name || 'Barbershop';
   }
 
@@ -6381,8 +6526,8 @@ export class BarbershopService {
       }
       const moved = await tx.appointment.updateMany({
         where: { id: appt.id, status: 'CONFIRMED', startAt: appt.startAt },
-        // Horário novo ganha lembrete novo
-        data: { startAt, endAt, reminderSentAt: null },
+        // Dentro de 24 h o e-mail de remarcação já avisa; mais longe, o lembrete volta
+        data: { startAt, endAt, reminderSentAt: reminderSentAtAfterMove(startAt) },
       });
       if (moved.count === 0) {
         throw new BadRequestException(
