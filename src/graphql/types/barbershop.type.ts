@@ -113,6 +113,9 @@ export class NetworkDashboardEvent {
   @Field({ nullable: true })
   customerName?: string;
 
+  @Field({ nullable: true })
+  currency?: string;
+
   /** For sales: localize title on the client */
   @Field(() => Int, { nullable: true })
   saleId?: number;
@@ -149,6 +152,15 @@ export class NetworkDashboardEvent {
 }
 
 @ObjectType()
+export class MoneyTotal {
+  @Field()
+  currency: string;
+
+  @Field(() => Float)
+  amount: number;
+}
+
+@ObjectType()
 export class ShopRevenueItem {
   @Field(() => Int)
   id: number;
@@ -158,6 +170,9 @@ export class ShopRevenueItem {
 
   @Field(() => Float)
   total: number;
+
+  @Field()
+  currency: string;
 }
 
 @ObjectType()
@@ -174,6 +189,9 @@ export class MonthlyRevenueItem {
 
   @Field(() => Float)
   total: number;
+
+  @Field()
+  currency: string;
 }
 
 @ObjectType()
@@ -193,9 +211,15 @@ export class NetworkDashboardStats {
   @Field(() => Float)
   revenueThisMonth: number;
 
+  @Field(() => [MoneyTotal])
+  revenueThisMonthByCurrency: MoneyTotal[];
+
   /** Faturamento do mês anterior até o mesmo ponto do mês (base da comparação) */
   @Field(() => Float)
   revenueSamePeriodLastMonth: number;
+
+  @Field(() => [MoneyTotal])
+  revenueSamePeriodLastMonthByCurrency: MoneyTotal[];
 
   @Field()
   currency: string;
@@ -220,6 +244,9 @@ export class NetworkDashboardStats {
 
   @Field(() => Float)
   revenueToday: number;
+
+  @Field(() => [MoneyTotal])
+  revenueTodayByCurrency: MoneyTotal[];
 
   /** Esconde o card de faturamento (recepção e profissional básico não veem). */
   @Field(() => Boolean)

@@ -11,6 +11,7 @@ import {
 } from './appointment-link';
 import { reminderSentAtAfterMove } from './reminder-window';
 import { appointmentContactEmail } from './appointment-contact';
+import { localeGroups, moneyByCurrency } from './dashboard-locale';
 import {
   Injectable,
   Logger,
@@ -1123,7 +1124,15 @@ export class BarbershopService {
       revenueThisMonth: 0,
       revenueSamePeriodLastMonth: 0,
       currency,
-      monthlyRevenue: [] as { month: string; monthIndex: number; year: number; total: number }[],
+      monthlyRevenue: [] as {
+        month: string;
+        monthIndex: number;
+        year: number;
+        total: number;
+        currency: string;
+      }[],
+      revenueThisMonthByCurrency: [] as { currency: string; amount: number }[],
+      revenueSamePeriodLastMonthByCurrency: [] as { currency: string; amount: number }[],
       recentEvents: [] as Array<{
         id: string;
         type: string;
@@ -1136,6 +1145,7 @@ export class BarbershopService {
       }>,
       appointmentsToday: 0,
       revenueToday: 0,
+      revenueTodayByCurrency: [] as { currency: string; amount: number }[],
       showRevenueToday: false,
       canSell: false,
       walkInsWaiting: 0,
@@ -1148,7 +1158,7 @@ export class BarbershopService {
         subtitle?: string;
         customerName?: string;
       }>,
-      revenueByBarbershop: [] as Array<{ id: number; name: string; total: number }>,
+      revenueByBarbershop: [] as Array<{ id: number; name: string; total: number; currency: string }>,
     };
   }
 
@@ -1200,7 +1210,7 @@ export class BarbershopService {
     paymentMethod: string | null;
     paymentStatus: string;
     barbershopId: number;
-    barbershop: { name: string };
+    barbershop: { name: string; currency?: string | null };
     barber: { name: string } | null;
     customer: { name: string } | null;
     items?: Array<{
@@ -1225,6 +1235,7 @@ export class BarbershopService {
       saleId: s.id,
       barbershopId: s.barbershopId,
       barbershopName: s.barbershop.name,
+      currency: s.barbershop.currency || undefined,
       barberName,
       status: s.paymentStatus,
       paymentMethod: s.paymentMethod ?? undefined,
@@ -1239,47 +1250,53 @@ export class BarbershopService {
    * da unidade; lista vazia = não soma faturamento.
    */
   private async dashboardPulse(
-    shops: { id: number; timezone: string | null }[],
+    shops: { id: number; timezone: string | null; currency?: string | null }[],
     opts: {
       barberIds: number[] | null;
       revenueBarberIds: number[] | null;
       includeQueue: boolean;
     },
   ) {
-    const timeZone = safeTimeZone(shops[0]?.timezone);
     const now = new Date();
-    const today = toZonedParts(now, timeZone).dateStr;
-    const start = zonedTimeToUtc(today, 0, timeZone);
-    const end = zonedTimeToUtc(nextDateStr(today), 0, timeZone);
     const shopIds = shops.map((s) => s.id);
     const barberFilter = opts.barberIds ? { barberId: { in: opts.barberIds } } : {};
+    const groups = localeGroups(shops);
+    const skipRevenue = opts.revenueBarberIds != null && opts.revenueBarberIds.length === 0;
 
-    const [appointmentsToday, revenueAgg, walkInsWaiting, upcoming] = await Promise.all([
-      this.prisma.appointment.count({
-        where: {
-          barbershopId: { in: shopIds },
-          ...barberFilter,
-          startAt: { gte: start, lt: end },
-          status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] },
-        },
-      }),
-      opts.revenueBarberIds && opts.revenueBarberIds.length === 0
-        ? Promise.resolve({
-            _sum: {
-              total: null as Decimal | null,
-              depositApplied: null as Decimal | null,
-              prepaidApplied: null as Decimal | null,
-            },
-          })
-        : this.prisma.sale.aggregate({
-            where: {
-              barbershopId: { in: shopIds },
-              paymentStatus: 'PAID',
-              ...paidInRange({ gte: start, lt: end }),
-              ...(opts.revenueBarberIds ? { barberId: { in: opts.revenueBarberIds } } : {}),
-            },
-            _sum: SALE_REVENUE_SUM,
-          }),
+    const [perGroup, walkInsWaiting, upcoming] = await Promise.all([
+      Promise.all(
+        groups.map(async (group) => {
+          const today = toZonedParts(now, group.timeZone).dateStr;
+          const start = zonedTimeToUtc(today, 0, group.timeZone);
+          const end = zonedTimeToUtc(nextDateStr(today), 0, group.timeZone);
+          const [count, revenueAgg] = await Promise.all([
+            this.prisma.appointment.count({
+              where: {
+                barbershopId: { in: group.ids },
+                ...barberFilter,
+                startAt: { gte: start, lt: end },
+                status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] },
+              },
+            }),
+            skipRevenue
+              ? Promise.resolve(null)
+              : this.prisma.sale.aggregate({
+                  where: {
+                    barbershopId: { in: group.ids },
+                    paymentStatus: 'PAID',
+                    ...paidInRange({ gte: start, lt: end }),
+                    ...(opts.revenueBarberIds ? { barberId: { in: opts.revenueBarberIds } } : {}),
+                  },
+                  _sum: SALE_REVENUE_SUM,
+                }),
+          ]);
+          return {
+            count,
+            currency: group.currency,
+            revenue: revenueAgg ? saleRevenue(revenueAgg._sum) : 0,
+          };
+        }),
+      ),
       opts.includeQueue
         ? this.prisma.walkIn.count({
             where: { barbershopId: { in: shopIds }, status: 'WAITING' },
@@ -1303,9 +1320,14 @@ export class BarbershopService {
       }),
     ]);
 
+    const revenueTodayByCurrency = moneyByCurrency(
+      perGroup.map((group) => ({ currency: group.currency, amount: group.revenue })),
+    );
     return {
-      appointmentsToday,
-      revenueToday: saleRevenue(revenueAgg._sum),
+      appointmentsToday: perGroup.reduce((sum, group) => sum + group.count, 0),
+      revenueToday:
+        revenueTodayByCurrency.length === 1 ? revenueTodayByCurrency[0].amount : 0,
+      revenueTodayByCurrency,
       walkInsWaiting,
       upcomingAppointments: upcoming.map((a) => {
         const event = this.appointmentDashboardEvent(a, 'next');
@@ -1339,7 +1361,7 @@ export class BarbershopService {
         orderBy: { createdAt: 'desc' },
         take: 8,
         include: {
-          barbershop: { select: { name: true } },
+          barbershop: { select: { name: true, currency: true } },
           customer: { select: { name: true } },
           barber: { select: { name: true } },
           items: {
@@ -1433,6 +1455,103 @@ export class BarbershopService {
     };
   }
 
+  /** Faturamento do mês, do mês anterior e dos últimos 6 meses, por fuso e por moeda. */
+  private async networkMoney(
+    shops: { id: number; name: string; timezone: string | null; currency: string }[],
+  ) {
+    const now = new Date();
+    const currentRows: { currency: string; amount: number }[] = [];
+    const previousRows: { currency: string; amount: number }[] = [];
+    const byShop = new Map<number, number>();
+    const monthly = new Map<
+      string,
+      { month: string; monthIndex: number; year: number; total: number; currency: string }[]
+    >();
+
+    for (const group of localeGroups(shops)) {
+      const [year, month] = toZonedParts(now, group.timeZone).dateStr.split('-').map(Number);
+      const startOfMonth = monthRangeUtc(year, month, group.timeZone).start;
+      const [prevYear, prevMonth] = month === 1 ? [year - 1, 12] : [year, month - 1];
+      const prevRange = monthRangeUtc(prevYear, prevMonth, group.timeZone);
+      const elapsedMs = now.getTime() - startOfMonth.getTime();
+      const prevUntil = new Date(
+        Math.min(prevRange.start.getTime() + elapsedMs, prevRange.end.getTime()),
+      );
+      const paid = (range: Prisma.DateTimeFilter) =>
+        this.prisma.sale.aggregate({
+          where: {
+            barbershopId: { in: group.ids },
+            paymentStatus: 'PAID',
+            ...paidInRange(range),
+          },
+          _sum: SALE_REVENUE_SUM,
+        });
+      const [current, previous, shopRows] = await Promise.all([
+        paid({ gte: startOfMonth }),
+        paid({ gte: prevRange.start, lt: prevUntil }),
+        this.prisma.sale.groupBy({
+          by: ['barbershopId'],
+          where: {
+            barbershopId: { in: group.ids },
+            paymentStatus: 'PAID',
+            ...paidInRange({ gte: startOfMonth }),
+          },
+          _sum: SALE_REVENUE_SUM,
+        }),
+      ]);
+      currentRows.push({ currency: group.currency, amount: saleRevenue(current._sum) });
+      previousRows.push({ currency: group.currency, amount: saleRevenue(previous._sum) });
+      for (const row of shopRows) byShop.set(row.barbershopId, saleRevenue(row._sum));
+
+      const series = monthly.get(group.currency) ?? [];
+      monthly.set(group.currency, series);
+      for (let i = 5; i >= 0; i--) {
+        const { start, end } = monthRangeUtc(year, month - i, group.timeZone);
+        const amount = saleRevenue((await paid({ gte: start, lt: end }))._sum);
+        const index = 5 - i;
+        if (!series[index]) {
+          const label = new Date(Date.UTC(year, month - 1 - i, 15));
+          series[index] = {
+            month: label.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+            monthIndex: label.getUTCMonth(),
+            year: label.getUTCFullYear(),
+            total: 0,
+            currency: group.currency,
+          };
+        }
+        series[index].total += amount;
+      }
+    }
+
+    const revenueThisMonthByCurrency = moneyByCurrency(currentRows);
+    const revenueSamePeriodLastMonthByCurrency = moneyByCurrency(previousRows);
+    const single = revenueThisMonthByCurrency.length <= 1;
+    const currency = single
+      ? (revenueThisMonthByCurrency[0]?.currency ?? shops[0]?.currency ?? 'BRL')
+      : (shops[0]?.currency ?? 'BRL');
+    const previousOf = new Map(
+      revenueSamePeriodLastMonthByCurrency.map((row) => [row.currency, row.amount]),
+    );
+    return {
+      currency,
+      revenueThisMonth: single ? (revenueThisMonthByCurrency[0]?.amount ?? 0) : 0,
+      revenueSamePeriodLastMonth: single ? (previousOf.get(currency) ?? 0) : 0,
+      revenueThisMonthByCurrency,
+      revenueSamePeriodLastMonthByCurrency,
+      monthlyRevenue: [...monthly.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .flatMap(([, points]) => points),
+      revenueByBarbershop: shops
+        .map((shop) => ({
+          id: shop.id,
+          name: shop.name,
+          total: byShop.get(shop.id) ?? 0,
+          currency: shop.currency || 'BRL',
+        }))
+        .sort((a, b) => b.total - a.total),
+    };
+  }
+
   /** Dashboard stats agregados para dono da franquia. Com `barbershopId`, só essa unidade. */
   async getNetworkDashboardStats(userId: number, barbershopId?: number | null) {
     // Faturamento da rede: só as unidades onde a pessoa é dona ou gerente
@@ -1452,12 +1571,6 @@ export class BarbershopService {
     if (barbershopIds.length === 0) {
       return this.staffDashboard(userId, barbershopId ?? undefined);
     }
-
-    // Meses no fuso da rede (o da primeira unidade — todas as unidades de uma
-    // rede ficam no mesmo país), não no do servidor, que roda em UTC.
-    const timeZone = safeTimeZone(barbershops[0]?.timezone);
-    const [year, month] = toZonedParts(new Date(), timeZone).dateStr.split('-').map(Number);
-    const startOfMonth = monthRangeUtc(year, month, timeZone).start;
 
     // Total barbers (funcionários)
     const totalBarbers = await this.prisma.barber.count({
@@ -1482,80 +1595,7 @@ export class BarbershopService {
     });
     const totalProductsSold = productsSoldResult._sum.quantity ?? 0;
 
-    // Faturamento do mês vigente (vendas pagas)
-    const revenueThisMonthResult = await this.prisma.sale.aggregate({
-      where: {
-        barbershopId: { in: barbershopIds },
-        paymentStatus: 'PAID',
-        ...paidInRange({ gte: startOfMonth }),
-      },
-      _sum: SALE_REVENUE_SUM,
-    });
-    const revenueThisMonth = saleRevenue(revenueThisMonthResult._sum);
-
-    // Mesmo período do mês anterior (do dia 1 até o mesmo ponto do mês), pra
-    // comparar sem dar "-100%" no começo do mês contra o mês anterior inteiro
-    const [prevYear, prevMonth] = month === 1 ? [year - 1, 12] : [year, month - 1];
-    const prevRange = monthRangeUtc(prevYear, prevMonth, timeZone);
-    const elapsedMs = Date.now() - startOfMonth.getTime();
-    const prevUntil = new Date(
-      Math.min(prevRange.start.getTime() + elapsedMs, prevRange.end.getTime()),
-    );
-    const revenueSamePeriodLastMonth = saleRevenue(
-      (
-        await this.prisma.sale.aggregate({
-          where: {
-            barbershopId: { in: barbershopIds },
-            paymentStatus: 'PAID',
-            ...paidInRange({ gte: prevRange.start, lt: prevUntil }),
-          },
-          _sum: SALE_REVENUE_SUM,
-        })
-      )._sum,
-    );
-
-    const revenueByShopRows = await this.prisma.sale.groupBy({
-      by: ['barbershopId'],
-      where: {
-        barbershopId: { in: barbershopIds },
-        paymentStatus: 'PAID',
-        ...paidInRange({ gte: startOfMonth }),
-      },
-      _sum: SALE_REVENUE_SUM,
-    });
-    const revenueByShop = new Map(
-      revenueByShopRows.map((row) => [row.barbershopId, saleRevenue(row._sum)]),
-    );
-    const revenueByBarbershop = barbershops
-      .map((shop) => ({ id: shop.id, name: shop.name, total: revenueByShop.get(shop.id) ?? 0 }))
-      .sort((a, b) => b.total - a.total);
-
-    // Comparativo mensal (últimos 6 meses)
-    const monthlyRevenue: {
-      month: string;
-      monthIndex: number;
-      year: number;
-      total: number;
-    }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const { start, end } = monthRangeUtc(year, month - i, timeZone);
-      const r = await this.prisma.sale.aggregate({
-        where: {
-          barbershopId: { in: barbershopIds },
-          paymentStatus: 'PAID',
-          ...paidInRange({ gte: start, lt: end }),
-        },
-        _sum: SALE_REVENUE_SUM,
-      });
-      // Meio do mês em UTC só pra extrair rótulo/ano/mês do calendário
-      const label = new Date(Date.UTC(year, month - 1 - i, 15));
-      monthlyRevenue.push({
-        month: label.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
-        monthIndex: label.getUTCMonth(),
-        year: label.getUTCFullYear(),
-        total: saleRevenue(r._sum),
-      });
-    }
+    const money = await this.networkMoney(barbershops);
 
     // Últimos eventos (appointments + sales, ordenados por data)
     const [recentAppointments, recentSales] = await Promise.all([
@@ -1579,7 +1619,7 @@ export class BarbershopService {
         orderBy: { createdAt: 'desc' },
         take: 10,
         include: {
-          barbershop: { select: { name: true } },
+          barbershop: { select: { name: true, currency: true } },
           customer: { select: { name: true } },
           barber: { select: { name: true } },
           items: {
@@ -1612,15 +1652,11 @@ export class BarbershopService {
       totalBarbershops: barbershops.length,
       totalServicesDone,
       totalProductsSold,
-      revenueThisMonth,
-      revenueSamePeriodLastMonth,
-      currency: barbershops[0].currency,
-      monthlyRevenue,
+      ...money,
       recentEvents,
       showRevenueToday: true,
       showQueue: true,
       canSell: true,
-      revenueByBarbershop,
       ...pulse,
     };
   }

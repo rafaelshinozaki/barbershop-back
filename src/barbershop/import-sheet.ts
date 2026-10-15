@@ -162,13 +162,26 @@ export function phoneMatchKey(phone: string) {
   return (normalized ?? phone).replace(/\D/g, '');
 }
 
+/** País que escreve o mês antes do dia (03/04 = 4 de março). O restante é dia/mês. */
+const MONTH_FIRST_COUNTRIES = new Set(['US', 'PH', 'FM', 'PW', 'MH']);
+
+export function monthBeforeDay(country: string | null | undefined) {
+  return MONTH_FIRST_COUNTRIES.has((country ?? '').trim().toUpperCase());
+}
+
 function money(value: string): number {
-  const cleaned = value.trim().replace(/[R$\s]/g, '');
+  const cleaned = value.trim().replace(/[^\d,.-]/g, '');
   if (!cleaned) return 0;
-  if (cleaned.includes(',') && cleaned.includes('.')) {
-    return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+  const comma = cleaned.lastIndexOf(',');
+  const dot = cleaned.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    return comma > dot
+      ? Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0
+      : Number(cleaned.replace(/,/g, '')) || 0;
   }
-  if (cleaned.includes(',')) return Number(cleaned.replace(',', '.')) || 0;
+  if (comma >= 0) return Number(cleaned.replace(',', '.')) || 0;
+  // 1.200 e 1.200.000 são milhar. 1.20 continua decimal.
+  if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) return Number(cleaned.replace(/\./g, '')) || 0;
   return Number(cleaned) || 0;
 }
 
@@ -185,12 +198,42 @@ function durationOf(value: string | undefined): number | null {
   return minutes ? Number(minutes[1]) : null;
 }
 
-function dateParts(value: string): string | null {
+function dateParts(
+  value: string,
+  monthFirst: boolean,
+): { date: string; ambiguous: boolean } | null {
   const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const br = value.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
-  if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
-  return null;
+  if (iso) return { date: `${iso[1]}-${iso[2]}-${iso[3]}`, ambiguous: false };
+  const match = value.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (!match) return null;
+  const a = Number(match[1]);
+  const b = Number(match[2]);
+  let day: number;
+  let month: number;
+  let ambiguous = false;
+  if (a > 12 && b >= 1 && b <= 12) {
+    day = a;
+    month = b;
+  } else if (b > 12 && a >= 1 && a <= 12) {
+    month = a;
+    day = b;
+  } else if (a >= 1 && a <= 12 && b >= 1 && b <= 12) {
+    ambiguous = true;
+    if (monthFirst) {
+      month = a;
+      day = b;
+    } else {
+      day = a;
+      month = b;
+    }
+  } else {
+    return null;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return {
+    date: `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    ambiguous,
+  };
 }
 
 function minutesOf(value: string): number | null {
@@ -220,7 +263,12 @@ function field(row: Record<string, string>, key: string) {
 }
 
 /** Planilha CSV (vírgula ou ponto e vírgula), com cabeçalhos de Booksy, Trinks ou os nossos. */
-export function parseSheet(csv: string, timeZone: string, now = new Date()): ParsedSheet {
+export function parseSheet(
+  csv: string,
+  timeZone: string,
+  now = new Date(),
+  country = 'BR',
+): ParsedSheet {
   const errors: string[] = [];
   const customers: SheetCustomer[] = [];
   const services: SheetService[] = [];
@@ -244,6 +292,8 @@ export function parseSheet(csv: string, timeZone: string, now = new Date()): Par
   }
   const header = table[0].map((cell) => ALIASES[sheetKey(cell)] ?? '');
   const zone = safeTimeZone(timeZone);
+  const monthFirst = monthBeforeDay(country);
+  let ambiguousExample: string | null = null;
   const data = table.slice(1, MAX_ROWS + 1);
   if (table.length - 1 > MAX_ROWS) {
     errors.push(`Só as primeiras ${MAX_ROWS} linhas foram lidas.`);
@@ -264,7 +314,11 @@ export function parseSheet(csv: string, timeZone: string, now = new Date()): Par
       field(row, 'service') || (!field(row, 'start') && !field(row, 'date') ? name : '');
     const duration = durationOf(field(row, 'duration'));
     const price = money(field(row, 'price'));
-    const date = dateParts(field(row, 'start')) ?? dateParts(field(row, 'date'));
+    const rawDate = field(row, 'start') || field(row, 'date');
+    const parsedDate =
+      dateParts(field(row, 'start'), monthFirst) ?? dateParts(field(row, 'date'), monthFirst);
+    if (parsedDate?.ambiguous && !ambiguousExample) ambiguousExample = rawDate;
+    const date = parsedDate?.date ?? null;
     const time =
       minutesOf(field(row, 'start').split(/\s+/).slice(1).join(' ')) ??
       minutesOf(field(row, 'time'));
@@ -322,6 +376,14 @@ export function parseSheet(csv: string, timeZone: string, now = new Date()): Par
       errors.push(`Linha ${line}: não deu para reconhecer cliente, serviço ou agendamento.`);
     }
   });
+
+  if (ambiguousExample) {
+    errors.unshift(
+      monthFirst
+        ? `A data ${ambiguousExample} foi lida como mês/dia, no formato deste país. Confira se as outras datas parecidas estão certas.`
+        : `A data ${ambiguousExample} foi lida como dia/mês. Confira se as outras datas parecidas estão certas.`,
+    );
+  }
 
   return { customers, services, appointments, errors };
 }

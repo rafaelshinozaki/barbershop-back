@@ -52,6 +52,36 @@ describe('parseSheet', () => {
     expect(phoneMatchKey('11988887777')).toBe(phoneMatchKey('+55 (11) 98888-7777'));
   });
 
+  it('lê 1.200 como milhar e 1.20 como decimal', () => {
+    const parsed = parseSheet(
+      'nome,duracao_minutos,preco\nCorte,30,"1.200"\nBarba,20,1.20\nSobrancelha,15,"1.200,50"\n',
+      'America/Sao_Paulo',
+      NOW,
+    );
+    expect(parsed.services.map((service) => service.price)).toEqual([1200, 1.2, 1200.5]);
+  });
+
+  it('lê 03/04 como dia/mês no Brasil e avisa que a data é ambígua', () => {
+    const parsed = parseSheet(
+      'nome,telefone,servico,data,hora\nAna,11988887777,Corte,03/04/2026,10:00\n',
+      'America/Sao_Paulo',
+      NOW,
+    );
+    expect(parsed.appointments[0].start.toISOString()).toBe('2026-04-03T13:00:00.000Z');
+    expect(parsed.errors[0]).toContain('dia/mês');
+  });
+
+  it('lê 03/04 como mês/dia nos Estados Unidos', () => {
+    const parsed = parseSheet(
+      'nome,telefone,servico,data,hora\nAna,11988887777,Corte,03/04/2026,10:00\n',
+      'America/New_York',
+      NOW,
+      'US',
+    );
+    expect(parsed.appointments[0].start.toISOString()).toBe('2026-03-04T15:00:00.000Z');
+    expect(parsed.errors[0]).toContain('mês/dia');
+  });
+
   it('lê serviços pela duração e o preço', () => {
     const parsed = parseSheet(
       'nome,duracao_minutos,preco\nCorte,30,45\n',

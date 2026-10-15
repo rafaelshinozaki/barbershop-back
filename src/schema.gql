@@ -2108,12 +2108,18 @@ type ModerationItemType {
   title: String!
 }
 
+type MoneyTotal {
+  amount: Float!
+  currency: String!
+}
+
 type MonthTotalType {
   month: String!
   total: Float!
 }
 
 type MonthlyRevenueItem {
+  currency: String!
   month: String!
   monthIndex: Int!
   total: Float!
@@ -2497,6 +2503,7 @@ type NetworkDashboardEvent {
   barberName: String
   barbershopId: Int
   barbershopName: String
+  currency: String
   customerName: String
   date: String!
   endAt: String
@@ -2521,8 +2528,11 @@ type NetworkDashboardStats {
   recentEvents: [NetworkDashboardEvent!]!
   revenueByBarbershop: [ShopRevenueItem!]!
   revenueSamePeriodLastMonth: Float!
+  revenueSamePeriodLastMonthByCurrency: [MoneyTotal!]!
   revenueThisMonth: Float!
+  revenueThisMonthByCurrency: [MoneyTotal!]!
   revenueToday: Float!
+  revenueTodayByCurrency: [MoneyTotal!]!
   showQueue: Boolean!
   showRevenueToday: Boolean!
   totalBarbers: Int!
@@ -3842,6 +3852,7 @@ type ShopImportResultType {
 }
 
 type ShopRevenueItem {
+  currency: String!
   id: Int!
   name: String!
   total: Float!

@@ -48,7 +48,7 @@ export class ImportService {
     apply: boolean,
   ): Promise<ShopImportResult> {
     const shop = await this.shops.ensureAccess(userId, barbershopId, 'manager');
-    const parsed = parseSheet(csv, shop.timezone);
+    const parsed = parseSheet(csv, shop.timezone, new Date(), shop.country);
     const result: ShopImportResult = { ...EMPTY, errors: [...parsed.errors] };
     const pushError = (message: string) => {
       if (result.errors.length < 30) result.errors.push(message);

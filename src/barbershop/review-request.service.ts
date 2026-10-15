@@ -69,6 +69,7 @@ export class ReviewRequestService {
     const due = await this.prisma.appointment.findMany({
       where: {
         status: 'COMPLETED',
+        source: { notIn: ['HISTORY', 'IMPORT'] },
         reviewRequestSentAt: null,
         endAt: {
           gte: new Date(now.getTime() - MAX_AGE_MS),
