@@ -10,6 +10,7 @@ import {
   waitlistLeaveUrl,
 } from './appointment-link';
 import { reminderSentAtAfterMove } from './reminder-window';
+import { appointmentContactEmail } from './appointment-contact';
 import {
   Injectable,
   Logger,
@@ -1897,6 +1898,12 @@ export class BarbershopService {
         data: { status: 'CANCELLED', offeredStartAt: null },
       }),
       this.prisma.employeeInvite.deleteMany({ where: { barbershopId: id, status: 'PENDING' } }),
+      this.prisma.socialPost.updateMany({
+        where: { barbershopId: id, status: 'SCHEDULED' },
+        data: { status: 'CANCELLED', errorMessage: 'Cancelada pelo encerramento da unidade.' },
+      }),
+      this.prisma.socialConnection.deleteMany({ where: { barbershopId: id } }),
+      this.prisma.socialPageChoice.deleteMany({ where: { barbershopId: id } }),
       // Pacote pago fora do app (dinheiro, PIX): a unidade devolve o que
       // não foi usado (a prévia mostra quanto); aqui ele deixa de valer
       this.prisma.clientPackage.updateMany({
@@ -2025,6 +2032,7 @@ export class BarbershopService {
         depositPaid: true,
         depositPaidAt: true,
         prepaidAt: true,
+        contactEmail: true,
         customer: { select: { email: true } },
         barbershop: { select: { country: true } },
       },
@@ -2039,7 +2047,7 @@ export class BarbershopService {
         where: { id: a.id },
         data: { status: 'CANCELLED' },
       });
-      const to = a.customer.email;
+      const to = appointmentContactEmail(a);
       if (!to) continue;
       const lang = langForCountry(a.barbershop.country);
       const reason = {
@@ -2940,7 +2948,10 @@ export class BarbershopService {
       where: { id: serviceId, barbershopId },
     });
     if (!current) throw new NotFoundException('Serviço não encontrado');
-    await this.prisma.barbershopService.delete({ where: { id: serviceId } });
+    await this.prisma.barbershopService.update({
+      where: { id: serviceId },
+      data: { isActive: false },
+    });
   }
 
   // ============ PRODUCT CATEGORIES ============
@@ -3080,7 +3091,10 @@ export class BarbershopService {
       where: { id: productId, barbershopId },
     });
     if (!current) throw new NotFoundException('Produto não encontrado');
-    await this.prisma.barbershopProduct.delete({ where: { id: productId } });
+    await this.prisma.barbershopProduct.update({
+      where: { id: productId },
+      data: { isActive: false },
+    });
   }
 
   private async categoryOfShop(barbershopId: number, categoryId: number) {
@@ -3464,6 +3478,14 @@ export class BarbershopService {
     if (!barber) throw new NotFoundException('Profissional não encontrado');
   }
 
+  private async ensureResourceOfBarbershop(barbershopId: number, resourceId: number) {
+    const resource = await this.prisma.resource.findFirst({
+      where: { id: resourceId, barbershopId, isActive: true },
+      select: { id: true },
+    });
+    if (!resource) throw new NotFoundException('Recurso não encontrado');
+  }
+
   private async ensureItemsOfBarbershop(
     barbershopId: number,
     serviceIds: number[],
@@ -3641,6 +3663,7 @@ export class BarbershopService {
     }
     await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
+    if (data.resourceId) await this.ensureResourceOfBarbershop(barbershopId, data.resourceId);
     await this.ensureItemsOfBarbershop(
       barbershopId,
       data.services.map((s) => s.serviceId),
@@ -3702,18 +3725,11 @@ export class BarbershopService {
     });
     // Marcado pela equipe (telefone, balcão): o cliente também recebe a
     // confirmação com o link pra remarcar/cancelar, como no agendamento online
-    if (
-      opts.notify !== false &&
-      created &&
-      created.status === 'CONFIRMED' &&
-      created.customer.email
-    ) {
-      this.sendAppointmentEmail(
-        created.id,
-        'appointment_confirmation',
-        created.customer.email,
-      ).catch((err) =>
-        this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
+    const confirmationTo = created ? appointmentContactEmail(created) : null;
+    if (opts.notify !== false && created && created.status === 'CONFIRMED' && confirmationTo) {
+      this.sendAppointmentEmail(created.id, 'appointment_confirmation', confirmationTo).catch(
+        (err) =>
+          this.logger.error(`Erro ao enviar confirmação do agendamento #${created.id}:`, err),
       );
     }
     return (
@@ -3922,6 +3938,7 @@ export class BarbershopService {
     if (data.barberId && data.barberId !== appointment.barberId) {
       await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
     }
+    if (data.resourceId) await this.ensureResourceOfBarbershop(barbershopId, data.resourceId);
     if (
       data.status != null &&
       data.status !== appointment.status &&
@@ -3939,6 +3956,21 @@ export class BarbershopService {
     const newStart = new Date(data.startAt ?? appointment.startAt);
     const newEnd = new Date(data.endAt ?? appointment.endAt);
     if (newEnd <= newStart) throw new BadRequestException('O fim tem que ser depois do início');
+    if (
+      data.status != null &&
+      data.status !== appointment.status &&
+      (data.status === 'CANCELLED' || data.status === 'NO_SHOW')
+    ) {
+      const sale = await this.prisma.sale.findFirst({
+        where: { appointmentId },
+        select: { id: true },
+      });
+      if (sale) {
+        throw new BadRequestException(
+          'Apague ou estorne a venda antes de mudar a situação deste horário.',
+        );
+      }
+    }
     // Horário novo. Dentro de 24 h o e-mail de remarcação já é o lembrete;
     // mais longe, o lembrete de 24 h volta a valer.
     if (newStart.getTime() !== appointment.startAt.getTime()) {
@@ -4076,7 +4108,7 @@ export class BarbershopService {
 
     // A equipe mudou o horário ou cancelou: o cliente fica sabendo (antes só
     // descobria no lembrete, ou chegando na barbearia)
-    const to = updated.customer.email;
+    const to = appointmentContactEmail(updated);
     if (to && updated.startAt > new Date()) {
       const moved = updated.startAt.getTime() !== appointment.startAt.getTime();
       const cancelledNow = data.status === 'CANCELLED' && appointment.status !== 'CANCELLED';
@@ -4171,12 +4203,9 @@ export class BarbershopService {
         where: { id: appointment.customerId },
         select: { email: true },
       });
-      if (customer?.email) {
-        await this.sendAppointmentEmail(
-          appointmentId,
-          'appointment_cancelled',
-          customer.email,
-        ).catch((err) =>
+      const to = appointmentContactEmail({ contactEmail: appointment.contactEmail, customer });
+      if (to) {
+        await this.sendAppointmentEmail(appointmentId, 'appointment_cancelled', to).catch((err) =>
           this.logger.error(`Erro ao avisar exclusão do agendamento #${appointmentId}:`, err),
         );
       }
@@ -6040,6 +6069,7 @@ export class BarbershopService {
     }
 
     const networkId = barbershop.networkId;
+    const typedEmail = input.customerEmail?.trim() || null;
     // A mesma pessoa digitando o telefone com outra formatação não vira outra ficha
     const [existingId] = await this.customerIdsByPhone(networkId, input.customerPhone);
     let customer =
@@ -6053,7 +6083,7 @@ export class BarbershopService {
           name: input.customerName,
           // Grava no formato internacional quando dá (o WhatsApp precisa dele)
           phone: normalizePhoneToE164(input.customerPhone) ?? input.customerPhone.trim(),
-          email: input.customerEmail || null,
+          email: typedEmail,
           clientAccountId: input.clientAccountId ?? null,
         },
       });
@@ -6082,6 +6112,15 @@ export class BarbershopService {
     // conta logada: o telefone não é confirmado, e ligar deixava qualquer um
     // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
+    // O e-mail digitado agora fica neste horário. A ficha só é preenchida
+    // quando ainda não tinha (trocar o de quem já tem sequestraria a ficha).
+    if (typedEmail && !customer.email?.trim()) {
+      const filled = await this.prisma.customer.updateMany({
+        where: { id: customer.id, OR: [{ email: null }, { email: '' }] },
+        data: { email: typedEmail },
+      });
+      if (filled.count === 1) customer = { ...customer, email: typedEmail };
+    }
 
     const bookingCustomerId = customer.id;
     // Recusa cedo (o "qualquer profissional" não tenta o próximo barbeiro
@@ -6144,6 +6183,7 @@ export class BarbershopService {
             status: payOnline ? 'PENDING_PAYMENT' : 'CONFIRMED',
             holdExpiresAt: payOnline ? new Date(Date.now() + DEPOSIT_HOLD_MINUTES * 60_000) : null,
             source: 'ONLINE',
+            contactEmail: typedEmail,
             bookingChannel: bookingChannel(input.channel),
             firstVisit,
             notes: input.notes,
@@ -6180,7 +6220,7 @@ export class BarbershopService {
     // Confirmação por e-mail com o link pra cancelar/remarcar (best-effort:
     // o horário já está marcado, e-mail fora do ar não desfaz nada)
     // Aguardando o sinal: a confirmação sai quando o pagamento for aprovado
-    const confirmationEmail = input.customerEmail?.trim() || customer.email;
+    const confirmationEmail = appointmentContactEmail({ contactEmail: typedEmail, customer });
     if (created && confirmationEmail && created.status === 'CONFIRMED') {
       const createdId = created.id;
       this.sendAppointmentEmail(createdId, 'appointment_confirmation', confirmationEmail).catch(
@@ -6540,7 +6580,7 @@ export class BarbershopService {
     this.checkWaitlistOnCancellation(appt.barbershopId, appt).catch((err) =>
       this.logger.error(`Erro ao verificar lista de espera do agendamento #${appt.id}:`, err),
     );
-    const to = appt.customer.email;
+    const to = appointmentContactEmail(appt);
     if (to) {
       this.sendAppointmentEmail(appt.id, 'appointment_rescheduled', to).catch((err) =>
         this.logger.error(`Erro ao avisar remarcação do agendamento #${appt.id}:`, err),

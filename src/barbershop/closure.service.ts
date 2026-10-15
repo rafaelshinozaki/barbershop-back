@@ -8,6 +8,7 @@ import {
   zonedTimeToUtc,
 } from '../common/timezone.util';
 import { BarbershopService } from './barbershop.service';
+import { appointmentContactEmail } from './appointment-contact';
 import { DepositPaymentService } from './deposit-payment.service';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -202,7 +203,7 @@ export class ClosureService {
       startAt: a.startAt,
       customerName: a.customer.name,
       barberName: a.barber.name,
-      hasEmail: Boolean(a.customer.email),
+      hasEmail: Boolean(appointmentContactEmail(a)),
     }));
   }
 
@@ -263,9 +264,10 @@ export class ClosureService {
         await this.barbershopService
           .refundPrepayment(a.id)
           .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${a.id}:`, err));
-        if (a.customer.email) {
+        const to = appointmentContactEmail(a);
+        if (to) {
           this.barbershopService
-            .notifyAppointmentCancelled(a.id, a.customer.email, reason)
+            .notifyAppointmentCancelled(a.id, to, reason)
             .catch((err) =>
               this.logger.error(`Erro ao avisar cancelamento do agendamento #${a.id}:`, err),
             );

@@ -15,6 +15,7 @@ import { CustomerRatingService } from './customer-rating.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { BarbershopService } from './barbershop.service';
 import { reminderCoveredByNotice } from './reminder-window';
+import { appointmentContactEmail } from './appointment-contact';
 import type { Job } from 'bullmq';
 
 // Quantos agendamentos processa por execução — o resto fica pra próxima
@@ -104,7 +105,8 @@ export class AppointmentReminderService {
       });
 
       try {
-        if (appt.customer.email) {
+        const to = appointmentContactEmail(appt);
+        if (to) {
           await this.notificationQueue.email(
             {
               kind: 'customer',
@@ -130,11 +132,9 @@ export class AppointmentReminderService {
               },
               lang,
               meta: 'appointment-reminder',
-              to: appt.customer.email,
+              to,
               // Mesmo convite da confirmação: quem não aceitou ainda pode pôr na agenda
-              attachments: [
-                appointmentInvite(appt, { name: appt.customer.name, email: appt.customer.email }),
-              ],
+              attachments: [appointmentInvite(appt, { name: appt.customer.name, email: to })],
             },
             `appointment-reminder-email-${appt.id}-${appt.startAt.getTime()}`,
           );

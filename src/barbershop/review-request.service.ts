@@ -8,6 +8,7 @@ import { unsubscribeLinks } from './marketing-unsubscribe';
 import { BarbershopService } from './barbershop.service';
 import { linkBarberToProfessional } from './professional';
 import { reviewEditData } from './review-edit';
+import { appointmentContactEmail } from './appointment-contact';
 
 // O e-mail sai algumas horas depois do fim do atendimento (a pessoa já foi
 // embora, mas ainda lembra de como foi) e só pra atendimentos recentes —
@@ -103,7 +104,8 @@ export class ReviewRequestService {
       });
       if (claimed.count === 0) continue;
       const customer = appt.customer;
-      if (!customer.email || customer.marketingOptOut) continue;
+      const to = appointmentContactEmail(appt);
+      if (!to || customer.marketingOptOut) continue;
       // Já avaliou esse atendimento (pelo link que a equipe mandou, por exemplo)
       const reviewed = await this.prisma.professionalReview.findUnique({
         where: { appointmentId: appt.id },
@@ -149,7 +151,7 @@ export class ReviewRequestService {
             },
             lang,
             meta: 'review-request',
-            to: customer.email,
+            to,
             headers: unsubscribe.headers,
           },
           `review-request-${appt.id}`,

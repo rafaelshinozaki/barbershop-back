@@ -20,6 +20,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Quem saiu das campanhas só pode voltar a receber por conta própria.':
     'MARKETING_OPT_IN_BY_CUSTOMER',
   'Categoria não encontrada nesta unidade': 'CATEGORY_NOT_FOUND_LOCATION',
+  'Apague ou estorne a venda antes de mudar a situação deste horário.':
+    'SALE_LOCKS_APPOINTMENT_STATUS',
   'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',
   'Estorno não pode ser alterado nem apagado.': 'REFUND_SALE_LOCKED',
   'Tipo de venda inválido': 'SALE_TYPE_INVALID',

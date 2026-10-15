@@ -15,6 +15,7 @@ import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ModerationService } from './moderation.service';
 import { PushService } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
+import { appointmentContactEmail } from './appointment-contact';
 
 export type ChatKind = 'unit' | 'professional';
 export const CHAT_KINDS: ChatKind[] = ['unit', 'professional'];
@@ -381,7 +382,7 @@ export class ChatService {
         }))
         .catch((error) => this.logger.warn(`Push do chat não enviado: ${error}`));
     }
-    const to = account?.email ?? appt.customer.email;
+    const to = account?.email ?? appointmentContactEmail(appt);
     if (!to) return;
     const now = Date.now();
     if (thread.clientNotifiedAt && now - thread.clientNotifiedAt.getTime() < CLIENT_EMAIL_EVERY_MS)

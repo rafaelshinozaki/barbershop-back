@@ -16,6 +16,7 @@ import { ConnectService, platformFeeCents } from './connect.service';
 import { stripeConfigured } from './stripe-configured';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
 import { fromMinorUnits, toMinorUnits } from '../common/money-units';
+import { appointmentContactEmail } from './appointment-contact';
 
 const KIND = 'appointment_deposit';
 /** Lembra de pagar quem reservou e ainda não pagou depois desse tempo... */
@@ -197,9 +198,10 @@ export class DepositPaymentService {
       },
     });
     if (confirmed.count === 1) {
-      if (appt.customer.email) {
+      const to = appointmentContactEmail(appt);
+      if (to) {
         this.barbershopService
-          .notifyAppointmentConfirmed(appt.id, appt.customer.email)
+          .notifyAppointmentConfirmed(appt.id, to)
           .catch((err) => this.logger.error(`Erro ao confirmar o agendamento #${appt.id}:`, err));
       }
       return 'CONFIRMED';
@@ -238,7 +240,7 @@ export class DepositPaymentService {
         holdReminderSentAt: null,
         createdAt: { lte: new Date(now.getTime() - REMIND_AFTER_MS) },
         holdExpiresAt: { gt: new Date(now.getTime() + REMIND_MIN_LEFT_MS) },
-        customer: { email: { not: null } },
+        OR: [{ contactEmail: { not: null } }, { customer: { email: { not: null } } }],
       },
       include: {
         customer: { select: { name: true, email: true } },
@@ -254,7 +256,8 @@ export class DepositPaymentService {
         where: { id: appt.id, status: 'PENDING_PAYMENT', holdReminderSentAt: null },
         data: { holdReminderSentAt: now },
       });
-      if (claimed.count === 0 || !appt.customer.email) continue;
+      const to = appointmentContactEmail(appt);
+      if (claimed.count === 0 || !to) continue;
       const shop = appt.barbershop;
       const lang = langForCountry(shop.country);
       const timeZone = safeTimeZone(shop.timezone);
@@ -287,7 +290,7 @@ export class DepositPaymentService {
             },
             lang,
             meta: 'deposit-pending',
-            to: appt.customer.email,
+            to,
           },
           `deposit-pending-${appt.id}`,
         );

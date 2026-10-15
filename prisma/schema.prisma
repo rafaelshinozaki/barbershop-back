@@ -1206,6 +1206,9 @@ model Appointment {
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN, IMPORT, HISTORY
+  // E-mail digitado neste agendamento online. Os avisos deste horário vão
+  // para ele; a ficha só é preenchida quando ainda não tinha e-mail.
+  contactEmail String?
   // Agendamento online: por onde o cliente chegou. marketplace = busca ou
   // vitrine da plataforma; direct = link, QR ou site do próprio negócio
   bookingChannel String?
@@ -1264,6 +1267,8 @@ model Appointment {
   @@index([barbershopId, startAt])
   @@index([barbershopId, barberId, startAt])
   @@index([barbershopId, customerId, startAt])
+  @@index([customerId, startAt])
+  @@index([barberId, startAt])
   @@index([barbershopId, resourceId, startAt])
   @@index([status])
   @@index([status, reminderSentAt, startAt])
@@ -1281,7 +1286,7 @@ model AppointmentService {
   unitPrice     Decimal
   notes         String?
   appointment   Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  service       BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service       BarbershopService @relation(fields: [serviceId], references: [id], onDelete: NoAction)
 
   @@index([appointmentId])
   @@index([serviceId])
@@ -1446,7 +1451,7 @@ model WalkInService {
   quantity  Int       @default(1)
   notes     String?
   walkIn    WalkIn            @relation(fields: [walkInId], references: [id], onDelete: Cascade)
-  service   BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service   BarbershopService @relation(fields: [serviceId], references: [id], onDelete: NoAction)
 
   @@index([walkInId])
   @@index([serviceId])
@@ -1469,7 +1474,7 @@ model ServiceHistory {
   barber         Barber           @relation(fields: [barberId], references: [id], onDelete: Cascade)
   appointment    Appointment?     @relation(fields: [appointmentId], references: [id])
   walkIn         WalkIn?          @relation(fields: [walkInId], references: [id])
-  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: NoAction)
   saleItems      SaleItem[]
 
   @@index([barbershopId])
@@ -1519,6 +1524,7 @@ model Sale {
 
   @@index([barbershopId])
   @@index([barbershopId, createdAt])
+  @@index([barbershopId, paidAt])
   @@index([customerId])
   @@index([barberId])
   @@index([paymentStatus])
@@ -1581,8 +1587,8 @@ model SaleItem {
   totalPrice        Decimal
   notes             String?
   sale              Sale              @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  service           BarbershopService? @relation(fields: [serviceId], references: [id])
-  product           BarbershopProduct? @relation(fields: [productId], references: [id])
+  service           BarbershopService? @relation(fields: [serviceId], references: [id], onDelete: NoAction)
+  product           BarbershopProduct? @relation(fields: [productId], references: [id], onDelete: NoAction)
   serviceHistory    ServiceHistory?   @relation(fields: [serviceHistoryId], references: [id])
 
   @@index([saleId])
@@ -1602,7 +1608,7 @@ model InventoryItem {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   barbershop     Barbershop      @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  product        BarbershopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product        BarbershopProduct @relation(fields: [productId], references: [id], onDelete: NoAction)
   movements      InventoryMovement[]
 
   @@unique([barbershopId, productId])
@@ -1644,7 +1650,7 @@ model ServicePackage {
   // Dias de validade a partir da compra. Vazio = não vence.
   validityDays   Int?
   barbershop     Barbershop        @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service        BarbershopService @relation(fields: [serviceId], references: [id], onDelete: NoAction)
   clientPackages ClientPackage[]
 
   @@index([barbershopId])
@@ -1715,7 +1721,7 @@ model ClientSubscriptionPlan {
   stripePriceId    String?
   isActive         Boolean  @default(true)
   barbershop       Barbershop            @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
-  service          BarbershopService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service          BarbershopService     @relation(fields: [serviceId], references: [id], onDelete: NoAction)
   subscriptions    ClientSubscription[]
 
   @@index([barbershopId])

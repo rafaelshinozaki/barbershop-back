@@ -447,6 +447,17 @@ export class SocialService {
   private async publishPost(postId: number): Promise<void> {
     const post = await this.prisma.socialPost.findUnique({ where: { id: postId } });
     if (!post || post.status !== 'SCHEDULED') return;
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: post.barbershopId },
+      select: { closedAt: true },
+    });
+    if (shop?.closedAt) {
+      await this.prisma.socialPost.update({
+        where: { id: postId },
+        data: { status: 'CANCELLED', errorMessage: 'Cancelada pelo encerramento da unidade.' },
+      });
+      return;
+    }
     const connection = await this.prisma.socialConnection.findUnique({
       where: { barbershopId: post.barbershopId },
     });
