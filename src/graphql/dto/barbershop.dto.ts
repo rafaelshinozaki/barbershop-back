@@ -70,6 +70,14 @@ export class UpdateBarbershopInput {
   })
   staffRecordsUnitTips?: boolean;
 
+  @Field(() => Int, {
+    nullable: true,
+    description: 'Antecedência mínima do agendamento online, em minutos: 0, 30, 60, 120 ou 1440',
+  })
+  @IsOptional()
+  @IsInt()
+  minBookingLeadMinutes?: number;
+
   @Field({ nullable: true })
   name?: string;
 

@@ -154,6 +154,8 @@ const NEXT_AVAILABLE_DAYS = 60;
 export const PUBLIC_BOOKING_WINDOW_DAYS = 90;
 /** Grade da lista de horários (a criação só aceita horário nela) */
 const SLOT_GRANULARITY_MIN = 15;
+/** Antecedência mínima do agendamento online: nenhuma, 30 min, 1 h, 2 h, 1 dia */
+const BOOKING_LEAD_MINUTES = [0, 30, 60, 120, 1440];
 /** Quanto tempo o horário fica reservado esperando o sinal online */
 export const DEPOSIT_HOLD_MINUTES = 15;
 /** Quem atende: marcado pra atender, ou sem marcação e fora da recepção */
@@ -1768,9 +1770,16 @@ export class BarbershopService {
       subdomain: string;
       businessType: string;
       staffRecordsUnitTips: boolean;
+      minBookingLeadMinutes: number;
     }>,
   ) {
     await this.ensureBarbershopAccess(userId, id, 'manager');
+    if (
+      data.minBookingLeadMinutes !== undefined &&
+      !BOOKING_LEAD_MINUTES.includes(data.minBookingLeadMinutes)
+    ) {
+      throw new BadRequestException('Antecedência mínima inválida');
+    }
     if (data.businessType !== undefined) {
       data = {
         ...data,
@@ -5365,9 +5374,10 @@ export class BarbershopService {
     // Tudo no fuso da unidade, não do servidor (ver common/timezone.util.ts)
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
-      select: { timezone: true },
+      select: { timezone: true, minBookingLeadMinutes: true },
     });
     const timeZone = safeTimeZone(shop?.timezone);
+    const notBefore = new Date(Date.now() + (shop?.minBookingLeadMinutes ?? 0) * 60_000);
     // Além da janela do agendamento online, nada (a criação também recusa)
     const lastDay = addDaysStr(
       toZonedParts(new Date(), timeZone).dateStr,
@@ -5380,12 +5390,19 @@ export class BarbershopService {
         where: { id: barberId, barbershopId, isActive: true, ...BOOKABLE_STAFF },
       });
       if (!barber) throw new NotFoundException('Profissional não encontrado');
-      return this.slotsForBarber(barbershopId, barber, durationMinutes, dateStr, timeZone);
+      return this.slotsForBarber(
+        barbershopId,
+        barber,
+        durationMinutes,
+        dateStr,
+        timeZone,
+        notBefore,
+      );
     }
     const all = await Promise.all(
-      (
-        await this.publicBarbers(barbershopId)
-      ).map((b) => this.slotsForBarber(barbershopId, b, durationMinutes, dateStr, timeZone)),
+      (await this.publicBarbers(barbershopId)).map((b) =>
+        this.slotsForBarber(barbershopId, b, durationMinutes, dateStr, timeZone, notBefore),
+      ),
     );
     return [...new Set(all.flat())].sort();
   }
@@ -5405,10 +5422,11 @@ export class BarbershopService {
     const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
-      select: { timezone: true, businessHours: true },
+      select: { timezone: true, businessHours: true, minBookingLeadMinutes: true },
     });
     if (!shop) throw new NotFoundException('Unidade não encontrada');
     const timeZone = safeTimeZone(shop.timezone);
+    const notBefore = new Date(Date.now() + shop.minBookingLeadMinutes * 60_000);
     let barbers: Awaited<ReturnType<BarbershopService['publicBarbers']>>;
     if (barberId != null) {
       const barber = await this.prisma.barber.findFirst({
@@ -5533,7 +5551,16 @@ export class BarbershopService {
             if (range.start < dayEnd && range.end > dayStart) busy.push(range);
           }
         }
-        const slot = this.computeSlots(b, durationMinutes, date, timeZone, window, busy, true)[0];
+        const slot = this.computeSlots(
+          b,
+          durationMinutes,
+          date,
+          timeZone,
+          window,
+          busy,
+          true,
+          notBefore,
+        )[0];
         if (slot && (!earliest || slot < earliest)) earliest = slot;
       }
       if (earliest) return { date, startAt: earliest };
@@ -5608,6 +5635,7 @@ export class BarbershopService {
     duration: number,
     dateStr: string,
     timeZone: string,
+    notBefore?: Date,
   ) {
     const window = await this.getWorkingWindowOn(barbershopId, barber.id, dateStr);
     if (!window) return [];
@@ -5637,7 +5665,7 @@ export class BarbershopService {
       start: r.startAt.getTime(),
       end: r.endAt.getTime(),
     }));
-    return this.computeSlots(barber, duration, dateStr, timeZone, window, busyRanges);
+    return this.computeSlots(barber, duration, dateStr, timeZone, window, busyRanges, false, notBefore);
   }
 
   /** Horários livres de um expediente já resolvido. `firstOnly` para no primeiro. */
@@ -5654,6 +5682,7 @@ export class BarbershopService {
     } | null,
     busyRanges: { start: number; end: number }[],
     firstOnly = false,
+    notBefore?: Date,
   ) {
     if (!window) return [];
     const windowStartMin = this.toMinutes(window.start);
@@ -5661,7 +5690,7 @@ export class BarbershopService {
     const breakStartMin = window.breakStart ? this.toMinutes(window.breakStart) : null;
     const breakEndMin = window.breakEnd ? this.toMinutes(window.breakEnd) : null;
 
-    const now = new Date();
+    const cutoff = notBefore ?? new Date();
     const slots: string[] = [];
 
     for (
@@ -5677,7 +5706,7 @@ export class BarbershopService {
       const slotStart = zonedTimeToUtc(dateStr, minutes, timeZone);
       const slotEnd = new Date(slotStart.getTime() + duration * 60000);
 
-      if (slotStart <= now) continue;
+      if (slotStart.getTime() <= cutoff.getTime()) continue;
       if (!withinEngagement(barber, slotStart)) continue;
 
       const overlapsBusy = busyRanges.some(
@@ -5701,14 +5730,20 @@ export class BarbershopService {
    * quem chama, dentro da transação.
    */
   private async ensurePublicSlot(
-    barbershop: { id: number; timezone: string | null },
+    barbershop: { id: number; timezone: string | null; minBookingLeadMinutes?: number | null },
     barberId: number,
     durationMinutes: number,
     startAtInput: string,
   ) {
     const startAt = new Date(startAtInput);
-    if (isNaN(startAt.getTime()) || startAt <= new Date()) {
-      throw new BadRequestException('Horário inválido');
+    const leadMs = Math.max(0, barbershop.minBookingLeadMinutes ?? 0) * 60_000;
+    const now = Date.now();
+    if (isNaN(startAt.getTime()) || startAt.getTime() <= now + leadMs) {
+      throw new BadRequestException(
+        leadMs > 0 && startAt.getTime() > now
+          ? 'Esse horário precisa de mais antecedência'
+          : 'Horário inválido',
+      );
     }
     const timeZone = safeTimeZone(barbershop.timezone);
     const local = toZonedParts(startAt, timeZone);

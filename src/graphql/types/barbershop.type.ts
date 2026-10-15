@@ -273,6 +273,10 @@ export class Barbershop {
   @Field({ nullable: true })
   staffRecordsUnitTips?: boolean;
 
+  /** Antecedência mínima do agendamento online, em minutos (0, 30, 60, 120, 1440) */
+  @Field(() => Int)
+  minBookingLeadMinutes: number;
+
   @Field()
   address: string;
 

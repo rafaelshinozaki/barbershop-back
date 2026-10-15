@@ -523,6 +523,9 @@ model Barbershop {
   // Sinal pago online (cartão, Stripe) ao agendar pela página pública: o
   // horário fica reservado até pagar. Desligado, a equipe marca o sinal na mão
   onlineDeposit  Boolean   @default(false)
+  // Antecedência mínima do agendamento online, em minutos (0, 30, 60, 120, 1440).
+  // 0 = o horário só precisa ainda não ter começado.
+  minBookingLeadMinutes Int @default(0)
   // O profissional registra a caixinha recebida pela unidade (cartão,
   // maquininha, balcão), que a unidade repassa no fechamento. Desligado, só a
   // recepção pra cima. Ligado por padrão: muita unidade não tem recepção

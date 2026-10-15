@@ -370,6 +370,10 @@ export class PublicBarbershopType {
   @Field({ defaultValue: false })
   onlineDeposit: boolean;
 
+  /** Antecedência mínima do agendamento online, em minutos */
+  @Field(() => Int)
+  minBookingLeadMinutes: number;
+
   @Field(() => [PublicServiceType])
   services: PublicServiceType[];
 

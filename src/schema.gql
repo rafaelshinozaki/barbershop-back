@@ -534,6 +534,9 @@ type Barbershop {
   instagramUrl: String
   isActive: Boolean!
   linkedinUrl: String
+
+  """Antecedência mínima do agendamento online, em minutos (0, 30, 60, 120, 1440)"""
+  minBookingLeadMinutes: Int!
   myAccessLevel: String
   name: String!
   onlineDeposit: Boolean
@@ -3148,6 +3151,9 @@ type PublicBarbershopType {
   latitude: Float
   linkedinUrl: String
   longitude: Float
+
+  """Antecedência mínima do agendamento online, em minutos"""
+  minBookingLeadMinutes: Int!
   name: String!
   onlineDeposit: Boolean!
   openingHours: [PublicOpeningHoursType!]!
@@ -4165,6 +4171,9 @@ input UpdateBarbershopInput {
   instagramUrl: String
   isActive: Boolean
   linkedinUrl: String
+
+  """Antecedência mínima do agendamento online, em minutos: 0, 30, 60, 120 ou 1440"""
+  minBookingLeadMinutes: Int
   name: String
   phone: String
   postalCode: String

@@ -100,6 +100,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Não foi possível estornar agora. Tente de novo.': 'COULDNT_REFUND_RIGHT_NOW',
   'Unidade não encontrada': 'LOCATION_NOT_FOUND',
   'Horário inválido': 'INVALID_TIME',
+  'Esse horário precisa de mais antecedência': 'BOOKING_NEEDS_MORE_NOTICE',
+  'Antecedência mínima inválida': 'INVALID_BOOKING_LEAD',
   'Nenhuma data da série está livre': 'NO_DATE_SERIES_AVAILABLE',
   'Agendamento não encontrado': 'APPOINTMENT_NOT_FOUND',
   'Este horário não faz parte de uma série': 'APPOINTMENT_NOT_PART_SERIES',

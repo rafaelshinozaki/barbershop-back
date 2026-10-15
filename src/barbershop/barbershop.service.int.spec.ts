@@ -770,6 +770,42 @@ describe('BarbershopService (integração com o banco)', () => {
   // ============ Horários livres (página pública) ============
 
   describe('horários livres', () => {
+    it('antecedência mínima tira o horário perto e recusa na confirmação', async () => {
+      await prisma.barbershop.update({
+        where: { id: A.shopId },
+        data: { minBookingLeadMinutes: 60 },
+      });
+      try {
+        await expect(
+          service.createPublicAppointment({
+            barbershopId: A.shopId,
+            barberId: A.barberId,
+            serviceIds: [A.serviceId],
+            startAt: new Date(Date.now() + 20 * 60_000).toISOString(),
+            customerName: 'Cedo demais',
+            customerPhone: '11987654321',
+          }),
+        ).rejects.toThrow('antecedência');
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+        const slots = await service.getPublicAvailableSlots(
+          A.shopId,
+          A.barberId,
+          [A.serviceId],
+          today,
+        );
+        const cutoff = Date.now() + 60 * 60_000;
+        expect(slots.every((s) => new Date(s).getTime() > cutoff)).toBe(true);
+        await expect(
+          service.updateBarbershop(A.ownerId, A.shopId, { minBookingLeadMinutes: 15 }),
+        ).rejects.toThrow('Antecedência mínima inválida');
+      } finally {
+        await prisma.barbershop.update({
+          where: { id: A.shopId },
+          data: { minBookingLeadMinutes: 0 },
+        });
+      }
+    });
+
     it('grade de 15 em 15 min no expediente, sem o horário ocupado', async () => {
       const before = await service.getPublicAvailableSlots(
         A.shopId,
