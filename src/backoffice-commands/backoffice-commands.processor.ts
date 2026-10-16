@@ -12,6 +12,9 @@ import { BackofficeService } from '../backoffice/backoffice.service';
 import { ModerationService } from '../barbershop/moderation.service';
 import { ApprovalService } from '../backoffice/approval.service';
 import { PaymentsService } from '../payments/payments.service';
+import { UserService } from '../auth/users/users.service';
+import { EmployeeInviteService } from '../barbershop/employee-invite.service';
+import { ClientAuthService } from '../client-auth/client-auth.service';
 import {
   ADMIN_NOTIFICATION_EMAIL,
   APPROVAL_EXECUTE,
@@ -27,6 +30,12 @@ import {
   parseNotificationsCreated,
   parsePlanSyncStripe,
   PLAN_SYNC_STRIPE,
+  parsePlanPeriod,
+  PLAN_PERIOD,
+  parsePlanRefund,
+  PLAN_REFUND,
+  parseAccountResend,
+  ACCOUNT_RESEND,
   parseSupportReplyEmail,
   PRICING_RELOAD,
   SEARCH_CACHE_BUMP,
@@ -60,6 +69,9 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly moderation: ModerationService,
     private readonly approvals: ApprovalService,
     private readonly payments: PaymentsService,
+    private readonly users: UserService,
+    private readonly invites: EmployeeInviteService,
+    private readonly clients: ClientAuthService,
   ) {
     super();
   }
@@ -103,6 +115,23 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     if (job.name === PLAN_SYNC_STRIPE) {
       const cmd = parsePlanSyncStripe(job.data);
       await this.payments.syncStripePlanPrice(cmd.userIds);
+      return;
+    }
+    if (job.name === PLAN_PERIOD) {
+      const cmd = parsePlanPeriod(job.data);
+      await this.payments.staffSetCancelAtPeriodEnd(cmd.userId, cmd.cancel);
+      return;
+    }
+    if (job.name === PLAN_REFUND) {
+      const cmd = parsePlanRefund(job.data);
+      await this.payments.staffRefundPlanPayment(cmd.paymentId);
+      return;
+    }
+    if (job.name === ACCOUNT_RESEND) {
+      const cmd = parseAccountResend(job.data);
+      if (cmd.kind === 'password') await this.users.forgotPass({ email: cmd.email });
+      else if (cmd.kind === 'client_verify') await this.clients.resendVerificationEmail(cmd.clientAccountId!);
+      else await this.invites.resendByStaff(cmd.inviteId!);
       return;
     }
     if (job.name === SEARCH_CACHE_BUMP) {

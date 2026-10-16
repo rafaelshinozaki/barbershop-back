@@ -138,7 +138,14 @@ describe('processador dos comandos', () => {
     const backoffice = { sendEmailNotification: jest.fn().mockResolvedValue(true) };
     const moderation = { notifyOwner: jest.fn().mockResolvedValue(undefined) };
     const approvals = { executeConfirmed: jest.fn().mockResolvedValue(undefined) };
-    const payments = { syncStripePlanPrice: jest.fn().mockResolvedValue(undefined) };
+    const payments = {
+      syncStripePlanPrice: jest.fn().mockResolvedValue(undefined),
+      staffSetCancelAtPeriodEnd: jest.fn().mockResolvedValue(undefined),
+      staffRefundPlanPayment: jest.fn().mockResolvedValue(undefined),
+    };
+    const users = { forgotPass: jest.fn().mockResolvedValue(true) };
+    const invites = { resendByStaff: jest.fn().mockResolvedValue(undefined) };
+    const clients = { resendVerificationEmail: jest.fn().mockResolvedValue(undefined) };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
@@ -150,6 +157,9 @@ describe('processador dos comandos', () => {
       moderation as never,
       approvals as never,
       payments as never,
+      users as never,
+      invites as never,
+      clients as never,
     );
     return {
       processor,

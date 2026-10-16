@@ -221,3 +221,51 @@ export function parsePlanSyncStripe(data: unknown): PlanSyncStripeCommand {
   const d = (data ?? {}) as Record<string, unknown>;
   return { userIds: userIdsOf(PLAN_SYNC_STRIPE, d.userIds) };
 }
+
+/** Equipe: cancelar o plano no fim do período, ou desfazer isso. */
+export const PLAN_PERIOD = 'plan.period';
+export type PlanPeriodCommand = { userId: number; cancel: boolean };
+
+export function parsePlanPeriod(data: unknown): PlanPeriodCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!positiveInt(d.userId)) throw new Error(`${PLAN_PERIOD}: pessoa inválida`);
+  if (typeof d.cancel !== 'boolean') throw new Error(`${PLAN_PERIOD}: ação inválida`);
+  return { userId: d.userId, cancel: d.cancel };
+}
+
+/** Equipe: estornar uma cobrança de plano já paga. */
+export const PLAN_REFUND = 'plan.refund';
+export type PlanRefundCommand = { paymentId: number };
+
+export function parsePlanRefund(data: unknown): PlanRefundCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!positiveInt(d.paymentId)) throw new Error(`${PLAN_REFUND}: cobrança inválida`);
+  return { paymentId: d.paymentId };
+}
+
+/** Equipe: reenviar e-mail de conta (senha, confirmação do cliente ou convite). */
+export const ACCOUNT_RESEND = 'account.resend';
+export type AccountResendCommand = {
+  kind: 'password' | 'client_verify' | 'invite';
+  email?: string;
+  clientAccountId?: number;
+  inviteId?: number;
+};
+
+export function parseAccountResend(data: unknown): AccountResendCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (d.kind === 'password') {
+    if (typeof d.email !== 'string' || !d.email.includes('@'))
+      throw new Error(`${ACCOUNT_RESEND}: e-mail inválido`);
+    return { kind: 'password', email: d.email };
+  }
+  if (d.kind === 'client_verify') {
+    if (!positiveInt(d.clientAccountId)) throw new Error(`${ACCOUNT_RESEND}: conta inválida`);
+    return { kind: 'client_verify', clientAccountId: d.clientAccountId };
+  }
+  if (d.kind === 'invite') {
+    if (!positiveInt(d.inviteId)) throw new Error(`${ACCOUNT_RESEND}: convite inválido`);
+    return { kind: 'invite', inviteId: d.inviteId };
+  }
+  throw new Error(`${ACCOUNT_RESEND}: tipo inválido`);
+}

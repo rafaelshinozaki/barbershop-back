@@ -437,6 +437,9 @@ model Network {
   description    String?
   mission        String?
   foundationYear Int?
+  // Rede inteira suspensa pela equipe: todas as unidades saem da página pública
+  platformSuspendedAt     DateTime?
+  platformSuspendedReason String?
   // Fidelidade — desativada por padrão (loyaltyEnabled=false); os dois
   // valores abaixo só importam quando ligada. pointsPerCurrencyUnit: quantos
   // pontos o cliente ganha por unidade de moeda gasta (ex.: 1.0 = 1 ponto por
@@ -567,6 +570,10 @@ model Barbershop {
   featuredRemindedUntil DateTime?
   // Fora da vitrine pela moderação (denúncia): some da busca e do sitemap; o link direto continua
   searchHiddenAt DateTime?
+  // Suspensa pela equipe da plataforma (fraude, golpe): a página pública sai
+  // do ar e não aceita agendamento nem pagamento pelo app. O dono é avisado.
+  platformSuspendedAt     DateTime?
+  platformSuspendedReason String?
   networkId      Int
   network        Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
   ownerUserId    Int?      // denormalized for backward compat / quick access
@@ -2183,12 +2190,29 @@ model SupportTicket {
   clientAccountId Int?
   lastActivityAt  DateTime         @default(now())
   closedAt        DateTime?
+  // Quem da equipe está com o pedido (e-mail da conta do backoffice). Vazio = ninguém
+  assigneeEmail   String?
   user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   clientAccount   ClientAccount?   @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   messages        SupportMessage[]
 
   @@index([status, lastActivityAt])
   @@index([email])
+  @@index([assigneeEmail])
+}
+
+// Nota da equipe da plataforma. Não aparece para o cliente nem para o dono.
+// targetType: ticket | user | barbershop
+model StaffNote {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  targetType  String
+  targetId    Int
+  body        String
+  authorEmail String
+  authorName  String
+
+  @@index([targetType, targetId, createdAt])
 }
 
 model SupportMessage {

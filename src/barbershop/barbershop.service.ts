@@ -1261,7 +1261,7 @@ export class BarbershopService {
     const now = new Date();
     const shopIds = shops.map((s) => s.id);
     const barberFilter = opts.barberIds ? { barberId: { in: opts.barberIds } } : {};
-    const groups = localeGroups(shops);
+    const groups = localeGroups(shops.map((shop) => ({ ...shop, currency: shop.currency ?? null })));
     const skipRevenue = opts.revenueBarberIds != null && opts.revenueBarberIds.length === 0;
 
     const [perGroup, walkInsWaiting, upcoming] = await Promise.all([

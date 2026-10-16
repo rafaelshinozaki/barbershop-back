@@ -239,6 +239,18 @@ export class EmployeeInviteService {
     return { invite: updated, emailSent };
   }
 
+  /** Equipe da plataforma: reenvia um convite pendente sem ser gerente da unidade. */
+  async resendByStaff(inviteId: number) {
+    const invite = await this.prisma.employeeInvite.findFirst({
+      where: { id: inviteId, status: 'PENDING' },
+      include: { barber: { select: { isActive: true } } },
+    });
+    if (!invite || !invite.barber?.isActive) {
+      throw new BadRequestException('Não há convite pendente para reenviar.');
+    }
+    return this.resendInvite(invite.inviterId, invite.barbershopId, invite.barberId);
+  }
+
   /**
    * Valida token do convite (endpoint público).
    */

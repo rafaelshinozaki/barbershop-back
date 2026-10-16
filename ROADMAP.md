@@ -768,7 +768,9 @@ Legenda: ✅ existe · 🔧 existe com ajuste pendente · 🆕 a fazer. "Admin" 
 
 ### Operações que faltam (levantamento de 2026-10-12)
 
-O código do backoffice-back (`allowed-operations.json`: 41 consultas e 37 alterações) foi comparado com o que o app faz e o que o suporte e o financeiro vão precisar no dia a dia. Nenhuma das operações abaixo existe hoje. A coluna "Quem" usa as permissões de `staff/roles.ts`. Prioridade: **P1** antes de abrir o piloto pago, **P2** nos primeiros meses, **P3** quando o volume pedir.
+O código do backoffice-back foi comparado com o que o suporte e o financeiro vão precisar no dia a dia. A coluna "Quem" usa as permissões de `staff/roles.ts`. Prioridade: **P1** antes de abrir o piloto pago, **P2** nos primeiros meses, **P3** quando o volume pedir.
+
+**Feito (P1, 2026-10-16):** repasses a fazer (`/payouts`), unidades em risco (`/at-risk`, com nota interna), atribuir pedido de suporte e filtrar meus/sem responsável, nota interna no pedido e na ficha, corrigir fuso/moeda/país/slug com motivo, suspender unidade ou rede (a página pública deixa de aceitar agendamento), exportar JSON do titular, reenviar senha, confirmação de e-mail do cliente e convite pendente, cancelar o plano no fim do período ou desfazer, e estornar cobrança de plano. Cancelamento, estorno e reenvio saem pela fila para o back, que fala com a Stripe. Estorno acima de R$ 500 só o Administrador dispara. A migração `20261213100000_backoffice_ops` precisa rodar no banco do app. Clubes já cobrados na Stripe não são cancelados sozinhos na suspensão.
 
 #### Financeiro
 

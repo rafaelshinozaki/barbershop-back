@@ -1475,4 +1475,34 @@ export class PaymentsService {
   async getAvailableCoupons(userId: number) {
     return await this.couponsService.getCouponsForUser(userId);
   }
+
+  /**
+   * Equipe: cancela no fim do período pago, ou desfaz esse cancelamento
+   * antes do vencimento. Com assinatura na Stripe, a Stripe é quem encerra.
+   */
+  async staffSetCancelAtPeriodEnd(userId: number, cancel: boolean) {
+    if (cancel) return this.unsubscribe(userId);
+    const sub = await this.prisma.subscription.findFirst({
+      where: { userId, status: PLANO_STATUS.ACTIVE },
+    });
+    if (!sub) throw new NotFoundException('You do not have any active subscription');
+    if (!sub.cancelAtPeriodEnd) return sub;
+    return this.changePlan(userId, sub.planId);
+  }
+
+  /** Equipe: estorna uma cobrança de plano já paga (Stripe) e tira do concluído. */
+  async staffRefundPlanPayment(paymentId: number) {
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment || payment.status !== PAGAMENTO_STATUS.COMPLETED) {
+      throw new NotFoundException('Pagamento não encontrado');
+    }
+    const intent = [payment.paymentId, payment.transactionId].find((id) => id?.startsWith('pi_'));
+    if (!intent) throw new BadRequestException('Essa cobrança não tem pagamento na Stripe');
+    await this.stripeService.createRefund(intent, undefined, undefined, `plan-refund-${payment.id}`);
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 'REFUNDED' },
+    });
+    return payment.id;
+  }
 }

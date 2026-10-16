@@ -16,6 +16,21 @@ describe('ownerAccountOpen', () => {
     expect(ownerAccountOpen({ ownerUser: closed, network: { ownerUser: open } })).toBe(false);
   });
 
+  it('recusa a unidade ou a rede suspensa pela equipe', () => {
+    expect(
+      ownerAccountOpen({
+        platformSuspendedAt: new Date(),
+        ownerUser: null,
+        network: { ownerUser: open },
+      }),
+    ).toBe(false);
+    expect(
+      ownerAccountOpen({
+        ownerUser: null,
+        network: { platformSuspendedAt: new Date(), ownerUser: open },
+      }),
+    ).toBe(false);
+  });
   it('recusa a conta apagada', () => {
     expect(
       ownerAccountOpen({
