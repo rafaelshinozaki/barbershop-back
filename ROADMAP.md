@@ -856,7 +856,7 @@ Conferido no código: o pedido de suporte (`SupportTicket`) não tem responsáve
 | **Resumo semanal por e-mail** | Toda segunda, pro dono da plataforma: receita, unidades novas, cancelamentos, pedidos de suporte e alertas da semana, sem abrir o backoffice. Usa os números da Tela de resultados. | só admin recebe | P2 |
 | **Agendar envio de avisos e e-mails** | Hoje o envio é na hora. "Segunda às 9h" fica como pedido agendado, que dá pra cancelar até a hora. | `notify.send` | P3 |
 
-### Tela de resultados: lucro e números da plataforma — 🆕 (pedido do dono da plataforma em 2026-10-12)
+### Tela de resultados: lucro e números da plataforma — ✅ (pedido do dono da plataforma em 2026-10-12)
 
 **O que existe hoje:** o Painel mostra uma "receita" que é a soma de todas as cobranças de plano pagas desde o começo (`Payment` concluído, `backofficeStats.revenue`). Não tem período, não desconta estorno nem a tarifa da Stripe, e não inclui as outras fontes de receita. O resto do Painel é contagem de contas, crescimento e retenção do marketplace. A receita do Destaque fica numa aba à parte, e a taxa estimada dos pagamentos pelo app, em outra tela.
 
@@ -918,6 +918,8 @@ O Analista e o Crescimento veem só os números agregados, sem nome de unidade n
 - **Fonte dos valores reais:** gravar, em cada cobrança paga, a tarifa e a taxa que a Stripe aplicou (`balance_transaction`: `fee`, `net`, `exchange_rate`), por webhook. A tela soma o que está no banco, sem chamar a Stripe.
 - **Resumo diário:** uma rotina noturna grava os totais do dia (`PlatformDailyMetrics`). Assim a tela de 12 meses abre rápido e o histórico não muda quando um registro antigo é apagado. O dia de hoje é calculado na hora.
 - **Antes, corrigir o que distorce os números:** estorno pela Stripe não sincronizado (89), moeda sem centavos (86), troca de plano sem cobrar (83/87), venda contada no dia em que foi lançada (73).
+
+**Feito (primeira versão, 2026-10-16):** `/results` no backoffice. Período (este mês, mês passado, 3, 6, 12 meses, personalizado), comparação com o período anterior e CSV com a proteção do item 90. Receita em reais: planos (valor original, cupom à parte), Destaque, taxa de vaga, taxa do sinal gravada na cobrança e taxa do clube gravada na cobrança. Líquido = bruta − estornos dessas linhas − cupons. Quadro separado de aluguel no cartão e clubes que caíram na conta da plataforma (entrou, repassado, saldo a repassar). Assinaturas: MRR, ARR, ativas, em atraso e as que cancelam no fim do período. Volume por moeda (atendimento concluído e venda paga), origem do agendamento, unidades e profissionais, contas Connect abertas. `results.read` para os agregados (inclusive Analista e Crescimento) e `results.profit` para o lucro (Super admin, Administrador e Financeiro). **Ainda falta**, porque o banco não guarda: tarifa e cotação da Stripe (`balance_transaction`), taxa de atendimento pago, caixinha e aluguel de cadeira, custo fixo lançado à mão, resumo diário, ponte de MRR, motivo de cancelamento, coortes e top unidades.
 
 ### Tirar o backoffice do projeto principal
 
