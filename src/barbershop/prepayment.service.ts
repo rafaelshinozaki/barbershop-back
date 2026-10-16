@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
 import { ConnectService, platformFeeCents } from './connect.service';
-import { appointmentLinkCovers, verifyAppointmentToken } from './appointment-link';
+import { appointmentLinkMode, verifyAppointmentToken } from './appointment-link';
 import { stripeConfigured } from './stripe-configured';
 import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 
@@ -32,7 +32,7 @@ export class PrepaymentService {
     private readonly connect: ConnectService,
   ) {}
 
-  private async byToken(token: string) {
+  private async byToken(token: string, allowPrevious = false) {
     const id = verifyAppointmentToken(token);
     const appt = id
       ? await this.prisma.appointment.findUnique({
@@ -44,14 +44,15 @@ export class PrepaymentService {
           },
         })
       : null;
-    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+    const mode = appt ? appointmentLinkMode(token, 'appointment-manage', appt) : null;
+    if (!appt || !mode || (mode === 'previous' && !allowPrevious)) {
       throw new NotFoundException('Agendamento não encontrado');
     }
-    return appt;
+    return { appt, mode };
   }
 
   /** Preço dos serviços menos o sinal já pago */
-  private due(appt: Awaited<ReturnType<PrepaymentService['byToken']>>) {
+  private due(appt: Awaited<ReturnType<PrepaymentService['byToken']>>['appt']) {
     const price = appt.services.reduce(
       (sum, s) => sum + Number(s.unitPrice) * (s.quantity ?? 1),
       0,
@@ -62,12 +63,13 @@ export class PrepaymentService {
 
   /** O que a página do link mostra: dá pra pagar pelo app? já pagou? */
   async status(token: string) {
-    const appt = await this.byToken(token);
+    const { appt, mode } = await this.byToken(token, true);
     const paid = !!appt.prepaidAt && !appt.prepaidRefundedAt;
     const refundedAmount = Number(appt.prepaidRefundedAmount ?? 0);
     const amount = this.due(appt);
     const open = PAYABLE.includes(appt.status) && !appt.sale && !appt.prepaidAt;
     const available =
+      mode === 'current' &&
       open &&
       amount > 0 &&
       stripeConfigured() &&
@@ -86,7 +88,7 @@ export class PrepaymentService {
 
   /** Começa (ou retoma) o pagamento: client secret pro cartão na tela */
   async start(token: string) {
-    const appt = await this.byToken(token);
+    const { appt } = await this.byToken(token);
     if (appt.prepaidAt) throw new BadRequestException('Este atendimento já foi pago pelo app');
     if (!PAYABLE.includes(appt.status) || appt.sale) {
       throw new BadRequestException('Este horário não pode ser pago agora');
@@ -144,7 +146,7 @@ export class PrepaymentService {
 
   /** A tela voltou do cartão: confere no Stripe e registra */
   async confirm(token: string) {
-    const appt = await this.byToken(token);
+    const { appt } = await this.byToken(token);
     if (appt.prepaidAt) return true;
     if (!appt.prepaidPaymentIntentId) throw new BadRequestException('Pagamento não iniciado');
     return this.finalize(await this.stripe.retrievePaymentIntent(appt.prepaidPaymentIntentId));

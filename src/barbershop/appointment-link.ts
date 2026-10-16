@@ -5,7 +5,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
  * "<id>.<versão>.<assinatura>". Como no Booksy, o cliente cancela ou
  * remarca pelo link, sem login. A assinatura (HMAC com o segredo do
  * servidor) impede trocar o id. A versão sobe quando a unidade cancela, e
- * o link deixa de abrir 14 dias depois do atendimento (avaliação: 30).
+ * o link deixa de servir para mudar o horário 14 dias depois do atendimento
+ * (avaliação: 30). A versão imediatamente anterior ainda abre, só para ver
+ * o status e o estorno.
  */
 function secret() {
   const value = process.env.APPOINTMENT_LINK_SECRET || process.env.JWT_SECRET;
@@ -61,6 +63,28 @@ export function readAppointmentLink(
   return safeEqual(sign(id, purpose), legacy[2]) ? { id, version: 0 } : null;
 }
 
+/** O link ainda abre este atendimento. "current" age; "previous" é a versão de antes do cancelamento, só para ver status e estorno. */
+export function appointmentLinkMode(
+  token: string | undefined | null,
+  purpose: 'appointment-manage' | 'appointment-review',
+  appointment: { id: number; endAt: Date; linkVersion: number },
+  now = new Date(),
+): 'current' | 'previous' | null {
+  const parsed = readAppointmentLink(token, purpose);
+  if (!parsed || parsed.id !== appointment.id) return null;
+  const days = purpose === 'appointment-review' ? REVIEW_LINK_DAYS : MANAGE_LINK_DAYS;
+  if (now.getTime() > appointment.endAt.getTime() + days * DAY_MS) return null;
+  if (parsed.version === appointment.linkVersion) return 'current';
+  if (
+    purpose === 'appointment-manage' &&
+    appointment.linkVersion > 0 &&
+    parsed.version === appointment.linkVersion - 1
+  ) {
+    return 'previous';
+  }
+  return null;
+}
+
 /** O link ainda abre este atendimento: versão igual e dentro do prazo. */
 export function appointmentLinkCovers(
   token: string | undefined | null,
@@ -68,12 +92,7 @@ export function appointmentLinkCovers(
   appointment: { id: number; endAt: Date; linkVersion: number },
   now = new Date(),
 ): boolean {
-  const parsed = readAppointmentLink(token, purpose);
-  if (!parsed || parsed.id !== appointment.id || parsed.version !== appointment.linkVersion) {
-    return false;
-  }
-  const days = purpose === 'appointment-review' ? REVIEW_LINK_DAYS : MANAGE_LINK_DAYS;
-  return now.getTime() <= appointment.endAt.getTime() + days * DAY_MS;
+  return appointmentLinkMode(token, purpose, appointment, now) === 'current';
 }
 
 function verify(token: string | undefined | null, purpose: Purpose): number | null {

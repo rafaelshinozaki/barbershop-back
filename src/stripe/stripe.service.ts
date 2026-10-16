@@ -390,15 +390,19 @@ export class StripeService {
     businessName: string;
     url?: string;
     metadata: Record<string, string>;
+    idempotencyKey?: string;
   }) {
-    return this.stripe.accounts.create({
-      type: 'express',
-      country: params.country,
-      email: params.email ?? undefined,
-      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-      business_profile: { name: params.businessName, url: params.url },
-      metadata: params.metadata,
-    });
+    return this.stripe.accounts.create(
+      {
+        type: 'express',
+        country: params.country,
+        email: params.email ?? undefined,
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+        business_profile: { name: params.businessName, url: params.url },
+        metadata: params.metadata,
+      },
+      params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined,
+    );
   }
 
   async retrieveConnectAccount(accountId: string) {

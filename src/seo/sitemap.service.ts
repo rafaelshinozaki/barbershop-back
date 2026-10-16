@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ownerAcceptsPublic } from '../barbershop/public-shop';
 
 // O protocolo aceita até 50 mil URLs por arquivo
 const MAX_URLS = 50_000;
@@ -52,7 +53,7 @@ export class SitemapService {
     const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const shops = await this.prisma.barbershop.findMany({
       // Fora da vitrine pela moderação: fica de fora
-      where: { isActive: true, searchHiddenAt: null },
+      where: { isActive: true, searchHiddenAt: null, ...ownerAcceptsPublic },
       select: {
         slug: true,
         city: true,

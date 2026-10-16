@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { WORK_MINIMUM_AGE, completedYears } from '../common/work-age';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry } from '../email/language';
@@ -279,6 +280,7 @@ export class EmployeeInviteService {
       staffType: invite.barber?.staffType ?? null,
       accessStartsAt: invite.barber?.accessStartsAt ?? null,
       accessEndsAt: invite.barber?.accessEndsAt ?? null,
+      minimumAge: WORK_MINIMUM_AGE,
       // Já tem conta: entra com ela pra aceitar (não cria outra)
       existingAccount: !!existingAccount,
     };
@@ -330,6 +332,18 @@ export class EmployeeInviteService {
       throw new BadRequestException('Já existe uma conta com estes dados');
     }
 
+    const birthdateText = data.birthdate?.trim() ?? '';
+    if (!birthdateText) {
+      throw new BadRequestException('Data de nascimento é obrigatória');
+    }
+    const age = completedYears(birthdateText);
+    if (age == null || age < 0) {
+      throw new BadRequestException('Data de nascimento inválida');
+    }
+    if (age < WORK_MINIMUM_AGE) {
+      throw new BadRequestException('Para trabalhar é preciso ter 16 anos.');
+    }
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
     const role = await this.prisma.role.findFirst({
       where: { name: invite.role },
@@ -338,7 +352,7 @@ export class EmployeeInviteService {
       throw new BadRequestException(`Função ${invite.role} não encontrada`);
     }
 
-    const birthdate = data.birthdate ? new Date(data.birthdate) : new Date('1990-01-01');
+    const birthdate = new Date(birthdateText);
     const gender = data.gender === 'female' ? 'female' : 'male';
 
     const language = langForCountry(invite.barbershop.country);

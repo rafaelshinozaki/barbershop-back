@@ -158,12 +158,18 @@ export class ConnectService {
     userId: number,
     ctx: { country: string; businessName: string; url?: string; back: string },
   ) {
-    let acc = await this.account(ownerType, ownerId);
     const provider = this.provider();
-    if (!acc) {
+    // Dois cliques juntos criavam duas contas no Stripe. A segunda gravação
+    // esbarrava na chave única e a conta extra ficava órfã.
+    const acc = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connect:${ownerType}:${ownerId}`}))`;
+      const existing = await tx.paymentAccount.findUnique({
+        where: { ownerType_ownerId: { ownerType, ownerId } },
+      });
+      if (existing) return existing;
       let stripeAccountId: string;
       if (provider === 'stripe') {
-        const user = await this.prisma.user.findUnique({
+        const user = await tx.user.findUnique({
           where: { id: userId },
           select: { email: true },
         });
@@ -173,15 +179,16 @@ export class ConnectService {
           businessName: ctx.businessName,
           url: ctx.url,
           metadata: { ownerType, ownerId: String(ownerId) },
+          idempotencyKey: `connect-${ownerType}-${ownerId}`,
         });
         stripeAccountId = created.id;
       } else {
         stripeAccountId = `acct_fake_${randomBytes(8).toString('hex')}`;
       }
-      acc = await this.prisma.paymentAccount.create({
+      return tx.paymentAccount.create({
         data: { ownerType, ownerId, provider, stripeAccountId, createdByUserId: userId },
       });
-    }
+    });
     if (acc.provider === 'stripe') {
       const link = await this.stripe.createAccountOnboardingLink(
         acc.stripeAccountId,

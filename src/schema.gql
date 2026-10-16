@@ -1994,6 +1994,9 @@ type ManagedAppointmentType {
   id: Int!
   manageToken: String
   price: Float!
+
+  """Link da versão anterior: só status e estorno, sem ações"""
+  readOnly: Boolean!
   serviceId: Int
 
   """Todos os serviços do horário (remarcar usa a duração somada)"""

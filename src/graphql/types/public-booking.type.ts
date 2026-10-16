@@ -712,6 +712,9 @@ export class ManagedAppointmentType {
   @Field({ description: 'Ainda dá pra cancelar/remarcar pelo link' })
   canChange: boolean;
 
+  @Field({ description: 'Link da versão anterior: só status e estorno, sem ações' })
+  readOnly: boolean;
+
   @Field({ description: 'Até quando dá pra mudar pelo link (política de cancelamento)' })
   changeDeadline: string;
 

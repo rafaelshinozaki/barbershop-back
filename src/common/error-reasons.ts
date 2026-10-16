@@ -20,6 +20,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Quem saiu das campanhas só pode voltar a receber por conta própria.':
     'MARKETING_OPT_IN_BY_CUSTOMER',
   'Categoria não encontrada nesta unidade': 'CATEGORY_NOT_FOUND_LOCATION',
+  'Histórico de atendimento não encontrado nesta unidade':
+    'SERVICE_HISTORY_NOT_FOUND_LOCATION',
+  'Data de nascimento é obrigatória': 'BIRTHDATE_REQUIRED',
+  'Data de nascimento inválida': 'BIRTHDATE_INVALID',
+  'Para trabalhar é preciso ter 16 anos.': 'WORK_MINIMUM_AGE',
+  'Este link é só para consulta.': 'LINK_READ_ONLY',
   'Apague ou estorne a venda antes de mudar a situação deste horário.':
     'SALE_LOCKS_APPOINTMENT_STATUS',
   'Não foi possível gerar o código de indicação. Tente de novo.': 'REFERRAL_CODE_FAILED',

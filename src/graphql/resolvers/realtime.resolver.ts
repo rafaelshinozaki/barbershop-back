@@ -12,13 +12,18 @@ import {
   USER_NOTIFICATIONS,
   UserNotificationsPayload,
 } from '../../realtime/realtime.service';
+import { shopAccessStale } from '../../realtime/shop-access-cache';
 import {
   NetworkActivityEvent,
   NotificationEvent,
   PublicSlotsChangedEvent,
 } from '../types/realtime.type';
 
-type SubscriptionContext = { allowedBarbershopIds?: Set<number>; userId?: number };
+type SubscriptionContext = {
+  allowedBarbershopIds?: Set<number>;
+  allowedBarbershopIdsAt?: number;
+  userId?: number;
+};
 
 @Resolver()
 export class RealtimeResolver {
@@ -29,21 +34,43 @@ export class RealtimeResolver {
 
   /**
    * Eventos das barbearias que o usuário acessa (dono, dono da rede ou
-   * equipe — mesma regra de myBarbershops). A lista é calculada ao assinar;
-   * uma barbearia nova passa a valer na próxima conexão.
+   * equipe — mesma regra de myBarbershops). A lista é relida a cada aviso,
+   * com cache curto: quem sai da equipe para de receber, e quem entra passa
+   * a receber, sem esperar a página recarregar.
    */
   @UseGuards(GraphQLJwtAuthGuard)
   @Subscription(() => NetworkActivityEvent, {
-    filter: (
+    filter(
+      this: RealtimeResolver,
       payload: { networkActivity: NetworkActivityPayload },
       _variables: unknown,
       context: SubscriptionContext,
-    ) => !!context.allowedBarbershopIds?.has(payload.networkActivity.barbershopId),
+    ) {
+      return this.allowsShop(context, payload.networkActivity.barbershopId);
+    },
   })
   async networkActivity(@CurrentUser() user: UserDTO, @Context() context: SubscriptionContext) {
-    const shops = await this.barbershopService.getMyBarbershops(user.id);
-    context.allowedBarbershopIds = new Set(shops.map((b) => b.id));
+    context.userId = user.id;
+    await this.refreshShopAccess(context);
     return this.realtime.pubSub.asyncIterator(NETWORK_ACTIVITY);
+  }
+
+  private async allowsShop(context: SubscriptionContext, barbershopId: number) {
+    if (shopAccessStale(context.allowedBarbershopIdsAt, Date.now())) {
+      await this.refreshShopAccess(context);
+    }
+    return context.allowedBarbershopIds?.has(barbershopId) ?? false;
+  }
+
+  private async refreshShopAccess(context: SubscriptionContext) {
+    if (context.userId == null) {
+      context.allowedBarbershopIds = new Set();
+      context.allowedBarbershopIdsAt = Date.now();
+      return;
+    }
+    const shops = await this.barbershopService.getMyBarbershops(context.userId);
+    context.allowedBarbershopIds = new Set(shops.map((b) => b.id));
+    context.allowedBarbershopIdsAt = Date.now();
   }
 
   /** Sininho em tempo real: só os avisos das notificações do próprio usuário. */

@@ -3,7 +3,7 @@ import { bookingChannel } from './booking-channel';
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import {
   appointmentManageUrl,
-  appointmentLinkCovers,
+  appointmentLinkMode,
   createAppointmentToken,
   verifyAppointmentToken,
   verifyWaitlistLeaveToken,
@@ -12,6 +12,7 @@ import {
 import { reminderSentAtAfterMove } from './reminder-window';
 import { appointmentContactEmail } from './appointment-contact';
 import { localeGroups, moneyByCurrency } from './dashboard-locale';
+import { ownerAcceptsPublic, ownerAccountOpen } from './public-shop';
 import {
   Injectable,
   Logger,
@@ -3545,6 +3546,17 @@ export class BarbershopService {
     if (products !== uniqueProducts.length) throw new NotFoundException('Produto não encontrado');
   }
 
+  private async ensureServiceHistoriesOfBarbershop(barbershopId: number, historyIds: number[]) {
+    const unique = [...new Set(historyIds)];
+    if (unique.length === 0) return;
+    const found = await this.prisma.serviceHistory.count({
+      where: { id: { in: unique }, barbershopId },
+    });
+    if (found !== unique.length) {
+      throw new NotFoundException('Histórico de atendimento não encontrado nesta unidade');
+    }
+  }
+
   private async ensureResourceAvailable(
     barbershopId: number,
     resourceId: number,
@@ -4038,7 +4050,8 @@ export class BarbershopService {
         where: { id: appointmentId },
         data: {
           ...data,
-          // Cancela pela unidade: o link antigo do e-mail deixa de abrir
+          // Cancela pela unidade: o link antigo deixa de mudar o horário.
+          // A versão anterior ainda abre, só para ver o status e o estorno.
           ...(data.status === 'CANCELLED' && appointment.status !== 'CANCELLED'
             ? { linkVersion: { increment: 1 } }
             : {}),
@@ -4534,7 +4547,7 @@ export class BarbershopService {
     clientAccountId?: number;
   }) {
     const barbershop = await this.prisma.barbershop.findFirst({
-      where: { id: input.barbershopId, isActive: true },
+      where: { id: input.barbershopId, isActive: true, ...ownerAcceptsPublic },
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
     const name = input.customerName?.trim() ?? '';
@@ -5300,6 +5313,7 @@ export class BarbershopService {
           },
           orderBy: { name: 'asc' },
         },
+        ownerUser: { select: { isActive: true, deleted_at: true } },
         network: {
           select: {
             accentColor: true,
@@ -5308,6 +5322,7 @@ export class BarbershopService {
             noShowFeeEnabled: true,
             noShowFeeType: true,
             noShowFeeValue: true,
+            ownerUser: { select: { isActive: true, deleted_at: true } },
           },
         },
         socialConnection: { select: { instagramUsername: true } },
@@ -5326,7 +5341,7 @@ export class BarbershopService {
         },
       },
     });
-    if (!barbershop || !barbershop.isActive) {
+    if (!barbershop || !barbershop.isActive || !ownerAccountOpen(barbershop)) {
       throw new NotFoundException('Unidade não encontrada');
     }
     const imageUrl = barbershop.photoKey
@@ -5375,9 +5390,18 @@ export class BarbershopService {
           orderBy: { name: 'asc' },
         })
       : [];
-    const { socialConnection, socialPosts: _posts, photos: _photos, ...shop } = barbershop;
+    const {
+      socialConnection,
+      socialPosts: _posts,
+      photos: _photos,
+      ownerUser: _owner,
+      network,
+      ...shop
+    } = barbershop;
+    const { ownerUser: _networkOwner, ...networkPublic } = network;
     return {
       ...shop,
+      network: networkPublic,
       imageUrl,
       coverUrl,
       openingHours,
@@ -5393,14 +5417,14 @@ export class BarbershopService {
       })),
       // Política de cancelamento, visível antes de agendar
       cancellationPolicy: {
-        windowHours: barbershop.network.lateCancellationWindowHours,
-        feeEnabled: barbershop.network.noShowFeeEnabled && !!barbershop.network.noShowFeeValue,
-        feeType: barbershop.network.noShowFeeType,
-        feeValue: barbershop.network.noShowFeeValue,
+        windowHours: network.lateCancellationWindowHours,
+        feeEnabled: network.noShowFeeEnabled && !!network.noShowFeeValue,
+        feeType: network.noShowFeeType,
+        feeValue: network.noShowFeeValue,
       },
       // Cores definidas pelo dono da franquia — a página pública usa as mesmas
-      accentColor: barbershop.network.accentColor,
-      grayColor: barbershop.network.grayColor,
+      accentColor: network.accentColor,
+      grayColor: network.grayColor,
     };
   }
 
@@ -5582,10 +5606,11 @@ export class BarbershopService {
       throw new BadRequestException('Data inválida');
     }
     // Tudo no fuso da unidade, não do servidor (ver common/timezone.util.ts)
-    const shop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
+    const shop = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId, isActive: true, ...ownerAcceptsPublic },
       select: { timezone: true, minBookingLeadMinutes: true },
     });
+    if (!shop) return [];
     const timeZone = safeTimeZone(shop?.timezone);
     const notBefore = new Date(Date.now() + (shop?.minBookingLeadMinutes ?? 0) * 60_000);
     // Além da janela do agendamento online, nada (a criação também recusa)
@@ -6034,7 +6059,7 @@ export class BarbershopService {
     channel?: string;
   }) {
     const barbershop = await this.prisma.barbershop.findFirst({
-      where: { id: input.barbershopId, isActive: true },
+      where: { id: input.barbershopId, isActive: true, ...ownerAcceptsPublic },
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
     const requestedStart = new Date(input.startAt);
@@ -6438,10 +6463,12 @@ export class BarbershopService {
           },
         })
       : null;
+    const mode = appt ? appointmentLinkMode(token, 'appointment-manage', appt) : null;
     // Mesma resposta pra link adulterado, vencido ou agendamento apagado
-    if (!appt || !appointmentLinkCovers(token, 'appointment-manage', appt)) {
+    if (!appt || !mode) {
       throw new NotFoundException('Link inválido ou agendamento não encontrado');
     }
+    const readOnly = mode === 'previous';
     const windowHours = appt.barbershop.network.lateCancellationWindowHours;
     const policyDeadline = new Date(appt.startAt.getTime() - windowHours * 3600000);
     // Prazo de arrependimento: logo depois de agendar, desfazer pelo link vale
@@ -6452,11 +6479,18 @@ export class BarbershopService {
       appt.startAt.getTime(),
     );
     const changeDeadline = new Date(Math.max(policyDeadline.getTime(), graceEnd));
-    const canChange = appt.status === 'CONFIRMED' && new Date() < changeDeadline;
-    return { appt, windowHours, changeDeadline, canChange };
+    const canChange = !readOnly && appt.status === 'CONFIRMED' && new Date() < changeDeadline;
+    return { appt, windowHours, changeDeadline, canChange, readOnly };
   }
 
-  private ensureChangeable(loaded: { canChange: boolean; appt: { status: string } }) {
+  private ensureChangeable(loaded: {
+    canChange: boolean;
+    readOnly: boolean;
+    appt: { status: string };
+  }) {
+    if (loaded.readOnly) {
+      throw new BadRequestException('Este link é só para consulta.');
+    }
     if (loaded.canChange) return;
     if (loaded.appt.status === 'CANCELLED') {
       throw new BadRequestException('Este agendamento já foi cancelado');
@@ -6470,9 +6504,8 @@ export class BarbershopService {
   }
 
   async getManagedAppointment(token: string) {
-    const { appt, windowHours, changeDeadline, canChange } = await this.loadManagedAppointment(
-      token,
-    );
+    const { appt, windowHours, changeDeadline, canChange, readOnly } =
+      await this.loadManagedAppointment(token);
     // Vários serviços no mesmo horário: nomes juntos, preço somado
     const services = appt.services.filter((s) => s.service);
     const shop = appt.barbershop;
@@ -6482,6 +6515,7 @@ export class BarbershopService {
       startAt: appt.startAt.toISOString(),
       endAt: appt.endAt.toISOString(),
       canChange,
+      readOnly,
       changeDeadline: changeDeadline.toISOString(),
       cancellationWindowHours: windowHours,
       // Só o primeiro nome: a ficha é achada pelo telefone (não confirmado) e
@@ -6632,7 +6666,7 @@ export class BarbershopService {
   // de busca sem precisar de uma lista hardcoded no front.
   async getPublicServiceCategories(): Promise<TreatmentCategory[]> {
     const rows = await this.prisma.barbershopService.findMany({
-      where: { isActive: true, barbershop: { isActive: true } },
+      where: { isActive: true, barbershop: { isActive: true, ...ownerAcceptsPublic } },
       select: { category: true },
       distinct: ['category'],
     });
@@ -6657,7 +6691,7 @@ export class BarbershopService {
 
   async getPublicCities(): Promise<string[]> {
     const rows = await this.prisma.barbershop.findMany({
-      where: { isActive: true },
+      where: { isActive: true, ...ownerAcceptsPublic },
       select: { city: true },
       distinct: ['city'],
     });
@@ -6665,7 +6699,7 @@ export class BarbershopService {
   }
 
   async searchPublicBarbershops(input: PublicSearchInput & { businessType?: string }) {
-    const AND: Prisma.BarbershopWhereInput[] = [];
+    const AND: Prisma.BarbershopWhereInput[] = [ownerAcceptsPublic];
     if (input.query) {
       AND.push({
         OR: [
@@ -6832,7 +6866,7 @@ export class BarbershopService {
     const now = new Date();
     const activeBarber: Prisma.BarberWhereInput = {
       isActive: true,
-      barbershop: { isActive: true },
+      barbershop: { isActive: true, ...ownerAcceptsPublic },
       AND: [
         { OR: [{ accessStartsAt: null }, { accessStartsAt: { lte: now } }] },
         { OR: [{ accessEndsAt: null }, { accessEndsAt: { gte: now } }] },
@@ -6857,6 +6891,7 @@ export class BarbershopService {
                 ...activeBarber,
                 barbershop: {
                   isActive: true,
+                  ...ownerAcceptsPublic,
                   services: { some: { isActive: true, category: input.category } },
                 },
               },
@@ -6876,6 +6911,7 @@ export class BarbershopService {
             ...activeBarber,
             barbershop: {
               isActive: true,
+              ...ownerAcceptsPublic,
               latitude: { gte: box.minLat, lte: box.maxLat },
               ...(box.minLng >= -180 && box.maxLng <= 180
                 ? { longitude: { gte: box.minLng, lte: box.maxLng } }
@@ -7927,6 +7963,11 @@ export class BarbershopService {
     });
     const stripePriceId = plan?.stripePriceId;
     if (!plan || !stripePriceId) throw new NotFoundException('Plano não encontrado');
+    const shopOpen = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId, isActive: true, ...ownerAcceptsPublic },
+      select: { id: true },
+    });
+    if (!shopOpen) throw new NotFoundException('Unidade não encontrada');
 
     // Dois cliques (ou duas abas) juntos passavam os dois pela checagem e
     // criavam DUAS assinaturas no Stripe — cobrança em dobro todo mês. Agora
@@ -8142,14 +8183,19 @@ export class BarbershopService {
   }
 
   async updateWalkInStatus(userId: number, barbershopId: number, walkInId: number, status: string) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     if (!WALK_IN_STATUSES.includes(status)) throw new BadRequestException('Status inválido');
     // Só a fila desta unidade (o id sozinho mexia na fila de qualquer uma)
     const walkIn = await this.prisma.walkIn.findFirst({
       where: { id: walkInId, barbershopId },
-      select: { id: true },
+      select: { id: true, barberId: true },
     });
     if (!walkIn) throw new NotFoundException('Cliente da fila não encontrado');
+    // Recepção para cima mexe em qualquer um. Barbeiro e básico, só na própria fila.
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
+    if (ownBarberId !== null && walkIn.barberId !== ownBarberId) {
+      throw new NotFoundException('Cliente da fila não encontrado');
+    }
     const data: any = { status };
     if (status === 'IN_PROGRESS') data.servedAt = new Date();
     return this.prisma.walkIn.update({
@@ -8289,6 +8335,10 @@ export class BarbershopService {
       barbershopId,
       data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
       data.items.filter((i) => i.productId).map((i) => i.productId as number),
+    );
+    await this.ensureServiceHistoriesOfBarbershop(
+      barbershopId,
+      data.items.filter((i) => i.serviceHistoryId).map((i) => i.serviceHistoryId as number),
     );
     await assertSoloProductSaleAllowed(
       this.prisma,
@@ -8686,6 +8736,10 @@ export class BarbershopService {
         barbershopId,
         data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
         data.items.filter((i) => i.productId).map((i) => i.productId as number),
+      );
+      await this.ensureServiceHistoriesOfBarbershop(
+        barbershopId,
+        data.items.filter((i) => i.serviceHistoryId).map((i) => i.serviceHistoryId as number),
       );
       const existingItems = await this.prisma.saleItem.findMany({
         where: { saleId, sale: { barbershopId } },
