@@ -63,6 +63,7 @@ describe('Agendamento recorrente (integração)', () => {
       await prisma.user.create({
         data: {
           email: `ser-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),
@@ -242,11 +243,20 @@ describe('Agendamento recorrente (integração)', () => {
     await until(() => emails.length >= 1);
     await settle();
     emails.length = 0;
-    // Alguém esperando vaga num dos dias que vão ser liberados
+    // Alguém esperando vaga num dos dias que vão ser liberados (outra pessoa:
+    // quem já tem horário no dia não é avisado)
+    const waiter = await prisma.customer.create({
+      data: {
+        networkId,
+        name: 'Na espera',
+        phone: `7${RUN.slice(-9)}1`,
+        email: `espera-${RUN}@test.local`,
+      },
+    });
     const waiting = await prisma.waitlistEntry.create({
       data: {
         barbershopId: shopId,
-        customerId,
+        customerId: waiter.id,
         date: new Date(`${appts[2].startAt.toISOString().slice(0, 10)}T00:00:00Z`),
       },
     });

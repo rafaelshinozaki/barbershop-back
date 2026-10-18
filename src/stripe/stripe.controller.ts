@@ -128,7 +128,7 @@ export class StripeController {
         case 'charge.dispute.created':
         case 'charge.dispute.updated':
         case 'charge.dispute.closed':
-          await this.appPayments.recordDispute(event.data.object as Stripe.Dispute);
+          await this.handleDispute(event.data.object as Stripe.Dispute);
           break;
         // Estorno pelo painel da Stripe (ou que ficou pendente e depois confirmou)
         case 'charge.refunded':
@@ -381,6 +381,16 @@ export class StripeController {
       where: { stripeSubscriptionId },
       data: { status: 'PAST_DUE' },
     });
+  }
+
+  /** Disputa perdida: o dinheiro voltou ao cliente, como num estorno */
+  private async handleDispute(dispute: Stripe.Dispute) {
+    if (!(await this.appPayments.recordDispute(dispute))) return;
+    const charge = await this.appPayments.chargeOfLostDispute(dispute);
+    if (!charge) return;
+    await this.appPayments.syncStripeRefund(charge);
+    await this.paymentsService.syncPlanRefund(charge);
+    await this.syncChairRentRefund(charge);
   }
 
   /** Aluguel da cadeira estornado (fatura da assinatura do aluguel) */

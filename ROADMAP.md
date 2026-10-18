@@ -1905,7 +1905,7 @@ Foram lidos o apagar e o editar venda (devolvem vale-presente, pontos, pacote, s
 
 Foram lidos a lista de espera (entrada manual e online, aviso no cancelamento e na abertura de horário, repasse da vaga para o próximo da fila), o sitemap (respeita suspensão e moderação), o lembrete de agendamento, as disputas da Stripe e as permissões dos cargos nos endpoints que usam o nível padrão (`barber`).
 
-185. ⬜ **Lista de espera nunca fecha: dia passado e cliente que já agendou continuam na fila** (back: `WaitlistEntry`, `joinPublicWaitlist`, `checkWaitlistOnCancellation`):
+185. ✅ **Lista de espera nunca fecha: dia passado e cliente que já agendou continuam na fila** (back: `WaitlistEntry`, `joinPublicWaitlist`, `checkWaitlistOnCancellation`):
      - Nenhum job encerra as entradas de dias que já passaram: elas ficam `WAITING` (ou `NOTIFIED`) para sempre. O limite de 5 entradas online por cliente (`WAITLIST_MAX_ONLINE_PER_CUSTOMER`) conta essas entradas velhas, sem filtro de data; depois de 5 dias de espera ao longo do tempo, o cliente nunca mais consegue entrar em nenhuma lista ("Você já está na lista de espera de 5 dias").
      - A tela da equipe (`getWaitlistEntries`) acumula entradas de dias passados como "aguardando".
      - Quando o cliente agenda aquele dia (pelo link do aviso ou por conta própria), a entrada continua `WAITING`/`NOTIFIED`. Um cancelamento depois avisa de novo quem já tem horário, e a vaga deixa de ir para o próximo da fila.
@@ -1913,14 +1913,20 @@ Foram lidos a lista de espera (entrada manual e online, aviso no cancelamento e 
      - A entrada manual (`createWaitlistEntry`) aceita dia no passado ou a anos de distância, sem o limite de 60 dias da online.
      
      **Fazer:** um job diário encerra (status `EXPIRED`) as entradas de dias que já passaram no fuso da unidade; o limite por cliente conta só as de hoje em diante. Agendar (pela equipe ou online) o dia de uma entrada do mesmo cliente na mesma unidade fecha a entrada (`BOOKED`). Unidade pausada ou fora da vitrine não avisa ninguém. A entrada manual segue a mesma janela da online (hoje até 60 dias).
-186. ⬜ **Disputa perdida não sai do repasse** (back: `AppPaymentsService.recordDispute`; backoffice-back: `payoutBalances`):
+     
+     **Feito:** um job de hora em hora fecha o que ficou para trás: entrada de dia que já passou (no fuso da unidade) vira `EXPIRED`, e entrada de quem já tem horário na unidade naquele dia vira `BOOKED`. Antes de avisar alguém (cancelamento, horário novo ou vaga repassada), a mesma checagem roda na hora, e quem já agendou não é avisado. O limite de 5 por cliente conta só os dias de hoje em diante. Unidade pausada, encerrada ou fora da vitrine não avisa ninguém. A entrada pela equipe segue a janela da online (hoje até 60 dias). A tela da lista de espera mostra "Agendou" e "Vencido".
+186. ✅ **Disputa perdida não sai do repasse** (back: `AppPaymentsService.recordDispute`; backoffice-back: `payoutBalances`):
      - Quando o cliente abre disputa no cartão e a plataforma perde, o dinheiro volta para ele (com a tarifa da disputa). Hoje a disputa perdida só desfaz compra da plataforma (Destaque, taxa da vaga).
      - Fatura do clube e sinal cobrados na conta da plataforma (sem Connect) e aluguel de cadeira no cartão continuam como recebidos: o "a repassar" do backoffice e o relatório de repasse do app mostram esse valor como devido à unidade, e a plataforma paga do próprio bolso um dinheiro que já devolveu.
      - Ganhar a disputa depois de um "lost" provisório não é o caso: o status final é só um.
      
      **Fazer:** disputa perdida marca o pagamento de origem como devolvido (`refundedAmount` no clube e no aluguel, `depositRefundedAt` no sinal, pelo `payment_intent`/fatura), do mesmo jeito que o estorno pela Stripe, e entra no relatório. Se o repasse já foi feito, o saldo fica negativo (a unidade recebeu a mais), como no estorno.
-187. ⬜ **Fila de chegada: telefone escondido volta na resposta e barbeiro põe cliente na fila de outro** (back: `updateWalkInStatus`, `createWalkIn`):
+     
+     **Feito:** quando a disputa passa a "perdida" (uma vez só), o webhook busca a cobrança na Stripe e trata o valor disputado como estorno, pelo mesmo caminho do estorno pelo painel: fatura do clube e do aluguel (`refundedAmount`), sinal, atendimento pago, caixinha e plano do dono. Disputa de parte da cobrança devolve só a parte. Sem a cobrança, usa o pagamento da disputa. O "a repassar" do backoffice e o relatório do app passam a descontar o valor.
+187. ✅ **Fila de chegada: telefone escondido volta na resposta e barbeiro põe cliente na fila de outro** (back: `updateWalkInStatus`, `createWalkIn`):
      - `getWalkIns` esconde o telefone do cliente para quem não pode ver contato (`hideWalkInContact`), mas `updateWalkInStatus` devolve o registro inteiro: o barbeiro muda o status de um cliente da própria fila e recebe o `customerPhone` que a lista escondia.
      - `createWalkIn` aceita qualquer `barberId` da unidade para o barbeiro, enquanto no agendamento o barbeiro só marca na própria agenda (`ensureCanBookForBarber`). Ele põe clientes na fila de colegas, e depois não consegue mexer neles (`updateWalkInStatus` só deixa a própria fila).
      
      **Fazer:** a resposta de `updateWalkInStatus` (e de `createWalkIn`) passa por `hideWalkInContact`. Na criação, barbeiro e barbeiro básico só põem na própria fila (ou sem profissional); recepção para cima, em qualquer uma.
+     
+     **Feito:** criar e mudar o status de cliente na fila passam a resposta por `hideWalkInContact`, como a lista. Barbeiro só põe cliente na própria fila (ou sem profissional); recepção para cima, em qualquer uma.

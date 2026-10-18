@@ -271,6 +271,11 @@ export const MARKETING_MONTHLY_LIMIT_MESSAGE =
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.';
 /** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
 export const WAITLIST_OFFER_MINUTES = 30;
+// Texto fixo (o catálogo de erros casa pela mensagem): acompanha WAITLIST_MAX_DAYS_AHEAD
+export const WAITLIST_DAY_RANGE_MESSAGE = 'Escolha um dia entre hoje e os próximos 60 dias';
+export const WALK_IN_OWN_QUEUE_MESSAGE = 'Seu cargo só permite pôr clientes na sua própria fila.';
+/** Agendamento que conta como "já tem horário" (fecha a entrada da lista) */
+const WAITLIST_BOOKED_STATUSES = ['CONFIRMED', 'PENDING_PAYMENT', 'COMPLETED'];
 
 /** Onde a agenda pode ter aberto: um profissional (ou todos) e um período */
 export type WaitlistOpeningScope = { barberId?: number | null; from?: string; to?: string };
@@ -4649,8 +4654,17 @@ export class BarbershopService {
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     if (!service) throw new NotFoundException('Serviço não encontrado');
+    // Mesma janela da entrada online: de hoje até 60 dias (no fuso da unidade)
+    const day =
+      data.date instanceof Date && !isNaN(data.date.getTime())
+        ? data.date.toISOString().slice(0, 10)
+        : '';
+    const today = toZonedParts(new Date(), safeTimeZone(barbershop.timezone)).dateStr;
+    if (!day || day < today || day > addDaysStr(today, WAITLIST_MAX_DAYS_AHEAD)) {
+      throw new BadRequestException(WAITLIST_DAY_RANGE_MESSAGE);
+    }
     const entry = await this.prisma.waitlistEntry.create({
-      data: { ...data, barbershopId },
+      data: { ...data, date: new Date(`${day}T00:00:00Z`), barbershopId },
       include: { customer: true, barber: true, service: true },
     });
     return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), entry);
@@ -4698,9 +4712,7 @@ export class BarbershopService {
       input.date < today ||
       input.date > addDaysStr(today, WAITLIST_MAX_DAYS_AHEAD)
     ) {
-      throw new BadRequestException(
-        `Escolha um dia entre hoje e os próximos ${WAITLIST_MAX_DAYS_AHEAD} dias`,
-      );
+      throw new BadRequestException(WAITLIST_DAY_RANGE_MESSAGE);
     }
     let barberId: number | null = null;
     if (input.barberId != null) {
@@ -4759,8 +4771,14 @@ export class BarbershopService {
     if (existing) return { entryId: existing.id, alreadyWaiting: true };
 
     // Sem lotar a fila de uma unidade com a mesma pessoa
+    // Só os dias que ainda vêm (os que passaram não seguram vaga no limite)
     const waiting = await this.prisma.waitlistEntry.count({
-      where: { customerId: customer.id, status: 'WAITING', source: 'online' },
+      where: {
+        customerId: customer.id,
+        status: 'WAITING',
+        source: 'online',
+        date: { gte: new Date(`${today}T00:00:00Z`) },
+      },
     });
     if (waiting >= WAITLIST_MAX_ONLINE_PER_CUSTOMER) {
       throw new BadRequestException(
@@ -4861,11 +4879,13 @@ export class BarbershopService {
     // (new Date("YYYY-MM-DD")); o dia do agendamento tem de ser o do fuso da
     // unidade — em UTC, um horário depois das 21h em Brasília já caía no dia
     // seguinte e não achava ninguém na lista.
-    const shop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
+    // Pausada ou fora do ar: a página não aceita agendamento, ninguém é avisado
+    const shop = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId, isActive: true, closedAt: null, ...ownerAcceptsPublic },
       select: { timezone: true },
     });
-    const localDate = toZonedParts(appointment.startAt, safeTimeZone(shop?.timezone)).dateStr;
+    if (!shop) return;
+    const localDate = toZonedParts(appointment.startAt, safeTimeZone(shop.timezone)).dateStr;
     const dayStart = new Date(`${localDate}T00:00:00Z`);
     const dayEnd = new Date(`${nextDateStr(localDate)}T00:00:00Z`);
     const serviceIds = appointment.services.map((s) => s.serviceId);
@@ -4885,6 +4905,7 @@ export class BarbershopService {
     let match: (typeof candidates)[number] | undefined;
     for (const c of candidates) {
       if (c.serviceId != null && !serviceIds.includes(c.serviceId)) continue;
+      if (await this.closeWaitlistIfBooked(c, shop.timezone)) continue;
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: c.id, status: 'WAITING' },
         data: {
@@ -4904,6 +4925,71 @@ export class BarbershopService {
     // Quem está na tela da lista de espera vê a entrada virar "avisado"
     this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
     await this.sendWaitlistNotice(match, appointment.startAt, localDate);
+  }
+
+  /**
+   * O cliente já tem horário na unidade no dia da entrada (agendou pelo
+   * aviso ou por conta própria): a entrada fecha (BOOKED) e não é avisada.
+   */
+  private async closeWaitlistIfBooked(
+    entry: { id: number; barbershopId: number; customerId: number; date: Date },
+    timezone: string | null | undefined,
+  ) {
+    const day = entry.date.toISOString().slice(0, 10);
+    const tz = safeTimeZone(timezone);
+    const booked = await this.prisma.appointment.findFirst({
+      where: {
+        barbershopId: entry.barbershopId,
+        customerId: entry.customerId,
+        status: { in: WAITLIST_BOOKED_STATUSES },
+        startAt: { gte: zonedTimeToUtc(day, 0, tz), lt: zonedTimeToUtc(nextDateStr(day), 0, tz) },
+      },
+      select: { id: true },
+    });
+    if (!booked) return false;
+    await this.prisma.waitlistEntry.updateMany({
+      where: { id: entry.id, status: { in: ['WAITING', 'NOTIFIED'] } },
+      data: { status: 'BOOKED', offeredStartAt: null },
+    });
+    return true;
+  }
+
+  /**
+   * Fecha o que ficou para trás na lista de espera: dia que já passou (no
+   * fuso da unidade) vira EXPIRED, e quem já tem horário no dia, BOOKED.
+   * Antes ficavam "aguardando" para sempre e contavam no limite por cliente.
+   */
+  async closeStaleWaitlistEntries() {
+    const expired = await this.prisma.$executeRaw`
+      UPDATE "WaitlistEntry" w
+         SET status = 'EXPIRED', "offeredStartAt" = NULL
+        FROM "Barbershop" b
+        LEFT JOIN pg_timezone_names t ON t.name = b.timezone
+       WHERE b.id = w."barbershopId"
+         AND w.status IN ('WAITING', 'NOTIFIED')
+         AND w.date < date_trunc('day', now() AT TIME ZONE
+               COALESCE(t.name, 'UTC'))`;
+    const booked = await this.prisma.$executeRaw`
+      UPDATE "WaitlistEntry" w
+         SET status = 'BOOKED', "offeredStartAt" = NULL
+        FROM "Barbershop" b
+        LEFT JOIN pg_timezone_names t ON t.name = b.timezone
+       WHERE b.id = w."barbershopId"
+         AND w.status IN ('WAITING', 'NOTIFIED')
+         AND EXISTS (
+           SELECT 1 FROM "Appointment" a
+            WHERE a."barbershopId" = w."barbershopId"
+              AND a."customerId" = w."customerId"
+              AND a.status IN ('CONFIRMED', 'PENDING_PAYMENT', 'COMPLETED')
+              AND (a."startAt" AT TIME ZONE 'UTC' AT TIME ZONE
+                    COALESCE(t.name, 'UTC'))::date
+                  = w.date::date)`;
+    if (expired || booked) {
+      this.logger.log(
+        `Lista de espera: ${expired} entrada(s) vencida(s), ${booked} já agendada(s)`,
+      );
+    }
+    return { expired, booked };
   }
 
   /**
@@ -4997,6 +5083,7 @@ export class BarbershopService {
       const taken = given.get(day) ?? new Set<string>();
       const slot = slots.find((iso) => Date.parse(iso) > now && !had?.has(iso) && !taken.has(iso));
       if (!slot) continue;
+      if (await this.closeWaitlistIfBooked(entry, entry.barbershop.timezone)) continue;
       // Condicional: a equipe pode ter mexido na entrada enquanto isso
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: entry.id, status: 'WAITING' },
@@ -5043,11 +5130,12 @@ export class BarbershopService {
   }
 
   private async waitlistOpeningSlots(barbershopId: number, opts: WaitlistOpeningScope) {
-    const shop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
+    const shop = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId, isActive: true, closedAt: null, ...ownerAcceptsPublic },
       select: { timezone: true },
     });
-    const today = toZonedParts(new Date(), safeTimeZone(shop?.timezone)).dateStr;
+    if (!shop) return [];
+    const today = toZonedParts(new Date(), safeTimeZone(shop.timezone)).dateStr;
     const from = opts.from && opts.from > today ? opts.from : today;
     const last = addDaysStr(today, WAITLIST_MAX_DAYS_AHEAD);
     const to = opts.to && opts.to < last ? opts.to : last;
@@ -8266,13 +8354,18 @@ export class BarbershopService {
     // resposta traz a ficha do cliente: sem isso vazava a de outra empresa)
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
     if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    // Como no agendamento: barbeiro só põe na própria fila (ou sem profissional)
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
+    if (ownBarberId !== null && data.barberId && data.barberId !== ownBarberId) {
+      throw new ForbiddenException(WALK_IN_OWN_QUEUE_MESSAGE);
+    }
     await this.ensureItemsOfBarbershop(
       barbershopId,
       data.services.map((s) => s.serviceId),
     );
     await assertSoloBookingAllowed(this.prisma, barbershopId, new Date());
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       // A posição sai dentro da trava: duas entradas juntas não ficam com o mesmo número
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in:${barbershopId}`}))`;
       const maxPos = await tx.walkIn.aggregate({
@@ -8303,6 +8396,7 @@ export class BarbershopService {
         include: { services: { include: { service: true } }, customer: true, barber: true },
       });
     });
+    return this.hideWalkInContact(await this.contactVisibility(userId, barbershop), created);
   }
 
   async getWalkIns(
@@ -8340,10 +8434,12 @@ export class BarbershopService {
     }
     const data: any = { status };
     if (status === 'IN_PROGRESS') data.servedAt = new Date();
-    return this.prisma.walkIn.update({
+    const updated = await this.prisma.walkIn.update({
       where: { id: walkInId },
       data,
     });
+    // O telefone que a lista esconde não volta pela resposta
+    return this.hideWalkInContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
   // ============ SERVICE HISTORY ============

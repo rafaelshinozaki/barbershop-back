@@ -175,3 +175,90 @@ describe('AppPaymentsService.syncStripeRefund', () => {
     expect(appointmentTip.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('Disputa perdida vira estorno (item 186)', () => {
+  const dispute = (partial: Partial<Stripe.Dispute> = {}) =>
+    ({
+      id: 'dp_1',
+      charge: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 5000,
+      currency: 'brl',
+      status: 'lost',
+      reason: 'fraudulent',
+      ...partial,
+    } as Stripe.Dispute);
+
+  function setup(found: Partial<Stripe.Charge> | null) {
+    const stripe = {
+      retrieveCharge: jest.fn(async () => {
+        if (!found) throw new Error('não encontrada');
+        return found as Stripe.Charge;
+      }),
+    };
+    const paymentDispute = {
+      findUnique: jest.fn(async () => paymentDispute.row),
+      upsert: jest.fn(async () => ({})),
+      row: null as null | { closedAt: Date | null },
+    };
+    const service = new AppPaymentsService(
+      {
+        paymentDispute,
+        featuredPurchase: { findUnique: jest.fn(async () => null) },
+        jobApplication: { updateMany: jest.fn(async () => ({ count: 0 })) },
+      } as never,
+      {} as never,
+      stripe as never,
+    );
+    return { service, stripe, paymentDispute };
+  }
+
+  it('só avisa a perda uma vez (disputa já encerrada não conta de novo)', async () => {
+    const { service, paymentDispute } = setup(null);
+    expect(await service.recordDispute(dispute({ status: 'needs_response' }))).toBe(false);
+    expect(await service.recordDispute(dispute())).toBe(true);
+    paymentDispute.row = { closedAt: new Date() };
+    expect(await service.recordDispute(dispute())).toBe(false);
+  });
+
+  it('a cobrança da Stripe vem com a fatura e o valor disputado como devolvido', async () => {
+    const { service } = setup({
+      id: 'ch_1',
+      invoice: 'in_9',
+      payment_intent: 'pi_1',
+      amount: 5000,
+      amount_refunded: 0,
+      currency: 'brl',
+      refunded: false,
+    } as Partial<Stripe.Charge>);
+    const charge = await service.chargeOfLostDispute(dispute());
+    expect(charge).toMatchObject({
+      invoice: 'in_9',
+      payment_intent: 'pi_1',
+      amount_refunded: 5000,
+      refunded: true,
+    });
+  });
+
+  it('disputa de parte da cobrança devolve só a parte; sem a cobrança, usa a disputa', async () => {
+    const partial = setup({
+      id: 'ch_1',
+      payment_intent: 'pi_1',
+      amount: 8000,
+      amount_refunded: 0,
+      currency: 'brl',
+    } as Partial<Stripe.Charge>);
+    expect(await partial.service.chargeOfLostDispute(dispute())).toMatchObject({
+      amount_refunded: 5000,
+      refunded: false,
+    });
+    const missing = setup(null);
+    expect(await missing.service.chargeOfLostDispute(dispute())).toMatchObject({
+      payment_intent: 'pi_1',
+      currency: 'brl',
+      amount: 5000,
+      amount_refunded: 5000,
+      refunded: true,
+    });
+  });
+});
