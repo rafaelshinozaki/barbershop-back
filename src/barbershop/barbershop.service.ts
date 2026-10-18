@@ -1825,7 +1825,12 @@ export class BarbershopService {
       minBookingLeadMinutes: number;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, id, 'manager');
+    const current = await this.ensureBarbershopAccess(userId, id, 'manager');
+    // Pausar ou reativar tira a unidade do ar e mexe na cobrança do clube: só o dono
+    const toggling = data.isActive !== undefined && data.isActive !== current.isActive;
+    if (toggling && current.accessLevel !== 'owner') {
+      throw new ForbiddenException('Só o dono pausa ou reativa a unidade.');
+    }
     if (
       data.minBookingLeadMinutes !== undefined &&
       !BOOKING_LEAD_MINUTES.includes(data.minBookingLeadMinutes)
@@ -1875,10 +1880,44 @@ export class BarbershopService {
     if (subdomain !== undefined) {
       updateData.subdomain = await this.resolveSubdomainUpdate(id, subdomain);
     }
-    return this.prisma.barbershop.update({
+    const updated = await this.prisma.barbershop.update({
       where: { id },
       data: updateData,
     });
+    if (toggling) await this.setClubBillingPaused(id, !updated.isActive);
+    return updated;
+  }
+
+  /**
+   * Unidade pausada não aceita horário: a cobrança do clube fica suspensa na
+   * Stripe (pause_collection, a fatura do período nem é gerada) e volta ao
+   * reativar. Só voltam as que a pausa suspendeu (shopPausedAt).
+   */
+  async setClubBillingPaused(barbershopId: number, paused: boolean) {
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: paused
+        ? { barbershopId, status: { in: ['ACTIVE', 'PAST_DUE'] }, shopPausedAt: null }
+        : { barbershopId, shopPausedAt: { not: null } },
+      select: { id: true, stripeSubscriptionId: true },
+    });
+    for (const sub of subs) {
+      try {
+        await this.stripeService.updateSubscription(sub.stripeSubscriptionId, {
+          // '' tira a pausa (é assim que a API da Stripe limpa o campo)
+          pause_collection: paused ? { behavior: 'void' } : ('' as never),
+        });
+        await this.prisma.clientSubscription.update({
+          where: { id: sub.id },
+          data: { shopPausedAt: paused ? new Date() : null },
+        });
+      } catch (err) {
+        this.logger.error(
+          `Clube ${sub.id}: cobrança não foi ${paused ? 'suspensa' : 'retomada'} na Stripe`,
+          err as Error,
+        );
+      }
+    }
+    return subs.length;
   }
 
   // Label de DNS válido: minúsculas, números, hífen no meio; 3 a 63

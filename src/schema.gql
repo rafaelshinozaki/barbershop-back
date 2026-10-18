@@ -1730,6 +1730,11 @@ type FeaturedStatusType {
 
   """Profissional sem página pública: precisa deixar pública antes"""
   needsPublicProfile: Boolean!
+
+  """
+  Unidade fora da busca (pausada, suspensa, escondida ou com o dono desativado): o Destaque não vale
+  """
+  notListed: Boolean!
   priceCents: Int!
 }
 

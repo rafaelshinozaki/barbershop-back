@@ -134,6 +134,7 @@ export class StripeController {
         case 'charge.refunded':
           await this.appPayments.syncStripeRefund(event.data.object as Stripe.Charge);
           await this.paymentsService.syncPlanRefund(event.data.object as Stripe.Charge);
+          await this.syncChairRentRefund(event.data.object as Stripe.Charge);
           break;
         case 'refund.updated': {
           const refund = event.data.object as Stripe.Refund;
@@ -143,6 +144,7 @@ export class StripeController {
           const charge = await this.stripeService.retrieveCharge(chargeId);
           await this.appPayments.syncStripeRefund(charge);
           await this.paymentsService.syncPlanRefund(charge);
+          await this.syncChairRentRefund(charge);
           break;
         }
         // Conta de recebimento (Connect): cadastro concluído, pendência, bloqueio
@@ -379,6 +381,14 @@ export class StripeController {
       where: { stripeSubscriptionId },
       data: { status: 'PAST_DUE' },
     });
+  }
+
+  /** Aluguel da cadeira estornado (fatura da assinatura do aluguel) */
+  private async syncChairRentRefund(charge: Stripe.Charge) {
+    const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+    const refunded = fromMinorUnits(charge.amount_refunded ?? 0, charge.currency);
+    if (!invoiceId || refunded <= 0) return;
+    await this.chairRent.syncRefund(invoiceId, refunded, charge.refunded);
   }
 
   private async handleSubscriptionCreated(subscription: Stripe.Subscription) {

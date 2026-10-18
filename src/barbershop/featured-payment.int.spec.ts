@@ -245,6 +245,22 @@ describe('Comprar o Destaque (integração, Stripe simulado)', () => {
     );
   });
 
+  it('unidade fora da busca não compra Destaque (item 182)', async () => {
+    await prisma.barbershop.update({ where: { id: shopId }, data: { isActive: false } });
+    try {
+      expect(await featured.status(ownerId, 'barbershop', shopId)).toMatchObject({
+        available: false,
+        notListed: true,
+      });
+      await expect(featured.start(ownerId, 'barbershop', shopId)).rejects.toThrow(
+        'não aparece na busca',
+      );
+    } finally {
+      await prisma.barbershop.update({ where: { id: shopId }, data: { isActive: true } });
+    }
+    expect((await featured.status(ownerId, 'barbershop', shopId)).notListed).toBe(false);
+  });
+
   it('estornada na Stripe (ou disputa perdida): os dias da compra saem e ela não volta a valer', async () => {
     const appPayments = new AppPaymentsService(prisma, barbershops, stripe as never);
     const buy = await featured.start(ownerId, 'barbershop', shopId);

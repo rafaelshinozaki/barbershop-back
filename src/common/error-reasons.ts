@@ -35,6 +35,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'O tipo e os itens desta venda não mudam. Apague e lance de novo.': 'SALE_TYPE_LOCKED',
   'O valor ficou menor do que já foi pago com sinal, app, cartão-presente ou pontos.':
     'SALE_BELOW_APPLIED',
+  'A unidade não aparece na busca agora (pausada, suspensa ou escondida). O Destaque só vale para unidade no ar.':
+    'FEATURED_SHOP_NOT_LISTED',
+  'Só o dono pausa ou reativa a unidade.': 'SHOP_PAUSE_OWNER_ONLY',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

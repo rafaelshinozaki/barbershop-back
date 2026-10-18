@@ -301,6 +301,72 @@ describe('Aluguel da cadeira (integração)', () => {
     expect(await rent.handleInvoice(invoice(`in_x_${RUN}`, 'sub_outra', true), true)).toBe(false);
   });
 
+  it('aluguel estornado pelo painel da Stripe sai do repasse, da despesa e do período pago (item 180)', async () => {
+    const { host, member } = shops;
+    const DAY_MS = 86_400_000;
+    const before = (await rent.view(linkId, host.shopId)).payoutDue!;
+    const original = (await link()).rentPaidUntil;
+    const start = new Date(Date.now() - DAY_MS);
+    const end = new Date(Date.now() + 29 * DAY_MS);
+    const expense = await prisma.expense.create({
+      data: {
+        barbershopId: member.shopId,
+        category: 'RENT',
+        description: 'Aluguel da cadeira',
+        amount: new Decimal(200),
+        paymentMethod: 'CARD',
+        createdByUserId: member.ownerId,
+      },
+    });
+    const payment = await prisma.chairRentPayment.create({
+      data: {
+        sharedLocationMemberId: linkId,
+        stripeInvoiceId: `in_ref_${RUN}`,
+        amount: new Decimal(200),
+        currency: 'BRL',
+        method: 'CARD',
+        status: 'SUCCEEDED',
+        platformFeePercent: new Decimal(15),
+        paidAt: new Date(),
+        periodStart: start,
+        periodEnd: end,
+        memberExpenseId: expense.id,
+      },
+    });
+    await prisma.sharedLocationMember.update({
+      where: { id: linkId },
+      data: { rentPaidUntil: end },
+    });
+    try {
+      expect((await rent.view(linkId, host.shopId)).payoutDue).toBe(before + 170);
+      // Parcial: 50 voltam (sem a taxa, 42,50 a menos no repasse)
+      expect(await rent.syncRefund(`in_ref_${RUN}`, 50, false)).toBe(true);
+      expect((await rent.view(linkId, host.shopId)).payoutDue).toBe(before + 127.5);
+      expect(
+        Number((await prisma.expense.findUniqueOrThrow({ where: { id: expense.id } })).amount),
+      ).toBe(150);
+      // Evento atrasado com valor menor não desfaz
+      await rent.syncRefund(`in_ref_${RUN}`, 30, false);
+      expect(
+        Number((await prisma.expense.findUniqueOrThrow({ where: { id: expense.id } })).amount),
+      ).toBe(150);
+      // Total: sai do repasse, a despesa some e o "pago até" volta ao começo do período
+      await rent.syncRefund(`in_ref_${RUN}`, 200, true);
+      expect((await rent.view(linkId, host.shopId)).payoutDue).toBe(before);
+      expect(await prisma.expense.findUnique({ where: { id: expense.id } })).toBeNull();
+      expect((await link()).rentPaidUntil!.getTime()).toBe(start.getTime());
+      // Fatura que não é de aluguel
+      expect(await rent.syncRefund('in_outra', 10, true)).toBe(false);
+    } finally {
+      await prisma.chairRentPayment.delete({ where: { id: payment.id } });
+      await prisma.expense.deleteMany({ where: { id: expense.id } });
+      await prisma.sharedLocationMember.update({
+        where: { id: linkId },
+        data: { rentPaidUntil: original },
+      });
+    }
+  });
+
   it('cobrança recusada: os dois são avisados; trocar o cartão tenta a fatura na hora', async () => {
     const { host, member } = shops;
     const subId = (await link()).rentStripeSubscriptionId!;

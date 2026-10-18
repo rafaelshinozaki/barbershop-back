@@ -18,6 +18,7 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
+import { ownerAcceptsPublic } from './public-shop';
 import { SearchCacheService } from './search-cache.service';
 import { stripeConfigured } from './stripe-configured';
 import { PLATFORM_CURRENCY, currentPricing } from '../pricing/pricing';
@@ -48,6 +49,9 @@ export type FeaturedOwnerType = 'barbershop' | 'professional';
  * Unidade: dono e gerente compram. Profissional: o próprio, com a página
  * pública. O admin continua podendo ligar à mão no backoffice.
  */
+export const SHOP_NOT_LISTED_MESSAGE =
+  'A unidade não aparece na busca agora (pausada, suspensa ou escondida). O Destaque só vale para unidade no ar.';
+
 @Injectable()
 export class FeaturedPaymentService {
   private readonly logger = new Logger(FeaturedPaymentService.name);
@@ -70,7 +74,23 @@ export class FeaturedPaymentService {
         select: { id: true, name: true, featuredUntil: true },
       });
       if (!shop) throw new NotFoundException('Unidade não encontrada');
-      return { ownerType, ownerId: shop.id, name: shop.name, featuredUntil: shop.featuredUntil };
+      // Destaque é aparecer primeiro na busca: unidade fora da vitrine pagaria por nada
+      const listed = await this.prisma.barbershop.count({
+        where: {
+          id: shop.id,
+          isActive: true,
+          searchHiddenAt: null,
+          closedAt: null,
+          ...ownerAcceptsPublic,
+        },
+      });
+      return {
+        ownerType,
+        ownerId: shop.id,
+        name: shop.name,
+        featuredUntil: shop.featuredUntil,
+        listed: listed > 0,
+      };
     }
     if (ownerType === 'professional') {
       const professional = await this.prisma.professional.findUnique({
@@ -108,10 +128,12 @@ export class FeaturedPaymentService {
     const t = await this.target(userId, ownerType, ownerId);
     const now = new Date();
     const needsPublicProfile = 'publicProfile' in t && !t.publicProfile;
+    const notListed = 'listed' in t && !t.listed;
     const offer = featuredOffer(t.ownerType);
     return {
-      available: stripeConfigured() && !needsPublicProfile,
+      available: stripeConfigured() && !needsPublicProfile && !notListed,
       needsPublicProfile,
+      notListed,
       priceCents: offer.priceCents,
       currency: FEATURED_CURRENCY,
       days: offer.days,
@@ -126,6 +148,7 @@ export class FeaturedPaymentService {
     if ('publicProfile' in t && !t.publicProfile) {
       throw new BadRequestException('Deixe sua página pública para aparecer na busca antes');
     }
+    if ('listed' in t && !t.listed) throw new BadRequestException(SHOP_NOT_LISTED_MESSAGE);
     if (!stripeConfigured()) throw new BadRequestException('Pagamento online indisponível');
     const offer = featuredOffer(t.ownerType);
 

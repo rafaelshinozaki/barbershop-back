@@ -761,7 +761,7 @@ export class ChairRentService {
       this.prisma.chairRentPayment.groupBy({
         by: ['method'],
         where: { sharedLocationMemberId: linkId, status: 'SUCCEEDED' },
-        _sum: { amount: true },
+        _sum: { amount: true, refundedAmount: true },
       }),
       this.prisma.chairRentPayment.findMany({
         where: { sharedLocationMemberId: linkId, status: 'DUE' },
@@ -771,7 +771,11 @@ export class ChairRentService {
       // Só quem é o espaço vê o repasse
       isHost ? this.payoutBalance(link.hostBarbershopId) : Promise.resolve(null),
     ]);
-    const total = byMethod.reduce((sum, m) => sum + Number(m._sum.amount ?? 0), 0);
+    // O que foi devolvido pelo painel da Stripe não conta como recebido
+    const total = byMethod.reduce(
+      (sum, m) => sum + Number(m._sum.amount ?? 0) - Number(m._sum.refundedAmount ?? 0),
+      0,
+    );
     const openAmount = open.reduce((sum, d) => sum + Number(d.amount), 0);
     const overdue = open.some((d) => d.dueDate && d.dueDate.getTime() + DAY_MS < Date.now());
     const manual = link.rentBillingMode === 'MANUAL';
@@ -815,7 +819,7 @@ export class ChairRentService {
     const [payments, payouts, host] = await Promise.all([
       this.prisma.chairRentPayment.findMany({
         where: { link: { hostBarbershopId }, status: 'SUCCEEDED', method: 'CARD' },
-        select: { amount: true, platformFeePercent: true },
+        select: { amount: true, platformFeePercent: true, refundedAmount: true },
       }),
       this.prisma.chairRentPayout.aggregate({
         where: { barbershopId: hostBarbershopId },
@@ -829,11 +833,65 @@ export class ChairRentService {
     const current = currentPricing().platformFeePercent;
     const currency = host?.currency ?? null;
     const net = payments.reduce((sum, p) => {
-      const amount = Number(p.amount);
+      const amount = Number(p.amount) - Number(p.refundedAmount ?? 0);
       const percent = p.platformFeePercent == null ? current : Number(p.platformFeePercent);
       return sum + amount - roundMoney((amount * percent) / 100, currency);
     }, 0);
     return roundMoney(net - Number(payouts._sum.amount ?? 0), currency);
+  }
+  /**
+   * Aluguel pago por cartão estornado pelo painel da Stripe (charge.refunded
+   * da fatura). Grava o devolvido, que sai do repasse ao espaço e da despesa
+   * "Aluguel" do profissional. Estorno total da fatura do período atual
+   * devolve o "pago até" para o começo dele. Só sobe: evento atrasado com
+   * valor menor não desfaz. Devolve false se a fatura não é de aluguel.
+   */
+  async syncRefund(invoiceId: string, refunded: number, full: boolean): Promise<boolean> {
+    const payment = await this.prisma.chairRentPayment.findUnique({
+      where: { stripeInvoiceId: invoiceId },
+      include: { link: { select: { id: true, rentPaidUntil: true, rentCurrency: true } } },
+    });
+    if (!payment || payment.method !== 'CARD' || payment.status !== 'SUCCEEDED') return false;
+    const amount = Number(payment.amount);
+    const value = roundMoney(Math.min(amount, refunded), payment.currency);
+    const claimed = await this.prisma.chairRentPayment.updateMany({
+      where: {
+        id: payment.id,
+        OR: [{ refundedAmount: null }, { refundedAmount: { lt: new Decimal(value) } }],
+      },
+      data: { refundedAmount: new Decimal(value) },
+    });
+    if (claimed.count === 0) return true;
+    if (payment.memberExpenseId) {
+      const left = roundMoney(amount - value, payment.currency);
+      if (left > 0) {
+        await this.prisma.expense.updateMany({
+          where: { id: payment.memberExpenseId },
+          data: { amount: new Decimal(left) },
+        });
+      } else {
+        await this.prisma.chairRentPayment.update({
+          where: { id: payment.id },
+          data: { memberExpenseId: null },
+        });
+        await this.prisma.expense.deleteMany({ where: { id: payment.memberExpenseId } });
+      }
+    }
+    const paidUntil = payment.link.rentPaidUntil;
+    if (
+      full &&
+      payment.periodStart &&
+      payment.periodEnd &&
+      paidUntil &&
+      paidUntil.getTime() === payment.periodEnd.getTime()
+    ) {
+      await this.prisma.sharedLocationMember.updateMany({
+        where: { id: payment.link.id, rentPaidUntil: paidUntil },
+        data: { rentPaidUntil: payment.periodStart },
+      });
+    }
+    this.logger.log(`Aluguel da fatura ${invoiceId}: ${value} devolvido`);
+    return true;
   }
 
   /**
