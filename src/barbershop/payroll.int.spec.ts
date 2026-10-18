@@ -374,4 +374,46 @@ describe('Pagamento da equipe (integração)', () => {
     expect(o.totalPaid).toBe(1225);
     expect(o.staffCostPercent).toBeCloseTo((1225 / 300) * 100, 1);
   });
+
+  it('venda de período já pago muda: a diferença da comissão vai pro período em aberto (item 183)', async () => {
+    // Agosto da Ana já foi pago (teste acima); esta venda é desse mês
+    const late = await sale(ana, 25, 100); // comissão 40
+    const entries = () =>
+      prisma.barberPayEntry.findMany({
+        where: { barberId: ana, payoutId: null, notes: { contains: `#${late.id}` } },
+        orderBy: { id: 'asc' },
+      });
+    try {
+      // Valor menor: 40 → 20, desconto de 20
+      await barbershops.updateSale(ownerId, shopId, late.id, {
+        items: [{ itemType: 'SERVICE', quantity: 1, unitPrice: 50, totalPrice: 50 }],
+        subtotal: 50,
+        total: 50,
+      });
+      // Passou para o Beto (agosto dele não foi pago): desconta o resto da Ana
+      await barbershops.updateSale(ownerId, shopId, late.id, { barberId: beto });
+      expect((await entries()).map((e) => [e.type, Number(e.amount)])).toEqual([
+        ['DEDUCTION', 20],
+        ['DEDUCTION', 20],
+      ]);
+      expect(
+        await prisma.barberPayEntry.count({
+          where: { barberId: beto, notes: { contains: `#${late.id}` } },
+        }),
+      ).toBe(0);
+
+      // Volta pra Ana e é apagada: ganha 20 de novo e perde 20 ao apagar
+      await barbershops.updateSale(ownerId, shopId, late.id, { barberId: ana });
+      await barbershops.deleteSale(ownerId, shopId, late.id);
+      expect((await entries()).map((e) => [e.type, Number(e.amount)])).toEqual([
+        ['DEDUCTION', 20],
+        ['DEDUCTION', 20],
+        ['BONUS', 20],
+        ['DEDUCTION', 20],
+      ]);
+    } finally {
+      await prisma.barberPayEntry.deleteMany({ where: { notes: { contains: `#${late.id}` } } });
+      await prisma.sale.deleteMany({ where: { id: late.id } });
+    }
+  });
 });
