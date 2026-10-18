@@ -94,6 +94,7 @@ import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { JobOpeningService } from './job-opening.service';
 import { currentPricing } from '../pricing/pricing';
+import { payoutReport, type PayoutCharge } from './payout-report';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
 import { moneyCap, toMinorUnits } from '../common/money-units';
 
@@ -7844,7 +7845,11 @@ export class BarbershopService {
     return subs.map((s) => this.toClientSubscriptionResult(s));
   }
 
-  /** Relatório de repasse: quanto foi cobrado dos clientes e quanto é devido à barbearia (taxa da plataforma já descontada). Não transfere nada — só calcula. */
+  /**
+   * Relatório de repasse do clube: o que foi cobrado dos clientes no período,
+   * o que voltou para eles, a taxa da plataforma e o saldo a repassar até o
+   * fim do período (ver payoutReport). Não transfere nada — só calcula.
+   */
   async getSubscriptionRevenueReport(
     userId: number,
     barbershopId: number,
@@ -7853,50 +7858,46 @@ export class BarbershopService {
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const period = reportPeriod(safeTimeZone(shop.timezone), startDate, endDate);
-    const [payments, payouts] = await Promise.all([
-      this.prisma.clientSubscriptionPayment.findMany({
-        where: {
-          status: 'SUCCEEDED',
-          subscription: { barbershopId },
-          createdAt: period,
-        },
-      }),
-      this.prisma.subscriptionPayout.findMany({
-        where: { barbershopId, paidAt: period },
-      }),
+    const untilEnd = { lte: period.lte };
+    const charges = (createdAt: { gte?: Date; lte?: Date }) =>
+      this.prisma.clientSubscriptionPayment
+        .findMany({
+          where: { status: 'SUCCEEDED', subscription: { barbershopId }, createdAt },
+          select: {
+            amount: true,
+            refundedAmount: true,
+            platformFeePercent: true,
+            settledViaConnect: true,
+          },
+        })
+        .then((rows) =>
+          rows.map(
+            (p): PayoutCharge => ({
+              amount: Number(p.amount),
+              refunded: Number(p.refundedAmount ?? 0),
+              feePercent: p.platformFeePercent == null ? null : Number(p.platformFeePercent),
+              viaConnect: p.settledViaConnect,
+            }),
+          ),
+        );
+    const payouts = (paidAt: { gte?: Date; lte?: Date }) =>
+      this.prisma.subscriptionPayout
+        .findMany({ where: { barbershopId, paidAt }, select: { amount: true } })
+        .then((rows) => rows.map((r) => Number(r.amount)));
+    const [inPeriod, untilPeriodEnd, payoutsInPeriod, payoutsUntilPeriodEnd] = await Promise.all([
+      charges(period),
+      charges(untilEnd),
+      payouts(period),
+      payouts(untilEnd),
     ]);
-    // Cada pagamento com a taxa de quando foi pago (mudar a taxa hoje não
-    // muda o repasse de meses passados); centavos arredondados
-    const current = currentPricing().platformFeePercent;
-    const feeOf = (amount: number, percent: { toString(): string } | null) =>
-      (amount * Number(percent ?? current)) / 100;
-    // O que voltou pro cliente não entra (nem a taxa sobre ele)
-    const netOf = (p: (typeof payments)[number]) =>
-      Number(p.amount) - Number(p.refundedAmount ?? 0);
-    const grossAmount = round2(payments.reduce((sum, p) => sum + netOf(p), 0));
-    const platformFeeAmount = round2(
-      payments.reduce((sum, p) => sum + feeOf(netOf(p), p.platformFeePercent), 0),
-    );
-    // O que o Stripe já mandou pra conta conectada não é mais devido
-    const paidOutAutomatically = round2(
-      payments
-        .filter((p) => p.settledViaConnect)
-        .reduce((sum, p) => sum + netOf(p) - feeOf(netOf(p), p.platformFeePercent), 0),
-    );
-    const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
-    return {
-      paymentsCount: payments.length,
-      grossAmount,
-      // Taxa efetiva do período (média ponderada quando a taxa mudou no meio)
-      platformFeePercentage:
-        grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
-      platformFeeAmount,
-      paidOutAutomatically,
-      paidOutManually,
-      netOwedToBarbershop: round2(
-        grossAmount - platformFeeAmount - paidOutAutomatically - paidOutManually,
-      ),
-    };
+    return payoutReport({
+      inPeriod,
+      untilPeriodEnd,
+      payoutsInPeriod,
+      payoutsUntilPeriodEnd,
+      currentFee: currentPricing().platformFeePercent,
+      currency: shop.currency,
+    });
   }
 
   /**

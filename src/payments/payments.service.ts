@@ -1490,7 +1490,12 @@ export class PaymentsService {
     return this.changePlan(userId, sub.planId);
   }
 
-  /** Equipe: estorna uma cobrança de plano já paga (Stripe) e tira do concluído. */
+  /**
+   * Equipe: estorna uma cobrança de plano paga pela Stripe. Se é a cobrança
+   * do período atual da assinatura ativa, o plano acaba agora: volta ao
+   * gratuito e a assinatura na Stripe é cancelada (não cobra de novo).
+   * Dinheiro devolvido não deixa o plano valendo. Cobrança antiga só devolve.
+   */
   async staffRefundPlanPayment(paymentId: number) {
     const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
     if (!payment || payment.status !== PAGAMENTO_STATUS.COMPLETED) {
@@ -1504,10 +1509,62 @@ export class PaymentsService {
       undefined,
       `plan-refund-${payment.id}`,
     );
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: 'REFUNDED' },
-    });
+    await this.markPlanPaymentRefunded(payment.id);
     return payment.id;
+  }
+
+  /**
+   * Estorno feito no painel da Stripe (charge.refunded): a cobrança do plano
+   * estornada por inteiro tem o mesmo efeito do estorno pela equipe. Parcial
+   * não muda o plano.
+   */
+  async syncPlanRefund(charge: Stripe.Charge) {
+    const intent =
+      typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (!intent || !charge.refunded) return;
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        status: PAGAMENTO_STATUS.COMPLETED,
+        OR: [{ transactionId: intent }, { paymentId: intent }],
+      },
+      select: { id: true },
+    });
+    if (payment) await this.markPlanPaymentRefunded(payment.id);
+  }
+
+  /** Marca estornada (uma vez só) e encerra o plano se era o período atual. */
+  private async markPlanPaymentRefunded(paymentId: number) {
+    const claimed = await this.prisma.payment.updateMany({
+      where: { id: paymentId, status: PAGAMENTO_STATUS.COMPLETED },
+      data: { status: PAGAMENTO_STATUS.REFUNDED },
+    });
+    if (claimed.count === 0) return;
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: paymentId },
+      include: { subscription: true },
+    });
+    const sub = payment.subscription;
+    if (sub.status !== PLANO_STATUS.ACTIVE) return;
+    const latest = await this.prisma.payment.findFirst({
+      where: {
+        subscriptionId: sub.id,
+        status: { in: [PAGAMENTO_STATUS.COMPLETED, PAGAMENTO_STATUS.REFUNDED] },
+      },
+      orderBy: [{ paymentDate: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    if (latest?.id !== payment.id) return;
+    if (sub.stripeSubscriptionId) {
+      // Já cancelada na Stripe (pelo painel, por exemplo) não impede encerrar aqui
+      await this.stripeService.cancelSubscription(sub.stripeSubscriptionId).catch((err) => {
+        this.logger.warn(
+          `Assinatura ${sub.stripeSubscriptionId} não foi cancelada na Stripe após o estorno: ${err}`,
+        );
+      });
+    }
+    await this.expireSubscription(sub.id, sub.userId);
+    this.logger.log(
+      `Plano da assinatura ${sub.id} encerrado pelo estorno do pagamento ${paymentId}`,
+    );
   }
 }

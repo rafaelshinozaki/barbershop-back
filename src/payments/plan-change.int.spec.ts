@@ -33,6 +33,8 @@ describe('Trocar e cancelar o plano (integração com o banco)', () => {
       items: { data: [{ id: 'si_1', price: { id: 'price_basic' } }] },
     }),
     updateSubscription: jest.fn(async () => ({})),
+    createRefund: jest.fn(async () => ({ id: 're_1', status: 'succeeded' })),
+    cancelSubscription: jest.fn(async () => ({})),
   };
   const email = { sendTemplateEmail: async () => undefined };
   // Uso de hoje: cabe, a não ser que o teste diga que não
@@ -238,6 +240,87 @@ describe('Trocar e cancelar o plano (integração com o banco)', () => {
     expect(stripe.updateSubscription).toHaveBeenCalledWith(`sub_chg_${RUN}`, {
       items: [{ id: 'si_1', price: 'price_premium' }],
       proration_behavior: 'none',
+    });
+  });
+  describe('estorno do plano (item 174)', () => {
+    const pay = (subscriptionId: number, daysAgo: number, intent: string) =>
+      prisma.payment.create({
+        data: {
+          subscriptionId,
+          amount: new Prisma.Decimal(100),
+          paymentDate: new Date(Date.now() - daysAgo * DAY),
+          nextPaymentDate: new Date(Date.now() + 15 * DAY),
+          paymentMethod: 'stripe',
+          transactionId: intent,
+          status: 'COMPLETED',
+        },
+      });
+
+    it('estornar a cobrança do período atual encerra o plano e cancela na Stripe', async () => {
+      const sub = await startBasic(15);
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { stripeSubscriptionId: `sub_ref_${RUN}` },
+      });
+      await prisma.user.update({ where: { id: userId }, data: { membership: 'PAID' } });
+      await pay(sub.id, 45, `pi_old_${RUN}`);
+      const current = await pay(sub.id, 15, `pi_cur_${RUN}`);
+      stripe.cancelSubscription.mockClear();
+
+      await payments.staffRefundPlanPayment(current.id);
+
+      expect(stripe.createRefund).toHaveBeenCalledWith(
+        `pi_cur_${RUN}`,
+        undefined,
+        undefined,
+        `plan-refund-${current.id}`,
+      );
+      expect(stripe.cancelSubscription).toHaveBeenCalledWith(`sub_ref_${RUN}`);
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: current.id } })).status).toBe(
+        'REFUNDED',
+      );
+      expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe(
+        'INACTIVE',
+      );
+      expect((await activeSub()).planId).toBe(freeId);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).membership).toBe(
+        'FREE',
+      );
+      // De novo (ou o webhook do mesmo estorno): nada muda
+      await expect(payments.staffRefundPlanPayment(current.id)).rejects.toThrow(
+        'Pagamento não encontrado',
+      );
+    });
+
+    it('cobrança antiga só devolve; o plano continua', async () => {
+      const sub = await startBasic(15);
+      const old = await pay(sub.id, 45, `pi_old2_${RUN}`);
+      await pay(sub.id, 15, `pi_cur2_${RUN}`);
+      stripe.cancelSubscription.mockClear();
+
+      await payments.staffRefundPlanPayment(old.id);
+
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: old.id } })).status).toBe(
+        'REFUNDED',
+      );
+      expect((await activeSub()).id).toBe(sub.id);
+      expect(stripe.cancelSubscription).not.toHaveBeenCalled();
+    });
+
+    it('estorno total pelo painel da Stripe tem o mesmo efeito; parcial não muda nada', async () => {
+      const sub = await startBasic(15);
+      const current = await pay(sub.id, 15, `pi_dash_${RUN}`);
+      await payments.syncPlanRefund({ payment_intent: `pi_dash_${RUN}`, refunded: false } as never);
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: current.id } })).status).toBe(
+        'COMPLETED',
+      );
+      await payments.syncPlanRefund({ payment_intent: `pi_dash_${RUN}`, refunded: true } as never);
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: current.id } })).status).toBe(
+        'REFUNDED',
+      );
+      expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe(
+        'INACTIVE',
+      );
     });
   });
 });

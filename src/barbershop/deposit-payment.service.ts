@@ -17,6 +17,7 @@ import { stripeConfigured } from './stripe-configured';
 import { reportPeriod, safeTimeZone } from '../common/timezone.util';
 import { fromMinorUnits, toMinorUnits } from '../common/money-units';
 import { appointmentContactEmail } from './appointment-contact';
+import { payoutReport, type PayoutCharge } from './payout-report';
 
 const KIND = 'appointment_deposit';
 /** Lembra de pagar quem reservou e ainda não pagou depois desse tempo... */
@@ -371,68 +372,60 @@ export class DepositPaymentService {
 
   /**
    * Repasse do sinal online (gerente e dono): quanto os clientes pagaram pelo
-   * Stripe no período, a taxa da plataforma (só nesse valor) e o que é devido
-   * à unidade. Estornados não contam. Não transfere nada — só calcula.
+   * Stripe no período, o que voltou para eles, a taxa da plataforma e o saldo
+   * a repassar até o fim do período (ver payoutReport). Não transfere nada.
    */
   async payoutReport(userId: number, barbershopId: number, startDate?: string, endDate?: string) {
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const period = reportPeriod(safeTimeZone(shop.timezone), startDate, endDate);
-    const [paid, payouts] = await Promise.all([
-      this.prisma.appointment.findMany({
-        where: {
-          barbershopId,
-          depositPaid: true,
-          depositRefundedAt: null,
-          depositPaymentIntentId: { not: null },
-          depositPaidAt: period,
-        },
-        select: {
-          depositAmount: true,
-          depositStripeAccountId: true,
-          depositPlatformFeePercent: true,
-        },
-      }),
-      this.prisma.depositPayout.findMany({
-        where: { barbershopId, paidAt: period },
-      }),
+    const untilEnd = { lte: period.lte };
+    const deposits = (paidAt: { gte?: Date; lte?: Date }) =>
+      this.prisma.appointment
+        .findMany({
+          where: {
+            barbershopId,
+            depositPaid: true,
+            depositPaymentIntentId: { not: null },
+            depositPaidAt: paidAt,
+          },
+          select: {
+            depositAmount: true,
+            depositRefundedAt: true,
+            depositStripeAccountId: true,
+            depositPlatformFeePercent: true,
+          },
+        })
+        .then((rows) =>
+          rows.map((a): PayoutCharge => {
+            const amount = Number(a.depositAmount ?? 0);
+            return {
+              amount,
+              // O sinal volta inteiro
+              refunded: a.depositRefundedAt ? amount : 0,
+              feePercent:
+                a.depositPlatformFeePercent == null ? null : Number(a.depositPlatformFeePercent),
+              viaConnect: !!a.depositStripeAccountId,
+            };
+          }),
+        );
+    const payouts = (paidAt: { gte?: Date; lte?: Date }) =>
+      this.prisma.depositPayout
+        .findMany({ where: { barbershopId, paidAt }, select: { amount: true } })
+        .then((rows) => rows.map((r) => Number(r.amount)));
+    const [inPeriod, untilPeriodEnd, payoutsInPeriod, payoutsUntilPeriodEnd] = await Promise.all([
+      deposits(period),
+      deposits(untilEnd),
+      payouts(period),
+      payouts(untilEnd),
     ]);
-    // Cada sinal com a taxa de quando foi cobrado. Centavos arredondados.
-    const current = currentPricing().platformFeePercent;
-    const round2 = (n: number) => Math.round(n * 100) / 100;
-    const feeOf = (amount: number, percent: { toString(): string } | null) =>
-      round2((amount * Number(percent ?? current)) / 100);
-    const grossAmount = round2(paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0));
-    const platformFeeAmount = round2(
-      paid.reduce(
-        (sum, a) => sum + feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
-        0,
-      ),
-    );
-    // Os que caíram direto na conta da unidade (Connect) já foram repassados
-    const paidOutAutomatically = round2(
-      paid
-        .filter((a) => a.depositStripeAccountId)
-        .reduce(
-          (sum, a) =>
-            sum +
-            Number(a.depositAmount ?? 0) -
-            feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
-          0,
-        ),
-    );
-    const paidOutManually = round2(payouts.reduce((sum, p) => sum + Number(p.amount), 0));
-    return {
-      paymentsCount: paid.length,
-      grossAmount,
-      platformFeePercentage:
-        grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
-      platformFeeAmount,
-      paidOutAutomatically,
-      paidOutManually,
-      netOwedToBarbershop: round2(
-        grossAmount - platformFeeAmount - paidOutAutomatically - paidOutManually,
-      ),
-    };
+    return payoutReport({
+      inPeriod,
+      untilPeriodEnd,
+      payoutsInPeriod,
+      payoutsUntilPeriodEnd,
+      currentFee: currentPricing().platformFeePercent,
+      currency: shop.currency,
+    });
   }
 
   /** Estorno do sinal quando o cliente cancela pelo link, dentro do prazo. */
