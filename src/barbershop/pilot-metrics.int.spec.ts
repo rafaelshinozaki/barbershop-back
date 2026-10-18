@@ -77,6 +77,7 @@ describe('Métrica do piloto (integração)', () => {
       await prisma.user.create({
         data: {
           email: `piloto-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: 'Dono Piloto',
           idDocNumber: RUN.slice(-20),

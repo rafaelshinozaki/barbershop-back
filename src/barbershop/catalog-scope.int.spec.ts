@@ -54,8 +54,10 @@ describe('Escopo de serviço, produto e categoria (integração)', () => {
       ).id;
     ownerA = await user('a');
     const ownerB = await user('b');
-    networkA = (await prisma.network.create({ data: { ownerUserId: ownerA, name: `A ${RUN}` } })).id;
-    networkB = (await prisma.network.create({ data: { ownerUserId: ownerB, name: `B ${RUN}` } })).id;
+    networkA = (await prisma.network.create({ data: { ownerUserId: ownerA, name: `A ${RUN}` } }))
+      .id;
+    networkB = (await prisma.network.create({ data: { ownerUserId: ownerB, name: `B ${RUN}` } }))
+      .id;
     const shop = (owner: number, network: number, label: string) =>
       prisma.barbershop.create({
         data: {
@@ -90,7 +92,12 @@ describe('Escopo de serviço, produto e categoria (integração)', () => {
     ).id;
     productB = (
       await prisma.barbershopProduct.create({
-        data: { barbershopId: shopB, name: 'Gel B', salePrice: new Decimal(10), categoryId: categoryB },
+        data: {
+          barbershopId: shopB,
+          name: 'Gel B',
+          salePrice: new Decimal(10),
+          categoryId: categoryB,
+        },
       })
     ).id;
   });

@@ -48,6 +48,7 @@ describe('Horário de funcionamento e escala (integração)', () => {
       await prisma.user.create({
         data: {
           email: `sch-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

@@ -152,6 +152,7 @@ describe('SocialService: chave do token da Página', () => {
         }),
         update: updatePost,
       },
+      barbershop: { findUnique: async () => ({ closedAt: null }) },
       socialConnection: {
         findUnique: async () => ({ id: 7, facebookPageId: 'p1', facebookAccessToken: stored }),
         update: updateConnection,

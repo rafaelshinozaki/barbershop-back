@@ -65,6 +65,7 @@ describe('Lista de espera online (integração)', () => {
       await prisma.user.create({
         data: {
           email: `wl-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

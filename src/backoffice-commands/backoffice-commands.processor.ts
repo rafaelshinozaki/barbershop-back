@@ -42,6 +42,7 @@ import {
   SUPPORT_REPLY_EMAIL,
 } from './commands';
 import { supportEmail } from '../common/app-urls';
+import { must } from '../common/must';
 
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || supportEmail();
 
@@ -130,8 +131,9 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     if (job.name === ACCOUNT_RESEND) {
       const cmd = parseAccountResend(job.data);
       if (cmd.kind === 'password') await this.users.forgotPass({ email: cmd.email });
-      else if (cmd.kind === 'client_verify') await this.clients.resendVerificationEmail(cmd.clientAccountId!);
-      else await this.invites.resendByStaff(cmd.inviteId!);
+      else if (cmd.kind === 'client_verify')
+        await this.clients.resendVerificationEmail(must(cmd.clientAccountId, 'conta do cliente'));
+      else await this.invites.resendByStaff(must(cmd.inviteId, 'convite'));
       return;
     }
     if (job.name === SEARCH_CACHE_BUMP) {

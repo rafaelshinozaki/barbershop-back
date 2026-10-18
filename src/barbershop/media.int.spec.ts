@@ -50,6 +50,7 @@ describe('Fotos da página pública (integração, S3 simulado)', () => {
       await prisma.user.create({
         data: {
           email: `media-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

@@ -58,6 +58,7 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     prisma.user.create({
       data: {
         email: `mu-${label}-${RUN}@test.local`,
+        isActive: true,
         password: 'x',
         fullName: `Teste ${label}`,
         idDocNumber: `${RUN}${label}`.slice(-20),
@@ -269,6 +270,8 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     expect(
       (await prisma.employeeInvite.findUniqueOrThrow({ where: { id: resent.invite.id } })).status,
     ).toBe('EXPIRED');
+    // Libera a vaga do plano para os próximos testes da mesma unidade
+    await prisma.barber.update({ where: { id: again.barber.id }, data: { isActive: false } });
   });
 
   it('desmarcar "Ativo" na edição: cancela o convite pendente e avisa dos horários marcados', async () => {

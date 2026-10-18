@@ -47,6 +47,7 @@ describe('sitemap.xml (integração)', () => {
       await prisma.user.create({
         data: {
           email: `sitemap-owner-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: 'Dono Sitemap',
           idDocNumber: `${RUN}map`.slice(-20),

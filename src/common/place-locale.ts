@@ -196,7 +196,11 @@ export function currencyForCountry(country: string): string {
  * Fuso da agenda. O do navegador entra se for um fuso válido daquele país.
  * Senão, o estado; senão, o fuso principal do país.
  */
-export function timezoneForPlace(country: string, state: string, browserTz?: string | null): string {
+export function timezoneForPlace(
+  country: string,
+  state: string,
+  browserTz?: string | null,
+): string {
   const found = countryOf(country);
   const zones = (found?.timezones ?? []).map((z) => z.zoneName).filter(Boolean);
   const browser = browserTz?.trim();
