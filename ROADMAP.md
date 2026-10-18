@@ -1856,3 +1856,20 @@ Foram lidos a lista "a repassar" e a tela "em risco" da Operação (backoffice-b
      **Fazer:** o dono é o da unidade ou, sem ele, o da rede (a regra de `ownerAcceptsPublic`), e o atraso vem do `membership`.
      
      **Feito:** o dono é o da unidade ou, sem ele, o da rede (a mesma regra da vitrine), e o atraso vem do `User.membership`.
+
+### Quadragésima segunda rodada (2026-10-18): estorno do aluguel, unidade pausada, Destaque
+
+Foram lidos o fechamento do caixa (soma o que entrou em dinheiro, já sem o sinal e o pago antes), o uso de sessão do clube (exige assinatura ativa, com baixa condicional e reenvio do webhook sem zerar o ciclo), o estorno de pacote e de vale-presente e o prazo do Destaque (soma ao que falta).
+
+180. ⬜ **Aluguel da cadeira estornado continua como pago** (back: `AppPaymentsService.syncStripeRefund`, `ChairRentService`): o `charge.refunded` cuida do sinal, do atendimento pago antes, da caixinha, do clube e das compras da plataforma, mas não do aluguel pago por cartão (fatura da assinatura `chair-rent`). Estornado pelo painel da Stripe, o pagamento fica `SUCCEEDED`:
+     - o espaço continua vendo esse valor como recebido e a repassar (item 178), e o backoffice também;
+     - a despesa "Aluguel" lançada no negócio do profissional continua lá;
+     - o `rentPaidUntil` continua valendo.
+     
+     **Fazer:** sincronizar o estorno do aluguel pela fatura (`stripeInvoiceId`), como o do clube. Gravar o valor devolvido, tirar do repasse e da despesa do profissional, e no total voltar o período pago.
+181. ⬜ **Unidade pausada continua cobrando o clube, e quem pausa pode ser o gerente** (back: `updateBarbershop`): desmarcar "Ativa" na edição tira a unidade da busca, da página pública e do agendamento online, mas as assinaturas do clube continuam cobrando todo mês na Stripe. O cliente paga por sessões numa unidade que não aceita horário. Encerrar a unidade cancela o clube (item 128); pausar não faz nada. Além disso, a edição exige só o cargo de gerente, então um gerente tira a unidade do ar sozinho, e reativar também é com ele.
+     
+     **Fazer:** pausar (e reativar) só pelo dono. Com assinaturas do clube ativas, pedir confirmação e pausar a cobrança na Stripe (`pause_collection`) enquanto a unidade estiver pausada, ou cancelar como no encerramento.
+182. ⬜ **Destaque comprado para unidade que não aparece na busca** (back: `FeaturedPaymentService.target`): para o profissional, a compra confere se a página pública existe (`publicProfile`). Para a unidade, não confere nada além do cargo. Uma unidade pausada, suspensa pela plataforma, escondida da busca (`searchHiddenAt`) ou com o dono desativado (item 162) pode comprar 30 dias de Destaque e não aparecer em lugar nenhum. O prazo também corre enquanto a plataforma mantém a unidade suspensa.
+     
+     **Fazer:** recusar a compra (ou avisar antes de pagar) quando a unidade não passa pela regra da vitrine (`ownerAcceptsPublic`, `isActive`, sem `searchHiddenAt`). Ao suspender pela plataforma, devolver os dias que faltavam no fim da suspensão.
