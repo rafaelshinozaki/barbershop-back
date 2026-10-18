@@ -1808,6 +1808,12 @@ As três mains estavam vermelhas depois dos commits diretos (rodadas 33 a 39):
 - **backoffice-back:** consulta lendo uma coluna que não existe e 51 colunas novas sem tabela de teste;
 - **front:** o e2e quebrava por causa do back que não compilava.
 
+O pior: o back da main não subia. O passo "App sobe e responde" do CI acusa isso, mas como os testes falhavam antes, ninguém via. Duas causas:
+- `EmployeeInviteService` não achava o `BarbershopService` por causa da importação circular `barbershop.service` → `job-opening.service` → `employee-invite.service` → `barbershop.service`, criada pelo `forwardRef` do item 171. Corrigido com `forwardRef` também no convite.
+- `Barber.pendingInviteToken` era `string | null` sem o tipo explícito no `@Field`, e o GraphQL não montava o schema. Corrigido com `@Field(() => String)`.
+
+Um deploy dessa main derrubaria a API.
+
 Foi lido o código novo do back (convites, clube, sinal, caixinha, plano pela equipe, tempo real e vitrine) e da Operação no backoffice-back.
 
 172. ✅ **Excluir a conta do dono quebrava no banco** (back: migração do item 169, `AccountDeletionService`): as FKs para `BarbershopService` (`AppointmentService`, `WalkInService`, `ServiceHistory`, `ServicePackage`, `ClientSubscriptionPlan`) passaram a `NO ACTION`, para o histórico do serviço ficar. Só que apagar a unidade ou a rede leva, em cascata, o serviço e o agendamento com o item dele. O Postgres confere a FK do serviço antes de a cascata apagar o item, e a exclusão de conta (LGPD) falhava com `AppointmentService_serviceId_fkey` para qualquer dono com um atendimento. **Feito:** as cinco FKs ficam `DEFERRABLE INITIALLY DEFERRED`. A conferência passa a ser no fim da transação, quando o item já saiu. Apagar só um serviço com histórico continua barrado.

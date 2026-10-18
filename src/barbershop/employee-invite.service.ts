@@ -1,4 +1,11 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  forwardRef,
+} from '@nestjs/common';
 import { WORK_MINIMUM_AGE, completedYears } from '../common/work-age';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
@@ -64,6 +71,8 @@ export class EmployeeInviteService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    // barbershop.service → job-opening.service → este arquivo → barbershop.service
+    @Inject(forwardRef(() => BarbershopService))
     private readonly barbershopService: BarbershopService,
     private readonly realtime: RealtimeService,
     private readonly activity: ActivityNotificationsService,
