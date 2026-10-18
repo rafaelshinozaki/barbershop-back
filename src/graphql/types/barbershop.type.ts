@@ -1893,8 +1893,17 @@ export class SubscriptionRevenueReportType {
   @Field(() => Float)
   platformFeeAmount: number;
 
-  @Field(() => Float)
+  @Field(() => Float, {
+    description:
+      'Saldo a repassar até o fim do período (tudo o que foi cobrado menos a taxa, o que caiu direto na conta da unidade e os repasses manuais). Negativo: a unidade recebeu a mais, por exemplo com um estorno depois do repasse',
+  })
   netOwedToBarbershop: number;
+
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Das cobranças do período, o que já voltou para o cliente (fica fora do bruto)',
+  })
+  refundedAmount?: number;
 
   @Field(() => Float, {
     nullable: true,

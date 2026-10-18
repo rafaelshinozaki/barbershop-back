@@ -274,6 +274,30 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     await prisma.barber.update({ where: { id: again.barber.id }, data: { isActive: false } });
   });
 
+  it('equipe da plataforma reenvia mesmo quando quem convidou não é mais gerente (item 175)', async () => {
+    const shop = shops[1];
+    const created = await invites.createInvite(shop.ownerId, {
+      barbershopId: shop.shopId,
+      email: `mu-staff-${RUN}@test.local`,
+      name: 'Reenvio pela plataforma',
+      phone: '11900000013',
+      role: 'BarbershopEmployee',
+    });
+    // Quem convidou saiu: o profissional autônomo não gerencia a unidade
+    await prisma.employeeInvite.update({
+      where: { id: created.invite.id },
+      data: { inviterId: proUserId },
+    });
+    await expect(
+      invites.resendInvite(proUserId, shop.shopId, created.barber.id),
+    ).rejects.toBeDefined();
+
+    const resent = await invites.resendByStaff(created.invite.id);
+    expect(resent.invite.inviteToken).not.toBe(created.invite.inviteToken);
+    expect(resent.invite.inviterId).toBe(proUserId);
+    await prisma.barber.update({ where: { id: created.barber.id }, data: { isActive: false } });
+  });
+
   it('desmarcar "Ativo" na edição: cancela o convite pendente e avisa dos horários marcados', async () => {
     const shop = shops[0];
     const { barber, invite } = await invites.createInvite(shop.ownerId, {

@@ -10,6 +10,8 @@ export enum PAGAMENTO_STATUS {
   COMPLETED = 'COMPLETED',
   PENDING = 'PENDING',
   FAILED = 'FAILED',
+  // Devolvido ao dono (pela equipe ou pelo painel da Stripe)
+  REFUNDED = 'REFUNDED',
 }
 
 export enum MEMBERSHIP_STATUS {

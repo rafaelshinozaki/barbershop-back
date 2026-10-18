@@ -226,12 +226,33 @@ export class EmployeeInviteService {
     if (!invite || !invite.barber?.isActive) {
       throw new BadRequestException('Não há convite pendente para reenviar.');
     }
+    return this.reissue(invite.id, userId);
+  }
+
+  /**
+   * Equipe da plataforma: reenvia um convite pendente sem ser gerente da
+   * unidade. Quem convidou pode já ter saído, então não passa pela checagem
+   * de acesso dele, e o convite continua no nome de quem convidou.
+   */
+  async resendByStaff(inviteId: number) {
+    const invite = await this.prisma.employeeInvite.findFirst({
+      where: { id: inviteId, status: 'PENDING' },
+      include: { barber: { select: { isActive: true } } },
+    });
+    if (!invite || !invite.barber?.isActive) {
+      throw new BadRequestException('Não há convite pendente para reenviar.');
+    }
+    return this.reissue(invite.id);
+  }
+
+  /** Novo link, mais 30 dias e o e-mail de novo. Sem inviterId, fica quem convidou. */
+  private async reissue(inviteId: number, inviterId?: number) {
     const inviteToken = randomBytes(32).toString('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
     const updated = await this.prisma.employeeInvite.update({
-      where: { id: invite.id },
-      data: { inviteToken, expiresAt, inviterId: userId },
+      where: { id: inviteId },
+      data: { inviteToken, expiresAt, ...(inviterId != null ? { inviterId } : {}) },
       include: {
         inviter: { select: { fullName: true } },
         barbershop: { select: { name: true, country: true } },
@@ -246,18 +267,6 @@ export class EmployeeInviteService {
       this.logger.error(`Convite ${updated.id}: reenvio não saiu`, error as Error);
     }
     return { invite: updated, emailSent };
-  }
-
-  /** Equipe da plataforma: reenvia um convite pendente sem ser gerente da unidade. */
-  async resendByStaff(inviteId: number) {
-    const invite = await this.prisma.employeeInvite.findFirst({
-      where: { id: inviteId, status: 'PENDING' },
-      include: { barber: { select: { isActive: true } } },
-    });
-    if (!invite || !invite.barber?.isActive) {
-      throw new BadRequestException('Não há convite pendente para reenviar.');
-    }
-    return this.resendInvite(invite.inviterId, invite.barbershopId, invite.barberId);
   }
 
   /**

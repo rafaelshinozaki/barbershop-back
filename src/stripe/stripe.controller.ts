@@ -133,6 +133,7 @@ export class StripeController {
         // Estorno pelo painel da Stripe (ou que ficou pendente e depois confirmou)
         case 'charge.refunded':
           await this.appPayments.syncStripeRefund(event.data.object as Stripe.Charge);
+          await this.paymentsService.syncPlanRefund(event.data.object as Stripe.Charge);
           break;
         case 'refund.updated': {
           const refund = event.data.object as Stripe.Refund;
@@ -141,6 +142,7 @@ export class StripeController {
           if (!chargeId) break;
           const charge = await this.stripeService.retrieveCharge(chargeId);
           await this.appPayments.syncStripeRefund(charge);
+          await this.paymentsService.syncPlanRefund(charge);
           break;
         }
         // Conta de recebimento (Connect): cadastro concluído, pendência, bloqueio
