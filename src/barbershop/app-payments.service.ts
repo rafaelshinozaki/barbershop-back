@@ -282,8 +282,11 @@ export class AppPaymentsService {
     }
   }
 
-  /** Webhook charge.dispute.*: guarda (ou atualiza) a disputa */
-  async recordDispute(dispute: Stripe.Dispute) {
+  /**
+   * Webhook charge.dispute.*: guarda (ou atualiza) a disputa. Devolve true
+   * quando a disputa acabou de ser perdida (quem chama trata como estorno).
+   */
+  async recordDispute(dispute: Stripe.Dispute): Promise<boolean> {
     const intent =
       typeof dispute.payment_intent === 'string'
         ? dispute.payment_intent
@@ -306,7 +309,7 @@ export class AppPaymentsService {
       where: { stripeDisputeId: dispute.id },
       select: { closedAt: true },
     });
-    if (existing?.closedAt) return;
+    if (existing?.closedAt) return false;
     await this.prisma.paymentDispute.upsert({
       where: { stripeDisputeId: dispute.id },
       create: { stripeDisputeId: dispute.id, ...data },
@@ -314,6 +317,37 @@ export class AppPaymentsService {
     });
     // Disputa perdida: o dinheiro voltou ao cliente, como um estorno
     if (dispute.status === 'lost' && intent) await this.revokePlatformPurchase(intent);
+    return dispute.status === 'lost';
+  }
+
+  /**
+   * Disputa perdida vista como estorno da cobrança: o valor disputado voltou
+   * ao cliente. Antes só a compra da plataforma era desfeita; clube, sinal e
+   * aluguel continuavam como recebidos e entravam no "a repassar". A
+   * cobrança vem da Stripe (a fatura liga clube e aluguel); sem ela, só o
+   * que se acha pelo pagamento (sinal, atendimento pago, caixinha).
+   */
+  async chargeOfLostDispute(dispute: Stripe.Dispute): Promise<Stripe.Charge | null> {
+    const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+    let charge: Stripe.Charge | null =
+      dispute.charge && typeof dispute.charge !== 'string' ? dispute.charge : null;
+    if (!charge && chargeId) {
+      charge = await this.stripe.retrieveCharge(chargeId).catch((err) => {
+        this.logger.warn(`Cobrança ${chargeId} da disputa ${dispute.id} não encontrada: ${err}`);
+        return null;
+      });
+    }
+    const amount = charge?.amount ?? dispute.amount;
+    const lost = Math.max(dispute.amount, charge?.amount_refunded ?? 0);
+    return {
+      ...(charge ?? {}),
+      id: charge?.id ?? chargeId ?? dispute.id,
+      payment_intent: charge?.payment_intent ?? dispute.payment_intent,
+      currency: charge?.currency ?? dispute.currency,
+      amount,
+      amount_refunded: Math.min(amount, lost),
+      refunded: lost >= amount,
+    } as Stripe.Charge;
   }
 
   /**

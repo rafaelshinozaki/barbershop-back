@@ -191,6 +191,8 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'expire-deposit-holds', repeat: { every: 60 * 1000 } },
       // Lista de espera: avisado que não agendou no prazo, a vaga vai pro próximo
       { id: 'pass-waitlist-offers', repeat: { every: 5 * 60 * 1000 } },
+      // Lista de espera: dia que passou ou cliente que já agendou sai da fila
+      { id: 'close-stale-waitlist', repeat: { every: 60 * 60 * 1000 } },
     ]);
   }
 }
@@ -211,6 +213,7 @@ export class AppointmentReminderProcessor extends WorkerHost {
     if (job.name === 'client-rating-digest') return this.customerRatings.sendDailyDigest();
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
     if (job.name === 'pass-waitlist-offers') return this.barbershops.passExpiredWaitlistOffers();
+    if (job.name === 'close-stale-waitlist') return this.barbershops.closeStaleWaitlistEntries();
     if (job.name === 'expire-deposit-holds') {
       await this.deposits.remindPendingHolds();
       return this.deposits.expireHolds();

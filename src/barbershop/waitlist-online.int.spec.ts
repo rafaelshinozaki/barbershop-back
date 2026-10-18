@@ -134,6 +134,8 @@ describe('Lista de espera online (integração)', () => {
 
   afterAll(async () => {
     await prisma.waitlistEntry.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.walkInService.deleteMany({ where: { walkIn: { barbershopId: shopId } } });
+    await prisma.walkIn.deleteMany({ where: { barbershopId: shopId } });
     await prisma.appointmentService.deleteMany({
       where: { appointment: { barbershopId: shopId } },
     });
@@ -441,5 +443,139 @@ describe('Lista de espera online (integração)', () => {
     expect(await barbershops.passExpiredWaitlistOffers()).toBe(0);
     expect((await get(e3)).status).toBe('WAITING');
     expect((await get(e2)).offeredStartAt).toBeNull();
+  });
+
+  it('fecha o que ficou para trás: dia passado, quem já agendou, unidade pausada (item 185)', async () => {
+    const get = (id: number) => prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
+    const person = async (label: string, n: number) =>
+      (
+        await prisma.customer.create({
+          data: {
+            networkId,
+            name: `Velha ${label}`,
+            phone: `3${RUN.slice(-9)}${n}`,
+            email: `velha-${label}-${RUN}@test.local`,
+          },
+        })
+      ).id;
+    const [old, booked] = [await person('passada', 1), await person('agendou', 2)];
+
+    // A equipe também só põe na lista de hoje até 60 dias
+    await expect(
+      barbershops.createWaitlistEntry(ownerId, shopId, {
+        customerId: old,
+        date: new Date('2020-01-01T00:00:00Z'),
+      }),
+    ).rejects.toThrow('Escolha um dia entre hoje');
+    await expect(
+      barbershops.createWaitlistEntry(ownerId, shopId, {
+        customerId: old,
+        date: new Date(`${addDays(monday, 90)}T00:00:00Z`),
+      }),
+    ).rejects.toThrow('Escolha um dia entre hoje');
+
+    // Dia que passou: vence; e não conta mais no limite de 5 por cliente
+    const phone = `5${RUN.slice(-9)}5`;
+    const first = await join({ customerPhone: phone, customerEmail: `limite-${RUN}@test.local` });
+    const entry = await get(first.entryId);
+    await prisma.waitlistEntry.createMany({
+      data: [1, 2, 3, 4, 5].map((n) => ({
+        barbershopId: shopId,
+        customerId: entry.customerId,
+        date: new Date(`2020-01-0${n}T00:00:00Z`),
+        source: 'online',
+      })),
+    });
+    const past = await prisma.waitlistEntry.create({
+      data: { barbershopId: shopId, customerId: old, date: new Date('2020-02-01T00:00:00Z') },
+    });
+    await join({
+      customerPhone: phone,
+      customerEmail: `limite-2-${RUN}@test.local`,
+      date: addDays(monday, 2),
+    });
+
+    // Quem já tem horário no dia: fecha e não é avisado de novo
+    const day = addDays(monday, 28);
+    const waiting = await barbershops.createWaitlistEntry(ownerId, shopId, {
+      customerId: booked,
+      barberId: ana,
+      date: new Date(`${day}T00:00:00Z`),
+    });
+    await barbershops.createAppointment(ownerId, shopId, {
+      customerId: booked,
+      barberId: beto,
+      startAt: at(day, '09:00'),
+      endAt: at(day, '09:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    const freed = await barbershops.createAppointment(ownerId, shopId, {
+      customerId,
+      barberId: ana,
+      startAt: at(day, '15:00'),
+      endAt: at(day, '15:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    emails.length = 0;
+    await barbershops.updateAppointment(ownerId, shopId, freed!.id, { status: 'CANCELLED' });
+    expect(await waitFor(async () => (await get(waiting.id)).status === 'BOOKED')).toBe(true);
+    expect(emails.some((e) => e.template === 'waitlist_slot_available')).toBe(false);
+
+    const closed = await barbershops.closeStaleWaitlistEntries();
+    expect(closed.expired).toBeGreaterThanOrEqual(6);
+    expect((await get(past.id)).status).toBe('EXPIRED');
+    expect((await get(first.entryId)).status).toBe('WAITING');
+
+    // Unidade pausada: cancelar não avisa ninguém
+    const later = addDays(monday, 29);
+    const other = await barbershops.createWaitlistEntry(ownerId, shopId, {
+      customerId: old,
+      barberId: ana,
+      date: new Date(`${later}T00:00:00Z`),
+    });
+    const slot = await barbershops.createAppointment(ownerId, shopId, {
+      customerId,
+      barberId: ana,
+      startAt: at(later, '10:00'),
+      endAt: at(later, '10:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await prisma.barbershop.update({ where: { id: shopId }, data: { isActive: false } });
+    try {
+      await barbershops.updateAppointment(ownerId, shopId, slot!.id, { status: 'CANCELLED' });
+      await new Promise((r) => setTimeout(r, 500));
+      expect((await get(other.id)).status).toBe('WAITING');
+    } finally {
+      await prisma.barbershop.update({ where: { id: shopId }, data: { isActive: true } });
+    }
+  });
+
+  it('fila de chegada: barbeiro só na própria fila e sem o telefone escondido (item 187)', async () => {
+    await expect(
+      barbershops.createWalkIn(staffUserId, shopId, {
+        barberId: beto,
+        customerName: 'Fila do colega',
+        services: [{ serviceId }],
+      } as never),
+    ).rejects.toThrow('sua própria fila');
+    const stranger = await prisma.customer.create({
+      data: { networkId, name: 'Desconhecido', phone: `2${RUN.slice(-9)}1` },
+    });
+    const walkIn = await barbershops.createWalkIn(ownerId, shopId, {
+      barberId: ana,
+      customerId: stranger.id,
+      customerName: 'Desconhecido',
+      customerPhone: '11977776666',
+      services: [{ serviceId }],
+    } as never);
+    expect(walkIn.customerPhone).toBe('11977776666');
+    const updated = await barbershops.updateWalkInStatus(
+      staffUserId,
+      shopId,
+      walkIn.id,
+      'IN_PROGRESS',
+    );
+    expect(updated.status).toBe('IN_PROGRESS');
+    expect(updated.customerPhone).toBeNull();
   });
 });

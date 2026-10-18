@@ -1314,7 +1314,7 @@ model WaitlistEntry {
   serviceId    Int?               // null = qualquer serviço
   date         DateTime           // dia desejado (comparado por data, sem hora)
   notes        String?
-  status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED
+  status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED, BOOKED (já agendou o dia), EXPIRED (o dia passou)
   notifiedAt   DateTime?
   // Horário oferecido no último aviso: sem agendar no prazo, passa pro
   // próximo da fila (null = já passou ou não há o que passar)
