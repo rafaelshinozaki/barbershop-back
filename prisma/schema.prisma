@@ -613,6 +613,7 @@ model Barbershop {
   clientSubscriptions     ClientSubscription[]
   subscriptionPayouts     SubscriptionPayout[]
   depositPayouts          DepositPayout[]
+  chairRentPayouts        ChairRentPayout[]
   socialConnection        SocialConnection?
   socialPageChoices       SocialPageChoice[]
   socialPosts             SocialPost[]
@@ -1822,6 +1823,21 @@ model DepositPayout {
   @@index([barbershopId, paidAt])
 }
 
+// Repasse manual ao espaço do aluguel da cadeira pago por cartão (caiu na
+// conta da plataforma). Registrado no backoffice; o espaço vê o saldo.
+model ChairRentPayout {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  barbershopId    Int // o espaço (quem recebe o aluguel)
+  amount          Decimal
+  paidAt          DateTime
+  note            String?
+  recordedByEmail String
+  barbershop      Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId, paidAt])
+}
+
 // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
 model ConsentForm {
@@ -2019,6 +2035,8 @@ model ChairRentPayment {
   periodEnd              DateTime?
   receiptUrl             String?
   receiptPdfUrl          String?
+  // Taxa da plataforma de quando o cartão foi cobrado (mudar a taxa hoje não muda o que já foi pago)
+  platformFeePercent     Decimal?
   link                   SharedLocationMember @relation(fields: [sharedLocationMemberId], references: [id], onDelete: Cascade)
 
   @@unique([sharedLocationMemberId, dueDate])

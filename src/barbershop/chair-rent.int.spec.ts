@@ -9,6 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { ChairRentService } from './chair-rent.service';
 import { SharedLocationService } from './shared-location.service';
+import { Decimal } from '@prisma/client/runtime/library';
+import { currentPricing, setCurrentPricing } from '../pricing/pricing';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -274,6 +276,27 @@ describe('Aluguel da cadeira (integração)', () => {
     expect(hostView).toMatchObject({ isHost: true, totalReceived: 500, payoutDue: 425 });
     const memberView = await rent.view(linkId, member.shopId);
     expect(memberView).toMatchObject({ isHost: false, totalReceived: 500, payoutDue: null });
+    // Item 178: a taxa fica a da cobrança; o repasse registrado baixa o saldo
+    const paidRow = await prisma.chairRentPayment.findUniqueOrThrow({
+      where: { stripeInvoiceId: `in_1_${RUN}` },
+    });
+    expect(Number(paidRow.platformFeePercent)).toBe(15);
+    const saved = { ...currentPricing() };
+    setCurrentPricing({ ...saved, platformFeePercent: 40 });
+    try {
+      await prisma.chairRentPayout.create({
+        data: {
+          barbershopId: host.shopId,
+          amount: new Decimal(400),
+          paidAt: new Date(),
+          recordedByEmail: 'fin@test.local',
+        },
+      });
+      expect((await rent.view(linkId, host.shopId)).payoutDue).toBe(25);
+    } finally {
+      setCurrentPricing(saved);
+      await prisma.chairRentPayout.deleteMany({ where: { barbershopId: host.shopId } });
+    }
     // Fatura de outra assinatura não é do aluguel
     expect(await rent.handleInvoice(invoice(`in_x_${RUN}`, 'sub_outra', true), true)).toBe(false);
   });
