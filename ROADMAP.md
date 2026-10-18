@@ -1900,3 +1900,27 @@ Foram lidos o apagar e o editar venda (devolvem vale-presente, pontos, pacote, s
      **Fazer:** validar como o backoffice (moeda ISO de 3 letras, fuso IANA válido). Trocar a moeda só pelo dono, e recusar se a unidade já tem dinheiro registrado (venda paga, clube, sinal ou aluguel); nesse caso o caminho é o backoffice. Ao trocar o país, sugerir moeda e fuso do país (`place-locale`).
      
      **Feito:** a edição só aceita fuso IANA válido e moeda ISO 4217. Trocar a moeda é só do dono e é recusado se a unidade já tem dinheiro registrado (venda paga, clube, sinal ou pago antes, aluguel); nesse caso o caminho é o backoffice. Trocar o país sem informar a moeda traz o fuso do país e, se ainda não há dinheiro registrado, a moeda dele.
+
+### Quadragésima quarta rodada (2026-10-18): lista de espera, disputa perdida e fila de chegada
+
+Foram lidos a lista de espera (entrada manual e online, aviso no cancelamento e na abertura de horário, repasse da vaga para o próximo da fila), o sitemap (respeita suspensão e moderação), o lembrete de agendamento, as disputas da Stripe e as permissões dos cargos nos endpoints que usam o nível padrão (`barber`).
+
+185. ⬜ **Lista de espera nunca fecha: dia passado e cliente que já agendou continuam na fila** (back: `WaitlistEntry`, `joinPublicWaitlist`, `checkWaitlistOnCancellation`):
+     - Nenhum job encerra as entradas de dias que já passaram: elas ficam `WAITING` (ou `NOTIFIED`) para sempre. O limite de 5 entradas online por cliente (`WAITLIST_MAX_ONLINE_PER_CUSTOMER`) conta essas entradas velhas, sem filtro de data; depois de 5 dias de espera ao longo do tempo, o cliente nunca mais consegue entrar em nenhuma lista ("Você já está na lista de espera de 5 dias").
+     - A tela da equipe (`getWaitlistEntries`) acumula entradas de dias passados como "aguardando".
+     - Quando o cliente agenda aquele dia (pelo link do aviso ou por conta própria), a entrada continua `WAITING`/`NOTIFIED`. Um cancelamento depois avisa de novo quem já tem horário, e a vaga deixa de ir para o próximo da fila.
+     - O aviso de vaga sai também quando a unidade está pausada (`isActive = false`) ou suspensa pela plataforma, com link para uma página que não aceita agendamento.
+     - A entrada manual (`createWaitlistEntry`) aceita dia no passado ou a anos de distância, sem o limite de 60 dias da online.
+     
+     **Fazer:** um job diário encerra (status `EXPIRED`) as entradas de dias que já passaram no fuso da unidade; o limite por cliente conta só as de hoje em diante. Agendar (pela equipe ou online) o dia de uma entrada do mesmo cliente na mesma unidade fecha a entrada (`BOOKED`). Unidade pausada ou fora da vitrine não avisa ninguém. A entrada manual segue a mesma janela da online (hoje até 60 dias).
+186. ⬜ **Disputa perdida não sai do repasse** (back: `AppPaymentsService.recordDispute`; backoffice-back: `payoutBalances`):
+     - Quando o cliente abre disputa no cartão e a plataforma perde, o dinheiro volta para ele (com a tarifa da disputa). Hoje a disputa perdida só desfaz compra da plataforma (Destaque, taxa da vaga).
+     - Fatura do clube e sinal cobrados na conta da plataforma (sem Connect) e aluguel de cadeira no cartão continuam como recebidos: o "a repassar" do backoffice e o relatório de repasse do app mostram esse valor como devido à unidade, e a plataforma paga do próprio bolso um dinheiro que já devolveu.
+     - Ganhar a disputa depois de um "lost" provisório não é o caso: o status final é só um.
+     
+     **Fazer:** disputa perdida marca o pagamento de origem como devolvido (`refundedAmount` no clube e no aluguel, `depositRefundedAt` no sinal, pelo `payment_intent`/fatura), do mesmo jeito que o estorno pela Stripe, e entra no relatório. Se o repasse já foi feito, o saldo fica negativo (a unidade recebeu a mais), como no estorno.
+187. ⬜ **Fila de chegada: telefone escondido volta na resposta e barbeiro põe cliente na fila de outro** (back: `updateWalkInStatus`, `createWalkIn`):
+     - `getWalkIns` esconde o telefone do cliente para quem não pode ver contato (`hideWalkInContact`), mas `updateWalkInStatus` devolve o registro inteiro: o barbeiro muda o status de um cliente da própria fila e recebe o `customerPhone` que a lista escondia.
+     - `createWalkIn` aceita qualquer `barberId` da unidade para o barbeiro, enquanto no agendamento o barbeiro só marca na própria agenda (`ensureCanBookForBarber`). Ele põe clientes na fila de colegas, e depois não consegue mexer neles (`updateWalkInStatus` só deixa a própria fila).
+     
+     **Fazer:** a resposta de `updateWalkInStatus` (e de `createWalkIn`) passa por `hideWalkInContact`. Na criação, barbeiro e barbeiro básico só põem na própria fila (ou sem profissional); recepção para cima, em qualquer uma.
