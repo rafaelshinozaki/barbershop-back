@@ -153,4 +153,53 @@ describe('Pausar a unidade (integração)', () => {
       }),
     ).toBe(0);
   });
+
+  it('moeda e fuso: válidos, moeda só pelo dono e não com dinheiro registrado (item 184)', async () => {
+    await expect(shops.updateBarbershop(ownerId, shopId, { currency: 'R$' })).rejects.toThrow(
+      'Moeda inválida',
+    );
+    await expect(shops.updateBarbershop(ownerId, shopId, { timezone: 'Narnia' })).rejects.toThrow(
+      'Fuso horário inválido',
+    );
+    await expect(
+      shops.updateBarbershop(managerId, shopId, { currency: 'USD' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Esta unidade tem clube: a moeda não muda
+    await expect(shops.updateBarbershop(ownerId, shopId, { currency: 'usd' })).rejects.toThrow(
+      'dinheiro registrado',
+    );
+    // Mesma moeda (só formato diferente) passa
+    await shops.updateBarbershop(ownerId, shopId, { currency: ' brl ' });
+    // País novo: o fuso acompanha; a moeda fica (já tem dinheiro)
+    const moved = await shops.updateBarbershop(ownerId, shopId, { country: 'PT', state: '' });
+    expect(moved).toMatchObject({ currency: 'BRL', timezone: 'Europe/Lisbon' });
+
+    // Unidade sem dinheiro registrado: o país novo traz a moeda dele
+    const fresh = await prisma.barbershop.create({
+      data: {
+        name: 'Nova',
+        slug: `pause-nova-${RUN}`,
+        address: 'Rua B, 2',
+        city: 'SP',
+        state: 'SP',
+        country: 'BR',
+        postalCode: '01000000',
+        phone: '11999999998',
+        email: `pause-nova-${RUN}@test.local`,
+        timezone: 'America/Sao_Paulo',
+        networkId,
+        ownerUserId: ownerId,
+      },
+    });
+    try {
+      expect(
+        await shops.updateBarbershop(ownerId, fresh.id, { country: 'PT', state: '' }),
+      ).toMatchObject({ country: 'PT', currency: 'EUR', timezone: 'Europe/Lisbon' });
+      expect(await shops.updateBarbershop(ownerId, fresh.id, { currency: 'USD' })).toMatchObject({
+        currency: 'USD',
+      });
+    } finally {
+      await prisma.barbershop.delete({ where: { id: fresh.id } });
+    }
+  });
 });

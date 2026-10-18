@@ -94,6 +94,7 @@ import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { JobOpeningService } from './job-opening.service';
 import { currentPricing } from '../pricing/pricing';
+import { currencyForCountry, timezoneForPlace } from '../common/place-locale';
 import { payoutReport, type PayoutCharge } from './payout-report';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
 import { moneyCap, toMinorUnits } from '../common/money-units';
@@ -456,6 +457,17 @@ export function paidInRange(range: Prisma.DateTimeFilter): Prisma.SaleWhereInput
 
 /** Estorno do saldo de pacote ou cartão-presente: lançamento negativo, de hoje */
 export const REFUND_SALE_TYPE = 'REFUND';
+// Códigos ISO 4217 que o Intl conhece (a lib do TypeScript daqui ainda não tipa supportedValuesOf)
+const SUPPORTED_CURRENCIES = new Set(
+  (Intl as unknown as { supportedValuesOf(key: 'currency'): string[] }).supportedValuesOf(
+    'currency',
+  ),
+);
+export const SHOP_TIMEZONE_INVALID_MESSAGE = 'Fuso horário inválido';
+export const SHOP_CURRENCY_INVALID_MESSAGE = 'Moeda inválida (use o código de 3 letras, como BRL)';
+export const SHOP_CURRENCY_OWNER_ONLY_MESSAGE = 'Só o dono troca a moeda da unidade.';
+export const SHOP_CURRENCY_LOCKED_MESSAGE =
+  'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.';
 export const REFUND_SALE_LOCKED_MESSAGE = 'Estorno não pode ser alterado nem apagado.';
 
 export const CLOSED_CASH_SALE_MESSAGE =
@@ -1831,6 +1843,7 @@ export class BarbershopService {
     if (toggling && current.accessLevel !== 'owner') {
       throw new ForbiddenException('Só o dono pausa ou reativa a unidade.');
     }
+    data = { ...data, ...(await this.shopBaseUpdate(current, data)) };
     if (
       data.minBookingLeadMinutes !== undefined &&
       !BOOKING_LEAD_MINUTES.includes(data.minBookingLeadMinutes)
@@ -1886,6 +1899,80 @@ export class BarbershopService {
     });
     if (toggling) await this.setClubBillingPaused(id, !updated.isActive);
     return updated;
+  }
+
+  /**
+   * Moeda e fuso na edição da unidade. Fuso tem de ser IANA; moeda, ISO.
+   * Trocar a moeda é do dono e só sem dinheiro registrado (vendas, clube,
+   * sinal e aluguel são gravados sem moeda: o histórico mudaria de sentido).
+   * País novo sem moeda informada: moeda e fuso do país, quando ainda dá.
+   */
+  private async shopBaseUpdate(
+    shop: {
+      id: number;
+      currency: string;
+      country: string | null;
+      state: string | null;
+      accessLevel: AccessLevel;
+    },
+    data: { currency?: string; timezone?: string; country?: string; state?: string },
+  ): Promise<{ currency?: string; timezone?: string }> {
+    const out: { currency?: string; timezone?: string } = {};
+    if (data.timezone !== undefined) {
+      const timezone = data.timezone.trim();
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+      } catch {
+        throw new BadRequestException(SHOP_TIMEZONE_INVALID_MESSAGE);
+      }
+      out.timezone = timezone;
+    }
+    let currency = data.currency?.trim().toUpperCase();
+    if (currency !== undefined && !SUPPORTED_CURRENCIES.has(currency)) {
+      throw new BadRequestException(SHOP_CURRENCY_INVALID_MESSAGE);
+    }
+    const country = data.country?.trim();
+    const countryChanged =
+      !!country && country.toUpperCase() !== (shop.country ?? '').trim().toUpperCase();
+    const suggested = countryChanged && currency === undefined;
+    if (suggested) currency = currencyForCountry(country);
+    if (currency !== undefined && currency !== shop.currency) {
+      const history = await this.hasMoneyHistory(shop.id);
+      if (suggested) {
+        // Já tem dinheiro na moeda antiga: fica (a troca é pelo backoffice)
+        if (history) currency = undefined;
+      } else {
+        if (shop.accessLevel !== 'owner') {
+          throw new ForbiddenException(SHOP_CURRENCY_OWNER_ONLY_MESSAGE);
+        }
+        if (history) throw new BadRequestException(SHOP_CURRENCY_LOCKED_MESSAGE);
+      }
+    }
+    if (currency !== undefined) out.currency = currency;
+    if (countryChanged && data.timezone === undefined) {
+      out.timezone = timezoneForPlace(country, data.state ?? shop.state ?? '');
+    }
+    return out;
+  }
+
+  /** A unidade já registrou dinheiro (venda paga, clube, sinal, pago antes ou aluguel) */
+  private async hasMoneyHistory(barbershopId: number) {
+    const [sales, plans, appointments, rents] = await Promise.all([
+      this.prisma.sale.count({ where: { barbershopId, paymentStatus: 'PAID' }, take: 1 }),
+      this.prisma.clientSubscriptionPlan.count({ where: { barbershopId }, take: 1 }),
+      this.prisma.appointment.count({
+        where: { barbershopId, OR: [{ depositPaid: true }, { prepaidAt: { not: null } }] },
+        take: 1,
+      }),
+      this.prisma.sharedLocationMember.count({
+        where: {
+          OR: [{ hostBarbershopId: barbershopId }, { memberBarbershopId: barbershopId }],
+          rentAmount: { not: null },
+        },
+        take: 1,
+      }),
+    ]);
+    return sales + plans + appointments + rents > 0;
   }
 
   /**
@@ -8809,7 +8896,18 @@ export class BarbershopService {
         await assertSoloProductSaleAllowed(this.prisma, barbershopId, sale.createdAt, adding);
       }
     }
-    return this.prisma.$transaction(async (tx) => {
+    // Comissão já paga do profissional desta venda: a diferença vai pro período em aberto
+    const before = await this.prisma.sale.findFirst({
+      where: { id: saleId, barbershopId },
+      select: { barberId: true, paymentStatus: true, paidAt: true, createdAt: true },
+    });
+    const lockedBarberId =
+      before?.barberId != null && (await this.paidCommissionPayout(before))
+        ? before.barberId
+        : null;
+    const commissionBefore =
+      lockedBarberId != null ? await this.saleCommission(barbershopId, saleId, lockedBarberId) : 0;
+    const updated = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.sale.findFirst({
         where: { id: saleId, barbershopId },
         include: {
@@ -8976,6 +9074,34 @@ export class BarbershopService {
         include: { items: true, customer: true, barber: true },
       });
     });
+    if (updated) {
+      const note = `Venda #${saleId} alterada depois do pagamento da comissão`;
+      if (lockedBarberId != null) {
+        const after = await this.saleCommission(barbershopId, saleId, lockedBarberId);
+        await this.commissionAdjustment(
+          this.prisma,
+          barbershopId,
+          lockedBarberId,
+          after - commissionBefore,
+          userId,
+          note,
+        );
+      }
+      // Passou para outro profissional num período que ele já recebeu
+      if (updated.barberId != null && updated.barberId !== before?.barberId) {
+        if (await this.paidCommissionPayout(updated)) {
+          await this.commissionAdjustment(
+            this.prisma,
+            barbershopId,
+            updated.barberId,
+            await this.saleCommission(barbershopId, saleId, updated.barberId),
+            userId,
+            note,
+          );
+        }
+      }
+    }
+    return updated;
   }
 
   async deleteSale(userId: number, barbershopId: number, saleId: number) {
@@ -8991,6 +9117,11 @@ export class BarbershopService {
     if (existing.cashSession?.status === 'CLOSED') {
       throw new BadRequestException(CLOSED_CASH_SALE_MESSAGE);
     }
+    // Comissão desta venda já paga ao profissional: sai no próximo pagamento
+    const paidCommission =
+      existing.barberId != null && (await this.paidCommissionPayout(existing))
+        ? await this.saleCommission(barbershopId, saleId, existing.barberId)
+        : 0;
     // Apagar desfaz o que a venda mexeu fora dela: antes o cartão-presente
     // ficava sem o saldo, o cliente perdia os pontos resgatados (e mantinha
     // os ganhos) e o estoque continuava baixado
@@ -9050,6 +9181,16 @@ export class BarbershopService {
         });
       }
       await tx.sale.delete({ where: { id: saleId } });
+      if (paidCommission && existing.barberId != null) {
+        await this.commissionAdjustment(
+          tx,
+          barbershopId,
+          existing.barberId,
+          -paidCommission,
+          userId,
+          `Venda #${saleId} apagada depois do pagamento da comissão`,
+        );
+      }
     });
     return true;
   }
@@ -9196,6 +9337,8 @@ export class BarbershopService {
             data: {
               barbershopId,
               customerId: existing.customerId,
+              // Do profissional da venda: a comissão do que voltou é descontada
+              barberId: existing.barberId,
               cashSessionId: openSession?.id ?? null,
               saleType: REFUND_SALE_TYPE,
               subtotal: value,
@@ -10175,7 +10318,58 @@ export class BarbershopService {
     };
   }
 
-  async computeCommissions(barbershopId: number, from: Date, to: Date) {
+  /** Pagamento de comissão do profissional da venda que já cobriu a data dela */
+  private async paidCommissionPayout(sale: {
+    barberId: number | null;
+    paymentStatus: string;
+    paidAt: Date | null;
+    createdAt: Date;
+  }) {
+    if (sale.barberId == null || sale.paymentStatus !== 'PAID') return null;
+    const date = sale.paidAt ?? sale.createdAt;
+    return this.prisma.barberPayout.findFirst({
+      where: { barberId: sale.barberId, periodStart: { lte: date }, periodEnd: { gte: date } },
+      select: { id: true },
+    });
+  }
+
+  /** Comissão desta venda para o profissional (0 se não é paga ou não é dele) */
+  private async saleCommission(barbershopId: number, saleId: number, barberId: number) {
+    const { rows } = await this.computeCommissions(barbershopId, new Date(0), new Date(0), [
+      saleId,
+    ]);
+    return round2(rows.find((r) => r.barberId === barberId)?.totalCommission ?? 0);
+  }
+
+  /**
+   * Venda de período com a comissão já paga mudou: a diferença vira bônus
+   * ou desconto no período em aberto do profissional (o que foi pago fica).
+   */
+  private async commissionAdjustment(
+    client: Prisma.TransactionClient,
+    barbershopId: number,
+    barberId: number,
+    delta: number,
+    userId: number,
+    note: string,
+  ) {
+    const amount = round2(Math.abs(delta));
+    if (amount < 0.01) return;
+    await client.barberPayEntry.create({
+      data: {
+        barbershopId,
+        barberId,
+        type: delta > 0 ? 'BONUS' : 'DEDUCTION',
+        amount: new Decimal(amount),
+        date: new Date(),
+        notes: note,
+        createdByUserId: userId,
+      },
+    });
+  }
+
+  /** Comissão por profissional no período (ou só das vendas `saleIds`, sem olhar a data) */
+  async computeCommissions(barbershopId: number, from: Date, to: Date, saleIds?: number[]) {
     const [rules, sales, barbers] = await Promise.all([
       this.prisma.commissionRule.findMany({ where: { barbershopId } }),
       this.prisma.sale.findMany({
@@ -10183,12 +10377,16 @@ export class BarbershopService {
           barbershopId,
           paymentStatus: 'PAID',
           barberId: { not: null },
-          // Pela data em que foi paga: venda criada pendente e paga depois do
-          // fechamento daquele mês não entrava em nenhum fechamento
-          OR: [
-            { paidAt: { gte: from, lte: to } },
-            { paidAt: null, createdAt: { gte: from, lte: to } },
-          ],
+          ...(saleIds
+            ? { id: { in: saleIds } }
+            : {
+                // Pela data em que foi paga: venda criada pendente e paga depois do
+                // fechamento daquele mês não entrava em nenhum fechamento
+                OR: [
+                  { paidAt: { gte: from, lte: to } },
+                  { paidAt: null, createdAt: { gte: from, lte: to } },
+                ],
+              }),
         },
         include: { items: { include: { service: { select: { price: true } } } } },
       }),
@@ -10233,12 +10431,14 @@ export class BarbershopService {
         };
         byBarber.set(barberId, acc);
       }
-      acc.salesCount++;
+      // Estorno (valor negativo) desconta a comissão, mas não é uma venda a mais
+      if (sale.saleType !== REFUND_SALE_TYPE) acc.salesCount++;
       // O desconto dado na venda reduz a base da comissão na proporção de
       // cada item (antes contava o preço cheio dos itens)
       const itemsSum = sale.items.reduce((sum, i) => sum + Number(i.totalPrice), 0);
       const discount = Number(sale.discountAmount ?? 0);
-      const factor = itemsSum > 0 ? Math.max(0, itemsSum - discount) / itemsSum : 0;
+      const factor =
+        itemsSum > 0 ? Math.max(0, itemsSum - discount) / itemsSum : itemsSum < 0 ? 1 : 0;
       for (const item of sale.items) {
         // Serviço coberto pelo pacote ou pelo clube entra com preço 0: a
         // comissão sai sobre o valor da sessão (antes quem atendia não

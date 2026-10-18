@@ -1884,15 +1884,19 @@ Foram lidos o fechamento do caixa (soma o que entrou em dinheiro, já sem o sina
 
 Foram lidos o apagar e o editar venda (devolvem vale-presente, pontos, pacote, sessão do clube e estoque), a baixa de estoque (negativo é proposital e comentado), o limite de agendamento online por cliente (já existe) e o cálculo da comissão (pela data em que a venda foi paga, com desconto e sessão coberta).
 
-183. ⬜ **Venda apagada ou editada depois de pagar a comissão some sem ajuste** (back: `deleteSale`, `updateSale`, `PayrollService`):
+183. ✅ **Venda apagada ou editada depois de pagar a comissão some sem ajuste** (back: `deleteSale`, `updateSale`, `PayrollService`):
      - O período em aberto do profissional começa no dia seguinte ao último pagamento (`BarberPayout`). Apagar a venda, trocar o profissional, mudar o valor ou voltar de "paga" para "pendente" numa venda de um período já pago não trava nem gera ajuste. O profissional fica com a comissão de uma venda que não existe mais, ou deixa de receber a de uma venda que passou para ele.
      - O estorno do saldo de pacote ou vale-presente (`refundIssuedRemainder`) é lançado sem profissional (`barberId` vazio). Se a regra de comissão cobre `PACKAGE` ou `GIFT_CARD`, quem vendeu continua com a comissão do que foi devolvido.
      
      **Fazer:** venda de período já pago não pode mudar o que conta para a comissão (valor, profissional, itens, situação), nem ser apagada; a correção vira um lançamento (`BarberPayEntry` de desconto ou bônus) no período em aberto, com o motivo. O estorno de saldo leva o profissional da venda original.
-184. ⬜ **Moeda e fuso da unidade editáveis por gerente, sem validação** (back: `UpdateBarbershopInput`, `updateBarbershop`): a API aceita `currency` e `timezone` como texto livre, de qualquer gerente.
+     
+     **Feito:** apagar ou editar uma venda paga cuja data já está num pagamento de comissão do profissional não trava. A diferença da comissão vira um lançamento no período em aberto: desconto quando diminui ou a venda é apagada, bônus quando aumenta, com o número da venda na nota. Se a venda passa para outro profissional que já recebeu aquele período, ele ganha o bônus. O que foi pago não é reescrito. O estorno do saldo de pacote ou vale-presente leva o profissional da venda, e item negativo entra na comissão (antes ficava zerado), descontando o que voltou. O estorno não conta como venda a mais.
+184. ✅ **Moeda e fuso da unidade editáveis por gerente, sem validação** (back: `UpdateBarbershopInput`, `updateBarbershop`): a API aceita `currency` e `timezone` como texto livre, de qualquer gerente.
      - Uma moeda inválida ("R$", "real") derruba a formatação de dinheiro nas telas (`Intl.NumberFormat` lança erro) e a Stripe recusa as cobranças.
      - Uma moeda válida, mas diferente, reinterpreta todo o histórico (vendas, clube, sinal e repasses são gravados sem moeda) e deixa os preços do clube na Stripe na moeda antiga.
      - O backoffice já valida o formato (`assertShopBase`); o app não.
      - No front, a edição muda o país sem recalcular moeda e fuso: uma unidade que passa de BR para PT continua em real e no fuso de São Paulo.
      
      **Fazer:** validar como o backoffice (moeda ISO de 3 letras, fuso IANA válido). Trocar a moeda só pelo dono, e recusar se a unidade já tem dinheiro registrado (venda paga, clube, sinal ou aluguel); nesse caso o caminho é o backoffice. Ao trocar o país, sugerir moeda e fuso do país (`place-locale`).
+     
+     **Feito:** a edição só aceita fuso IANA válido e moeda ISO 4217. Trocar a moeda é só do dono e é recusado se a unidade já tem dinheiro registrado (venda paga, clube, sinal ou pago antes, aluguel); nesse caso o caminho é o backoffice. Trocar o país sem informar a moeda traz o fuso do país e, se ainda não há dinheiro registrado, a moeda dele.

@@ -38,6 +38,11 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A unidade não aparece na busca agora (pausada, suspensa ou escondida). O Destaque só vale para unidade no ar.':
     'FEATURED_SHOP_NOT_LISTED',
   'Só o dono pausa ou reativa a unidade.': 'SHOP_PAUSE_OWNER_ONLY',
+  'Fuso horário inválido': 'SHOP_TIMEZONE_INVALID',
+  'Moeda inválida (use o código de 3 letras, como BRL)': 'SHOP_CURRENCY_INVALID',
+  'Só o dono troca a moeda da unidade.': 'SHOP_CURRENCY_OWNER_ONLY',
+  'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.':
+    'SHOP_CURRENCY_LOCKED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
