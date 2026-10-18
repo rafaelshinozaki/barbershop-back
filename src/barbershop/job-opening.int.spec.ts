@@ -68,6 +68,7 @@ describe('Vagas para freelancer (integração)', () => {
       await prisma.user.create({
         data: {
           email: `job-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Vaga ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

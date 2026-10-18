@@ -1,4 +1,11 @@
-import { fromMinorUnits, isZeroDecimal, moneyCap, moneyScale, roundMoney, toMinorUnits } from './money-units';
+import {
+  fromMinorUnits,
+  isZeroDecimal,
+  moneyCap,
+  moneyScale,
+  roundMoney,
+  toMinorUnits,
+} from './money-units';
 
 describe('money-units', () => {
   it('moeda com centavos vai × 100', () => {

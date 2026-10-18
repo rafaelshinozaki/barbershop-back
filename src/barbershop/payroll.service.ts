@@ -167,7 +167,10 @@ export class PayrollService {
     }
     const needsFixed = data.payType !== 'COMMISSION';
     const fixed = data.fixedAmount ?? null;
-    if (needsFixed && (fixed == null || !(fixed > 0) || fixed > moneyCap(MAX_AMOUNT, shop.currency))) {
+    if (
+      needsFixed &&
+      (fixed == null || !(fixed > 0) || fixed > moneyCap(MAX_AMOUNT, shop.currency))
+    ) {
       throw new BadRequestException('Informe o valor fixo');
     }
     const fixedAmount = needsFixed && fixed != null ? new Decimal(round2(fixed)) : null;

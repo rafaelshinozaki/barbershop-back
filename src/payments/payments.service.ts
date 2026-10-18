@@ -1498,7 +1498,12 @@ export class PaymentsService {
     }
     const intent = [payment.paymentId, payment.transactionId].find((id) => id?.startsWith('pi_'));
     if (!intent) throw new BadRequestException('Essa cobrança não tem pagamento na Stripe');
-    await this.stripeService.createRefund(intent, undefined, undefined, `plan-refund-${payment.id}`);
+    await this.stripeService.createRefund(
+      intent,
+      undefined,
+      undefined,
+      `plan-refund-${payment.id}`,
+    );
     await this.prisma.payment.update({
       where: { id: payment.id },
       data: { status: 'REFUNDED' },

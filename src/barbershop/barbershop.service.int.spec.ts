@@ -58,6 +58,7 @@ describe('BarbershopService (integração com o banco)', () => {
     return prisma.user.create({
       data: {
         email: `int-${label}-${RUN}@test.local`,
+        isActive: true,
         password: 'x',
         fullName: `Teste ${label}`,
         idDocNumber: `${RUN}${label}`.slice(-20),
@@ -202,7 +203,6 @@ describe('BarbershopService (integração com o banco)', () => {
       where: { barber: { barbershopId: { in: shopIds } } },
     });
     await prisma.barber.deleteMany({ where: { barbershopId: { in: shopIds } } });
-    await prisma.barbershopService.deleteMany({ where: { barbershopId: { in: shopIds } } });
     await prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } });
     await prisma.network.deleteMany({ where: { id: { in: networkIds } } });
     // User tem soft delete (middleware do PrismaService transforma delete em

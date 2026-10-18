@@ -55,6 +55,7 @@ describe('Feriados e fechamentos (integração)', () => {
       await prisma.user.create({
         data: {
           email: `clo-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

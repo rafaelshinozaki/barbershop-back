@@ -137,6 +137,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
       await prisma.user.create({
         data: {
           email: `dep-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Teste ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

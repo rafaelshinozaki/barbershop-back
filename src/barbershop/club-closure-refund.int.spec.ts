@@ -113,7 +113,9 @@ describe('Clube ao encerrar a unidade (integração)', () => {
       });
       const periodStart = new Date(now - startedDaysAgo * DAY);
       const periodEnd = new Date(periodStart.getTime() + 30 * DAY);
-      const offer = await prisma.clientSubscriptionPlan.findUniqueOrThrow({ where: { id: planId } });
+      const offer = await prisma.clientSubscriptionPlan.findUniqueOrThrow({
+        where: { id: planId },
+      });
       const sub = await prisma.clientSubscription.create({
         data: {
           barbershopId: shopId,

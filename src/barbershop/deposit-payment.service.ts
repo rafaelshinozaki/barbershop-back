@@ -403,7 +403,10 @@ export class DepositPaymentService {
       round2((amount * Number(percent ?? current)) / 100);
     const grossAmount = round2(paid.reduce((sum, a) => sum + Number(a.depositAmount ?? 0), 0));
     const platformFeeAmount = round2(
-      paid.reduce((sum, a) => sum + feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent), 0),
+      paid.reduce(
+        (sum, a) => sum + feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
+        0,
+      ),
     );
     // Os que caíram direto na conta da unidade (Connect) já foram repassados
     const paidOutAutomatically = round2(
@@ -411,7 +414,9 @@ export class DepositPaymentService {
         .filter((a) => a.depositStripeAccountId)
         .reduce(
           (sum, a) =>
-            sum + Number(a.depositAmount ?? 0) - feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
+            sum +
+            Number(a.depositAmount ?? 0) -
+            feeOf(Number(a.depositAmount ?? 0), a.depositPlatformFeePercent),
           0,
         ),
     );
@@ -419,7 +424,8 @@ export class DepositPaymentService {
     return {
       paymentsCount: paid.length,
       grossAmount,
-      platformFeePercentage: grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
+      platformFeePercentage:
+        grossAmount > 0 ? round2((platformFeeAmount / grossAmount) * 100) : current,
       platformFeeAmount,
       paidOutAutomatically,
       paidOutManually,

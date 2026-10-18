@@ -73,6 +73,7 @@ describe('Chat do atendimento (integração)', () => {
     const u = await prisma.user.create({
       data: {
         email: `chat-${label}-${RUN}@test.local`,
+        isActive: true,
         password: 'x',
         fullName: `Chat ${label}`,
         idDocNumber: `chat${label}${RUN}`.slice(-20),

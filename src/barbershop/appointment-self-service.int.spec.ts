@@ -78,6 +78,7 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
       await prisma.user.create({
         data: {
           email: `self-owner-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: 'Dono Link',
           idDocNumber: `self${RUN}`.slice(-20),

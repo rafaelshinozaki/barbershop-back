@@ -1159,7 +1159,12 @@ export class BarbershopService {
         subtitle?: string;
         customerName?: string;
       }>,
-      revenueByBarbershop: [] as Array<{ id: number; name: string; total: number; currency: string }>,
+      revenueByBarbershop: [] as Array<{
+        id: number;
+        name: string;
+        total: number;
+        currency: string;
+      }>,
     };
   }
 
@@ -1261,7 +1266,9 @@ export class BarbershopService {
     const now = new Date();
     const shopIds = shops.map((s) => s.id);
     const barberFilter = opts.barberIds ? { barberId: { in: opts.barberIds } } : {};
-    const groups = localeGroups(shops.map((shop) => ({ ...shop, currency: shop.currency ?? null })));
+    const groups = localeGroups(
+      shops.map((shop) => ({ ...shop, currency: shop.currency ?? null })),
+    );
     const skipRevenue = opts.revenueBarberIds != null && opts.revenueBarberIds.length === 0;
 
     const [perGroup, walkInsWaiting, upcoming] = await Promise.all([
@@ -1326,8 +1333,7 @@ export class BarbershopService {
     );
     return {
       appointmentsToday: perGroup.reduce((sum, group) => sum + group.count, 0),
-      revenueToday:
-        revenueTodayByCurrency.length === 1 ? revenueTodayByCurrency[0].amount : 0,
+      revenueToday: revenueTodayByCurrency.length === 1 ? revenueTodayByCurrency[0].amount : 0,
       revenueTodayByCurrency,
       walkInsWaiting,
       upcomingAppointments: upcoming.map((a) => {
@@ -1528,15 +1534,15 @@ export class BarbershopService {
     const revenueSamePeriodLastMonthByCurrency = moneyByCurrency(previousRows);
     const single = revenueThisMonthByCurrency.length <= 1;
     const currency = single
-      ? (revenueThisMonthByCurrency[0]?.currency ?? shops[0]?.currency ?? 'BRL')
-      : (shops[0]?.currency ?? 'BRL');
+      ? revenueThisMonthByCurrency[0]?.currency ?? shops[0]?.currency ?? 'BRL'
+      : shops[0]?.currency ?? 'BRL';
     const previousOf = new Map(
       revenueSamePeriodLastMonthByCurrency.map((row) => [row.currency, row.amount]),
     );
     return {
       currency,
-      revenueThisMonth: single ? (revenueThisMonthByCurrency[0]?.amount ?? 0) : 0,
-      revenueSamePeriodLastMonth: single ? (previousOf.get(currency) ?? 0) : 0,
+      revenueThisMonth: single ? revenueThisMonthByCurrency[0]?.amount ?? 0 : 0,
+      revenueSamePeriodLastMonth: single ? previousOf.get(currency) ?? 0 : 0,
       revenueThisMonthByCurrency,
       revenueSamePeriodLastMonthByCurrency,
       monthlyRevenue: [...monthly.entries()]
@@ -5282,9 +5288,7 @@ export class BarbershopService {
       where: {
         networkId: customer.networkId,
         marketingOptOut: false,
-        ...(email
-          ? { email: { equals: email, mode: 'insensitive' } }
-          : { id: customer.id }),
+        ...(email ? { email: { equals: email, mode: 'insensitive' } } : { id: customer.id }),
       },
       data: { marketingOptOut: true },
     });
@@ -5635,7 +5639,9 @@ export class BarbershopService {
       );
     }
     const all = await Promise.all(
-      (await this.publicBarbers(barbershopId)).map((b) =>
+      (
+        await this.publicBarbers(barbershopId)
+      ).map((b) =>
         this.slotsForBarber(barbershopId, b, durationMinutes, dateStr, timeZone, notBefore),
       ),
     );
@@ -5900,7 +5906,16 @@ export class BarbershopService {
       start: r.startAt.getTime(),
       end: r.endAt.getTime(),
     }));
-    return this.computeSlots(barber, duration, dateStr, timeZone, window, busyRanges, false, notBefore);
+    return this.computeSlots(
+      barber,
+      duration,
+      dateStr,
+      timeZone,
+      window,
+      busyRanges,
+      false,
+      notBefore,
+    );
   }
 
   /** Horários livres de um expediente já resolvido. `firstOnly` para no primeiro. */
