@@ -20,6 +20,12 @@ export class FeaturedStatusType {
   @Field({ description: 'Profissional sem página pública: precisa deixar pública antes' })
   needsPublicProfile: boolean;
 
+  @Field({
+    description:
+      'Unidade fora da busca (pausada, suspensa, escondida ou com o dono desativado): o Destaque não vale',
+  })
+  notListed: boolean;
+
   @Field(() => Int)
   priceCents: number;
 

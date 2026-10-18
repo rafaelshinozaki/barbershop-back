@@ -1755,6 +1755,9 @@ model ClientSubscription {
   sessionsPerCycle     Int?
   cancelAtPeriodEnd    Boolean   @default(false)
   canceledAt           DateTime?
+  // A unidade foi pausada pelo dono: a cobrança na Stripe fica suspensa
+  // (pause_collection) até reativar. Só as que a pausa suspendeu voltam.
+  shopPausedAt         DateTime?
   // Conta Connect no momento da assinatura. Preenchido = o Stripe manda o
   // dinheiro pra unidade (menos a taxa gravada abaixo). Vazio = cai na
   // plataforma e o repasse é manual. Não muda depois: a renovação segue a
@@ -2037,6 +2040,8 @@ model ChairRentPayment {
   receiptPdfUrl          String?
   // Taxa da plataforma de quando o cartão foi cobrado (mudar a taxa hoje não muda o que já foi pago)
   platformFeePercent     Decimal?
+  // Devolvido pelo painel da Stripe (sai do repasse ao espaço e da despesa do profissional)
+  refundedAmount         Decimal?
   link                   SharedLocationMember @relation(fields: [sharedLocationMemberId], references: [id], onDelete: Cascade)
 
   @@unique([sharedLocationMemberId, dueDate])
