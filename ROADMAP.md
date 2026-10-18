@@ -1832,21 +1832,27 @@ Foi lido o código novo do back (convites, clube, sinal, caixinha, plano pela eq
 
 Foram lidos a lista "a repassar" e a tela "em risco" da Operação (backoffice-back: `ops.ts`, `results.ts`), o registro de repasse manual (`admin-writes.ts`) e o resumo do aluguel da cadeira (back: `ChairRentService.view`).
 
-177. ⬜ **"A repassar" do backoffice soma errado** (backoffice-back: `OpsQueries.payoutsDue` e `stillOwed` em `results.ts`): a lista das unidades com dinheiro na plataforma, e o total da tela de Resultados, fazem clube + aluguel por cartão − repasses do clube − repasses do sinal. Erros:
+177. ✅ **"A repassar" do backoffice soma errado** (backoffice-back: `OpsQueries.payoutsDue` e `stillOwed` em `results.ts`): a lista das unidades com dinheiro na plataforma, e o total da tela de Resultados, fazem clube + aluguel por cartão − repasses do clube − repasses do sinal. Erros:
      - **Aluguel sem a taxa:** entra o valor cheio do aluguel pago por cartão, mas a plataforma fica com a taxa (`ChairRentService.view` desconta). O devido sai maior.
      - **Sinal pela metade:** os repasses do sinal (`DepositPayout`) são descontados, mas o sinal que ficou na plataforma (cobrado sem Connect) não entra. Uma unidade com sinal a receber aparece com menos, ou some da lista.
      - **Moedas misturadas:** só entra o que é em real, mas os repasses de qualquer moeda são descontados.
      - **Taxa do clube vazia vira 0%:** o back usa a taxa de hoje (relatório do clube, item 176). As duas telas dão números diferentes para a mesma unidade.
      
      **Fazer:** a mesma conta do relatório da unidade (item 176) para cada tipo, cada uma descontando só os próprios repasses, e por moeda.
-178. ⬜ **Aluguel da cadeira por cartão não tem registro de repasse** (back: `ChairRentService.view`; backoffice-back: `admin-writes.ts`): o aluguel pago por cartão cai na conta da plataforma e o espaço precisa receber, mas não existe onde registrar esse repasse (há `SubscriptionPayout` e `DepositPayout`). Consequências:
+     
+     **Feito:** a lista "a repassar" e o total dos Resultados usam uma conta só (`payouts.ts`). Clube, aluguel por cartão e sinal que ficou na plataforma são calculados separados, cada um sem a taxa de quando foi cobrado (sem taxa gravada, a de hoje em Preços e taxas) e menos os próprios repasses. Cada unidade aparece na própria moeda. O total dos Resultados soma só as unidades em real, como o resto da página. Na tela de repasses, cada tipo tem a sua coluna e o repasse é registrado no tipo escolhido (por padrão, o que tem mais a repassar). Antes, tudo virava repasse do clube.
+178. ✅ **Aluguel da cadeira por cartão não tem registro de repasse** (back: `ChairRentService.view`; backoffice-back: `admin-writes.ts`): o aluguel pago por cartão cai na conta da plataforma e o espaço precisa receber, mas não existe onde registrar esse repasse (há `SubscriptionPayout` e `DepositPayout`). Consequências:
      - o "a repassar" que o espaço vê (`payoutDue`) é todo o cartão desde o começo menos a taxa, e nunca diminui;
      - no backoffice, a única saída é registrar o repasse como "do clube". Isso tira do saldo do clube da unidade (item 176), que fica negativo, e o espaço continua vendo o aluguel como devido;
      - a taxa é a de hoje aplicada a todo o histórico: mudar a taxa muda o que já foi cobrado meses atrás.
      
      **Fazer:** `ChairRentPayout` (ou um tipo no repasse) e a tela do backoffice para registrar. Gravar a taxa em cada pagamento do aluguel, como no sinal e no clube. O `payoutDue` vira saldo (cobrado − taxa − repassado).
-179. ⬜ **"Em risco": o plano em atraso nunca aparece, e a unidade da rede sempre aparece** (backoffice-back: `OpsQueries.atRisk`):
+     
+     **Feito:** nova tabela `ChairRentPayout`, para o repasse ao espaço registrado no backoffice (`recordChairRentPayout`). Cada aluguel pago por cartão grava a taxa da cobrança (`ChairRentPayment.platformFeePercent`). O "a repassar" que o espaço vê passou a ser o saldo de todos os aluguéis no cartão dele: cobrado − taxa − repassado.
+179. ✅ **"Em risco": o plano em atraso nunca aparece, e a unidade da rede sempre aparece** (backoffice-back: `OpsQueries.atRisk`):
      - O motivo "plano em atraso" procura `Subscription.status = 'PAST_DUE'`, que não existe: a assinatura do plano só é `ACTIVE` ou `INACTIVE`, e o atraso fica em `User.membership = 'PAST_DUE'`. Nenhuma unidade cai nesse motivo.
      - Login e plano são do `Barbershop.ownerUserId`. Unidade sem dono próprio (o dono é o da rede, `Network.ownerUserId`) não tem login nenhum e entra sempre como "dono sem entrar".
      
      **Fazer:** o dono é o da unidade ou, sem ele, o da rede (a regra de `ownerAcceptsPublic`), e o atraso vem do `membership`.
+     
+     **Feito:** o dono é o da unidade ou, sem ele, o da rede (a mesma regra da vitrine), e o atraso vem do `User.membership`.

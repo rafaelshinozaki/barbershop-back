@@ -19,7 +19,7 @@ import { ActivityNotificationsService } from '../notifications/activity-notifica
 import { BarbershopService } from './barbershop.service';
 import { currentPricing } from '../pricing/pricing';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
-import { fromMinorUnits, toMinorUnits } from '../common/money-units';
+import { fromMinorUnits, roundMoney, toMinorUnits } from '../common/money-units';
 import { supportEmail } from '../common/app-urls';
 import { timeZoneForOwner } from '../common/owner-timezone';
 
@@ -756,7 +756,8 @@ export class ChairRentService {
     const link = await this.prisma.sharedLocationMember.findUniqueOrThrow({
       where: { id: linkId },
     });
-    const [byMethod, open] = await Promise.all([
+    const isHost = link.hostBarbershopId === viewerBarbershopId;
+    const [byMethod, open, payoutDue] = await Promise.all([
       this.prisma.chairRentPayment.groupBy({
         by: ['method'],
         where: { sharedLocationMemberId: linkId, status: 'SUCCEEDED' },
@@ -767,11 +768,10 @@ export class ChairRentService {
         select: { amount: true, dueDate: true },
         orderBy: { dueDate: 'asc' },
       }),
+      // Só quem é o espaço vê o repasse
+      isHost ? this.payoutBalance(link.hostBarbershopId) : Promise.resolve(null),
     ]);
     const total = byMethod.reduce((sum, m) => sum + Number(m._sum.amount ?? 0), 0);
-    // Taxa da plataforma só no que passou pelo Stripe; o manual já é do espaço
-    const card = Number(byMethod.find((m) => m.method === 'CARD')?._sum.amount ?? 0);
-    const fee = Math.round(card * currentPricing().platformFeePercent) / 100;
     const openAmount = open.reduce((sum, d) => sum + Number(d.amount), 0);
     const overdue = open.some((d) => d.dueDate && d.dueDate.getTime() + DAY_MS < Date.now());
     const manual = link.rentBillingMode === 'MANUAL';
@@ -790,7 +790,6 @@ export class ChairRentService {
       // Parou de cobrar, mas ficou mensalidade em aberto
       status = overdue ? 'PAST_DUE' : 'DUE';
     }
-    const isHost = link.hostBarbershopId === viewerBarbershopId;
     return {
       linkId: link.id,
       isHost,
@@ -803,9 +802,38 @@ export class ChairRentService {
       openAmount,
       totalReceived: total,
       platformFeePercent: currentPricing().platformFeePercent,
-      // Só quem é o espaço vê o repasse (do que entrou pelo cartão)
-      payoutDue: isHost ? card - fee : null,
+      payoutDue,
     };
+  }
+
+  /**
+   * Saldo a repassar ao espaço: todo aluguel pago por cartão (de todos os
+   * profissionais dele) menos a taxa de quando foi cobrado, menos os
+   * repasses já registrados no backoffice. O manual já é do espaço.
+   */
+  async payoutBalance(hostBarbershopId: number): Promise<number> {
+    const [payments, payouts, host] = await Promise.all([
+      this.prisma.chairRentPayment.findMany({
+        where: { link: { hostBarbershopId }, status: 'SUCCEEDED', method: 'CARD' },
+        select: { amount: true, platformFeePercent: true },
+      }),
+      this.prisma.chairRentPayout.aggregate({
+        where: { barbershopId: hostBarbershopId },
+        _sum: { amount: true },
+      }),
+      this.prisma.barbershop.findUnique({
+        where: { id: hostBarbershopId },
+        select: { currency: true },
+      }),
+    ]);
+    const current = currentPricing().platformFeePercent;
+    const currency = host?.currency ?? null;
+    const net = payments.reduce((sum, p) => {
+      const amount = Number(p.amount);
+      const percent = p.platformFeePercent == null ? current : Number(p.platformFeePercent);
+      return sum + amount - roundMoney((amount * percent) / 100, currency);
+    }, 0);
+    return roundMoney(net - Number(payouts._sum.amount ?? 0), currency);
   }
 
   /**
@@ -895,6 +923,7 @@ export class ChairRentService {
           method: 'CARD',
           paidAt: paid ? new Date() : null,
           status: paid ? 'SUCCEEDED' : 'FAILED',
+          platformFeePercent: paid ? new Decimal(currentPricing().platformFeePercent) : null,
           periodStart,
           periodEnd,
           receiptUrl: invoice.hosted_invoice_url ?? null,
@@ -903,6 +932,7 @@ export class ChairRentService {
         update: {
           status: paid ? 'SUCCEEDED' : 'FAILED',
           paidAt: paid ? new Date() : null,
+          ...(paid ? { platformFeePercent: new Decimal(currentPricing().platformFeePercent) } : {}),
           amount: new Decimal(amount),
           receiptUrl: invoice.hosted_invoice_url ?? null,
           receiptPdfUrl: invoice.invoice_pdf ?? null,
