@@ -19,6 +19,11 @@ export const REPORT_TARGETS = [
   'barbershop',
   // Avaliação da unidade com a resposta dela (a moderação pode ocultar só a resposta)
   'shop_review',
+  // Imagens da página pública: a moderação oculta só a imagem (a unidade envia outra)
+  'shop_cover',
+  'shop_logo',
+  'barber_photo',
+  'social_post',
 ] as const;
 export type ReportTarget = (typeof REPORT_TARGETS)[number];
 /**
@@ -30,8 +35,24 @@ export type ModeratedTarget = ReportTarget | 'chat_thread';
 const MODERATED_TARGETS: ModeratedTarget[] = [...REPORT_TARGETS, 'chat_thread'];
 /** Enquanto a denúncia está aberta, a conversa não sai pela guarda */
 const HOLD_UNTIL = new Date('2100-01-01T00:00:00Z');
+/** Imagens da página pública: o dono e os gerentes da unidade são avisados */
+const SHOP_IMAGES: ModeratedTarget[] = [
+  'photo',
+  'shop_cover',
+  'shop_logo',
+  'barber_photo',
+  'social_post',
+];
 /** Mensagens mostradas ao admin (as últimas) */
 const CHAT_EXCERPT = 30;
+
+/** Como o aviso ao dono chama cada imagem da página pública */
+const IMAGE_LABEL = {
+  shop_cover: 'A capa',
+  shop_logo: 'O logo',
+  barber_photo: 'A foto de um profissional',
+  social_post: 'Um post publicado',
+} as const;
 
 export const REPORT_REASONS = [
   'offensive',
@@ -54,10 +75,12 @@ export function reporterKey(ip: string, secret = process.env.JWT_SECRET || 'cont
 
 /**
  * Moderação do conteúdo público: qualquer visitante denuncia uma foto da
- * galeria, uma avaliação de profissional, um perfil de profissional ou a
- * página da unidade; o admin da plataforma decide numa fila.
+ * galeria, a capa, o logo, a foto de um profissional, um post publicado,
+ * uma avaliação, um perfil de profissional ou a página da unidade; o admin
+ * da plataforma decide numa fila.
  *
- * Ocultar: a foto sai da galeria, a avaliação sai da página e da nota, o
+ * Ocultar: a foto sai da galeria (a capa, o logo, a foto do profissional e o
+ * post saem da página até a unidade enviar outra), a avaliação sai da página e da nota, o
  * perfil sai do ar (página e busca) e a unidade sai da vitrine (busca e
  * sitemap; o link direto continua, pra quem já é cliente agendar).
  * O perfil do cliente não entra aqui: ele não é público.
@@ -146,6 +169,46 @@ export class ModerationService {
           select: { hiddenAt: true },
         });
         return r ? { hidden: r.hiddenAt != null } : null;
+      }
+      case 'shop_cover':
+      case 'shop_logo': {
+        const b = await this.prisma.barbershop.findUnique({
+          where: { id },
+          select: {
+            isActive: true,
+            coverKey: true,
+            photoKey: true,
+            coverHiddenAt: true,
+            logoHiddenAt: true,
+          },
+        });
+        if (!b || !b.isActive) return null;
+        if (type === 'shop_cover') return b.coverKey ? { hidden: b.coverHiddenAt != null } : null;
+        return b.photoKey ? { hidden: b.logoHiddenAt != null } : null;
+      }
+      case 'barber_photo': {
+        const b = await this.prisma.barber.findUnique({
+          where: { id },
+          select: {
+            isActive: true,
+            avatarKey: true,
+            avatarUrl: true,
+            avatarHiddenAt: true,
+            barbershop: { select: { isActive: true } },
+          },
+        });
+        return b && b.isActive && b.barbershop.isActive && (b.avatarKey || b.avatarUrl)
+          ? { hidden: b.avatarHiddenAt != null }
+          : null;
+      }
+      case 'social_post': {
+        const p = await this.prisma.socialPost.findUnique({
+          where: { id },
+          select: { status: true, hiddenAt: true, barbershop: { select: { isActive: true } } },
+        });
+        return p && p.status === 'PUBLISHED' && p.barbershop.isActive
+          ? { hidden: p.hiddenAt != null }
+          : null;
       }
     }
   }
@@ -256,6 +319,30 @@ export class ModerationService {
         WHERE rv."hiddenAt" IS NOT NULL OR rv."replyHiddenAt" IS NOT NULL
         GROUP BY rv.id
         UNION ALL
+        SELECT 'shop_cover', b.id, MAX(r."createdAt")
+        FROM "Barbershop" b
+        JOIN "ContentReport" r ON r."targetType" = 'shop_cover' AND r."targetId" = b.id
+        WHERE b."coverHiddenAt" IS NOT NULL
+        GROUP BY b.id
+        UNION ALL
+        SELECT 'shop_logo', b.id, MAX(r."createdAt")
+        FROM "Barbershop" b
+        JOIN "ContentReport" r ON r."targetType" = 'shop_logo' AND r."targetId" = b.id
+        WHERE b."logoHiddenAt" IS NOT NULL
+        GROUP BY b.id
+        UNION ALL
+        SELECT 'barber_photo', br.id, MAX(r."createdAt")
+        FROM "Barber" br
+        JOIN "ContentReport" r ON r."targetType" = 'barber_photo' AND r."targetId" = br.id
+        WHERE br."avatarHiddenAt" IS NOT NULL
+        GROUP BY br.id
+        UNION ALL
+        SELECT 'social_post', sp.id, MAX(r."createdAt")
+        FROM "SocialPost" sp
+        JOIN "ContentReport" r ON r."targetType" = 'social_post' AND r."targetId" = sp.id
+        WHERE sp."hiddenAt" IS NOT NULL
+        GROUP BY sp.id
+        UNION ALL
         SELECT 'chat_thread', t.id, MAX(r."createdAt")
         FROM "ChatThread" t
         JOIN "ContentReport" r
@@ -351,6 +438,68 @@ export class ModerationService {
           imageUrl: null,
           link: `/u/${r.barbershop.slug}`,
           hidden: r.hiddenAt != null || r.replyHiddenAt != null,
+        };
+      }
+      case 'shop_cover':
+      case 'shop_logo': {
+        const b = await this.prisma.barbershop.findUnique({
+          where: { id },
+          select: {
+            name: true,
+            slug: true,
+            coverKey: true,
+            photoKey: true,
+            coverHiddenAt: true,
+            logoHiddenAt: true,
+          },
+        });
+        if (!b) return null;
+        const key = type === 'shop_cover' ? b.coverKey : b.photoKey;
+        return {
+          title: b.name,
+          text: null,
+          imageUrl: key ? await this.s3.getDownloadUrl(key) : null,
+          link: `/u/${b.slug}`,
+          hidden: (type === 'shop_cover' ? b.coverHiddenAt : b.logoHiddenAt) != null,
+        };
+      }
+      case 'barber_photo': {
+        const b = await this.prisma.barber.findUnique({
+          where: { id },
+          select: {
+            name: true,
+            avatarKey: true,
+            avatarUrl: true,
+            avatarHiddenAt: true,
+            barbershop: { select: { name: true, slug: true } },
+          },
+        });
+        if (!b) return null;
+        return {
+          title: `${b.name} · ${b.barbershop.name}`,
+          text: null,
+          imageUrl: b.avatarKey ? await this.s3.getDownloadUrl(b.avatarKey) : b.avatarUrl,
+          link: `/u/${b.barbershop.slug}`,
+          hidden: b.avatarHiddenAt != null,
+        };
+      }
+      case 'social_post': {
+        const p = await this.prisma.socialPost.findUnique({
+          where: { id },
+          select: {
+            caption: true,
+            imageKey: true,
+            hiddenAt: true,
+            barbershop: { select: { name: true, slug: true } },
+          },
+        });
+        if (!p) return null;
+        return {
+          title: p.barbershop.name,
+          text: p.caption,
+          imageUrl: await this.s3.getDownloadUrl(p.imageKey),
+          link: `/u/${p.barbershop.slug}`,
+          hidden: p.hiddenAt != null,
         };
       }
       case 'chat_thread': {
@@ -475,7 +624,7 @@ export class ModerationService {
 
   /**
    * Avisa o dono (sininho e celular) quando a moderação oculta ou devolve
-   * algo dele: foto da galeria e página da unidade vão para o dono e os
+   * algo dele: fotos e imagens da página e a própria unidade vão para o dono e os
    * gerentes; o perfil, para o próprio profissional. Avaliação e conversa
    * não têm um "dono" a avisar (a avaliação é do cliente). Também chamado
    * pelo comando da API do backoffice, que agora decide a moderação.
@@ -486,16 +635,8 @@ export class ModerationService {
     let title = '';
     let message = '';
     let actionUrl = '';
-    if (type === 'photo' || type === 'barbershop') {
-      const barbershopId =
-        type === 'photo'
-          ? (
-              await this.prisma.barbershopPhoto.findUnique({
-                where: { id },
-                select: { barbershopId: true },
-              })
-            )?.barbershopId
-          : id;
+    if (SHOP_IMAGES.includes(type) || type === 'barbershop') {
+      const barbershopId = await this.shopOf(type, id);
       if (!barbershopId) return;
       const shop = await this.prisma.barbershop.findUnique({
         where: { id: barbershopId },
@@ -521,6 +662,12 @@ export class ModerationService {
         message = hide
           ? `Uma foto da galeria de ${shop.name} foi ocultada após denúncia. Se achar que foi engano, fale com o suporte.`
           : `A foto da galeria de ${shop.name} voltou a aparecer.`;
+      } else if (type !== 'barbershop') {
+        const what = IMAGE_LABEL[type as keyof typeof IMAGE_LABEL];
+        title = hide ? 'Imagem ocultada pela moderação' : 'Imagem de volta na página';
+        message = hide
+          ? `${what} de ${shop.name} saiu da página pública após denúncia. Envie outra imagem ou, se achar que foi engano, fale com o suporte.`
+          : `${what} de ${shop.name} voltou a aparecer na página pública.`;
       } else {
         title = hide ? 'Unidade fora da busca' : 'Unidade de volta na busca';
         message = hide
@@ -565,6 +712,29 @@ export class ModerationService {
     }
   }
 
+  /** Unidade dona do conteúdo (imagens da página pública e a própria unidade) */
+  private async shopOf(type: ModeratedTarget, id: number): Promise<number | undefined> {
+    switch (type) {
+      case 'photo':
+        return (
+          await this.prisma.barbershopPhoto.findUnique({
+            where: { id },
+            select: { barbershopId: true },
+          })
+        )?.barbershopId;
+      case 'barber_photo':
+        return (
+          await this.prisma.barber.findUnique({ where: { id }, select: { barbershopId: true } })
+        )?.barbershopId;
+      case 'social_post':
+        return (
+          await this.prisma.socialPost.findUnique({ where: { id }, select: { barbershopId: true } })
+        )?.barbershopId;
+      default:
+        return id;
+    }
+  }
+
   private async setHidden(type: ModeratedTarget, id: number, at: Date | null) {
     switch (type) {
       case 'photo':
@@ -585,6 +755,18 @@ export class ModerationService {
           where: { id },
           data: at ? { hiddenAt: at } : { hiddenAt: null, replyHiddenAt: null },
         });
+        return;
+      case 'shop_cover':
+        await this.prisma.barbershop.update({ where: { id }, data: { coverHiddenAt: at } });
+        return;
+      case 'shop_logo':
+        await this.prisma.barbershop.update({ where: { id }, data: { logoHiddenAt: at } });
+        return;
+      case 'barber_photo':
+        await this.prisma.barber.update({ where: { id }, data: { avatarHiddenAt: at } });
+        return;
+      case 'social_post':
+        await this.prisma.socialPost.update({ where: { id }, data: { hiddenAt: at } });
         return;
       case 'chat_thread':
         // "Ocultar" uma conversa é encerrá-la: fica visível, sem mensagem nova

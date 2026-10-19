@@ -180,7 +180,11 @@ export class BarbershopMediaService {
       where: { id: barbershopId },
       select: { coverKey: true },
     });
-    await this.prisma.barbershop.update({ where: { id: barbershopId }, data: { coverKey: key } });
+    await this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      // Outra capa no lugar da ocultada pela moderação volta à página
+      data: key !== shop?.coverKey ? { coverKey: key, coverHiddenAt: null } : { coverKey: key },
+    });
     if (shop?.coverKey && shop.coverKey !== key) this.discard(shop.coverKey);
     return key ? this.s3.getDownloadUrl(key) : null;
   }
@@ -215,8 +219,12 @@ export class BarbershopMediaService {
     if (key) this.ensureKey(key, this.avatarPrefix(barber.barbershopId, barber.id));
     await this.prisma.barber.update({
       where: { id: barber.id },
-      // Tirar a foto enviada também limpa o link antigo digitado à mão
-      data: key ? { avatarKey: key } : { avatarKey: null, avatarUrl: null },
+      // Tirar a foto enviada também limpa o link antigo digitado à mão; outra
+      // foto no lugar da ocultada pela moderação volta à página
+      data: {
+        ...(key ? { avatarKey: key } : { avatarKey: null, avatarUrl: null }),
+        ...(key !== barber.avatarKey ? { avatarHiddenAt: null } : {}),
+      },
     });
     if (barber.avatarKey && barber.avatarKey !== key) this.discard(barber.avatarKey);
     return key ? this.s3.getDownloadUrl(key) : null;

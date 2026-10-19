@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
 import { AdminProfessionalType } from '../types/public-booking.type';
@@ -874,13 +875,21 @@ export class BarbershopResolver {
   ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
     await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { logoHiddenAt: true },
+    });
+    // Logo ocultado pela moderação: o novo vai para outra chave (a antiga
+    // não volta à página se o envio não terminar) e volta a aparecer
     const upload = await this.s3Service.createImageUpload(
-      `barbershops/${barbershopId}/photo`,
+      shop?.logoHiddenAt
+        ? `barbershops/${barbershopId}/photo-${randomUUID()}`
+        : `barbershops/${barbershopId}/photo`,
       contentType,
     );
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
-      data: { photoKey: upload.key },
+      data: { photoKey: upload.key, logoHiddenAt: null },
     });
     return upload;
   }
@@ -895,7 +904,7 @@ export class BarbershopResolver {
     await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
-      data: { photoKey: null },
+      data: { photoKey: null, logoHiddenAt: null },
     });
     return true;
   }

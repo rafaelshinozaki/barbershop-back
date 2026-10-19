@@ -3189,6 +3189,16 @@ export class BarbershopService {
     if (data.staffType !== undefined && data.takesAppointments === undefined) {
       data.takesAppointments = null;
     }
+    // Foto ocultada pela moderação: um link novo (quando é ele que aparece)
+    // é outra foto e volta à página
+    if (
+      barber.avatarHiddenAt &&
+      !barber.avatarKey &&
+      data.avatarUrl !== undefined &&
+      data.avatarUrl !== barber.avatarUrl
+    ) {
+      Object.assign(data, { avatarHiddenAt: null });
+    }
     const servesBefore = takesAppointments(barber);
     const servesAfter = takesAppointments({
       takesAppointments:
@@ -6149,16 +6159,24 @@ export class BarbershopService {
           select: { id: true, key: true, caption: true },
         },
         socialPosts: {
-          where: { status: 'PUBLISHED' },
+          // O ocultado pela moderação sai da página
+          where: { status: 'PUBLISHED', hiddenAt: null },
           orderBy: { publishedAt: 'desc' },
           take: PORTFOLIO_PHOTOS,
-          select: { imageKey: true, caption: true },
+          select: { id: true, imageKey: true, caption: true },
         },
       },
     });
     if (!barbershop || !barbershop.isActive || !ownerAccountOpen(barbershop)) {
       throw new NotFoundException('Unidade não encontrada');
     }
+    // Capa, logo e foto do profissional ocultados pela moderação saem da
+    // página (e do SEO, que lê daqui) até a unidade enviar outra imagem
+    if (barbershop.coverHiddenAt) barbershop.coverKey = null;
+    if (barbershop.logoHiddenAt) barbershop.photoKey = null;
+    barbershop.barbers = barbershop.barbers.map((b) =>
+      b.avatarHiddenAt ? { ...b, avatarKey: null, avatarUrl: null } : b,
+    );
     const imageUrl = barbershop.photoKey
       ? await this.s3Service.getDownloadUrl(barbershop.photoKey)
       : null;
@@ -6174,11 +6192,17 @@ export class BarbershopService {
     // Galeria enviada pela unidade primeiro; completa com os posts publicados
     const portfolio = await Promise.all(
       [
-        ...barbershop.photos.map((p) => ({ key: p.key, caption: p.caption, photoId: p.id })),
+        ...barbershop.photos.map((p) => ({
+          key: p.key,
+          caption: p.caption,
+          photoId: p.id,
+          postId: null,
+        })),
         ...barbershop.socialPosts.map((p) => ({
           key: p.imageKey,
           caption: p.caption,
           photoId: null,
+          postId: p.id,
         })),
       ]
         .slice(0, PORTFOLIO_PHOTOS)
@@ -6186,6 +6210,7 @@ export class BarbershopService {
           url: await this.s3Service.getDownloadUrl(p.key),
           caption: p.caption,
           photoId: p.photoId,
+          postId: p.postId,
         })),
     );
     const coverUrl = barbershop.coverKey
@@ -7653,6 +7678,7 @@ export class BarbershopService {
             state: true,
             address: true,
             photoKey: true,
+            logoHiddenAt: true,
             currency: true,
             businessHours: true,
             timezone: true,
@@ -7678,7 +7704,9 @@ export class BarbershopService {
           networkName: d.network?.name ?? r.name,
           currency: d.currency,
           openNow: isOpenAt(d, now),
-          imageUrl: d.photoKey ? await this.s3Service.getDownloadUrl(d.photoKey) : null,
+          // Logo ocultado pela moderação não aparece no card
+          imageUrl:
+            d.photoKey && !d.logoHiddenAt ? await this.s3Service.getDownloadUrl(d.photoKey) : null,
         };
       }),
     );

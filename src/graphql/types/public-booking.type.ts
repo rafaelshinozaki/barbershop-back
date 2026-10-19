@@ -284,6 +284,12 @@ export class PublicPortfolioPhotoType {
   })
   photoId?: number;
 
+  @Field(() => Int, {
+    nullable: true,
+    description: 'Post publicado (pra denunciar); null nas fotos da galeria',
+  })
+  postId?: number;
+
   @Field({ nullable: true })
   caption?: string;
 }

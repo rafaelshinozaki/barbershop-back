@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { CareerService } from './career.service';
+import { BarbershopMediaService } from './media.service';
 import { ModerationService } from './moderation.service';
 import { ProfessionalReviewService } from './professional-review.service';
 
@@ -42,6 +43,8 @@ describe('Moderação de conteúdo público (integração)', () => {
   let photoId: number;
   let professionalId: number;
   let reviewId: number;
+  let barberId: number;
+  let postId: number;
   const slug = `mod-${RUN}`;
   const proSlug = `mod-pro-${RUN}`;
   const ipA = '203.0.113.10';
@@ -111,6 +114,7 @@ describe('Moderação de conteúdo público (integração)', () => {
         professionalId,
       },
     });
+    barberId = barber.id;
     const customer = await prisma.customer.create({
       data: { networkId, name: 'Cliente Mod Silva', phone: `6${RUN}` },
     });
@@ -147,6 +151,10 @@ describe('Moderação de conteúdo público (integração)', () => {
           { targetType: 'professional_review', targetId: reviewId },
           { targetType: 'professional_profile', targetId: professionalId },
           { targetType: 'barbershop', targetId: shopId },
+          { targetType: 'shop_cover', targetId: shopId },
+          { targetType: 'shop_logo', targetId: shopId },
+          { targetType: 'barber_photo', targetId: barberId },
+          { targetType: 'social_post', targetId: postId },
         ],
       },
     });
@@ -214,6 +222,101 @@ describe('Moderação de conteúdo público (integração)', () => {
     expect(await titles(ownerId)).toContain('Foto de volta na galeria');
     // Sem denúncia em aberto e no ar: sai da fila
     expect(await item('photo', photoId)).toBeUndefined();
+  });
+
+  it('capa, logo, foto do profissional e post: oculta só a imagem; outra imagem volta', async () => {
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: { coverKey: `barbershops/${shopId}/cover-a`, photoKey: `barbershops/${shopId}/photo` },
+    });
+    await prisma.barber.update({
+      where: { id: barberId },
+      data: { avatarKey: `barbershops/${shopId}/barbers/${barberId}/avatar-a` },
+    });
+    postId = (
+      await prisma.socialPost.create({
+        data: {
+          barbershopId: shopId,
+          createdByUserId: ownerId,
+          caption: 'Post',
+          imageKey: `social/${RUN}.jpg`,
+          scheduledFor: new Date(),
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+        },
+      })
+    ).id;
+    const page = () => shops.getPublicBarbershopByslug(slug);
+    const before = await page();
+    expect(before.coverUrl).toBe(`https://cdn.test/barbershops/${shopId}/cover-a`);
+    expect(before.imageUrl).toBe(`https://cdn.test/barbershops/${shopId}/photo`);
+    expect(before.barbers.find((b) => b.id === barberId)?.avatarKey).toBeTruthy();
+    expect(before.portfolio.map((p) => p.postId)).toContain(postId);
+
+    const targets = [
+      ['shop_cover', shopId],
+      ['shop_logo', shopId],
+      ['barber_photo', barberId],
+      ['social_post', postId],
+    ] as const;
+    for (const [targetType, targetId] of targets) {
+      await moderation.report({ targetType, targetId, reason: 'inappropriate_image' }, ipA);
+    }
+    expect(await item('shop_cover', shopId)).toMatchObject({
+      imageUrl: `https://cdn.test/barbershops/${shopId}/cover-a`,
+      link: `/u/${slug}`,
+      openReports: 1,
+    });
+    expect(await item('barber_photo', barberId)).toMatchObject({
+      title: `Dona · Unidade Mod ${RUN}`,
+      openReports: 1,
+    });
+    expect(await item('social_post', postId)).toMatchObject({ text: 'Post', openReports: 1 });
+    for (const [targetType, targetId] of targets) {
+      await moderation.resolve(adminId, targetType, targetId, 'hide');
+    }
+    const hidden = await page();
+    expect(hidden.coverUrl).toBeNull();
+    expect(hidden.imageUrl).toBeNull();
+    expect(hidden.barbers.find((b) => b.id === barberId)).toMatchObject({
+      avatarKey: null,
+      avatarUrl: null,
+    });
+    expect(hidden.portfolio.map((p) => p.postId)).not.toContain(postId);
+    // A página da unidade continua no ar; o dono é avisado
+    expect(hidden.name).toBe(`Unidade Mod ${RUN}`);
+    expect(await titles(ownerId)).toContain('Imagem ocultada pela moderação');
+    // Oculta continua na fila (pra restaurar) e não recebe denúncia nova
+    expect(await item('shop_logo', shopId)).toMatchObject({ hidden: true, openReports: 0 });
+    await expect(
+      moderation.report({ targetType: 'shop_cover', targetId: shopId, reason: 'spam' }, ipB),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    // A unidade envia outra capa e outra foto: voltam à página
+    const media = new BarbershopMediaService(
+      prisma,
+      { ...(s3 as object), deleteObject: async () => undefined } as never,
+      shops,
+    );
+    await media.setCover(ownerId, shopId, `barbershops/${shopId}/cover-b`);
+    await media.setAvatar(ownerId, barberId, `barbershops/${shopId}/barbers/${barberId}/avatar-b`);
+    const replaced = await page();
+    expect(replaced.coverUrl).toBe(`https://cdn.test/barbershops/${shopId}/cover-b`);
+    expect(replaced.barbers.find((b) => b.id === barberId)?.avatarKey).toBe(
+      `barbershops/${shopId}/barbers/${barberId}/avatar-b`,
+    );
+    // O logo e o post só voltam quando restaurados
+    expect(replaced.imageUrl).toBeNull();
+    await moderation.resolve(adminId, 'shop_logo', shopId, 'restore');
+    await moderation.resolve(adminId, 'social_post', postId, 'restore');
+    const restored = await page();
+    expect(restored.imageUrl).toBe(`https://cdn.test/barbershops/${shopId}/photo`);
+    expect(restored.portfolio.map((p) => p.postId)).toContain(postId);
+    expect(await titles(ownerId)).toContain('Imagem de volta na página');
+    // Só a avaliação da unidade tem "ocultar só a resposta"
+    await expect(
+      moderation.resolve(adminId, 'shop_cover', shopId, 'hide_reply'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('descartar mantém no ar e tira da fila', async () => {
