@@ -14,7 +14,7 @@ import {
   Field,
 } from '@nestjs/graphql';
 import { DeletionRefundType } from './account-deletion.resolver';
-import { UseGuards } from '@nestjs/common';
+import { BadRequestException, UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import {
@@ -148,6 +148,18 @@ const pageArgs = (limit?: number | null, offset?: number | null) => ({
   limit: limit == null ? undefined : Math.min(Math.max(1, Math.floor(limit)), MAX_PAGE),
   offset: offset == null ? undefined : Math.max(0, Math.floor(offset)),
 });
+
+/** Data da consulta: inválida vira 400 (antes era Invalid Date e erro 500 no banco) */
+export const QUERY_DATE_INVALID_MESSAGE = 'Data da consulta inválida';
+function queryDate(value: string | null | undefined): Date | undefined {
+  if (value == null || value === '') return undefined;
+  return requiredQueryDate(value);
+}
+function requiredQueryDate(value: string): Date {
+  const date = new Date(value);
+  if (!value || isNaN(date.getTime())) throw new BadRequestException(QUERY_DATE_INVALID_MESSAGE);
+  return date;
+}
 
 @Resolver(() => Barbershop)
 export class BarbershopResolver {
@@ -810,8 +822,8 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getExpenses(user.id, barbershopId, {
-      from: from ? new Date(from) : undefined,
-      to: to ? new Date(to) : undefined,
+      from: queryDate(from),
+      to: queryDate(to),
       category,
     });
   }
@@ -839,8 +851,8 @@ export class BarbershopResolver {
     return this.barbershopService.getFinancialSummary(
       user.id,
       barbershopId,
-      new Date(from),
-      new Date(to),
+      requiredQueryDate(from),
+      requiredQueryDate(to),
     );
   }
 

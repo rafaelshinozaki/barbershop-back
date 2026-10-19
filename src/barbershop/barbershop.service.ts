@@ -644,6 +644,31 @@ export const SALE_PAYMENT_METHODS = [
   'OTHER',
 ];
 const STAFF_PAYMENT_STATUSES = ['PENDING', 'PAID'];
+/** Pacote que pode ganhar a sessão de volta: em uso ou acabado por uso (não cancelado nem devolvido) */
+const RESTORABLE_PACKAGE: Prisma.ClientPackageWhereInput = {
+  status: { in: ['ACTIVE', 'COMPLETED'] },
+  remainderRefundedAt: null,
+};
+export const PACKAGE_UNDO_CLOSED_MESSAGE =
+  'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.';
+/** Categorias de despesa (as que o sistema lança também: SALARY e RENT) */
+export const EXPENSE_CATEGORIES = [
+  'RENT',
+  'UTILITIES',
+  'SUPPLIES',
+  'SALARY',
+  'MAINTENANCE',
+  'OTHER',
+];
+export const EXPENSE_CATEGORY_INVALID_MESSAGE = 'Categoria da despesa inválida';
+export const EXPENSE_DATE_INVALID_MESSAGE = 'Data da despesa inválida';
+export const EXPENSE_DESCRIPTION_INVALID_MESSAGE = 'Descreva a despesa (até 300 caracteres)';
+const EXPENSE_DESCRIPTION_MAX = 300;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** "AAAA-MM-DD" que existe no calendário (2026-02-31 não vira março) */
+function isCalendarDay(value: string) {
+  return DAY_RE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
 export const SALE_TYPE_INVALID_MESSAGE = 'Tipo de venda inválido';
 export const SALE_ITEM_TYPE_INVALID_MESSAGE = 'Tipo de item inválido';
 export const PAYMENT_STATUS_INVALID_MESSAGE = 'Situação de pagamento inválida';
@@ -8645,6 +8670,7 @@ export class BarbershopService {
     network: { loyaltyEnabled: boolean; referralBonusPoints: number },
     customerId: number | null | undefined,
     moneyPaid: number,
+    saleId: number,
   ) {
     if (!customerId || !network.loyaltyEnabled || moneyPaid <= 0) return;
     const referral = await tx.customerReferral.findUnique({ where: { referredId: customerId } });
@@ -8652,13 +8678,33 @@ export class BarbershopService {
     const bonusPoints = network.referralBonusPoints;
     const claimed = await tx.customerReferral.updateMany({
       where: { id: referral.id, completedAt: null },
-      data: { completedAt: new Date(), pointsAwarded: bonusPoints },
+      data: { completedAt: new Date(), pointsAwarded: bonusPoints, saleId },
     });
     if (claimed.count === 1 && bonusPoints > 0) {
       await tx.customer.update({
         where: { id: referral.referrerId },
         data: { loyaltyPoints: { increment: bonusPoints } },
       });
+    }
+  }
+
+  /**
+   * A venda que completou a indicação foi apagada (ou voltou a pendente, ou
+   * mudou de cliente): o bônus sai de quem indicou, sem deixar o saldo
+   * negativo, e a indicação reabre pra próxima venda paga completar.
+   */
+  private async revertReferralOfSale(tx: Prisma.TransactionClient, saleId: number) {
+    const referral = await tx.customerReferral.findFirst({ where: { saleId } });
+    if (!referral) return;
+    const reopened = await tx.customerReferral.updateMany({
+      where: { id: referral.id, saleId },
+      data: { completedAt: null, pointsAwarded: null, saleId: null },
+    });
+    const points = referral.pointsAwarded ?? 0;
+    if (reopened.count === 1 && points > 0) {
+      await tx.$executeRaw`
+        UPDATE "Customer" SET "loyaltyPoints" = GREATEST(0, "loyaltyPoints" - ${points})
+        WHERE id = ${referral.referrerId}`;
     }
   }
 
@@ -8960,6 +9006,7 @@ export class BarbershopService {
           barbershop.network,
           data.customerId,
           loyaltyMoneyBase(finalTotal, depositApplied, prepaidApplied),
+          sale.id,
         );
       }
       await tx.saleItem.createMany({
@@ -9304,7 +9351,12 @@ export class BarbershopService {
         }
       }
 
-      if (existing.paymentStatus !== 'PAID' && nextStatus === 'PAID') {
+      // Deixou de ser paga ou mudou de cliente: a indicação que ela completou reabre
+      const customerChanged = (nextCustomerId ?? null) !== (existing.customerId ?? null);
+      if (existing.paymentStatus === 'PAID' && (nextStatus !== 'PAID' || customerChanged)) {
+        await this.revertReferralOfSale(tx, saleId);
+      }
+      if (nextStatus === 'PAID' && (existing.paymentStatus !== 'PAID' || customerChanged)) {
         await this.completeReferralIfPaid(
           tx,
           barbershop.network,
@@ -9314,6 +9366,7 @@ export class BarbershopService {
             Number(existing.depositApplied ?? 0),
             Number(existing.prepaidApplied ?? 0),
           ),
+          saleId,
         );
       }
 
@@ -9398,6 +9451,8 @@ export class BarbershopService {
     await this.prisma.$transaction(async (tx) => {
       await this.cancelIssuedIfUnused(tx, saleId);
       await this.restorePackageUses(tx, saleId, userId);
+      // Indicação completada por esta venda: o bônus de quem indicou sai
+      await this.revertReferralOfSale(tx, saleId);
       // Taxa de falta lançada por esta venda: volta a ficar pendente
       await tx.noShowFee.updateMany({
         where: { saleId },
@@ -9474,8 +9529,10 @@ export class BarbershopService {
   private async restorePackageUses(tx: Prisma.TransactionClient, saleId: number, userId: number) {
     const uses = await tx.clientPackageUse.findMany({ where: { saleId, undoneAt: null } });
     for (const use of uses) {
+      // Pacote cancelado ou com o restante devolvido não ganha sessão de volta
+      // (a venda sai mesmo assim; a sessão continua usada)
       const restored = await tx.clientPackage.updateMany({
-        where: { id: use.clientPackageId, usedSessions: { gt: 0 } },
+        where: { id: use.clientPackageId, usedSessions: { gt: 0 }, ...RESTORABLE_PACKAGE },
         data: { usedSessions: { decrement: 1 }, status: 'ACTIVE' },
       });
       if (restored.count === 1) {
@@ -9564,7 +9621,11 @@ export class BarbershopService {
             usedSessions: issued.usedSessions,
             totalSessions: issued.totalSessions,
           },
-          data: { totalSessions: issued.usedSessions, status: 'COMPLETED' },
+          data: {
+            totalSessions: issued.usedSessions,
+            status: 'COMPLETED',
+            remainderRefundedAt: new Date(),
+          },
         });
         if (updated.count === 0) throw new BadRequestException(PACKAGE_CHANGED_MESSAGE);
       } else if (card) {
@@ -9815,18 +9876,49 @@ export class BarbershopService {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     if (!(data.amount > 0)) throw new BadRequestException('Valor da despesa inválido');
     checkMoney('Valor da despesa', data.amount, shop.currency);
-    const openSession = await this.prisma.cashSession.findFirst({
-      where: { barbershopId, status: 'OPEN' },
-    });
+    // Texto livre deixava "cash" fora da conferência do caixa e partia a
+    // mesma categoria em várias linhas do resumo
+    if (!EXPENSE_CATEGORIES.includes(data.category)) {
+      throw new BadRequestException(EXPENSE_CATEGORY_INVALID_MESSAGE);
+    }
+    const paymentMethod = data.paymentMethod?.trim() || null;
+    if (paymentMethod && !SALE_PAYMENT_METHODS.includes(paymentMethod)) {
+      throw new BadRequestException(PAYMENT_METHOD_INVALID_MESSAGE);
+    }
+    const description = data.description?.trim() ?? '';
+    if (!description || description.length > EXPENSE_DESCRIPTION_MAX) {
+      throw new BadRequestException(EXPENSE_DESCRIPTION_INVALID_MESSAGE);
+    }
+    // O dia é o do fuso da unidade (meio-dia, longe da virada): "AAAA-MM-DD"
+    // como meia-noite UTC caía no dia anterior no Brasil
+    const timeZone = safeTimeZone(shop.timezone);
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    let expenseDate = new Date();
+    let day = today;
+    if (data.expenseDate) {
+      const value = data.expenseDate.trim();
+      if (!isCalendarDay(value) || value > today) {
+        throw new BadRequestException(EXPENSE_DATE_INVALID_MESSAGE);
+      }
+      day = value;
+      if (value !== today) expenseDate = zonedTimeToUtc(value, 12 * 60, timeZone);
+    }
+    // Só a despesa de hoje sai do caixa aberto (a de outro dia não mexe na gaveta)
+    const openSession =
+      day === today
+        ? await this.prisma.cashSession.findFirst({
+            where: { barbershopId, status: 'OPEN' },
+          })
+        : null;
     const expense = await this.prisma.expense.create({
       data: {
         barbershopId,
         cashSessionId: openSession?.id,
         category: data.category,
-        description: data.description,
+        description,
         amount: new Decimal(data.amount),
-        paymentMethod: data.paymentMethod,
-        expenseDate: data.expenseDate ? new Date(data.expenseDate) : new Date(),
+        paymentMethod,
+        expenseDate,
         createdByUserId: userId,
       },
       include: { createdBy: true },
@@ -10341,8 +10433,15 @@ export class BarbershopService {
         'A baixa deste pacote está na venda. Apague a venda para desfazer.',
       );
     }
+    const pkg = await this.prisma.clientPackage.findUnique({
+      where: { id: use.clientPackageId },
+      select: { status: true, remainderRefundedAt: true },
+    });
+    if (pkg?.status === 'CANCELLED' || pkg?.remainderRefundedAt) {
+      throw new BadRequestException(PACKAGE_UNDO_CLOSED_MESSAGE);
+    }
     const restored = await this.prisma.clientPackage.updateMany({
-      where: { id: use.clientPackageId, usedSessions: { gt: 0 } },
+      where: { id: use.clientPackageId, usedSessions: { gt: 0 }, ...RESTORABLE_PACKAGE },
       data: { usedSessions: { decrement: 1 }, status: 'ACTIVE' },
     });
     if (restored.count === 0) throw new BadRequestException('Pacote não tem sessões restantes');
