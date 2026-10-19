@@ -1973,3 +1973,19 @@ Foram lidos o convite de equipe (cargos válidos, convite vencido, pessoa que j�
      - Quem saiu das campanhas numa ficha (`marketingOptOut`) continua recebendo pela outra quando o e-mail é diferente mas o telefone é o mesmo (o descadastro só vale para fichas com o mesmo e-mail), e o WhatsApp vai para o telefone de quem saiu.
      
      **Fazer:** a lista da campanha junta por e-mail (sem diferença de caixa) e por telefone normalizado (E.164): um envio por endereço. Se qualquer ficha com o mesmo e-mail ou o mesmo telefone saiu das campanhas, nenhuma recebe. A contagem de destinatários e o limite do mês usam a lista já sem repetidos.
+
+### Quadragésima sétima rodada (2026-10-19): vaga preenchida sem ninguém e conta excluída na lista de espera
+
+Foram lidos remarcar e cancelar pelo link do cliente (estorno do sinal, aviso e lista de espera), as vagas para freelancer (taxa, aceite, encerrar), a compra de Destaque (só para quem está na vitrine), a verificação de identidade (nome trocado perde a verificação, também pelo backoffice) e a exclusão de conta do cliente e do profissional.
+
+192. ⬜ **Candidato aceito que nunca entra na equipe preenche a vaga e fica com a taxa** (back: `JobOpeningService`, `EmployeeInviteService`, `AccountDeletionService`):
+     - Aceitar a candidatura cobra a taxa, marca `accepted` e cria o convite; quando as vagas aceitas chegam a `slots`, a vaga vira `filled` e as outras candidaturas são recusadas.
+     - Se o profissional não aceita o convite (vence em 30 dias), a equipe cancela o convite ou o período da vaga acaba antes do aceite, nada volta: a candidatura continua `accepted`, a vaga continua preenchida e a taxa não é devolvida.
+     - Conta de profissional excluída (LGPD) continua com as candidaturas pendentes, como "Conta excluída". A unidade pode aceitar, pagar a taxa e mandar o convite para o e-mail anonimizado, que ninguém recebe.
+     
+     **Fazer:** convite de candidatura que vence, é cancelado ou não é aceito até o fim do período da vaga devolve a candidatura (`expired`), reabre a vaga se ela tinha ficado preenchida e devolve a taxa (com aviso para quem pagou). Excluir a conta retira as candidaturas pendentes (`withdrawn`) e cancela os convites ainda não aceitos; aceitar candidatura de conta excluída é recusado.
+193. ⬜ **Conta de cliente excluída continua na lista de espera e recebendo avisos** (back: `ClientAuthService.deleteAccount`, `WaitlistEntry`):
+     - A exclusão da conta (LGPD) apaga conversas, avaliações, favoritos e tira a ligação das fichas, mas não mexe na lista de espera.
+     - A entrada online guarda o e-mail informado (`contactEmail`) e o nome. Depois da exclusão, a pessoa continua `WAITING` e recebe o aviso de vaga no e-mail, e a equipe continua vendo o nome e o e-mail na tela da lista.
+     
+     **Fazer:** excluir a conta cancela as entradas da lista de espera das fichas ligadas a ela (e as online com o e-mail da conta) e apaga o `contactEmail` delas, na mesma transação.
