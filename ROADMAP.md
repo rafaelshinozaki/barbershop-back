@@ -2132,3 +2132,14 @@ Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, 
      - A capa, o logo, a foto dos profissionais e os posts do Instagram publicados aparecem na página pública sem botão de denúncia própria (só a unidade inteira pode ser denunciada).
      
      **Fazer:** chave única por unidade na galeria, e recusar confirmar chave que já foi usada (inclusive de foto apagada ou ocultada). Não devolver a chave do arquivo na tela, só o link. Denúncia e ocultação também para a capa, a foto dos profissionais e os posts publicados.
+
+### Quinquagésima oitava rodada (2026-10-19): convite da equipe
+
+Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta e aceitar com a conta que já existe) e o vínculo temporário.
+
+212. ⬜ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
+     - O gerente recebe o link do convite: a criação devolve o convite inteiro, com o token, e a lista da equipe mostra `pendingInviteToken` para a tela oferecer o link. Assim ele pode convidar qualquer e-mail que ainda não tem conta, abrir o próprio link e criar a conta com a senha que quiser.
+     - A conta nasce com `emailVerifiedAt` ("o link do convite chegou neste e-mail"), mas quem abriu não precisou receber o e-mail. O documento digitado fica gravado e passa a contar como já usado (`idDocTaken`). A dona do e-mail e do CPF não consegue se cadastrar ("Já existe uma conta com estes dados") até descobrir e recuperar a senha, e o documento continua preso.
+     - Se já existe conta com esse e-mail entrando pelo Google, a busca só olha `provider: 'local'` e a chave única é e-mail + forma de entrada: o aceite cria uma segunda conta com o mesmo e-mail, em vez de mandar entrar com a conta que já existe (a tela de validação diz que a conta existe, mas o aceite direto pela API passa).
+     
+     **Fazer:** a conta criada pelo convite não nasce com o e-mail confirmado quando o link pode ter sido compartilhado: manda o código de confirmação para o e-mail antes de liberar o acesso (ou exige o código no aceite). O documento só passa a valer como usado depois da confirmação. Conta existente com qualquer forma de entrada leva para "entrar com a sua conta".
