@@ -271,6 +271,8 @@ export const MARKETING_MONTHLY_LIMIT_MESSAGE =
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.';
 /** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
 export const WAITLIST_OFFER_MINUTES = 30;
+export const GIFT_CARD_OTHER_CURRENCY_MESSAGE =
+  'Este cartão-presente foi vendido em outra moeda e não vale nesta unidade.';
 // Texto fixo (o catálogo de erros casa pela mensagem): acompanha WAITLIST_MAX_DAYS_AHEAD
 export const WAITLIST_DAY_RANGE_MESSAGE = 'Escolha um dia entre hoje e os próximos 60 dias';
 export const WALK_IN_OWN_QUEUE_MESSAGE = 'Seu cargo só permite pôr clientes na sua própria fila.';
@@ -345,6 +347,32 @@ function customerBookingRefusal(err: unknown): boolean {
 
 /** Horários futuros que o agendamento público aceita por telefone. */
 const PUBLIC_UPCOMING_LIMIT = 5;
+
+/** Mesma moeda, sem diferença de caixa ou espaço ("brl" = "BRL") */
+const sameCurrency = (a?: string | null, b?: string | null) =>
+  (a ?? 'BRL').trim().toUpperCase() === (b ?? 'BRL').trim().toUpperCase();
+
+/**
+ * Fidelidade e taxa fixa de no-show são valores na moeda da rede (pontos
+ * por unidade de moeda, valor do ponto, taxa em dinheiro). Numa unidade em
+ * outra moeda ficam desligados até haver configuração por moeda: 1 ponto por
+ * real não é 1 ponto por iene, e uma taxa de 30 não vira 30 euros (item 188).
+ */
+export function networkMoneyRules<
+  N extends {
+    currency?: string | null;
+    loyaltyEnabled?: boolean;
+    noShowFeeEnabled?: boolean;
+    noShowFeeType?: string | null;
+  },
+>(shop: { currency?: string | null }, network: N): N {
+  if (!network || sameCurrency(shop.currency, network.currency)) return network;
+  return {
+    ...network,
+    loyaltyEnabled: false,
+    ...(network.noShowFeeType === 'FIXED' ? { noShowFeeEnabled: false } : {}),
+  };
+}
 
 function loyaltyEarnedFor(
   network: { loyaltyEnabled: boolean; loyaltyPointsPerCurrencyUnit: number | null },
@@ -877,7 +905,10 @@ export class BarbershopService {
     if (ACCESS_RANK[level] < ACCESS_RANK[min]) {
       throw new ForbiddenException('Seu cargo nesta unidade não permite essa ação.');
     }
-    return Object.assign(barbershop, { accessLevel: level });
+    return Object.assign(barbershop, {
+      accessLevel: level,
+      network: networkMoneyRules(barbershop, barbershop.network),
+    });
   }
 
   /** Cargo do usuário na unidade (null = sem acesso). */
@@ -4329,7 +4360,7 @@ export class BarbershopService {
       include: { network: true },
     });
     if (!barbershop) return;
-    const { network } = barbershop;
+    const network = networkMoneyRules(barbershop, barbershop.network);
     if (!network.noShowFeeEnabled) return;
 
     const isNoShow = newStatus === 'NO_SHOW';
@@ -5538,6 +5569,7 @@ export class BarbershopService {
             accentColor: true,
             grayColor: true,
             lateCancellationWindowHours: true,
+            currency: true,
             noShowFeeEnabled: true,
             noShowFeeType: true,
             noShowFeeValue: true,
@@ -5637,7 +5669,8 @@ export class BarbershopService {
       // Política de cancelamento, visível antes de agendar
       cancellationPolicy: {
         windowHours: network.lateCancellationWindowHours,
-        feeEnabled: network.noShowFeeEnabled && !!network.noShowFeeValue,
+        // Taxa fixa em outra moeda não é cobrada nesta unidade (item 188)
+        feeEnabled: networkMoneyRules(shop, network).noShowFeeEnabled && !!network.noShowFeeValue,
         feeType: network.noShowFeeType,
         feeValue: network.noShowFeeValue,
       },
@@ -7531,13 +7564,17 @@ export class BarbershopService {
     // A unidade que vendeu: o valor entra no faturamento e no caixa dela
     // (antes o cartão só criava o saldo e o dinheiro não aparecia em lugar nenhum)
     const { barbershopId, paymentMethod, ...card } = data;
+    // O vale fica na moeda de quem vendeu (sem unidade, a da rede)
+    let currency = network.currency;
     if (barbershopId != null) {
       const shop = await this.prisma.barbershop.findFirst({
         where: { id: barbershopId, networkId },
-        select: { id: true },
+        select: { id: true, currency: true },
       });
       if (!shop) throw new NotFoundException('Unidade não encontrada nesta rede');
+      currency = shop.currency;
     }
+    checkMoney('Valor do cartão-presente', data.initialValue, currency);
 
     let code = this.generateGiftCardCode();
     while (await this.prisma.giftCard.findUnique({ where: { code } })) {
@@ -7567,6 +7604,7 @@ export class BarbershopService {
           recipientName: card.recipientName,
           message: card.message,
           expiresAt: card.expiresAt,
+          currency,
           saleId,
         },
       });
@@ -7598,7 +7636,10 @@ export class BarbershopService {
   // pela pré-visualização no checkout quanto pela validação real dentro de
   // createSale (evita duplicar as regras em dois lugares).
   private async validateGiftCard(barbershopId: number, code: string) {
-    const barbershop = await this.prisma.barbershop.findUnique({ where: { id: barbershopId } });
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      include: { network: { select: { currency: true } } },
+    });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
     const giftCard = await this.prisma.giftCard.findUnique({
       where: { code: code.trim().toUpperCase() },
@@ -7607,6 +7648,10 @@ export class BarbershopService {
       throw new NotFoundException('Cartão-presente não encontrado');
     }
     if (!giftCard.isActive) throw new BadRequestException('Este cartão-presente está inativo');
+    // Vendido em outra moeda: 100 reais não viram 100 euros
+    if (!sameCurrency(giftCard.currency ?? barbershop.network.currency, barbershop.currency)) {
+      throw new BadRequestException(GIFT_CARD_OTHER_CURRENCY_MESSAGE);
+    }
     if (giftCard.expiresAt && giftCard.expiresAt < new Date()) {
       throw new BadRequestException('Este cartão-presente expirou');
     }
@@ -7634,9 +7679,10 @@ export class BarbershopService {
       where: { id: customerId, networkId: barbershop.networkId },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
-    const pointValue = barbershop.network.loyaltyPointValue ?? 0;
+    const network = networkMoneyRules(barbershop, barbershop.network);
+    const pointValue = network.loyaltyPointValue ?? 0;
     return {
-      enabled: barbershop.network.loyaltyEnabled,
+      enabled: network.loyaltyEnabled,
       points: customer.loyaltyPoints,
       pointValue,
       redeemableValue: customer.loyaltyPoints * pointValue,

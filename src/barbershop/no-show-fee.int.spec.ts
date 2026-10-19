@@ -242,4 +242,81 @@ describe('Taxa de falta (integração)', () => {
       collectedAt: null,
     });
   });
+
+  it('unidade em outra moeda: sem taxa fixa e sem fidelidade; vale só na moeda em que foi vendido (item 188)', async () => {
+    await prisma.network.update({
+      where: { id: networkId },
+      data: { loyaltyEnabled: true, loyaltyPointsPerCurrencyUnit: 1, loyaltyPointValue: 0.1 },
+    });
+    const lisbon = await prisma.barbershop.create({
+      data: {
+        name: 'Barbearia Lisboa',
+        slug: `nsf-pt-${RUN}`,
+        address: 'Rua B, 2',
+        city: 'Lisboa',
+        state: '',
+        country: 'PT',
+        postalCode: '1000-001',
+        phone: '351911111111',
+        email: `nsf-pt-${RUN}@test.local`,
+        timezone: 'Europe/Lisbon',
+        currency: 'EUR',
+        networkId,
+        ownerUserId: ownerId,
+      },
+    });
+    try {
+      const ptBarber = await prisma.barber.create({
+        data: { barbershopId: lisbon.id, name: 'Rui', phone: '351922222222' },
+      });
+      const ptService = await prisma.barbershopService.create({
+        data: {
+          barbershopId: lisbon.id,
+          name: 'Corte',
+          durationMinutes: 30,
+          price: new Decimal(20),
+        },
+      });
+      // Taxa fixa de 30 é em real: na unidade em euro, a falta não gera taxa
+      const start = new Date(Date.now() + 30 * HOUR);
+      const appt = await shops.createAppointment(ownerId, lisbon.id, {
+        customerId,
+        barberId: ptBarber.id,
+        startAt: start,
+        endAt: new Date(start.getTime() + 30 * 60_000),
+        services: [{ serviceId: ptService.id, unitPrice: 20 }],
+      });
+      await shops.updateAppointment(ownerId, lisbon.id, appt!.id, { status: 'NO_SHOW' });
+      expect(await waitFor(async () => !!(await feeOf(appt!.id)), 500)).toBe(false);
+
+      // Fidelidade: ligada na unidade em real, desligada na de euro
+      expect((await shops.getCustomerLoyalty(ownerId, shopId, customerId)).enabled).toBe(true);
+      expect((await shops.getCustomerLoyalty(ownerId, lisbon.id, customerId)).enabled).toBe(false);
+
+      // Vale vendido em real: vale aqui, não em Lisboa; e o valor tem teto
+      const card = await shops.createGiftCard(ownerId, networkId, {
+        initialValue: 100,
+        barbershopId: shopId,
+        paymentMethod: 'CASH',
+      });
+      expect(card.currency).toBe('BRL');
+      await expect(shops.lookupGiftCard(ownerId, shopId, card.code)).resolves.toBeTruthy();
+      await expect(shops.lookupGiftCard(ownerId, lisbon.id, card.code)).rejects.toThrow(
+        'vendido em outra moeda',
+      );
+      const euro = await shops.createGiftCard(ownerId, networkId, {
+        initialValue: 50,
+        barbershopId: lisbon.id,
+        paymentMethod: 'CASH',
+      });
+      expect(euro.currency).toBe('EUR');
+      await expect(shops.lookupGiftCard(ownerId, lisbon.id, euro.code)).resolves.toBeTruthy();
+      await expect(
+        shops.createGiftCard(ownerId, networkId, { initialValue: 1e12 }),
+      ).rejects.toThrow('Valor do cartão-presente inválido');
+    } finally {
+      await prisma.giftCard.deleteMany({ where: { networkId } });
+      await prisma.barbershop.delete({ where: { id: lisbon.id } });
+    }
+  });
 });
