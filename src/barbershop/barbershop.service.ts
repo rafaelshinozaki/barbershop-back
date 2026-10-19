@@ -644,6 +644,27 @@ export const SALE_PAYMENT_METHODS = [
   'OTHER',
 ];
 const STAFF_PAYMENT_STATUSES = ['PENDING', 'PAID'];
+const COMMISSION_ITEM_TYPES = ['ALL', 'SERVICE', 'PRODUCT'];
+export const COMMISSION_ITEM_TYPE_INVALID_MESSAGE = 'Tipo da regra de comissão inválido';
+export const COVERED_SESSION_QUANTITY_MESSAGE =
+  'A sessão do pacote ou do clube cobre um atendimento: uma linha do serviço, quantidade 1.';
+const RESOURCE_TYPES = ['CHAIR', 'ROOM', 'STATION', 'BED'];
+const RESOURCE_NAME_MAX = 80;
+export const RESOURCE_IN_USE_MESSAGE =
+  'Esta sala tem horários marcados. Troque a sala desses horários ou desative-a.';
+export const RESOURCE_NAME_INVALID_MESSAGE = 'Informe o nome da sala (até 80 caracteres)';
+export const RESOURCE_TYPE_INVALID_MESSAGE = 'Tipo de sala inválido';
+function resourceName(value: string | null | undefined) {
+  const name = value?.trim() ?? '';
+  if (!name || name.length > RESOURCE_NAME_MAX) {
+    throw new BadRequestException(RESOURCE_NAME_INVALID_MESSAGE);
+  }
+  return name;
+}
+function resourceType(value: string) {
+  if (!RESOURCE_TYPES.includes(value)) throw new BadRequestException(RESOURCE_TYPE_INVALID_MESSAGE);
+  return value;
+}
 /** Pacote que pode ganhar a sessão de volta: em uso ou acabado por uso (não cancelado nem devolvido) */
 const RESTORABLE_PACKAGE: Prisma.ClientPackageWhereInput = {
   status: { in: ['ACTIVE', 'COMPLETED'] },
@@ -8181,13 +8202,18 @@ export class BarbershopService {
       throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
     }
     const cents = (v: number) => Math.round(v * 100);
-    const covered = data.items.some(
+    // Uma sessão cobre um atendimento: uma linha só, quantidade 1 (quantidade 3
+    // a R$ 0 dava três atendimentos por uma sessão)
+    const free = data.items.filter(
       (item) =>
         item.serviceId === sub.plan.serviceId &&
-        item.quantity >= 1 &&
         cents(item.unitPrice) === 0 &&
         cents(item.totalPrice) === 0,
     );
+    if (free.length > 1 || free.some((item) => item.quantity !== 1)) {
+      throw new BadRequestException(COVERED_SESSION_QUANTITY_MESSAGE);
+    }
+    const covered = free.length === 1;
     if (!covered) {
       const hasService = data.items.some((item) => item.serviceId === sub.plan.serviceId);
       throw new BadRequestException(
@@ -8230,13 +8256,16 @@ export class BarbershopService {
     }
     const cents = (v: number) => Math.round(v * 100);
     const serviceId = pkg.servicePackage.serviceId;
-    const covered = data.items.some(
+    // Uma sessão cobre um atendimento: uma linha só, quantidade 1 (quantidade 3
+    // a R$ 0 dava três atendimentos por uma sessão)
+    const free = data.items.filter(
       (item) =>
-        item.serviceId === serviceId &&
-        item.quantity >= 1 &&
-        cents(item.unitPrice) === 0 &&
-        cents(item.totalPrice) === 0,
+        item.serviceId === serviceId && cents(item.unitPrice) === 0 && cents(item.totalPrice) === 0,
     );
+    if (free.length > 1 || free.some((item) => item.quantity !== 1)) {
+      throw new BadRequestException(COVERED_SESSION_QUANTITY_MESSAGE);
+    }
+    const covered = free.length === 1;
     if (!covered) {
       const hasService = data.items.some((item) => item.serviceId === serviceId);
       throw new BadRequestException(
@@ -10140,7 +10169,11 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     return this.prisma.resource.create({
-      data: { barbershopId, name: data.name, type: data.type ?? 'ROOM' },
+      data: {
+        barbershopId,
+        name: resourceName(data.name),
+        type: resourceType(data.type ?? 'ROOM'),
+      },
     });
   }
 
@@ -10155,7 +10188,14 @@ export class BarbershopService {
       where: { id: resourceId, barbershopId },
     });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
-    return this.prisma.resource.update({ where: { id: resourceId }, data });
+    return this.prisma.resource.update({
+      where: { id: resourceId },
+      data: {
+        ...(data.name !== undefined ? { name: resourceName(data.name) } : {}),
+        ...(data.type !== undefined ? { type: resourceType(data.type) } : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      },
+    });
   }
 
   async deleteResource(userId: number, barbershopId: number, resourceId: number) {
@@ -10164,7 +10204,25 @@ export class BarbershopService {
       where: { id: resourceId, barbershopId },
     });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
-    await this.prisma.resource.delete({ where: { id: resourceId } });
+    // Apagar soltava a sala dos horários em silêncio (ON DELETE SET NULL)
+    const upcoming = await this.prisma.appointment.count({
+      where: {
+        resourceId,
+        status: { in: ['CONFIRMED', 'PENDING_PAYMENT', 'IN_PROGRESS'] },
+        endAt: { gt: new Date() },
+      },
+    });
+    if (upcoming > 0) throw new BadRequestException(RESOURCE_IN_USE_MESSAGE);
+    // Com horário no passado: desativa, pro histórico continuar com a sala
+    const used = await this.prisma.appointment.findFirst({
+      where: { resourceId },
+      select: { id: true },
+    });
+    if (used) {
+      await this.prisma.resource.update({ where: { id: resourceId }, data: { isActive: false } });
+    } else {
+      await this.prisma.resource.delete({ where: { id: resourceId } });
+    }
     return true;
   }
 
@@ -10559,6 +10617,10 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const itemType = data.itemType ?? 'ALL';
+    // Outro texto ("service") criava uma regra que nunca se aplica
+    if (!COMMISSION_ITEM_TYPES.includes(itemType)) {
+      throw new BadRequestException(COMMISSION_ITEM_TYPE_INVALID_MESSAGE);
+    }
     if (!Number.isFinite(data.percentage) || data.percentage < 0 || data.percentage > 100) {
       throw new BadRequestException('A comissão tem que ser de 0% a 100%');
     }
@@ -10570,25 +10632,30 @@ export class BarbershopService {
       await this.ensureNotOwnCommission(userId, barbershopId, barber.userId);
     }
     // Upsert manual: a chave única usa barberId nullable, que o Prisma não aceita
-    // direto em upsert.where com null — resolvemos com findFirst + create/update.
-    const existing = await this.prisma.commissionRule.findFirst({
-      where: { barbershopId, barberId: data.barberId ?? null, itemType },
+    // direto em upsert.where com null — findFirst + create/update, sob trava da
+    // unidade (dois cliques criavam duas regras padrão: NULL não repete no índice)
+    const rule = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`commission:${barbershopId}`}))`;
+      const existing = await tx.commissionRule.findFirst({
+        where: { barbershopId, barberId: data.barberId ?? null, itemType },
+        orderBy: { id: 'desc' },
+      });
+      return existing
+        ? tx.commissionRule.update({
+            where: { id: existing.id },
+            data: { percentage: new Decimal(data.percentage) },
+            include: { barber: true },
+          })
+        : tx.commissionRule.create({
+            data: {
+              barbershopId,
+              barberId: data.barberId,
+              itemType,
+              percentage: new Decimal(data.percentage),
+            },
+            include: { barber: true },
+          });
     });
-    const rule = existing
-      ? await this.prisma.commissionRule.update({
-          where: { id: existing.id },
-          data: { percentage: new Decimal(data.percentage) },
-          include: { barber: true },
-        })
-      : await this.prisma.commissionRule.create({
-          data: {
-            barbershopId,
-            barberId: data.barberId,
-            itemType,
-            percentage: new Decimal(data.percentage),
-          },
-          include: { barber: true },
-        });
     return { ...rule, barberName: rule.barber?.name ?? null };
   }
 
@@ -10817,8 +10884,9 @@ export class BarbershopService {
             ? sessionValue(sale, item)
             : 0;
         if (covered > 0) {
+          // Uma baixa por venda: a comissão é de uma sessão
           const pct = resolvePercentage(barberId, 'SERVICE');
-          acc.serviceCommission += (covered * item.quantity * pct) / 100;
+          acc.serviceCommission += (covered * pct) / 100;
           continue;
         }
         const total = Number(item.totalPrice) * factor;

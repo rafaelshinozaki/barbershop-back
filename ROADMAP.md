@@ -2053,28 +2053,34 @@ Foram lidos os pacotes de sessão (venda, baixa, desfazer a baixa, apagar a vend
      **Fazer:** só devolver a sessão a pacote `ACTIVE` ou `COMPLETED` por uso (não por estorno), e voltar a `ACTIVE` só o que estava `COMPLETED` por ter usado tudo. Pacote estornado ou cancelado recusa desfazer a baixa (a venda que usou a sessão continua podendo ser apagada, sem devolver a sessão). Gravar no pacote que o restante foi devolvido, para diferenciar do pacote que só acabou.
      
      **Feito:** o pacote guarda quando o restante foi devolvido (`remainderRefundedAt`, preenchido também nos já devolvidos). Desfazer uma baixa de pacote devolvido ou cancelado é recusado; apagar a venda que usou a sessão continua possível, mas a sessão não volta. Pacote ativo, ou que acabou por uso, ganha a sessão de volta como antes.
-200. ⬜ **Apagar uma sala tira ela dos horários sem aviso** (back: `deleteResource`; front: `Resources.tsx`):
+200. ✅ **Apagar uma sala tira ela dos horários sem aviso** (back: `deleteResource`; front: `Resources.tsx`):
      - A ligação do horário com o recurso é `ON DELETE SET NULL`. Apagar a sala deixa os horários futuros marcados nela sem sala, sem aviso para a equipe. Os horários passados perdem a sala no histórico.
      - Já existe desativar (`isActive`), que tira a sala de novos horários sem apagar nada.
      - O nome pode ser vazio e o tipo é texto livre (o resto do app espera `CHAIR`, `ROOM`, `STATION` ou `BED`).
      
      **Fazer:** recusar apagar sala com horário futuro (mensagem para desativar ou trocar a sala dos horários antes). Sala com horário só no passado é desativada em vez de apagada. Nome obrigatório com limite de tamanho, e tipo só dos quatro conhecidos.
+     
+     **Feito:** a sala com horário marcado (confirmado, aguardando sinal ou em atendimento, ainda não terminado) não se apaga: a mensagem pede para trocar a sala desses horários ou desativá-la. Sala que só tem horários no passado é desativada em vez de apagada, e o histórico continua com ela. Nome obrigatório (até 80 caracteres) e tipo só `CHAIR`, `ROOM`, `STATION` ou `BED`, ao criar e ao editar.
 
 ### Quinquagésima segunda rodada (2026-10-19): sessão coberta e regras de comissão
 
 Foram lidas as regras de comissão (criar, editar e apagar), o cálculo da comissão (desconto, estorno, sessão de pacote e de clube) e a venda que usa sessão do pacote ou do clube.
 
-201. ⬜ **Venda com o serviço do pacote ou do clube em quantidade 3 gasta uma sessão só** (back: `preparePackageSession`, `prepareClubSession`, `createSale`, `computeCommissions`):
+201. ✅ **Venda com o serviço do pacote ou do clube em quantidade 3 gasta uma sessão só** (back: `preparePackageSession`, `prepareClubSession`, `createSale`, `computeCommissions`):
      - Para usar a sessão, a venda precisa ter o serviço a R$ 0 com `quantity >= 1`. A baixa é sempre de uma sessão, então quantidade 3 (ou duas linhas do mesmo serviço a R$ 0) dá três atendimentos por uma sessão do pacote ou do ciclo do clube.
      - A comissão da sessão coberta é o valor da sessão vezes a quantidade: o profissional recebe por três sessões enquanto o pacote perde uma.
      
      **Fazer:** a linha coberta tem quantidade 1, e só uma linha do serviço a R$ 0 por venda (outra unidade do mesmo serviço é cobrada ou usa outra sessão em outra venda). A comissão da sessão coberta conta uma sessão por baixa.
-202. ⬜ **Regra de comissão da unidade pode ficar duplicada, e o cálculo usa qualquer uma** (back: `setCommissionRule`, `computeCommissions`; banco: `CommissionRule`):
+     
+     **Feito:** a sessão do pacote ou do clube aceita uma linha só do serviço a R$ 0, com quantidade 1; quantidade maior ou duas linhas são recusadas. A comissão da sessão coberta é de uma sessão por venda.
+202. ✅ **Regra de comissão da unidade pode ficar duplicada, e o cálculo usa qualquer uma** (back: `setCommissionRule`, `computeCommissions`; banco: `CommissionRule`):
      - A chave única é `(barbershopId, barberId, itemType)`, mas no Postgres `NULL` não repete: a regra padrão da unidade (`barberId` vazio) não é protegida. `setCommissionRule` faz `findFirst` e depois `create`, então dois cliques em "Salvar" (ou duas abas) criam duas regras padrão iguais.
      - Depois disso, mudar a porcentagem atualiza só uma delas, e o cálculo pega a primeira que achar (`rules.find`), que pode ser a antiga. O relatório e o pagamento da equipe saem com a porcentagem velha.
      - O tipo do item é texto livre: "service" ou qualquer outro valor cria uma regra que nunca se aplica.
      
      **Fazer:** índice único que trate o vazio como valor (`NULLS NOT DISTINCT`, ou índice parcial para `barberId IS NULL`), migração que junta as duplicadas mantendo a mais recente, e gravação com trava (ou `ON CONFLICT`). Tipo só `ALL`, `SERVICE` ou `PRODUCT`.
+     
+     **Feito:** migração junta as regras padrão repetidas (fica a mais recente) e cria o índice único parcial `(barbershopId, itemType)` para `barberId` vazio. A gravação roda sob trava da unidade, então dois cliques ficam numa regra só. O tipo só aceita `ALL`, `SERVICE` ou `PRODUCT`.
 
 ### Quinquagésima terceira rodada (2026-10-19): escala e folgas da equipe
 
