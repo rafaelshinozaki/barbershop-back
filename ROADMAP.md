@@ -2069,3 +2069,16 @@ Foram lidas as regras de comissão (criar, editar e apagar), o cálculo da comis
      - O tipo do item é texto livre: "service" ou qualquer outro valor cria uma regra que nunca se aplica.
      
      **Fazer:** índice único que trate o vazio como valor (`NULLS NOT DISTINCT`, ou índice parcial para `barberId IS NULL`), migração que junta as duplicadas mantendo a mais recente, e gravação com trava (ou `ON CONFLICT`). Tipo só `ALL`, `SERVICE` ou `PRODUCT`.
+
+### Quinquagésima terceira rodada (2026-10-19): escala e folgas da equipe
+
+Foram lidas a escala da equipe (a tela da semana e as mutações antigas de um dia), as folgas e as checagens de conflito entre unidades.
+
+203. ⬜ **A escala da semana não confere conflito com outra unidade** (back: `setWeeklySchedule` em `schedule.service.ts`, usada pela tela da semana; `createBarberSchedule`, `updateBarberSchedule`):
+     - A mesma pessoa atendendo em duas unidades não pode ter escala sobreposta (horizonte "Identidade `Professional` + agenda única"). A checagem (`ensureShiftFreeAcrossShops`) só existe nas mutações antigas de um dia. A tela da semana, que é a que o front usa, grava sem conferir, e as duas unidades oferecem o mesmo horário na página pública. O dia "segue a unidade" também não é conferido contra a escala da outra.
+     - As mutações antigas, ainda abertas na API, não conferem o formato da hora, início antes do fim, o dia da semana (0 a 6) nem o intervalo dentro do expediente, como a tela da semana confere. Repetir o dia dá erro 500 (chave única por profissional e dia).
+     
+     **Fazer:** a mesma checagem entre unidades na escala da semana, com a escala efetiva do dia (a própria ou a da unidade). As mutações antigas passam pela validação da tela da semana (ou saem da API, se nada mais usa).
+204. ⬜ **Barbeiro vê as folgas dos colegas, inclusive o motivo** (back: `getBarberTimeOffsByBarber`): a agenda do barbeiro mostra só as folgas dele (`getBarbershopTimeOffs` filtra pelo próprio profissional), mas a consulta por profissional aceita qualquer um da unidade com o acesso mais baixo. O barbeiro lê as datas e o motivo das folgas dos colegas, inclusive afastamento por doença (`SICK`), que é dado de saúde.
+     
+     **Fazer:** barbeiro e barbeiro básico só consultam as próprias folgas. Recepção para cima vê o período de todos, e o motivo `SICK` aparece só para gerente e dono.
