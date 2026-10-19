@@ -2184,3 +2184,14 @@ Foram lidos os cupons do plano (validação, desconto, reserva do cupom do convi
      - Na validação, o valor e o tipo do cupom não são conferidos: cupom de porcentagem negativa (erro de digitação no backoffice) aumenta o preço.
      
      **Fazer:** reservar o uso do cupom ao criar a cobrança (com prazo, como a reserva do sinal), e cancelar a cobrança anterior do mesmo usuário com o mesmo cupom. Na ativação, cobrança paga com cupom que não foi reservado para ela é estornada na diferença (ou recusada antes do pagamento). Porcentagem de 1 a 100 e valor fixo positivo ao criar e editar o cupom.
+
+### Sexagésima terceira rodada (2026-10-19): convidar amigos
+
+Foi lido o "Convidar amigos" (dono convida outro dono e os dois ganham 1 mês grátis): criar, listar, aceitar e os cupons.
+
+218. ⬜ **Quem convida ganha os meses grátis sozinho, com contas inventadas** (back: `FriendInviteService.createInvite`, `getSentInvites`, `acceptInvite`; `friend-invite.controller.ts`):
+     - A criação e a lista "convites enviados" devolvem a linha inteira do convite, com o `inviteToken`: quem convida tem o link de aceite sem precisar do e-mail do amigo.
+     - O aceite confere só que o e-mail da conta é o do convite e que a conta foi criada depois do convite. Não confere se esse e-mail foi confirmado (o cadastro entra sem confirmar). Basta convidar um e-mail inventado, criar a conta com ele, entrar e aceitar com o próprio link: quem convidou ganha 1 mês grátis, até 5 por dia e 12 no total, sem nenhum amigo pagar nada.
+     - O mês grátis de quem convida sai no aceite, não quando o amigo vira cliente pagante.
+     
+     **Fazer:** não devolver o token para quem convida (a tela só precisa da situação). O aceite exige o e-mail da conta confirmado. O cupom de quem convidou só sai quando o amigo paga o primeiro plano (o do amigo pode sair no aceite).
