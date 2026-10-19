@@ -2232,3 +2232,25 @@ Foram lidos os planos do clube (criar, editar preço e sessões, desativar), a l
      - A baixa aceita o acesso mais baixo (barbeiro e barbeiro básico, de qualquer cliente da unidade). A baixa do pacote exige recepção para cima.
      
      **Fazer:** registro de cada sessão usada do clube (quem, quando, atendimento ou venda), mostrado na ficha do cliente, com "desfazer" para a baixa feita fora de venda (devolve a sessão se o ciclo ainda é o mesmo). A baixa direta exige recepção para cima, como no pacote.
+
+### Sexagésima oitava rodada (2026-10-19): taxa de falta
+
+Foram lidas a taxa de falta e de cancelamento em cima da hora (cálculo, lista, cobrar, perdoar) e o que acontece com ela quando a venda da taxa é apagada.
+
+223. ⬜ **Taxa de falta cobra de novo quem já perdeu o sinal, e o valor sai com fração de centavo** (back: `recordNoShowFee`, `markNoShowFeeCollected`, `waiveNoShowFee`):
+     - Na falta, a unidade fica com o sinal pago online ("é pra isso que ele existe"). A taxa é calculada sobre o preço dos serviços sem descontar esse sinal: o cliente que pagou R$ 30 de sinal e faltou num serviço de R$ 60 com taxa de 50% fica com R$ 30 retidos e mais R$ 30 de taxa a cobrar.
+     - A taxa por porcentagem não é arredondada (R$ 49,90 × 33% = 16,467), e a venda da taxa entra no caixa com fração de centavo.
+     - Perdoar não confere a situação: a taxa já cobrada (com a venda no caixa) vira "perdoada" e a venda continua; apagar essa venda depois volta a taxa para "pendente".
+     - A lista de taxas aceita o acesso mais baixo: o barbeiro vê o nome e o valor devido de todos os clientes da unidade, não só os dele.
+     
+     **Fazer:** descontar da taxa o sinal retido (e não criar taxa quando o sinal cobre o valor), arredondar para centavos da moeda, perdoar só taxa pendente, e a lista de taxas da recepção para cima (o barbeiro, só as dos atendimentos dele).
+
+### Sexagésima nona rodada (2026-10-19): aviso da lista de espera
+
+Foram lidos o aviso da lista de espera (horário cancelado ou aberto, prazo de 30 minutos, repasse da vaga para o próximo) e o fechamento das entradas.
+
+224. ⬜ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
+     - O aviso muda a entrada para `NOTIFIED`, mas o horário não fica guardado para quem foi avisado: a página pública continua oferecendo a vaga a qualquer um.
+     - Se outra pessoa agenda primeiro (ou o cliente não vê o aviso em 30 minutos), a vaga é repassada ou some, e a entrada fica `NOTIFIED` sem oferta. Os próximos horários que abrirem naquele dia só procuram entradas `WAITING`, então esse cliente nunca mais é avisado, mesmo continuando sem horário.
+     
+     **Fazer:** quando a oferta vence ou o horário é tomado por outra pessoa, a entrada volta para `WAITING` (no lugar que tinha na fila, ou no fim, a decidir) e pode receber o próximo aviso do dia. Opcional: guardar o horário oferecido pelos 30 minutos do aviso.
