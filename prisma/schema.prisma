@@ -710,12 +710,15 @@ model CustomerReferral {
   referredId    Int       @unique
   pointsAwarded Int?
   completedAt   DateTime?
+  // Venda que completou a indicação: apagada ou de volta a pendente, o bônus sai
+  saleId        Int?
   network       Network   @relation(fields: [networkId], references: [id], onDelete: Cascade)
   referrer      Customer  @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
   referred      Customer  @relation("ReferralReceived", fields: [referredId], references: [id], onDelete: Cascade)
 
   @@index([networkId])
   @@index([referrerId])
+  @@index([saleId])
 }
 
 // Taxa de cancelamento tardio/no-show — cobrança manual (staff registra
@@ -1683,6 +1686,8 @@ model ClientPackage {
   saleId           Int?     @unique
   // Copiado da oferta na compra. Vazio = não vence.
   expiresAt        DateTime?
+  // O que sobrou foi devolvido (refundIssuedRemainder): sessão desfeita não volta
+  remainderRefundedAt DateTime?
   barbershop       Barbershop     @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   sale             Sale?          @relation("PackageIssue", fields: [saleId], references: [id], onDelete: SetNull)
   customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)

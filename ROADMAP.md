@@ -2026,7 +2026,7 @@ Foram lidos o clube de assinatura (sessões por ciclo, cancelamento, sessão dev
 
 Foram lidos as despesas (lançar, listar, apagar e o resumo financeiro), o fechamento do caixa, o aluguel da cadeira pago à mão e a fidelidade com indicação.
 
-197. ⬜ **Despesa aceita forma de pagamento, categoria e data quaisquer** (back: `createExpense`, `expenses`, `financialSummary`):
+197. ✅ **Despesa aceita forma de pagamento, categoria e data quaisquer** (back: `createExpense`, `expenses`, `financialSummary`):
      - A forma de pagamento e a categoria são texto livre. O fechamento do caixa só conta `paymentMethod: 'CASH'`, então uma despesa em dinheiro gravada como "cash" ou "Dinheiro" fica fora do esperado da gaveta, e o resumo por categoria divide a mesma categoria em várias linhas. A venda já passou por isso (`SALE_PAYMENT_METHODS`).
      - A data "AAAA-MM-DD" vira meia-noite UTC, que no Brasil é o dia anterior: a despesa do dia 1º cai no mês anterior nos relatórios.
      - Data inválida (na despesa ou no `from`/`to` das consultas) vira `Invalid Date` e a API responde erro 500.
@@ -2034,19 +2034,25 @@ Foram lidos as despesas (lançar, listar, apagar e o resumo financeiro), o fecha
      - Descrição sem limite de tamanho e categoria vazia passam.
      
      **Fazer:** forma de pagamento só dos valores conhecidos (os da venda) e categoria só das conhecidas (`RENT`, `UTILITIES`, `SUPPLIES`, `SALARY`, `MAINTENANCE`, `OTHER`, mais as que o sistema lança). Data só no formato de dia, gravada no fuso da unidade, e não futura. Data inválida responde 400. Só a despesa de hoje (no fuso da unidade) entra no caixa aberto. Descrição obrigatória com limite de tamanho.
-198. ⬜ **Bônus da indicação fica com quem indicou depois que a venda é apagada** (back: `deleteSale`, `updateSale`): a primeira venda paga do indicado completa a indicação e dá os pontos a quem indicou (`completeReferralIfPaid`). Apagar essa venda, ou voltar ela para pendente, devolve os pontos da própria venda, mas não mexe na indicação: quem indicou continua com o bônus e a indicação continua completa. Dá para lançar uma venda paga para o indicado, apagar em seguida e o bônus fica.
+     
+     **Feito:** a categoria só aceita as conhecidas (`RENT`, `UTILITIES`, `SUPPLIES`, `SALARY`, `MAINTENANCE`, `OTHER`) e a forma de pagamento, as da venda. A descrição é obrigatória, com até 300 caracteres. A data vem como `AAAA-MM-DD`, tem de existir e não pode ser futura; fica gravada ao meio-dia do fuso da unidade, então cai no dia certo nos relatórios. Só a despesa de hoje entra no caixa aberto. Data inválida nas consultas de despesas e do resumo financeiro responde 400.
+198. ✅ **Bônus da indicação fica com quem indicou depois que a venda é apagada** (back: `deleteSale`, `updateSale`): a primeira venda paga do indicado completa a indicação e dá os pontos a quem indicou (`completeReferralIfPaid`). Apagar essa venda, ou voltar ela para pendente, devolve os pontos da própria venda, mas não mexe na indicação: quem indicou continua com o bônus e a indicação continua completa. Dá para lançar uma venda paga para o indicado, apagar em seguida e o bônus fica.
      
      **Fazer:** gravar na indicação qual venda a completou. Quando essa venda é apagada ou volta para pendente, tirar o bônus de quem indicou (sem deixar o saldo negativo) e reabrir a indicação, para a próxima venda paga completar.
+     
+     **Feito:** a indicação guarda a venda que a completou (`CustomerReferral.saleId`). Apagar essa venda, voltar ela para pendente ou trocar o cliente dela tira o bônus de quem indicou (sem deixar o saldo negativo) e reabre a indicação, que a próxima venda paga completa de novo.
 
 ### Quinquagésima primeira rodada (2026-10-19): pacotes e salas
 
 Foram lidos os pacotes de sessão (venda, baixa, desfazer a baixa, apagar a venda e devolver o que sobrou), o cartão-presente (venda, desativação e consulta do código), as fichas de consentimento e os recursos (salas e cadeiras).
 
-199. ⬜ **Desfazer uma baixa devolve sessão a pacote já estornado ou cancelado** (back: `undoClientPackageUse` e `restorePackageUses`, usada ao apagar a venda da conta): as duas devolvem a sessão com `status: 'ACTIVE'`, sem olhar a situação do pacote.
+199. ✅ **Desfazer uma baixa devolve sessão a pacote já estornado ou cancelado** (back: `undoClientPackageUse` e `restorePackageUses`, usada ao apagar a venda da conta): as duas devolvem a sessão com `status: 'ACTIVE'`, sem olhar a situação do pacote.
      - Depois de "devolver o que sobrou" (`refundIssuedRemainder`), o pacote fica com o total igual ao usado e `COMPLETED`, e o cliente recebe de volta o valor das sessões que faltavam. Desfazer uma baixa (ou apagar a venda que usou uma sessão) baixa o usado, deixa o pacote `ACTIVE` e o cliente ganha uma sessão já devolvida em dinheiro.
      - Pacote `CANCELLED` (unidade encerrada) também volta a `ACTIVE` com a sessão devolvida.
      
      **Fazer:** só devolver a sessão a pacote `ACTIVE` ou `COMPLETED` por uso (não por estorno), e voltar a `ACTIVE` só o que estava `COMPLETED` por ter usado tudo. Pacote estornado ou cancelado recusa desfazer a baixa (a venda que usou a sessão continua podendo ser apagada, sem devolver a sessão). Gravar no pacote que o restante foi devolvido, para diferenciar do pacote que só acabou.
+     
+     **Feito:** o pacote guarda quando o restante foi devolvido (`remainderRefundedAt`, preenchido também nos já devolvidos). Desfazer uma baixa de pacote devolvido ou cancelado é recusado; apagar a venda que usou a sessão continua possível, mas a sessão não volta. Pacote ativo, ou que acabou por uso, ganha a sessão de volta como antes.
 200. ⬜ **Apagar uma sala tira ela dos horários sem aviso** (back: `deleteResource`; front: `Resources.tsx`):
      - A ligação do horário com o recurso é `ON DELETE SET NULL`. Apagar a sala deixa os horários futuros marcados nela sem sala, sem aviso para a equipe. Os horários passados perdem a sala no histórico.
      - Já existe desativar (`isActive`), que tira a sala de novos horários sem apagar nada.

@@ -57,6 +57,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Tipo de movimentação de estoque inválido.': 'STOCK_MOVEMENT_INVALID',
   'Informe uma quantidade diferente de zero.': 'STOCK_QUANTITY_INVALID',
   'O estoque mínimo não pode ser negativo.': 'STOCK_MIN_INVALID',
+  'Categoria da despesa inválida': 'EXPENSE_CATEGORY_INVALID',
+  'Data da despesa inválida': 'EXPENSE_DATE_INVALID',
+  'Descreva a despesa (até 300 caracteres)': 'EXPENSE_DESCRIPTION_INVALID',
+  'Data da consulta inválida': 'QUERY_DATE_INVALID',
+  'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.':
+    'PACKAGE_UNDO_CLOSED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
