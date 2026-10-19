@@ -2203,3 +2203,13 @@ Foram lidos os limites do plano (profissionais e unidades, troca para plano meno
 219. ⬜ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
      
      **Fazer:** ao derrubar sessões (outras sessões, troca e redefinição de senha, na equipe e no cliente), apagar as inscrições de push da conta, menos a do aparelho que pediu (o front manda o endpoint atual junto, quando houver).
+
+### Sexagésima quinta rodada (2026-10-19): exclusão da conta do dono
+
+Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da Stripe e a exclusão da conta do dono (prévia e apagamento).
+
+220. ⬜ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
+     - A prévia da exclusão da conta mostra só horários futuros, o pago pelo app e o resto do clube (`deletionImpact`). Os pacotes ativos e o valor a devolver (`activePackagesOf`), que a prévia de encerrar uma unidade já mostra (item 134), não aparecem, nem os aluguéis de cadeira em atraso.
+     - Os cartões-presente com saldo não aparecem em nenhuma das duas prévias. Na exclusão da conta, a rede é apagada em cascata e leva os cartões: o cliente que pagou o cartão perde o saldo sem aviso. Ao encerrar a última unidade da rede, o cartão continua "ativo" sem unidade onde usar.
+     
+     **Fazer:** a prévia da exclusão da conta usa a mesma soma da prévia da unidade (pacotes e aluguéis em atraso) e as duas mostram os cartões-presente com saldo, por moeda. Na exclusão, avisar por e-mail quem tem pacote ou cartão com saldo (quando há e-mail), como já é feito com os horários cancelados.
