@@ -18,6 +18,8 @@ import {
   assertStaffAppointmentSource,
   WALK_IN_TRANSITION_MESSAGE,
   CLUB_UNDO_OLD_CYCLE_MESSAGE,
+  SALE_APPOINTMENT_CUSTOMER_MESSAGE,
+  SALE_BELOW_APPLIED_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -633,6 +635,45 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(sale.loyaltyPointsEarned).toBe(80);
       const after = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
       expect(after.loyaltyPoints).toBe(80);
+      await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
+      await prisma.sale.delete({ where: { id: sale.id } });
+    });
+
+    it('conta do horário: menor que o já pago é recusada e só no cliente do horário (item 225)', async () => {
+      const customer = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Pagou 100', phone: `11${RUN}c225` },
+      });
+      const other = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Outra pessoa', phone: `11${RUN}o225` },
+      });
+      const appt = await book(at(day, '10:30'), { customerId: customer.id });
+      await prisma.appointment.update({
+        where: { id: appt!.id },
+        data: { prepaidAmount: new Decimal(100), prepaidAt: new Date() },
+      });
+      const bill = (total: number, customerId?: number) =>
+        service.createSale(A.ownerId, A.shopId, {
+          customerId,
+          appointmentId: appt!.id,
+          saleType: 'SERVICE',
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: total,
+              totalPrice: total,
+            },
+          ],
+          subtotal: total,
+          total,
+          paymentStatus: 'PAID',
+        });
+      await expect(bill(60, customer.id)).rejects.toThrow(SALE_BELOW_APPLIED_MESSAGE);
+      await expect(bill(100, other.id)).rejects.toThrow(SALE_APPOINTMENT_CUSTOMER_MESSAGE);
+      // Sem cliente na venda: vai o do horário
+      const sale = await bill(100);
+      expect(sale.customerId).toBe(customer.id);
       await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
       await prisma.sale.delete({ where: { id: sale.id } });
     });

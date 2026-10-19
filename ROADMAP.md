@@ -2315,11 +2315,13 @@ Foram lidos o aviso da lista de espera (horário cancelado ou aberto, prazo de 3
 
 Foi lido o fechamento da conta do horário (`createSale` com `appointmentId`): o sinal e o pago antes pelo app descontados, cartão-presente, pontos e a ligação com o cliente.
 
-225. ⬜ **Conta menor que o já pago fica com a diferença calada, e a conta do horário aceita outro cliente** (back: `createSale`):
+225. ✅ **Conta menor que o já pago fica com a diferença calada, e a conta do horário aceita outro cliente** (back: `createSale`):
      - O sinal e o pago antes pelo app entram até o total da conta (`Math.min`). Se a conta sai menor que o já pago (serviço trocado por um mais barato, item tirado, desconto), a diferença não volta para o cliente, não aparece no faturamento nem em lugar nenhum: o cliente pagou R$ 100 pelo app, a conta fechou em R$ 60 e os R$ 40 somem. A edição da venda já recusa ficar abaixo do que foi pago (`SALE_BELOW_APPLIED_MESSAGE`); a criação não.
      - A conta do horário não confere que o cliente da venda é o cliente do horário. Dá para fechar o horário do cliente A em nome do cliente B: o sinal e o pago antes de A abatem a conta de B, B ganha os pontos de fidelidade e completa a indicação com dinheiro que A pagou.
      
      **Fazer:** conta menor que o já pago é recusada com a mesma mensagem da edição (ou devolve a diferença pelo estorno parcial, se o pago foi pelo app). A conta de um horário usa o cliente do horário (outro cliente é recusado).
+     
+     **Feito:** a conta do horário (`createSale` com `appointmentId`) menor que o já pago (sinal mais o pago antes pelo app) é recusada com a mesma mensagem da edição (`SALE_BELOW_APPLIED_MESSAGE`). A conta usa o cliente do horário: sem cliente na venda, vai o do horário, e outro cliente é recusado (`SALE_APPOINTMENT_CUSTOMER`). O estorno automático da diferença ficou de fora; a equipe ajusta a conta ou faz o estorno parcial pelo app. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima primeira rodada (2026-10-19): apagar a ficha do cliente
 

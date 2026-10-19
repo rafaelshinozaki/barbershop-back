@@ -752,6 +752,8 @@ export const PAYMENT_STATUS_INVALID_MESSAGE = 'Situação de pagamento inválida
 export const PAYMENT_METHOD_INVALID_MESSAGE = 'Forma de pagamento inválida';
 export const SALE_TYPE_LOCKED_MESSAGE =
   'O tipo e os itens desta venda não mudam. Apague e lance de novo.';
+export const SALE_APPOINTMENT_CUSTOMER_MESSAGE =
+  'A conta do horário é do cliente do horário. Para outro cliente, registre uma venda separada.';
 export const SALE_BELOW_APPLIED_MESSAGE =
   'O valor ficou menor do que já foi pago com sinal, app, cartão-presente ou pontos.';
 
@@ -9223,6 +9225,7 @@ export class BarbershopService {
         select: {
           id: true,
           barberId: true,
+          customerId: true,
           status: true,
           depositPaid: true,
           depositAmount: true,
@@ -9241,6 +9244,12 @@ export class BarbershopService {
       if (['CANCELLED', 'NO_SHOW', 'PENDING_PAYMENT'].includes(appt.status)) {
         throw new BadRequestException('Este horário não pode ser cobrado');
       }
+      // A conta do horário é do cliente do horário: o sinal e o pago pelo
+      // app dele não abatem a conta de outra pessoa (nem dão pontos a ela)
+      if (data.customerId && data.customerId !== appt.customerId) {
+        throw new BadRequestException(SALE_APPOINTMENT_CUSTOMER_MESSAGE);
+      }
+      data = { ...data, customerId: appt.customerId };
       if (appt.depositPaid) depositPaidOnAppointment = Number(appt.depositAmount ?? 0);
       if (appt.prepaidAt && !appt.prepaidRefundedAt) {
         // Menos o que já foi devolvido em estorno parcial
@@ -9310,6 +9319,10 @@ export class BarbershopService {
     // era debitado de um atendimento já pago e os pontos saíam todos mesmo
     // sem ter o que descontar
     const total = Math.max(0, data.total);
+    // Conta menor que o já pago: a diferença sumia (como na edição, recusa)
+    if (round2(depositPaidOnAppointment + prepaidOnAppointment) > total + 0.005) {
+      throw new BadRequestException(SALE_BELOW_APPLIED_MESSAGE);
+    }
     const depositApplied = Math.min(depositPaidOnAppointment, total);
     const prepaidApplied = Math.min(prepaidOnAppointment, total - depositApplied);
     let remaining = round2(total - depositApplied - prepaidApplied);
