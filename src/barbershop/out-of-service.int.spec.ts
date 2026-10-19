@@ -288,7 +288,8 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
     const phones = queued
       .map((j) => (j as { to?: string }).to)
       .filter((to): to is string => !!to && to.startsWith('+'));
-    expect(phones.filter((p) => p === '+5511977770001')).toHaveLength(1);
+    // A pessoa repetida tem dois números: um WhatsApp só, para um deles
+    expect(phones.filter((p) => ['+5511977770001', '+5511966660000'].includes(p))).toHaveLength(1);
     expect(phones).not.toContain('+5511955550000');
   });
 });
