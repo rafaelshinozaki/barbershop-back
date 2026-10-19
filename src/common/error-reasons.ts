@@ -92,6 +92,10 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Cupom de porcentagem vai de 1 a 100, e o de valor fixo precisa de valor maior que zero.':
     'COUPON_VALUE_INVALID',
   'Confirme seu e-mail para aceitar o convite.': 'FRIEND_INVITE_EMAIL_NOT_CONFIRMED',
+  'Esta sessão do clube está numa venda. Apague a venda para desfazer.': 'CLUB_USE_IN_SALE',
+  'Esta sessão é de um ciclo do clube que já acabou: não volta.': 'CLUB_UNDO_OLD_CYCLE',
+  'Só dá pra perdoar a taxa pendente. A já cobrada sai apagando a venda dela.':
+    'NO_SHOW_FEE_NOT_PENDING',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

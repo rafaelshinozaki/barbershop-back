@@ -1865,6 +1865,10 @@ export class ClientSubscriptionType {
 
   @Field()
   createdAt: string;
+
+  // Sessões usadas (na ficha do cliente): baixa direta ou na venda
+  @Field(() => [ClientPackageUseType], { nullable: true })
+  uses?: ClientPackageUseType[];
 }
 
 @ObjectType()

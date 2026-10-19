@@ -2254,11 +2254,13 @@ Foram lidos os limites do plano (profissionais e unidades, troca para plano meno
 
 Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da Stripe e a exclusão da conta do dono (prévia e apagamento).
 
-220. ⬜ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
+220. ✅ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
      - A prévia da exclusão da conta mostra só horários futuros, o pago pelo app e o resto do clube (`deletionImpact`). Os pacotes ativos e o valor a devolver (`activePackagesOf`), que a prévia de encerrar uma unidade já mostra (item 134), não aparecem, nem os aluguéis de cadeira em atraso.
      - Os cartões-presente com saldo não aparecem em nenhuma das duas prévias. Na exclusão da conta, a rede é apagada em cascata e leva os cartões: o cliente que pagou o cartão perde o saldo sem aviso. Ao encerrar a última unidade da rede, o cartão continua "ativo" sem unidade onde usar.
      
      **Fazer:** a prévia da exclusão da conta usa a mesma soma da prévia da unidade (pacotes e aluguéis em atraso) e as duas mostram os cartões-presente com saldo, por moeda. Na exclusão, avisar por e-mail quem tem pacote ou cartão com saldo (quando há e-mail), como já é feito com os horários cancelados.
+     
+     **Feito:** a prévia da exclusão da conta usa a mesma soma da prévia de encerrar uma unidade: pacotes ativos com o valor a devolver (`activePackagesOf`, agora para várias unidades) e aluguéis de cadeira vencidos. As duas prévias mostram os cartões-presente com saldo, por moeda (`giftCardBalancesOf`). Na conta, isso vale para todas as redes. Na unidade, só quando é a última da rede, porque aí o cartão fica sem onde usar. Na exclusão da conta, quem tem pacote ativo (e-mail da ficha) ou cartão-presente com saldo (e-mail de quem comprou) recebe um aviso por e-mail antes de apagar (`notifyBalancesBeforeDeletion`), como os horários cancelados. O front mostra os novos campos nas duas prévias. Teste em `account-deletion.int.spec.ts`.
 
 ### Sexagésima sexta rodada (2026-10-19): importação da planilha
 
@@ -2274,24 +2276,28 @@ Foi lida a importação da planilha (clientes, serviços e horários vindos de o
 
 Foram lidos os planos do clube (criar, editar preço e sessões, desativar), a ligação da ficha com a conta do clube, a sessão usada na venda e a baixa direta de sessão.
 
-222. ⬜ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
+222. ✅ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
      - A baixa só soma 1 em `usedThisCycle`. Não grava quem deu a baixa, quando, nem para qual atendimento. O pacote de sessões tem esse registro (`ClientPackageUse`, com quem usou e "desfazer"), o clube não.
      - Não existe desfazer: um clique errado tira do cliente uma sessão que ele pagou, até o próximo ciclo.
      - A baixa aceita o acesso mais baixo (barbeiro e barbeiro básico, de qualquer cliente da unidade). A baixa do pacote exige recepção para cima.
      
      **Fazer:** registro de cada sessão usada do clube (quem, quando, atendimento ou venda), mostrado na ficha do cliente, com "desfazer" para a baixa feita fora de venda (devolve a sessão se o ciclo ainda é o mesmo). A baixa direta exige recepção para cima, como no pacote.
+     
+     **Feito:** cada sessão do clube usada vira um registro (`ClientSubscriptionUse`: quem deu a baixa, quando, a venda e o ciclo), na venda e na baixa direta. A ficha do cliente mostra as últimas baixas (`uses` em `customerSubscriptions`). A baixa direta pode ser desfeita (`undoClientSubscriptionUse`) e a sessão volta se ainda é o mesmo ciclo (`CLUB_UNDO_OLD_CYCLE`). A baixa da venda só se desfaz apagando a venda (`CLUB_USE_IN_SALE`), e apagar a venda marca a baixa como desfeita. A baixa direta exige recepção para cima, como no pacote. O front mostra quem deu a baixa e o botão de desfazer. Teste em `barbershop.service.int.spec.ts`.
 
 ### Sexagésima oitava rodada (2026-10-19): taxa de falta
 
 Foram lidas a taxa de falta e de cancelamento em cima da hora (cálculo, lista, cobrar, perdoar) e o que acontece com ela quando a venda da taxa é apagada.
 
-223. ⬜ **Taxa de falta cobra de novo quem já perdeu o sinal, e o valor sai com fração de centavo** (back: `recordNoShowFee`, `markNoShowFeeCollected`, `waiveNoShowFee`):
+223. ✅ **Taxa de falta cobra de novo quem já perdeu o sinal, e o valor sai com fração de centavo** (back: `recordNoShowFee`, `markNoShowFeeCollected`, `waiveNoShowFee`):
      - Na falta, a unidade fica com o sinal pago online ("é pra isso que ele existe"). A taxa é calculada sobre o preço dos serviços sem descontar esse sinal: o cliente que pagou R$ 30 de sinal e faltou num serviço de R$ 60 com taxa de 50% fica com R$ 30 retidos e mais R$ 30 de taxa a cobrar.
      - A taxa por porcentagem não é arredondada (R$ 49,90 × 33% = 16,467), e a venda da taxa entra no caixa com fração de centavo.
      - Perdoar não confere a situação: a taxa já cobrada (com a venda no caixa) vira "perdoada" e a venda continua; apagar essa venda depois volta a taxa para "pendente".
      - A lista de taxas aceita o acesso mais baixo: o barbeiro vê o nome e o valor devido de todos os clientes da unidade, não só os dele.
      
      **Fazer:** descontar da taxa o sinal retido (e não criar taxa quando o sinal cobre o valor), arredondar para centavos da moeda, perdoar só taxa pendente, e a lista de taxas da recepção para cima (o barbeiro, só as dos atendimentos dele).
+     
+     **Feito:** o sinal pago online e retido na falta entra na taxa: cobra só o que falta, e nada quando o sinal cobre o valor. A taxa sai arredondada para os centavos da moeda da unidade (`roundMoney`). Perdoar vale só para a taxa pendente (`NO_SHOW_FEE_NOT_PENDING`); a já cobrada sai apagando a venda. Na lista de taxas, a recepção para cima vê todas e o barbeiro só as dos atendimentos dele. Teste em `no-show-fee.int.spec.ts`.
 
 ### Sexagésima nona rodada (2026-10-19): aviso da lista de espera
 

@@ -26,6 +26,14 @@ export interface AccountDeletionPreview {
   onlineRefunds: Array<{ currency: string; amount: number }>;
   /** Resto do ciclo pago do clube, que volta pro cartão do cliente (por moeda) */
   clubRefunds: Array<{ currency: string; amount: number }>;
+  /** Pacotes ativos e o que falta devolver aos clientes (pago fora do app) */
+  activePackages: number;
+  packageRefunds: Array<{ currency: string; amount: number }>;
+  /** Aluguel de cadeira vencido, que continua devido */
+  overdueChairRents: Array<{ currency: string; amount: number }>;
+  /** Cartões-presente com saldo das redes apagadas (o cliente perde o saldo pelo app) */
+  giftCards: number;
+  giftCardBalances: Array<{ currency: string; amount: number }>;
   /** Conta com senha confirma com a senha; login social, digitando o e-mail */
   requiresPassword: boolean;
   /** Admin do sistema não se exclui por aqui (outro admin faz) */
@@ -88,11 +96,22 @@ export class AccountDeletionService {
           where: { barbershopId: { in: shops.map((s) => s.id) }, status: { not: 'CANCELED' } },
         })
       : 0;
-    const impact = await this.barbershopService.deletionImpact(shops.map((s) => s.id));
+    const { networkIds } = await this.ownedBarbershops(userId);
+    const shopIds = shops.map((s) => s.id);
+    // Mesma soma da prévia de encerrar uma unidade, mais os cartões-presente
+    const [impact, packages, overdueChairRents, giftCards] = await Promise.all([
+      this.barbershopService.deletionImpact(shopIds),
+      this.barbershopService.activePackagesOf(shopIds),
+      this.barbershopService.overdueChairRentsOf(shopIds),
+      this.barbershopService.giftCardBalancesOf(networkIds),
+    ]);
     return {
       barbershops: shops.map((s) => s.name),
       activeClientSubscriptions,
       ...impact,
+      ...packages,
+      overdueChairRents,
+      ...giftCards,
       requiresPassword: user.provider === 'local',
       blocked: user.role?.name === Role.SYSTEM_ADMIN,
     };
@@ -141,6 +160,8 @@ export class AccountDeletionService {
     await this.barbershopService.cancelChairRentsOfBarbershops(shopIds);
     // Horários futuros: cancela, devolve o pago pelo app e avisa o cliente
     await this.barbershopService.cancelFutureAppointmentsOfBarbershops(shopIds);
+    // Quem tem pacote ativo ou cartão-presente com saldo recebe o aviso
+    await this.barbershopService.notifyBalancesBeforeDeletion(shopIds, networkIds);
     const activePlans = await this.prisma.subscription.findMany({
       where: { userId, status: PLANO_STATUS.ACTIVE },
     });

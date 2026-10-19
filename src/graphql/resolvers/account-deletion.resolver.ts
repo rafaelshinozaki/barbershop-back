@@ -49,6 +49,24 @@ export class AccountDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   clubRefunds: DeletionRefundType[];
 
+  // Pacotes ativos: pagos fora do app, o negócio devolve o que não foi usado
+  @Field(() => Int)
+  activePackages: number;
+
+  @Field(() => [DeletionRefundType])
+  packageRefunds: DeletionRefundType[];
+
+  // Aluguel da cadeira já vencido, que continua devido
+  @Field(() => [DeletionRefundType])
+  overdueChairRents: DeletionRefundType[];
+
+  // Cartões-presente com saldo: deixam de valer com as redes
+  @Field(() => Int)
+  giftCards: number;
+
+  @Field(() => [DeletionRefundType])
+  giftCardBalances: DeletionRefundType[];
+
   /** true = confirma com a senha; false (login social) = digitando o e-mail */
   @Field()
   requiresPassword: boolean;

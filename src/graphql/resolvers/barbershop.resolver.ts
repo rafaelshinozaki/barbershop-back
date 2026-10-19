@@ -138,6 +138,13 @@ export class BarbershopDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   packageRefunds: DeletionRefundType[];
 
+  // Cartões-presente com saldo (só na última unidade da rede: ficam sem onde usar)
+  @Field(() => Int)
+  giftCards: number;
+
+  @Field(() => [DeletionRefundType])
+  giftCardBalances: DeletionRefundType[];
+
   @Field(() => Int)
   activeClientSubscriptions: number;
 }
@@ -1428,6 +1435,17 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.undoClientPackageUse(user.id, barbershopId, id);
+  }
+
+  /** Desfaz a baixa direta de uma sessão do clube (a sessão volta no mesmo ciclo) */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async undoClientSubscriptionUse(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.undoClientSubscriptionUse(user.id, barbershopId, id);
   }
 
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
