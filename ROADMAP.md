@@ -2110,3 +2110,14 @@ Foram lidos o pagamento da equipe (forma de pagamento, vales, bônus e descontos
 208. ⬜ **Gerente que também atende define e paga o próprio salário e bônus** (back: `PayrollService.setConfig`, `addEntry`, `deleteEntry`, `pay`, `undoPayout`): a regra de comissão já não deixa o gerente mexer na própria comissão ("A sua comissão é definida pelo dono", `ensureNotOwnCommission`). O pagamento da equipe não tem a mesma trava: o gerente que é profissional da unidade troca a própria forma de pagamento para fixo com qualquer valor, lança bônus para si, apaga os próprios descontos e vales, e registra o próprio pagamento.
      
      **Fazer:** a mesma trava da comissão em todo o pagamento da equipe: no próprio profissional, só o dono configura, lança, apaga, paga e desfaz. O gerente continua vendo o próprio extrato.
+
+### Quinquagésima sexta rodada (2026-10-19): avaliações nos dois sentidos
+
+Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do profissional (página pública, "minhas avaliações", resposta) e a nota que a equipe dá ao cliente (pontualidade e trato).
+
+209. ⬜ **Quem saiu da unidade continua avaliando os clientes dela** (back: `CustomerRatingService.rate`, `forAppointment`, `pendingForMe`, `sendDailyDigest`): o lado "profissional" é dado a quem tem o `userId` do profissional do atendimento, sem conferir se a pessoa ainda está na unidade. Quem foi desligado (profissional inativo, vínculo encerrado ou acesso revogado) continua vendo a lista de pendentes com o nome dos clientes, recebe o resumo diário e dá nota a eles por até 30 dias, e essa nota entra na média do cliente que as outras equipes da rede veem.
+     
+     **Fazer:** o lado profissional exige o profissional ativo, com o vínculo valendo e acesso à unidade. A lista de pendentes e o resumo diário seguem a mesma regra.
+210. ⬜ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
+     
+     **Fazer:** avaliação às cegas: em "Minhas avaliações", a avaliação de um atendimento só aparece depois que o profissional avaliou aquele cliente ou depois que o prazo de avaliar passou. Até lá, entra só na média.
