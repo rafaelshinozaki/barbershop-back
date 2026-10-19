@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   EmployeeInviteService,
@@ -27,8 +27,14 @@ export class EmployeeInviteController {
   }
 
   @Get('validate/:inviteToken')
-  async validateInvite(@Param('inviteToken') inviteToken: string) {
-    return this.employeeInviteService.validateInvite(inviteToken);
+  async validateInvite(@Param('inviteToken') inviteToken: string, @Query('k') emailKey?: string) {
+    return this.employeeInviteService.validateInvite(inviteToken, emailKey);
+  }
+
+  /** Quem abriu o link sem a chave do e-mail pede o e-mail de novo */
+  @Post('resend-email/:inviteToken')
+  async resendInviteEmail(@Param('inviteToken') inviteToken: string) {
+    return this.employeeInviteService.resendInviteEmail(inviteToken);
   }
 
   /** Aceita com a conta já existente (logado): entra em mais uma unidade */

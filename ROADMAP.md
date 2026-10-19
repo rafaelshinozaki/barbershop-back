@@ -2167,12 +2167,14 @@ Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, 
 
 Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta e aceitar com a conta que já existe) e o vínculo temporário.
 
-212. ⬜ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
+212. ✅ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
      - O gerente recebe o link do convite: a criação devolve o convite inteiro, com o token, e a lista da equipe mostra `pendingInviteToken` para a tela oferecer o link. Assim ele pode convidar qualquer e-mail que ainda não tem conta, abrir o próprio link e criar a conta com a senha que quiser.
      - A conta nasce com `emailVerifiedAt` ("o link do convite chegou neste e-mail"), mas quem abriu não precisou receber o e-mail. O documento digitado fica gravado e passa a contar como já usado (`idDocTaken`). A dona do e-mail e do CPF não consegue se cadastrar ("Já existe uma conta com estes dados") até descobrir e recuperar a senha, e o documento continua preso.
      - Se já existe conta com esse e-mail entrando pelo Google, a busca só olha `provider: 'local'` e a chave única é e-mail + forma de entrada: o aceite cria uma segunda conta com o mesmo e-mail, em vez de mandar entrar com a conta que já existe (a tela de validação diz que a conta existe, mas o aceite direto pela API passa).
      
      **Fazer:** a conta criada pelo convite não nasce com o e-mail confirmado quando o link pode ter sido compartilhado: manda o código de confirmação para o e-mail antes de liberar o acesso (ou exige o código no aceite). O documento só passa a valer como usado depois da confirmação. Conta existente com qualquer forma de entrada leva para "entrar com a sua conta".
+     
+     **Feito:** cada envio do e-mail do convite leva no link uma chave nova (`?k=`) que só vai no e-mail; o banco guarda só o hash (`EmployeeInvite.emailKeyHash`). O gerente continua vendo o link do convite, mas sem a chave. Criar a conta pelo convite (`acceptInvite`) exige a chave (`INVITE_EMAIL_KEY_REQUIRED`): só quem recebeu o e-mail cria a conta, então o e-mail confirmado e o documento gravado passam a valer só para quem provou ser dono do e-mail. Quem abriu o link compartilhado vê "abra pelo link do e-mail" e pode pedir o reenvio na própria tela (`POST /employee-invites/resend-email/:token`, uma vez por minuto, com chave nova). Conta com o mesmo e-mail em qualquer forma de entrada (senha ou Google) leva a "entre com a sua conta" (`INVITE_EXISTING_ACCOUNT`), em vez de criar outra. Aceitar com a conta que já existe (logado) não muda. Teste em `multi-unit.int.spec.ts`.
 
 ### Quinquagésima nona rodada (2026-10-19): caixinha e pagamento da equipe
 

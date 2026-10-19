@@ -12,7 +12,12 @@ import {
   SHIFT_INVALID_MESSAGE,
   BarbershopService,
 } from './barbershop.service';
-import { EmployeeInviteService } from './employee-invite.service';
+import {
+  EmployeeInviteService,
+  INVITE_EMAIL_KEY_MESSAGE,
+  INVITE_EMAIL_RECENT_MESSAGE,
+  INVITE_EXISTING_ACCOUNT_MESSAGE,
+} from './employee-invite.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const DAY = 86400_000;
@@ -545,5 +550,99 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     expect(links.find((b) => b.barbershopId === first.id)?.takesAppointments).toBeNull();
     expect(links.find((b) => b.barbershopId === second.id)?.takesAppointments).toBe(false);
     await prisma.subscription.deleteMany({ where: { userId: owner.id } });
+  });
+
+  it('criar conta pelo convite exige a chave que só vai no e-mail (item 212)', async () => {
+    const urls: string[] = [];
+    const mailer = new EmployeeInviteService(
+      prisma,
+      {
+        sendCustomerEmail: async (...args: unknown[]) =>
+          void urls.push((args[2] as { InviteUrl: string }).InviteUrl),
+      } as never,
+      { get: () => 'https://app.test' } as never,
+      service,
+      { notify: () => undefined } as never,
+      { memberJoined: async () => undefined } as never,
+    );
+    const shop = shops[1];
+    const email = `mu-chave-${RUN}@test.local`;
+    const { barber, invite } = await mailer.createInvite(shop.ownerId, {
+      barbershopId: shop.shopId,
+      email,
+      name: 'Chave',
+      phone: '11900000021',
+      role: 'BarbershopEmployee',
+    });
+    const keyOf = (url: string) => new URL(url).searchParams.get('k') ?? '';
+    const key = keyOf(urls[0]);
+    expect(key).toHaveLength(48);
+    // O gerente vê o convite com o token, mas a chave não fica guardada em claro
+    expect(JSON.stringify(invite)).not.toContain(key);
+
+    const form = {
+      fullName: 'Pessoa Convidada',
+      idDocNumber: `9${RUN}`.slice(-11),
+      phone: '11900000022',
+      password: 'senha-forte-1',
+      birthdate: '1995-05-05',
+      gender: 'female',
+    };
+    // Link compartilhado (sem a chave) não cria a conta
+    await expect(mailer.acceptInvite(invite.inviteToken, form)).rejects.toThrow(
+      INVITE_EMAIL_KEY_MESSAGE,
+    );
+    await expect(
+      mailer.acceptInvite(invite.inviteToken, { ...form, emailKey: 'x'.repeat(48) }),
+    ).rejects.toThrow(INVITE_EMAIL_KEY_MESSAGE);
+    expect((await mailer.validateInvite(invite.inviteToken)).emailConfirmed).toBe(false);
+    expect((await mailer.validateInvite(invite.inviteToken, key)).emailConfirmed).toBe(true);
+
+    // Reenvio pela tela: uma vez por minuto, com chave nova (a antiga deixa de valer)
+    await expect(mailer.resendInviteEmail(invite.inviteToken)).rejects.toThrow(
+      INVITE_EMAIL_RECENT_MESSAGE,
+    );
+    await prisma.employeeInvite.update({
+      where: { id: invite.id },
+      data: { emailKeySentAt: new Date(Date.now() - 2 * 60_000) },
+    });
+    await mailer.resendInviteEmail(invite.inviteToken);
+    const fresh = keyOf(urls[1]);
+    expect(fresh).not.toBe(key);
+    expect((await mailer.validateInvite(invite.inviteToken, key)).emailConfirmed).toBe(false);
+
+    // Conta com o mesmo e-mail pelo Google: manda entrar com ela
+    const google = await prisma.user.create({
+      data: {
+        email,
+        provider: 'google',
+        isActive: true,
+        fullName: 'Pelo Google',
+        password: 'x',
+        idDocNumber: `g${RUN}`.slice(-20),
+        phone: '11900000023',
+        gender: 'female',
+        birthdate: new Date('1990-01-01'),
+        readTerms: true,
+        roleId,
+      },
+    });
+    await expect(
+      mailer.acceptInvite(invite.inviteToken, { ...form, emailKey: fresh }),
+    ).rejects.toThrow(INVITE_EXISTING_ACCOUNT_MESSAGE);
+    await prisma.user.delete({ where: { id: google.id } });
+
+    const done = await mailer.acceptInvite(invite.inviteToken, { ...form, emailKey: fresh });
+    const created = await prisma.user.findUniqueOrThrow({ where: { id: done.userId } });
+    expect(created.emailVerifiedAt).not.toBeNull();
+    await prisma.barber.update({
+      where: { id: barber.id },
+      data: { isActive: false, userId: null },
+    });
+    await prisma.professional.deleteMany({ where: { userId: created.id } });
+    await prisma.employeeInvite.deleteMany({ where: { id: invite.id } });
+    await prisma.userSystemConfig.deleteMany({ where: { userId: created.id } });
+    await prisma.notificationPreference.deleteMany({ where: { userId: created.id } });
+    await prisma.user.delete({ where: { id: created.id } });
   });
 });

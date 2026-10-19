@@ -413,6 +413,10 @@ model EmployeeInvite {
   status         String    @default("PENDING")
   expiresAt      DateTime
   acceptedByUserId Int?
+  // Hash da chave que vai só no link do e-mail (o gerente vê o link sem ela):
+  // aceitar criando conta exige a chave, que prova que a pessoa recebeu o e-mail
+  emailKeyHash   String?
+  emailKeySentAt DateTime?
   inviter        User      @relation("EmployeeInviteInviter", fields: [inviterId], references: [id])
   barbershop     Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barber         Barber    @relation(fields: [barberId], references: [id], onDelete: Cascade)
