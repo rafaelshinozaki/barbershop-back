@@ -18,6 +18,13 @@ import {
   assertStaffAppointmentSource,
   WALK_IN_TRANSITION_MESSAGE,
   CLUB_UNDO_OLD_CYCLE_MESSAGE,
+  SALE_APPOINTMENT_CUSTOMER_MESSAGE,
+  SALE_BELOW_APPLIED_MESSAGE,
+  CUSTOMER_HAS_PACKAGES_MESSAGE,
+  APPOINTMENT_DEPOSIT_MESSAGE,
+  DEPOSIT_RECEPTION_MESSAGE,
+  DEPOSIT_METHOD_MESSAGE,
+  DEPOSIT_CASH_CLOSED_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -637,6 +644,97 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.sale.delete({ where: { id: sale.id } });
     });
 
+    it('conta do horário: menor que o já pago é recusada e só no cliente do horário (item 225)', async () => {
+      const customer = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Pagou 100', phone: `11${RUN}c225` },
+      });
+      const other = await prisma.customer.create({
+        data: { networkId: A.networkId, name: 'Outra pessoa', phone: `11${RUN}o225` },
+      });
+      const appt = await book(at(day, '10:30'), { customerId: customer.id });
+      await prisma.appointment.update({
+        where: { id: appt!.id },
+        data: { prepaidAmount: new Decimal(100), prepaidAt: new Date() },
+      });
+      const bill = (total: number, customerId?: number) =>
+        service.createSale(A.ownerId, A.shopId, {
+          customerId,
+          appointmentId: appt!.id,
+          saleType: 'SERVICE',
+          items: [
+            {
+              itemType: 'SERVICE',
+              serviceId: A.serviceId,
+              quantity: 1,
+              unitPrice: total,
+              totalPrice: total,
+            },
+          ],
+          subtotal: total,
+          total,
+          paymentStatus: 'PAID',
+        });
+      await expect(bill(60, customer.id)).rejects.toThrow(SALE_BELOW_APPLIED_MESSAGE);
+      await expect(bill(100, other.id)).rejects.toThrow(SALE_APPOINTMENT_CUSTOMER_MESSAGE);
+      // Sem cliente na venda: vai o do horário
+      const sale = await bill(100);
+      expect(sale.customerId).toBe(customer.id);
+      await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
+      await prisma.sale.delete({ where: { id: sale.id } });
+    });
+
+    it('sinal à mão: recepção para cima, com a forma, dentro do preço e no caixa (item 227)', async () => {
+      const make = (over: Record<string, unknown>, userId = A.ownerId) =>
+        service.createAppointment(userId, A.shopId, {
+          customerId: A.customerId,
+          barberId: A.barberId,
+          startAt: at(day, '07:00'),
+          endAt: at(day, '07:30'),
+          services: [{ serviceId: A.serviceId, unitPrice: 50 }],
+          ...over,
+        } as never);
+      await expect(make({ services: [{ serviceId: A.serviceId, unitPrice: -5 }] })).rejects.toThrow(
+        'Preço do serviço inválido',
+      );
+      await expect(
+        make({ services: [{ serviceId: A.serviceId, unitPrice: 50, quantity: 0 }] }),
+      ).rejects.toThrow('Quantidade inválida');
+      await expect(make({ depositAmount: -1 })).rejects.toThrow('Sinal inválido');
+      await expect(make({ depositAmount: 80 })).rejects.toThrow(APPOINTMENT_DEPOSIT_MESSAGE);
+      // O barbeiro não marca sinal pago, e sem a forma ninguém marca
+      await expect(
+        make({ depositAmount: 20, depositPaid: true, depositPaymentMethod: 'CASH' }, A.staffUserId),
+      ).rejects.toThrow(DEPOSIT_RECEPTION_MESSAGE);
+      await expect(make({ depositAmount: 20, depositPaid: true })).rejects.toThrow(
+        DEPOSIT_METHOD_MESSAGE,
+      );
+
+      // Em dinheiro: entra no caixa aberto e conta no fechamento
+      await prisma.cashSession.updateMany({
+        where: { barbershopId: A.shopId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      const session = await service.openCashSession(A.ownerId, A.shopId, 0);
+      const appt = await make({
+        depositAmount: 20,
+        depositPaid: true,
+        depositPaymentMethod: 'CASH',
+      });
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appt!.id } });
+      expect(row).toMatchObject({
+        depositManualMethod: 'CASH',
+        depositReceivedByUserId: A.ownerId,
+        depositCashSessionId: session.id,
+      });
+      const closed = await service.closeCashSession(A.ownerId, A.shopId, { countedBalance: 20 });
+      expect(Number(closed.expectedBalance)).toBe(20);
+      // Caixa fechado: o sinal não se desmarca mais
+      await expect(
+        service.setAppointmentDepositPaid(A.ownerId, A.shopId, appt!.id, false),
+      ).rejects.toThrow(DEPOSIT_CASH_CLOSED_MESSAGE);
+      await prisma.appointment.delete({ where: { id: appt!.id } });
+    });
+
     it('cartão-presente não nasce vencido, e assinatura já cancelada não chama a Stripe', async () => {
       await expect(
         service.createGiftCard(A.ownerId, A.networkId, {
@@ -1124,7 +1222,49 @@ describe('BarbershopService (integração com o banco)', () => {
       );
       await prisma.appointment.update({ where: { id: future.id }, data: { status: 'CANCELLED' } });
 
+      // Pacote ativo com sessões sobrando: pede para usar ou devolver antes (item 226)
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote ficha',
+          totalSessions: 3,
+          price: new Decimal(90),
+        },
+      });
+      const pkg = await prisma.clientPackage.create({
+        data: {
+          barbershopId: A.shopId,
+          customerId: c.id,
+          servicePackageId: offer.id,
+          totalSessions: 3,
+          usedSessions: 1,
+        },
+      });
+      await expect(service.deleteCustomer(A.ownerId, A.shopId, c.id)).rejects.toThrow(
+        CUSTOMER_HAS_PACKAGES_MESSAGE,
+      );
+      await prisma.clientPackage.update({ where: { id: pkg.id }, data: { status: 'COMPLETED' } });
+      // Pontos e taxa pendente não ficam presos na ficha removida
+      await prisma.customer.update({ where: { id: c.id }, data: { loyaltyPoints: 40 } });
+      const fee = await prisma.noShowFee.create({
+        data: {
+          appointmentId: future.id,
+          customerId: c.id,
+          barbershopId: A.shopId,
+          amount: new Decimal(20),
+          currency: 'BRL',
+          reason: 'NO_SHOW',
+        },
+      });
+
       await service.deleteCustomer(A.ownerId, A.shopId, c.id);
+      expect((await prisma.noShowFee.findUniqueOrThrow({ where: { id: fee.id } })).status).toBe(
+        'WAIVED',
+      );
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).loyaltyPoints).toBe(
+        0,
+      );
       const row = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
       expect(row).toMatchObject({ name: 'Cliente removido', phone: '', email: null, notes: null });
       expect(row.deletedAt).toBeInstanceOf(Date);

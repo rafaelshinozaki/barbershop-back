@@ -1268,6 +1268,7 @@ input CreateAppointmentInput {
   customerId: Int!
   depositAmount: Float
   depositPaid: Boolean
+  depositPaymentMethod: String
   endAt: String!
   notes: String
   resourceId: Int
@@ -2346,7 +2347,7 @@ type Mutation {
   sendChatMessage(appointmentId: Int!, barbershopId: Int!, body: String!, kind: String!): ChatMessageType!
   sendEmailNotification(input: SendEmailNotificationInput!): Boolean! @deprecated(reason: "Use sendBackofficeEmail")
   sendMarketingBlast(barbershopId: Int!, input: SendMarketingBlastInput!): MarketingCampaignType!
-  setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!): Appointment!
+  setAppointmentDepositPaid(appointmentId: Int!, barbershopId: Int!, depositPaid: Boolean!, paymentMethod: String): Appointment!
   setBarberAvatar(barberId: Int!, key: String): String
   setBarberPayConfig(barbershopId: Int!, input: SetBarberPayConfigInput!): BarberPayConfigType!
   setBarberWeeklySchedule(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [WeeklyScheduleDayType!]!

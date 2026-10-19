@@ -96,6 +96,15 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Esta sessão é de um ciclo do clube que já acabou: não volta.': 'CLUB_UNDO_OLD_CYCLE',
   'Só dá pra perdoar a taxa pendente. A já cobrada sai apagando a venda dela.':
     'NO_SHOW_FEE_NOT_PENDING',
+  'A conta do horário é do cliente do horário. Para outro cliente, registre uma venda separada.':
+    'SALE_APPOINTMENT_CUSTOMER',
+  'Este cliente tem pacote ativo com sessões sobrando. Use as sessões ou devolva o valor antes de apagar a ficha.':
+    'CUSTOMER_HAS_PACKAGES',
+  'O sinal não pode ser maior que o preço dos serviços do horário.': 'APPOINTMENT_DEPOSIT_TOO_HIGH',
+  'O sinal recebido à mão é marcado pela recepção para cima.': 'DEPOSIT_RECEPTION_ONLY',
+  'Informe a forma em que o sinal foi recebido.': 'DEPOSIT_METHOD_REQUIRED',
+  'Esse sinal entrou num caixa que já foi fechado e não pode mais ser desmarcado.':
+    'DEPOSIT_CASH_CLOSED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

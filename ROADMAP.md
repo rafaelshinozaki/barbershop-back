@@ -2303,42 +2303,50 @@ Foram lidas a taxa de falta e de cancelamento em cima da hora (cálculo, lista, 
 
 Foram lidos o aviso da lista de espera (horário cancelado ou aberto, prazo de 30 minutos, repasse da vaga para o próximo) e o fechamento das entradas.
 
-224. ⬜ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
+224. ✅ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
      - O aviso muda a entrada para `NOTIFIED`, mas o horário não fica guardado para quem foi avisado: a página pública continua oferecendo a vaga a qualquer um.
      - Se outra pessoa agenda primeiro (ou o cliente não vê o aviso em 30 minutos), a vaga é repassada ou some, e a entrada fica `NOTIFIED` sem oferta. Os próximos horários que abrirem naquele dia só procuram entradas `WAITING`, então esse cliente nunca mais é avisado, mesmo continuando sem horário.
      
      **Fazer:** quando a oferta vence ou o horário é tomado por outra pessoa, a entrada volta para `WAITING` (no lugar que tinha na fila, ou no fim, a decidir) e pode receber o próximo aviso do dia. Opcional: guardar o horário oferecido pelos 30 minutos do aviso.
+     
+     **Feito:** quando a oferta vence (a vaga é passada adiante) ou o horário é tomado por outra pessoa, a entrada avisada volta para `WAITING`, no mesmo lugar da fila (ordem de entrada), e pode receber o próximo aviso do dia. A volta acontece depois de passar a vaga, senão ela voltaria para a mesma pessoa. Oferta cujo horário já passou também volta a esperar. A reserva do horário durante os 30 minutos ficou de fora (era opcional). Teste em `waitlist-online.int.spec.ts`.
 
 ### Septuagésima rodada (2026-10-19): fechar a conta de horário já pago
 
 Foi lido o fechamento da conta do horário (`createSale` com `appointmentId`): o sinal e o pago antes pelo app descontados, cartão-presente, pontos e a ligação com o cliente.
 
-225. ⬜ **Conta menor que o já pago fica com a diferença calada, e a conta do horário aceita outro cliente** (back: `createSale`):
+225. ✅ **Conta menor que o já pago fica com a diferença calada, e a conta do horário aceita outro cliente** (back: `createSale`):
      - O sinal e o pago antes pelo app entram até o total da conta (`Math.min`). Se a conta sai menor que o já pago (serviço trocado por um mais barato, item tirado, desconto), a diferença não volta para o cliente, não aparece no faturamento nem em lugar nenhum: o cliente pagou R$ 100 pelo app, a conta fechou em R$ 60 e os R$ 40 somem. A edição da venda já recusa ficar abaixo do que foi pago (`SALE_BELOW_APPLIED_MESSAGE`); a criação não.
      - A conta do horário não confere que o cliente da venda é o cliente do horário. Dá para fechar o horário do cliente A em nome do cliente B: o sinal e o pago antes de A abatem a conta de B, B ganha os pontos de fidelidade e completa a indicação com dinheiro que A pagou.
      
      **Fazer:** conta menor que o já pago é recusada com a mesma mensagem da edição (ou devolve a diferença pelo estorno parcial, se o pago foi pelo app). A conta de um horário usa o cliente do horário (outro cliente é recusado).
+     
+     **Feito:** a conta do horário (`createSale` com `appointmentId`) menor que o já pago (sinal mais o pago antes pelo app) é recusada com a mesma mensagem da edição (`SALE_BELOW_APPLIED_MESSAGE`). A conta usa o cliente do horário: sem cliente na venda, vai o do horário, e outro cliente é recusado (`SALE_APPOINTMENT_CUSTOMER`). O estorno automático da diferença ficou de fora; a equipe ajusta a conta ou faz o estorno parcial pelo app. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima primeira rodada (2026-10-19): apagar a ficha do cliente
 
 Foram lidos o cadastro, a edição, o bloqueio e a remoção da ficha do cliente.
 
-226. ⬜ **Apagar a ficha some com o pacote pago, os pontos e as taxas do cliente** (back: `deleteCustomer`; continuação do item 49):
+226. ✅ **Apagar a ficha some com o pacote pago, os pontos e as taxas do cliente** (back: `deleteCustomer`; continuação do item 49):
      - Antes de anonimizar, a remoção confere só os horários marcados. O pacote de sessões ainda ativo (pago, com sessões sobrando), os pontos de fidelidade e as taxas de falta pendentes ficam presos numa ficha "Cliente removido", que some das listas: ninguém acha para usar as sessões ou devolver o valor, e a taxa pendente continua na lista de taxas com o nome "Cliente removido".
      - A indicação do cliente (quem indicou e quem foi indicado) continua ligada à ficha anonimizada.
      
      **Fazer:** a remoção avisa o que o cliente ainda tem (pacotes ativos com o valor das sessões não usadas, pontos, taxas pendentes) e pede para resolver antes (usar, devolver ou perdoar), como já faz com os horários. Taxa pendente de ficha removida sai da lista como perdoada.
+     
+     **Feito:** apagar a ficha recusa quando o cliente tem pacote ativo com sessões sobrando (`CUSTOMER_HAS_PACKAGES`: usar as sessões ou devolver o valor antes), como já fazia com os horários marcados. Na remoção, a taxa de falta pendente vira perdoada (sai da lista), os pontos de fidelidade zeram e a indicação ainda não completada (como quem indicou ou quem foi indicado) sai; a completada fica como registro. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima segunda rodada (2026-10-19): sinal marcado pela equipe
 
 Foram lidos o agendamento pela equipe (sinal sugerido pelo serviço, sinal informado e "sinal pago"), a venda e o fechamento do caixa.
 
-227. ⬜ **Equipe marca "sinal pago" de qualquer valor, e esse dinheiro nunca entra no caixa** (back: `createAppointment`, `createSale`, `closeCashSession`):
+227. ✅ **Equipe marca "sinal pago" de qualquer valor, e esse dinheiro nunca entra no caixa** (back: `createAppointment`, `createSale`, `closeCashSession`):
      - Ao criar o horário pela agenda, `depositAmount` e `depositPaid` vêm da tela sem conferência: valor negativo, maior que o preço dos serviços, e qualquer cargo (barbeiro e barbeiro básico na própria agenda) marca o sinal como pago. Não fica registrado quem recebeu, quando, nem por qual forma.
      - Na conta, o "sinal pago" é descontado do que se cobra (`depositApplied`) e entra no faturamento, mas não entra no caixa: o fechamento só conta as vendas em dinheiro pelo total cobrado. Um barbeiro marca "sinal pago R$ 80" no próprio horário, recebe tudo em dinheiro, a conta fecha em R$ 0 e o caixa não espera esses R$ 80.
      - Os serviços do horário também vêm com `unitPrice` e `quantity` sem conferência (negativo, zero), e esse preço é a base da taxa de falta, do preço mostrado ao cliente no link e do sinal.
      
      **Fazer:** sinal pago à mão só da recepção para cima, com forma de pagamento, e o recebimento vira lançamento no caixa aberto (como o aluguel e a caixinha em dinheiro). O valor do sinal passa por `checkMoney` e não passa do preço. Preço e quantidade dos serviços do horário com a mesma conferência da venda.
+     
+     **Feito:** o sinal pago à mão (ao criar o horário ou por `setAppointmentDepositPaid`) é só da recepção para cima (`DEPOSIT_RECEPTION_ONLY`) e exige a forma (`DEPOSIT_METHOD_REQUIRED`). O horário guarda a forma, quando, quem recebeu e o caixa aberto, e o sinal em dinheiro entra no fechamento do caixa. Desmarcar é da recepção para cima e só enquanto aquele caixa está aberto (`DEPOSIT_CASH_CLOSED`). O valor do sinal passa por `checkMoney` e não passa do preço dos serviços do horário (`APPOINTMENT_DEPOSIT_TOO_HIGH`). Preço e quantidade dos serviços do horário têm a mesma conferência da venda. No front, "Marcar como recebido" pede a forma. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima terceira rodada (2026-10-19): resposta pública às avaliações
 

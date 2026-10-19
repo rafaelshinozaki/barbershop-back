@@ -649,6 +649,10 @@ export class CreateAppointmentInput {
   @Field({ nullable: true })
   depositPaid?: boolean;
 
+  // Forma do sinal recebido à mão (com depositPaid): CASH, PIX, CARD...
+  @Field({ nullable: true })
+  depositPaymentMethod?: string;
+
   @Field(() => [AppointmentServiceInput])
   services: AppointmentServiceInput[];
 }

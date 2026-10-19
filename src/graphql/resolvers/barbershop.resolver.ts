@@ -1019,12 +1019,15 @@ export class BarbershopResolver {
     @Args('appointmentId', { type: () => Int }) appointmentId: number,
     @Args('depositPaid') depositPaid: boolean,
     @CurrentUser() user: UserDTO,
+    // Forma em que o sinal foi recebido (obrigatória ao marcar como pago)
+    @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
   ) {
     const result = await this.barbershopService.setAppointmentDepositPaid(
       user.id,
       barbershopId,
       appointmentId,
       depositPaid,
+      paymentMethod,
     );
     this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     return result;

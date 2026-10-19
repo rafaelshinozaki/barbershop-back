@@ -1260,6 +1260,12 @@ model Appointment {
   depositPaidAt  DateTime?
   /// Sinal pago online estornado (cliente cancelou, unidade cancelou ou estorno manual)
   depositRefundedAt DateTime?
+  // Sinal recebido à mão pela equipe (não pelo app): forma, quando, quem e o
+  // caixa em que entrou (o dinheiro conta no fechamento do caixa)
+  depositManualMethod     String?
+  depositReceivedAt       DateTime?
+  depositReceivedByUserId Int?
+  depositCashSessionId    Int?
   // Sinal pago direto na conta da unidade (Stripe Connect): o repasse já
   // foi feito pelo Stripe, com a taxa da plataforma descontada
   depositStripeAccountId String?
