@@ -2244,3 +2244,13 @@ Foram lidas a taxa de falta e de cancelamento em cima da hora (cálculo, lista, 
      - A lista de taxas aceita o acesso mais baixo: o barbeiro vê o nome e o valor devido de todos os clientes da unidade, não só os dele.
      
      **Fazer:** descontar da taxa o sinal retido (e não criar taxa quando o sinal cobre o valor), arredondar para centavos da moeda, perdoar só taxa pendente, e a lista de taxas da recepção para cima (o barbeiro, só as dos atendimentos dele).
+
+### Sexagésima nona rodada (2026-10-19): aviso da lista de espera
+
+Foram lidos o aviso da lista de espera (horário cancelado ou aberto, prazo de 30 minutos, repasse da vaga para o próximo) e o fechamento das entradas.
+
+224. ⬜ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
+     - O aviso muda a entrada para `NOTIFIED`, mas o horário não fica guardado para quem foi avisado: a página pública continua oferecendo a vaga a qualquer um.
+     - Se outra pessoa agenda primeiro (ou o cliente não vê o aviso em 30 minutos), a vaga é repassada ou some, e a entrada fica `NOTIFIED` sem oferta. Os próximos horários que abrirem naquele dia só procuram entradas `WAITING`, então esse cliente nunca mais é avisado, mesmo continuando sem horário.
+     
+     **Fazer:** quando a oferta vence ou o horário é tomado por outra pessoa, a entrada volta para `WAITING` (no lugar que tinha na fila, ou no fim, a decidir) e pode receber o próximo aviso do dia. Opcional: guardar o horário oferecido pelos 30 minutos do aviso.
