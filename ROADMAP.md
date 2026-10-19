@@ -2139,12 +2139,16 @@ Foram lidos o pagamento da equipe (forma de pagamento, vales, bônus e descontos
 
 Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do profissional (página pública, "minhas avaliações", resposta) e a nota que a equipe dá ao cliente (pontualidade e trato).
 
-209. ⬜ **Quem saiu da unidade continua avaliando os clientes dela** (back: `CustomerRatingService.rate`, `forAppointment`, `pendingForMe`, `sendDailyDigest`): o lado "profissional" é dado a quem tem o `userId` do profissional do atendimento, sem conferir se a pessoa ainda está na unidade. Quem foi desligado (profissional inativo, vínculo encerrado ou acesso revogado) continua vendo a lista de pendentes com o nome dos clientes, recebe o resumo diário e dá nota a eles por até 30 dias, e essa nota entra na média do cliente que as outras equipes da rede veem.
+209. ✅ **Quem saiu da unidade continua avaliando os clientes dela** (back: `CustomerRatingService.rate`, `forAppointment`, `pendingForMe`, `sendDailyDigest`): o lado "profissional" é dado a quem tem o `userId` do profissional do atendimento, sem conferir se a pessoa ainda está na unidade. Quem foi desligado (profissional inativo, vínculo encerrado ou acesso revogado) continua vendo a lista de pendentes com o nome dos clientes, recebe o resumo diário e dá nota a eles por até 30 dias, e essa nota entra na média do cliente que as outras equipes da rede veem.
      
      **Fazer:** o lado profissional exige o profissional ativo, com o vínculo valendo e acesso à unidade. A lista de pendentes e o resumo diário seguem a mesma regra.
-210. ⬜ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
+     
+     **Feito:** o lado profissional da nota do cliente (`rate`, `forAppointment`) exige que quem atendeu ainda esteja na unidade: profissional ativo, vínculo valendo (`accessStartsAt`/`accessEndsAt`) e acesso à unidade. A lista de pendentes e o resumo diário filtram o profissional pelo vínculo atual (`currentEngagement`). Teste em `customer-rating.int.spec.ts`.
+210. ✅ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
      
      **Fazer:** avaliação às cegas: em "Minhas avaliações", a avaliação de um atendimento só aparece depois que o profissional avaliou aquele cliente ou depois que o prazo de avaliar passou. Até lá, entra só na média.
+     
+     **Feito:** `ProfessionalReviewService.mine` só devolve a avaliação de um atendimento que já tem a nota do profissional ao cliente, que passou do prazo de 30 dias para dar essa nota (`RATE_WINDOW_MS`) ou que veio de importação. Até lá, a avaliação conta só na média (o resumo e a página pública não mudaram). O texto da tela explica a regra (front). Teste em `professional-review.int.spec.ts`.
 
 ### Quinquagésima sétima rodada (2026-10-19): fotos e moderação
 
@@ -2242,9 +2246,11 @@ Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da 
 
 Foi lida a importação da planilha (clientes, serviços e horários vindos de outro sistema) e o que acontece depois com os horários importados.
 
-221. ⬜ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
+221. ✅ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
      
      **Fazer:** a nota do cliente, a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` (e `IMPORT` que ainda não aconteceu), como o pedido de avaliação já faz.
+     
+     **Feito:** a nota do cliente (`rate`, `forAppointment`), a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` ou `IMPORT`, como o pedido de avaliação já fazia. Teste em `customer-rating.int.spec.ts`.
 
 ### Sexagésima sétima rodada (2026-10-19): clube de assinatura
 

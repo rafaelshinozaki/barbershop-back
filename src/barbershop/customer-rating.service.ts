@@ -5,9 +5,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
-import { BarbershopService, type AccessLevel } from './barbershop.service';
+import { BarbershopService, currentEngagement, type AccessLevel } from './barbershop.service';
 import { clientBadges } from './badges';
 import { LOCALE, normalizeLang } from '../email/language';
 import { safeTimeZone } from '../common/timezone.util';
@@ -15,7 +16,7 @@ import { safeTimeZone } from '../common/timezone.util';
 export type RatingSide = 'unit' | 'professional';
 
 // Dá pra avaliar até 30 dias depois do atendimento
-const RATE_WINDOW_MS = 30 * 86_400_000;
+export const RATE_WINDOW_MS = 30 * 86_400_000;
 // Resumo do dia pro profissional: atendimentos que terminaram entre 2h e 26h atrás
 const DIGEST_FROM_MS = 26 * 3_600_000;
 const DIGEST_TO_MS = 2 * 3_600_000;
@@ -29,6 +30,9 @@ function checkScore(value: number, field: string) {
 
 const average = (values: number[]) =>
   values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : null;
+
+/** Horário importado de outro sistema: não passou pelo app, não vira nota do cliente */
+const RATEABLE_SOURCE: Prisma.AppointmentWhereInput = { source: { notIn: ['HISTORY', 'IMPORT'] } };
 
 /**
  * Nota do cliente (item 3 do roadmap), como no Uber: a unidade e o
@@ -57,7 +61,11 @@ export class CustomerRatingService {
       where: { appointmentId, side: { in: sides } },
       select: { side: true, punctuality: true, treatment: true },
     });
-    const open = appt.status === 'COMPLETED' && appt.endAt.getTime() >= Date.now() - RATE_WINDOW_MS;
+    const open =
+      appt.status === 'COMPLETED' &&
+      appt.source !== 'HISTORY' &&
+      appt.source !== 'IMPORT' &&
+      appt.endAt.getTime() >= Date.now() - RATE_WINDOW_MS;
     return { customerId: appt.customerId, sides: open ? sides : [], ratings };
   }
 
@@ -72,7 +80,7 @@ export class CustomerRatingService {
     checkScore(punctuality, 'Pontualidade');
     checkScore(treatment, 'Trato');
     const appt = await this.loadAppointment(barbershopId, appointmentId);
-    if (appt.status !== 'COMPLETED') {
+    if (appt.status !== 'COMPLETED' || appt.source === 'HISTORY' || appt.source === 'IMPORT') {
       throw new BadRequestException('Só dá pra avaliar o cliente de um atendimento concluído');
     }
     if (appt.endAt.getTime() < Date.now() - RATE_WINDOW_MS) {
@@ -103,8 +111,10 @@ export class CustomerRatingService {
       where: {
         status: 'COMPLETED',
         endAt: { gte: new Date(now.getTime() - RATE_WINDOW_MS), lte: now },
-        barber: { userId },
+        // Quem saiu da unidade (ou o vínculo acabou) não avalia mais os clientes dela
+        barber: { userId, ...currentEngagement(now) },
         customerRatings: { none: { side: 'professional' } },
+        ...RATEABLE_SOURCE,
       },
       orderBy: { endAt: 'desc' },
       take: 50,
@@ -206,8 +216,9 @@ export class CustomerRatingService {
           gte: new Date(now.getTime() - DIGEST_FROM_MS),
           lte: new Date(now.getTime() - DIGEST_TO_MS),
         },
-        barber: { userId: { not: null } },
+        barber: { userId: { not: null }, ...currentEngagement(now) },
         customerRatings: { none: { side: 'professional' } },
+        ...RATEABLE_SOURCE,
       },
       include: {
         customer: { select: { name: true } },
@@ -298,7 +309,10 @@ export class CustomerRatingService {
         status: true,
         endAt: true,
         customerId: true,
-        barber: { select: { userId: true } },
+        source: true,
+        barber: {
+          select: { userId: true, isActive: true, accessStartsAt: true, accessEndsAt: true },
+        },
         barbershop: { select: { id: true, practiceKind: true } },
       },
     });
@@ -309,13 +323,28 @@ export class CustomerRatingService {
   /** O profissional que atendeu avalia pelo lado dele; recepção pra cima, pela unidade (não no solo) */
   private async sidesFor(
     userId: number,
-    appt: { barber: { userId: number | null }; barbershop: { id: number; practiceKind: string } },
+    appt: {
+      barber: {
+        userId: number | null;
+        isActive: boolean;
+        accessStartsAt: Date | null;
+        accessEndsAt: Date | null;
+      };
+      barbershop: { id: number; practiceKind: string };
+    },
   ): Promise<RatingSide[]> {
     const sides: RatingSide[] = [];
-    if (appt.barber.userId === userId) sides.push('professional');
-    if (appt.barbershop.practiceKind !== 'solo') {
-      const level = await this.barbershops.getMyAccessLevel(userId, appt.barbershop.id);
-      if (level && UNIT_LEVELS.includes(level)) sides.push('unit');
+    const level = await this.barbershops.getMyAccessLevel(userId, appt.barbershop.id);
+    const now = Date.now();
+    // O lado profissional é de quem atendeu e ainda está na unidade (ativo,
+    // vínculo valendo, com acesso): quem saiu não avalia os clientes dela
+    const stillThere =
+      appt.barber.isActive &&
+      (!appt.barber.accessStartsAt || appt.barber.accessStartsAt.getTime() <= now) &&
+      (!appt.barber.accessEndsAt || appt.barber.accessEndsAt.getTime() >= now);
+    if (appt.barber.userId === userId && stillThere && level) sides.push('professional');
+    if (appt.barbershop.practiceKind !== 'solo' && level && UNIT_LEVELS.includes(level)) {
+      sides.push('unit');
     }
     return sides;
   }

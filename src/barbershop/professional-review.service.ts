@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RATE_WINDOW_MS } from './customer-rating.service';
 
 const MAX_REPLY = 1000;
 const PUBLIC_REVIEWS = 20;
@@ -57,10 +58,23 @@ export class ProfessionalReviewService {
     }));
   }
 
-  /** As avaliações que o profissional recebeu, em todas as unidades */
+  /**
+   * As avaliações que o profissional recebeu, em todas as unidades. Às cegas:
+   * a de um atendimento só aparece depois que ele deu a nota ao cliente ou
+   * quando o prazo de dar a nota passou (até lá, conta só na média)
+   */
   async mine(userId: number) {
     const rows = await this.prisma.professionalReview.findMany({
-      where: this.ownedBy(userId),
+      where: {
+        ...this.ownedBy(userId),
+        appointment: {
+          OR: [
+            { customerRatings: { some: { side: 'professional' } } },
+            { endAt: { lt: new Date(Date.now() - RATE_WINDOW_MS) } },
+            { source: { in: ['HISTORY', 'IMPORT'] } },
+          ],
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 200,
       include: {

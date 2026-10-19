@@ -190,6 +190,34 @@ describe('Avaliação do profissional (integração)', () => {
     expect(history.filter((h) => h.rating === 1)).toHaveLength(0);
   });
 
+  it('às cegas: a avaliação só aparece depois que o profissional avaliou o cliente', async () => {
+    // Todas são de atendimentos recentes, ainda sem a nota do profissional
+    expect(await reviews.mine(proUserId)).toEqual([]);
+    const all = await prisma.professionalReview.findMany({
+      where: { barberId: { in: barberIds } },
+      select: { appointmentId: true, barbershopId: true },
+    });
+    const [first, ...rest] = all;
+    await prisma.customerRating.create({
+      data: {
+        appointmentId: first.appointmentId,
+        side: 'professional',
+        barbershopId: first.barbershopId,
+        customerId,
+        raterUserId: proUserId,
+        punctuality: 5,
+        treatment: 5,
+      },
+    });
+    expect((await reviews.mine(proUserId)).length).toBe(1);
+    // Passado o prazo de avaliar o cliente, aparece mesmo sem a nota
+    await prisma.appointment.updateMany({
+      where: { id: { in: rest.map((r) => r.appointmentId) } },
+      data: { endAt: new Date(Date.now() - 31 * 24 * HOUR) },
+    });
+    expect((await reviews.mine(proUserId)).length).toBe(all.length);
+  });
+
   it('o profissional vê as dele e responde; outra pessoa não; vazio apaga a resposta', async () => {
     const mine = await reviews.mine(proUserId);
     expect(mine.length).toBeGreaterThanOrEqual(3);
