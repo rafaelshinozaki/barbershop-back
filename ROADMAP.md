@@ -1953,3 +1953,23 @@ Foram lidos o caixa (abrir, fechar e o esperado em dinheiro: vendas, despesas, a
      **Fazer:** `paidOut` soma os três repasses, só das unidades em real (os outros contam em "outras moedas"). `passThrough` desconta o aluguel estornado e inclui o sinal sem Connect não estornado. O total do Destaque no "Financeiro" filtra a moeda da plataforma (e conta o resto à parte, como em "Resultados").
      
      **Feito:** em "Resultados", o repassado soma clube, sinal e aluguel, só das unidades em real. O dinheiro de terceiros desconta o aluguel estornado e inclui o sinal cobrado na conta da plataforma que não voltou. No "Financeiro", o total do Destaque conta só as compras em real.
+
+### Quadragésima sexta rodada (2026-10-19): unidade fora do ar pelos links do atendimento e campanha repetida
+
+Foram lidos o convite de equipe (cargos válidos, convite vencido, pessoa que já está na equipe), apagar e editar cliente (anonimiza, recusa com horário marcado), o bloqueio de cliente (pega o telefone em qualquer formato), o chat do atendimento, a caixinha pelo app, o pedido de avaliação, as postagens agendadas nas redes e a campanha de marketing.
+
+190. ⬜ **Unidade encerrada ou suspensa continua recebendo pelos links do atendimento** (back: `TipService`, `ReviewRequestService`, `ChatService`, `SocialService.publishPost`, `sendMarketingBlast`):
+     - Os links do e-mail do atendimento (caixinha, avaliação, conversa) só olham o atendimento e o token. Uma unidade encerrada (`closedAt`) ou suspensa pela plataforma (`platformSuspendedAt`, da unidade ou da rede) continua:
+       - recebendo caixinha pelo app na conta Connect dela ou do profissional (`startAppTip` só checa `chargesEnabled`);
+       - recebendo avaliação nova no link (`submitReview`), que entra na nota da página;
+       - recebendo mensagens do cliente no chat, que ninguém da equipe lê (encerrada: ninguém tem acesso) e que avisam a equipe de uma unidade suspensa.
+     - Profissional suspenso pela moderação (`Professional.suspendedAt`) também continua recebendo caixinha pelo app.
+     - A unidade suspensa continua publicando as postagens agendadas no Facebook e no Instagram (só o encerramento cancela) e disparando campanha de marketing para os clientes.
+     
+     **Fazer:** caixinha pelo app, avaliação e mensagem do cliente recusam atendimento de unidade encerrada ou suspensa (unidade ou rede), com mensagem clara; caixinha para profissional suspenso também. A página do link mostra que a unidade não está recebendo. Postagem agendada de unidade suspensa fica parada (não publica nem cancela) até a suspensão sair. Campanha de marketing recusada enquanto a unidade ou a rede está suspensa.
+191. ⬜ **Campanha de marketing manda a mesma mensagem várias vezes para a mesma pessoa** (back: `sendMarketingBlast`, `resolveMarketingSegment`):
+     - A rede pode ter mais de uma ficha da mesma pessoa: a equipe cadastrou com o telefone num formato e o cliente agendou online em outro, ou o mesmo e-mail com telefones diferentes.
+     - A campanha monta a lista por ficha, sem juntar e-mail nem telefone. A mesma pessoa recebe o mesmo e-mail e o mesmo WhatsApp duas ou três vezes, e o limite de e-mails do mês é gasto com repetidos.
+     - Quem saiu das campanhas numa ficha (`marketingOptOut`) continua recebendo pela outra quando o e-mail é diferente mas o telefone é o mesmo (o descadastro só vale para fichas com o mesmo e-mail), e o WhatsApp vai para o telefone de quem saiu.
+     
+     **Fazer:** a lista da campanha junta por e-mail (sem diferença de caixa) e por telefone normalizado (E.164): um envio por endereço. Se qualquer ficha com o mesmo e-mail ou o mesmo telefone saiu das campanhas, nenhuma recebe. A contagem de destinatários e o limite do mês usam a lista já sem repetidos.
