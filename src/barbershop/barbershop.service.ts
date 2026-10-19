@@ -5392,17 +5392,45 @@ export class BarbershopService {
       c.phone ? normalizePhoneToE164(c.phone) ?? null : null;
     const outEmails = new Set(optedOut.map(emailOf).filter((e): e is string => !!e));
     const outPhones = new Set(optedOut.map(phoneOf).filter((p): p is string => !!p));
-    const seenEmails = new Set<string>();
-    const seenPhones = new Set<string>();
+    // Agrupa as fichas ligadas por e-mail ou telefone (A e B pelo e-mail, B e
+    // C pelo telefone: as três são a mesma pessoa), sem depender da ordem
+    const parent = customers.map((_, i) => i);
+    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    const owner = new Map<string, number>();
+    const keys = customers.map((c) => {
+      const email = emailOf(c);
+      const phone = phoneOf(c);
+      return { email, phone, all: [email && `e:${email}`, phone && `p:${phone}`] };
+    });
+    keys.forEach(({ all }, i) => {
+      for (const key of all) {
+        if (!key) continue;
+        const j = owner.get(key);
+        if (j === undefined) owner.set(key, i);
+        else parent[find(i)] = find(j);
+      }
+    });
+    const groups = new Map<number, number[]>();
+    customers.forEach((_, i) => {
+      const root = find(i);
+      groups.set(root, [...(groups.get(root) ?? []), i]);
+    });
     const out: T[] = [];
-    for (const customer of customers) {
-      const email = emailOf(customer);
-      const phone = phoneOf(customer);
-      if ((email && outEmails.has(email)) || (phone && outPhones.has(phone))) continue;
-      if ((email && seenEmails.has(email)) || (phone && seenPhones.has(phone))) continue;
-      if (email) seenEmails.add(email);
-      if (phone) seenPhones.add(phone);
-      out.push(customer);
+    for (const members of groups.values()) {
+      const optOut = members.some((i) => {
+        const { email, phone } = keys[i];
+        return (!!email && outEmails.has(email)) || (!!phone && outPhones.has(phone));
+      });
+      if (optOut) continue;
+      // Uma ficha por pessoa, com o e-mail e o telefone que o grupo tiver
+      const first = customers[members[0]];
+      const withEmail = members.find((i) => keys[i].email);
+      const withPhone = members.find((i) => keys[i].phone);
+      out.push({
+        ...first,
+        email: withEmail != null ? customers[withEmail].email : first.email,
+        phone: withPhone != null ? customers[withPhone].phone : first.phone,
+      });
     }
     return out;
   }

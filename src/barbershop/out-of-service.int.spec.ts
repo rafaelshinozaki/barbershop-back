@@ -249,6 +249,28 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
         { networkId, name: 'Saiu (outra)', phone: '11955550000', email: `outro-${RUN}@test.local` },
       ],
     });
+    // A junção não depende da ordem das fichas (o banco não garante ordem)
+    const same = [
+      { email: `rep-${RUN}@test.local`, phone: '11977770001' },
+      { email: null, phone: '+5511977770001' },
+      { email: `REP-${RUN}@TEST.LOCAL`, phone: '11966660000' },
+    ];
+    for (const order of [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ]) {
+      const people = (shops as any).uniqueRecipients(
+        [],
+        order.map((i) => same[i]),
+      );
+      expect(people).toHaveLength(1);
+      expect(people[0].email).toBeTruthy();
+      expect(people[0].phone).toBeTruthy();
+    }
     // Cliente Fiel + a pessoa repetida (a "Repetida 3" bate no e-mail da 1)
     expect((await shops.previewMarketingSegment(ownerId, shopId, 'ALL')).recipientCount).toBe(2);
     const campaign = await shops.sendMarketingBlast(ownerId, shopId, {
