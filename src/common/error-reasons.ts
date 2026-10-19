@@ -63,6 +63,13 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Data da consulta inválida': 'QUERY_DATE_INVALID',
   'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.':
     'PACKAGE_UNDO_CLOSED',
+  'Esta sala tem horários marcados. Troque a sala desses horários ou desative-a.':
+    'RESOURCE_IN_USE',
+  'Informe o nome da sala (até 80 caracteres)': 'RESOURCE_NAME_INVALID',
+  'Tipo de sala inválido': 'RESOURCE_TYPE_INVALID',
+  'A sessão do pacote ou do clube cobre um atendimento: uma linha do serviço, quantidade 1.':
+    'COVERED_SESSION_QUANTITY',
+  'Tipo da regra de comissão inválido': 'COMMISSION_ITEM_TYPE_INVALID',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
