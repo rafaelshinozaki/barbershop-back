@@ -7149,8 +7149,11 @@ export class BarbershopService {
         })
       ).map((d) => [d.id, d]),
     );
+    // Unidade apagada entre as duas consultas (exclusão de conta, por
+    // exemplo): sai do resultado em vez de derrubar a busca de todo mundo
+    const shown = limited.filter((r) => details.has(r.id));
     return Promise.all(
-      limited.map(async (r) => {
+      shown.map(async (r) => {
         const d = must(details.get(r.id), `unidade ${r.id}`);
         return {
           ...r,
