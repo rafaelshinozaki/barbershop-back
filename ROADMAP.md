@@ -2021,3 +2021,19 @@ Foram lidos o clube de assinatura (sessões por ciclo, cancelamento, sessão dev
      - O ajuste manual de estoque aceitava qualquer texto como tipo (inclusive `SALE`, que é o da baixa da venda) e quantidade zero; o estoque mínimo aceitava negativo.
      
      **Feito:** duração de 1 minuto a 12 horas, em minutos inteiros; preço, sinal, preço de venda e custo passam por `checkMoney` (sem negativo, com teto na moeda da unidade); o sinal não passa do preço que vai ficar (o novo ou o atual). Custo zero fica zero. O ajuste de estoque aceita só `PURCHASE`, `ADJUSTMENT`, `LOSS` e `TRANSFER` e quantidade diferente de zero; o mínimo não pode ser negativo. O formulário de serviço do front confere a duração máxima e o sinal acima do preço antes de enviar.
+
+### Quinquagésima rodada (2026-10-19): despesas e indicação
+
+Foram lidos as despesas (lançar, listar, apagar e o resumo financeiro), o fechamento do caixa, o aluguel da cadeira pago à mão e a fidelidade com indicação.
+
+197. ⬜ **Despesa aceita forma de pagamento, categoria e data quaisquer** (back: `createExpense`, `expenses`, `financialSummary`):
+     - A forma de pagamento e a categoria são texto livre. O fechamento do caixa só conta `paymentMethod: 'CASH'`, então uma despesa em dinheiro gravada como "cash" ou "Dinheiro" fica fora do esperado da gaveta, e o resumo por categoria divide a mesma categoria em várias linhas. A venda já passou por isso (`SALE_PAYMENT_METHODS`).
+     - A data "AAAA-MM-DD" vira meia-noite UTC, que no Brasil é o dia anterior: a despesa do dia 1º cai no mês anterior nos relatórios.
+     - Data inválida (na despesa ou no `from`/`to` das consultas) vira `Invalid Date` e a API responde erro 500.
+     - A despesa com data passada entra no caixa aberto de hoje e muda o esperado da gaveta de hoje.
+     - Descrição sem limite de tamanho e categoria vazia passam.
+     
+     **Fazer:** forma de pagamento só dos valores conhecidos (os da venda) e categoria só das conhecidas (`RENT`, `UTILITIES`, `SUPPLIES`, `SALARY`, `MAINTENANCE`, `OTHER`, mais as que o sistema lança). Data só no formato de dia, gravada no fuso da unidade, e não futura. Data inválida responde 400. Só a despesa de hoje (no fuso da unidade) entra no caixa aberto. Descrição obrigatória com limite de tamanho.
+198. ⬜ **Bônus da indicação fica com quem indicou depois que a venda é apagada** (back: `deleteSale`, `updateSale`): a primeira venda paga do indicado completa a indicação e dá os pontos a quem indicou (`completeReferralIfPaid`). Apagar essa venda, ou voltar ela para pendente, devolve os pontos da própria venda, mas não mexe na indicação: quem indicou continua com o bônus e a indicação continua completa. Dá para lançar uma venda paga para o indicado, apagar em seguida e o bônus fica.
+     
+     **Fazer:** gravar na indicação qual venda a completou. Quando essa venda é apagada ou volta para pendente, tirar o bônus de quem indicou (sem deixar o saldo negativo) e reabrir a indicação, para a próxima venda paga completar.
