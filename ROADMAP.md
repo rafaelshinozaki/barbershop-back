@@ -2037,3 +2037,19 @@ Foram lidos as despesas (lançar, listar, apagar e o resumo financeiro), o fecha
 198. ⬜ **Bônus da indicação fica com quem indicou depois que a venda é apagada** (back: `deleteSale`, `updateSale`): a primeira venda paga do indicado completa a indicação e dá os pontos a quem indicou (`completeReferralIfPaid`). Apagar essa venda, ou voltar ela para pendente, devolve os pontos da própria venda, mas não mexe na indicação: quem indicou continua com o bônus e a indicação continua completa. Dá para lançar uma venda paga para o indicado, apagar em seguida e o bônus fica.
      
      **Fazer:** gravar na indicação qual venda a completou. Quando essa venda é apagada ou volta para pendente, tirar o bônus de quem indicou (sem deixar o saldo negativo) e reabrir a indicação, para a próxima venda paga completar.
+
+### Quinquagésima primeira rodada (2026-10-19): pacotes e salas
+
+Foram lidos os pacotes de sessão (venda, baixa, desfazer a baixa, apagar a venda e devolver o que sobrou), o cartão-presente (venda, desativação e consulta do código), as fichas de consentimento e os recursos (salas e cadeiras).
+
+199. ⬜ **Desfazer uma baixa devolve sessão a pacote já estornado ou cancelado** (back: `undoClientPackageUse` e `restorePackageUses`, usada ao apagar a venda da conta): as duas devolvem a sessão com `status: 'ACTIVE'`, sem olhar a situação do pacote.
+     - Depois de "devolver o que sobrou" (`refundIssuedRemainder`), o pacote fica com o total igual ao usado e `COMPLETED`, e o cliente recebe de volta o valor das sessões que faltavam. Desfazer uma baixa (ou apagar a venda que usou uma sessão) baixa o usado, deixa o pacote `ACTIVE` e o cliente ganha uma sessão já devolvida em dinheiro.
+     - Pacote `CANCELLED` (unidade encerrada) também volta a `ACTIVE` com a sessão devolvida.
+     
+     **Fazer:** só devolver a sessão a pacote `ACTIVE` ou `COMPLETED` por uso (não por estorno), e voltar a `ACTIVE` só o que estava `COMPLETED` por ter usado tudo. Pacote estornado ou cancelado recusa desfazer a baixa (a venda que usou a sessão continua podendo ser apagada, sem devolver a sessão). Gravar no pacote que o restante foi devolvido, para diferenciar do pacote que só acabou.
+200. ⬜ **Apagar uma sala tira ela dos horários sem aviso** (back: `deleteResource`; front: `Resources.tsx`):
+     - A ligação do horário com o recurso é `ON DELETE SET NULL`. Apagar a sala deixa os horários futuros marcados nela sem sala, sem aviso para a equipe. Os horários passados perdem a sala no histórico.
+     - Já existe desativar (`isActive`), que tira a sala de novos horários sem apagar nada.
+     - O nome pode ser vazio e o tipo é texto livre (o resto do app espera `CHAIR`, `ROOM`, `STATION` ou `BED`).
+     
+     **Fazer:** recusar apagar sala com horário futuro (mensagem para desativar ou trocar a sala dos horários antes). Sala com horário só no passado é desativada em vez de apagada. Nome obrigatório com limite de tamanho, e tipo só dos quatro conhecidos.
