@@ -426,6 +426,8 @@ describe('Lista de espera online (integração)', () => {
     expect(await barbershops.passExpiredWaitlistOffers()).toBe(1);
     expect((await get(e2)).status).toBe('NOTIFIED');
     expect((await get(e1)).offeredStartAt).toBeNull();
+    // Quem não pegou a vaga volta a esperar os próximos horários do dia (item 224)
+    expect((await get(e1)).status).toBe('WAITING');
     expect(emails.find((e) => e.template === 'waitlist_slot_available')?.to).toBe(
       `fila-dois-${RUN}@test.local`,
     );
@@ -443,6 +445,8 @@ describe('Lista de espera online (integração)', () => {
     expect(await barbershops.passExpiredWaitlistOffers()).toBe(0);
     expect((await get(e3)).status).toBe('WAITING');
     expect((await get(e2)).offeredStartAt).toBeNull();
+    // Outra pessoa pegou o horário: o avisado volta a esperar
+    expect((await get(e2)).status).toBe('WAITING');
   });
 
   it('fecha o que ficou para trás: dia passado, quem já agendou, unidade pausada (item 185)', async () => {

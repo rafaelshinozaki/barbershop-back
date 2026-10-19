@@ -5449,7 +5449,10 @@ export class BarbershopService {
             },
             select: { id: true },
           });
-          if (taken) continue;
+          if (taken) {
+            await this.backToWaiting(e.id);
+            continue;
+          }
           await this.checkWaitlistOnCancellation(e.barbershopId, {
             startAt,
             barberId: e.offeredBarberId,
@@ -5469,8 +5472,25 @@ export class BarbershopService {
       } catch (err) {
         this.logger.error(`Erro ao passar a vaga da lista de espera #${e.id}:`, err);
       }
+      // Depois de passar a vaga (senão ela voltava para a mesma pessoa): quem
+      // não conseguiu pegar volta a esperar, no mesmo lugar da fila
+      await this.backToWaiting(e.id);
     }
+    // Vaga oferecida cujo horário já passou (alguém pegou ou ninguém agendou):
+    // a entrada volta a esperar os próximos horários do dia
+    await this.prisma.waitlistEntry.updateMany({
+      where: { status: 'NOTIFIED', offeredStartAt: { lte: now } },
+      data: { status: 'WAITING', offeredStartAt: null, notifiedAt: null },
+    });
     return passed;
+  }
+
+  /** Entrada avisada que não pegou a vaga volta a esperar (pela ordem de entrada) */
+  private async backToWaiting(entryId: number) {
+    await this.prisma.waitlistEntry.updateMany({
+      where: { id: entryId, status: 'NOTIFIED' },
+      data: { status: 'WAITING', offeredStartAt: null, notifiedAt: null },
+    });
   }
 
   /**

@@ -2303,11 +2303,13 @@ Foram lidas a taxa de falta e de cancelamento em cima da hora (cálculo, lista, 
 
 Foram lidos o aviso da lista de espera (horário cancelado ou aberto, prazo de 30 minutos, repasse da vaga para o próximo) e o fechamento das entradas.
 
-224. ⬜ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
+224. ✅ **Quem é avisado da vaga e não consegue pegar sai da lista de espera para sempre** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `passExpiredWaitlistOffers`):
      - O aviso muda a entrada para `NOTIFIED`, mas o horário não fica guardado para quem foi avisado: a página pública continua oferecendo a vaga a qualquer um.
      - Se outra pessoa agenda primeiro (ou o cliente não vê o aviso em 30 minutos), a vaga é repassada ou some, e a entrada fica `NOTIFIED` sem oferta. Os próximos horários que abrirem naquele dia só procuram entradas `WAITING`, então esse cliente nunca mais é avisado, mesmo continuando sem horário.
      
      **Fazer:** quando a oferta vence ou o horário é tomado por outra pessoa, a entrada volta para `WAITING` (no lugar que tinha na fila, ou no fim, a decidir) e pode receber o próximo aviso do dia. Opcional: guardar o horário oferecido pelos 30 minutos do aviso.
+     
+     **Feito:** quando a oferta vence (a vaga é passada adiante) ou o horário é tomado por outra pessoa, a entrada avisada volta para `WAITING`, no mesmo lugar da fila (ordem de entrada), e pode receber o próximo aviso do dia. A volta acontece depois de passar a vaga, senão ela voltaria para a mesma pessoa. Oferta cujo horário já passou também volta a esperar. A reserva do horário durante os 30 minutos ficou de fora (era opcional). Teste em `waitlist-online.int.spec.ts`.
 
 ### Septuagésima rodada (2026-10-19): fechar a conta de horário já pago
 
