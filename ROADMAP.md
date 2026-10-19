@@ -2143,3 +2143,14 @@ Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta
      - Se já existe conta com esse e-mail entrando pelo Google, a busca só olha `provider: 'local'` e a chave única é e-mail + forma de entrada: o aceite cria uma segunda conta com o mesmo e-mail, em vez de mandar entrar com a conta que já existe (a tela de validação diz que a conta existe, mas o aceite direto pela API passa).
      
      **Fazer:** a conta criada pelo convite não nasce com o e-mail confirmado quando o link pode ter sido compartilhado: manda o código de confirmação para o e-mail antes de liberar o acesso (ou exige o código no aceite). O documento só passa a valer como usado depois da confirmação. Conta existente com qualquer forma de entrada leva para "entrar com a sua conta".
+
+### Quinquagésima nona rodada (2026-10-19): caixinha e pagamento da equipe
+
+Foram lidas a caixinha registrada à mão (registrar, apagar, a que entra no caixa e a que vira lançamento do profissional), a caixinha pelo app e o sinal online.
+
+213. ⬜ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
+     - A caixinha que a unidade recebe pelo profissional (cartão, maquininha ou dinheiro deixado no balcão) vira um lançamento `TIP` no pagamento da equipe (`payEntryId`). Em "Pagamento da equipe", `deleteEntry` apaga esse lançamento como qualquer avulso: só confere se já entrou num pagamento e se o caixa está aberto. A despesa que veio de vale, pagamento ou aluguel já é protegida assim ("desfaça pela tela de origem"), a caixinha não.
+     - Depois disso a caixinha continua no atendimento e no caixa (o dinheiro entrou na gaveta), mas o profissional não recebe, a tela da caixinha mostra "não paga" para sempre, e apagar a caixinha depois não acha o lançamento.
+     - Trocar o profissional de um atendimento concluído deixa a caixinha e o lançamento com o profissional antigo.
+     
+     **Fazer:** o lançamento que veio de caixinha só sai apagando a caixinha (mensagem dizendo onde). Ao trocar o profissional de um atendimento com caixinha ainda não paga, mover a caixinha e o lançamento para o novo (ou recusar a troca com aviso).
