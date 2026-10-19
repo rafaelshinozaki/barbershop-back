@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { assertShopInService } from './public-shop';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -258,6 +259,8 @@ export class ChatService {
     if (viewer.side === 'client' && appt.customer.blockedAt) {
       throw new ForbiddenException('A unidade não recebe mensagens deste cliente.');
     }
+    // Unidade encerrada ou suspensa: ninguém lê do outro lado (item 190)
+    if (viewer.side === 'client') await assertShopInService(this.prisma, appt.barbershop.id);
     if (this.expired(appt)) throw new BadRequestException(CHAT_EXPIRED_MESSAGE);
     if (kind === 'professional' && !(await this.professionalOf(appt)).current) {
       throw new BadRequestException(CHAT_BARBER_CHANGED_MESSAGE);

@@ -423,6 +423,22 @@ describe('Conta do cliente final (integração com o banco)', () => {
       });
       const fresh = await prisma.clientAccount.findUniqueOrThrow({ where: { id: account.id } });
       expect(await guardAccepts(fresh)).toBe(true);
+      // Na lista de espera: pela ficha e online com o e-mail da conta (item 193)
+      const waiting = await prisma.waitlistEntry.create({
+        data: { barbershopId: shopId, customerId: customer.id, date: new Date('2030-01-10') },
+      });
+      const other = await prisma.customer.create({
+        data: { networkId, name: 'Quem sai (outra ficha)', phone: '2' },
+      });
+      const online = await prisma.waitlistEntry.create({
+        data: {
+          barbershopId: shopId,
+          customerId: other.id,
+          date: new Date('2030-01-11'),
+          source: 'online',
+          contactEmail: mail.toUpperCase(),
+        },
+      });
 
       await expect(
         service.deleteAccount(account.id, { password: 'errada' }),
@@ -444,6 +460,12 @@ describe('Conta do cliente final (integração com o banco)', () => {
       expect(await guardAccepts(fresh)).toBe(false);
       expect(await prisma.review.count({ where: { clientAccountId: account.id } })).toBe(0);
       expect(await prisma.clientFavorite.count({ where: { clientAccountId: account.id } })).toBe(0);
+      for (const id of [waiting.id, online.id]) {
+        expect(await prisma.waitlistEntry.findUniqueOrThrow({ where: { id } })).toMatchObject({
+          status: 'CANCELLED',
+          contactEmail: null,
+        });
+      }
       // Do profissional: a nota fica na média, sem o texto e sem a pessoa
       expect(
         await prisma.professionalReview.findUniqueOrThrow({ where: { id: proReview.id } }),

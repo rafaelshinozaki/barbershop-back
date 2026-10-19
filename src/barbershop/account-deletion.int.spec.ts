@@ -356,8 +356,42 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       data: { barbershopId: shop.id, name: 'Barbeiro', phone: '11988887777', userId: staff.id },
     });
 
+    // Candidatura esperando resposta e convite ainda não aceito (item 192)
+    const opening = await prisma.jobOpening.create({
+      data: {
+        barbershopId: shop.id,
+        createdByUserId: boss.id,
+        title: 'Freela de sábado',
+        startDate: '2030-01-05',
+        endDate: '2030-01-05',
+      },
+    });
+    const application = await prisma.jobApplication.create({
+      data: { jobOpeningId: opening.id, userId: staff.id },
+    });
+    const placeholder = await prisma.barber.create({
+      data: { barbershopId: shop.id, name: 'Convidado', phone: '11977776666' },
+    });
+    const invite = await prisma.employeeInvite.create({
+      data: {
+        inviterId: boss.id,
+        barbershopId: shop.id,
+        barberId: placeholder.id,
+        email: staff.email.toUpperCase(),
+        inviteToken: `convite-${staff.id}`,
+        role: 'BarbershopEmployee',
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+
     expect((await service.preview(staff.id)).barbershops).toEqual([]);
     await service.deleteAccount(staff.id, { password: PASSWORD });
+    expect(
+      (await prisma.jobApplication.findUniqueOrThrow({ where: { id: application.id } })).status,
+    ).toBe('withdrawn');
+    expect(
+      (await prisma.employeeInvite.findUniqueOrThrow({ where: { id: invite.id } })).status,
+    ).toBe('CANCELLED');
 
     const barberAfter = await prisma.barber.findUnique({ where: { id: barber.id } });
     expect(barberAfter).toBeTruthy();

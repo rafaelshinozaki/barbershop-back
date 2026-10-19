@@ -1958,7 +1958,7 @@ Foram lidos o caixa (abrir, fechar e o esperado em dinheiro: vendas, despesas, a
 
 Foram lidos o convite de equipe (cargos válidos, convite vencido, pessoa que já está na equipe), apagar e editar cliente (anonimiza, recusa com horário marcado), o bloqueio de cliente (pega o telefone em qualquer formato), o chat do atendimento, a caixinha pelo app, o pedido de avaliação, as postagens agendadas nas redes e a campanha de marketing.
 
-190. ⬜ **Unidade encerrada ou suspensa continua recebendo pelos links do atendimento** (back: `TipService`, `ReviewRequestService`, `ChatService`, `SocialService.publishPost`, `sendMarketingBlast`):
+190. ✅ **Unidade encerrada ou suspensa continua recebendo pelos links do atendimento** (back: `TipService`, `ReviewRequestService`, `ChatService`, `SocialService.publishPost`, `sendMarketingBlast`):
      - Os links do e-mail do atendimento (caixinha, avaliação, conversa) só olham o atendimento e o token. Uma unidade encerrada (`closedAt`) ou suspensa pela plataforma (`platformSuspendedAt`, da unidade ou da rede) continua:
        - recebendo caixinha pelo app na conta Connect dela ou do profissional (`startAppTip` só checa `chargesEnabled`);
        - recebendo avaliação nova no link (`submitReview`), que entra na nota da página;
@@ -1967,25 +1967,33 @@ Foram lidos o convite de equipe (cargos válidos, convite vencido, pessoa que j�
      - A unidade suspensa continua publicando as postagens agendadas no Facebook e no Instagram (só o encerramento cancela) e disparando campanha de marketing para os clientes.
      
      **Fazer:** caixinha pelo app, avaliação e mensagem do cliente recusam atendimento de unidade encerrada ou suspensa (unidade ou rede), com mensagem clara; caixinha para profissional suspenso também. A página do link mostra que a unidade não está recebendo. Postagem agendada de unidade suspensa fica parada (não publica nem cancela) até a suspensão sair. Campanha de marketing recusada enquanto a unidade ou a rede está suspensa.
-191. ⬜ **Campanha de marketing manda a mesma mensagem várias vezes para a mesma pessoa** (back: `sendMarketingBlast`, `resolveMarketingSegment`):
+     
+     **Feito:** caixinha pelo app (página e pagamento), avaliação (página e envio) e mensagem do cliente no chat recusam atendimento de unidade encerrada ou suspensa (ela ou a rede), com a mensagem "não está recebendo pelo app" (`SHOP_NOT_RECEIVING`). Profissional suspenso pela moderação sai dos destinos da caixinha. Postagem agendada de unidade suspensa fica parada, sem publicar nem cancelar, até a suspensão sair. Campanha de marketing é recusada com a unidade ou a rede suspensa.
+191. ✅ **Campanha de marketing manda a mesma mensagem várias vezes para a mesma pessoa** (back: `sendMarketingBlast`, `resolveMarketingSegment`):
      - A rede pode ter mais de uma ficha da mesma pessoa: a equipe cadastrou com o telefone num formato e o cliente agendou online em outro, ou o mesmo e-mail com telefones diferentes.
      - A campanha monta a lista por ficha, sem juntar e-mail nem telefone. A mesma pessoa recebe o mesmo e-mail e o mesmo WhatsApp duas ou três vezes, e o limite de e-mails do mês é gasto com repetidos.
      - Quem saiu das campanhas numa ficha (`marketingOptOut`) continua recebendo pela outra quando o e-mail é diferente mas o telefone é o mesmo (o descadastro só vale para fichas com o mesmo e-mail), e o WhatsApp vai para o telefone de quem saiu.
      
      **Fazer:** a lista da campanha junta por e-mail (sem diferença de caixa) e por telefone normalizado (E.164): um envio por endereço. Se qualquer ficha com o mesmo e-mail ou o mesmo telefone saiu das campanhas, nenhuma recebe. A contagem de destinatários e o limite do mês usam a lista já sem repetidos.
+     
+     **Feito:** a lista da campanha (e a prévia) junta as fichas por e-mail sem diferença de caixa e por telefone normalizado: a mesma pessoa conta e recebe uma vez. Quem saiu das campanhas em qualquer ficha da rede com o mesmo e-mail ou o mesmo telefone fica de fora, inclusive do WhatsApp. Os telefones do WhatsApp também saem sem repetidos.
 
 ### Quadragésima sétima rodada (2026-10-19): vaga preenchida sem ninguém e conta excluída na lista de espera
 
 Foram lidos remarcar e cancelar pelo link do cliente (estorno do sinal, aviso e lista de espera), as vagas para freelancer (taxa, aceite, encerrar), a compra de Destaque (só para quem está na vitrine), a verificação de identidade (nome trocado perde a verificação, também pelo backoffice) e a exclusão de conta do cliente e do profissional.
 
-192. ⬜ **Candidato aceito que nunca entra na equipe preenche a vaga e fica com a taxa** (back: `JobOpeningService`, `EmployeeInviteService`, `AccountDeletionService`):
+192. ✅ **Candidato aceito que nunca entra na equipe preenche a vaga e fica com a taxa** (back: `JobOpeningService`, `EmployeeInviteService`, `AccountDeletionService`):
      - Aceitar a candidatura cobra a taxa, marca `accepted` e cria o convite; quando as vagas aceitas chegam a `slots`, a vaga vira `filled` e as outras candidaturas são recusadas.
      - Se o profissional não aceita o convite (vence em 30 dias), a equipe cancela o convite ou o período da vaga acaba antes do aceite, nada volta: a candidatura continua `accepted`, a vaga continua preenchida e a taxa não é devolvida.
      - Conta de profissional excluída (LGPD) continua com as candidaturas pendentes, como "Conta excluída". A unidade pode aceitar, pagar a taxa e mandar o convite para o e-mail anonimizado, que ninguém recebe.
      
      **Fazer:** convite de candidatura que vence, é cancelado ou não é aceito até o fim do período da vaga devolve a candidatura (`expired`), reabre a vaga se ela tinha ficado preenchida e devolve a taxa (com aviso para quem pagou). Excluir a conta retira as candidaturas pendentes (`withdrawn`) e cancela os convites ainda não aceitos; aceitar candidatura de conta excluída é recusado.
-193. ⬜ **Conta de cliente excluída continua na lista de espera e recebendo avisos** (back: `ClientAuthService.deleteAccount`, `WaitlistEntry`):
+     
+     **Feito:** uma rotina de hora em hora libera a candidatura aceita cujo convite venceu, foi cancelado ou sumiu, ou cujo período acabou sem o aceite: a candidatura vira `expired`, o convite pendente deixa de valer (e o cadastro criado por ele sai da equipe ativa), a taxa volta no cartão uma vez só e a vaga preenchida reabre se o período ainda não acabou. Candidato e quem pagou recebem aviso. Excluir a conta do profissional retira as candidaturas pendentes e cancela os convites pendentes para o e-mail dele; aceitar candidatura de conta excluída é recusado.
+193. ✅ **Conta de cliente excluída continua na lista de espera e recebendo avisos** (back: `ClientAuthService.deleteAccount`, `WaitlistEntry`):
      - A exclusão da conta (LGPD) apaga conversas, avaliações, favoritos e tira a ligação das fichas, mas não mexe na lista de espera.
      - A entrada online guarda o e-mail informado (`contactEmail`) e o nome. Depois da exclusão, a pessoa continua `WAITING` e recebe o aviso de vaga no e-mail, e a equipe continua vendo o nome e o e-mail na tela da lista.
      
      **Fazer:** excluir a conta cancela as entradas da lista de espera das fichas ligadas a ela (e as online com o e-mail da conta) e apaga o `contactEmail` delas, na mesma transação.
+     
+     **Feito:** excluir a conta do cliente cancela as entradas da lista de espera das fichas ligadas e as online com o e-mail da conta, e apaga o e-mail informado nelas, na mesma transação.

@@ -569,6 +569,27 @@ export class ClientAuthService {
       // histórico (o assunto do pedido é texto livre, com dado pessoal)
       this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
       this.prisma.chatThread.deleteMany({ where: { customerId: { in: customerIds } } }),
+      // Lista de espera das fichas da conta (e as online com o e-mail dela):
+      // sai da fila e o e-mail informado é apagado (item 193)
+      this.prisma.waitlistEntry.updateMany({
+        where: {
+          status: { in: ['WAITING', 'NOTIFIED'] },
+          OR: [
+            { customerId: { in: customerIds } },
+            { contactEmail: { equals: account.email, mode: 'insensitive' } },
+          ],
+        },
+        data: { status: 'CANCELLED', offeredStartAt: null },
+      }),
+      this.prisma.waitlistEntry.updateMany({
+        where: {
+          OR: [
+            { customerId: { in: customerIds } },
+            { contactEmail: { equals: account.email, mode: 'insensitive' } },
+          ],
+        },
+        data: { contactEmail: null },
+      }),
       this.prisma.clientSubscription.updateMany({
         where: { clientAccountId, status: { not: 'CANCELED' } },
         data: { status: 'CANCELED', canceledAt: now, cancelAtPeriodEnd: false },

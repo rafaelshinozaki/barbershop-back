@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { assertShopInService } from './public-shop';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
@@ -210,6 +211,8 @@ export class ReviewRequestService {
   /** Página do link: o atendimento e a avaliação que o cliente já deixou. */
   async getReviewRequest(token: string) {
     const appt = await this.loadByToken(token);
+    // Unidade encerrada ou suspensa não recebe avaliação nova (item 190)
+    await assertShopInService(this.prisma, appt.barbershopId);
     const existing = await this.findExisting(
       appt.barbershopId,
       appt.customerId,
@@ -251,6 +254,7 @@ export class ReviewRequestService {
     },
   ) {
     const appt = await this.loadByToken(token);
+    await assertShopInService(this.prisma, appt.barbershopId);
     const solo = appt.barbershop.practiceKind === 'solo';
     const pro =
       input.professionalRating != null
