@@ -1082,6 +1082,7 @@ type ClientSubscriptionType {
   sessionsPerCycle: Int
   status: String!
   usedThisCycle: Int!
+  uses: [ClientPackageUseType!]
 }
 
 input ClientUpdateProfileInput {
@@ -2401,6 +2402,7 @@ type Mutation {
   undoBarberPayout(barbershopId: Int!, id: Int!): Boolean!
   undoChairRentPayment(barbershopId: Int!, paymentId: Int!): ChairRentPaymentType!
   undoClientPackageUse(barbershopId: Int!, id: Int!): Boolean!
+  undoClientSubscriptionUse(barbershopId: Int!, id: Int!): Boolean!
   unlinkClientSocialAccount(provider: String!): Boolean!
   unlinkSocialAccount(provider: String!): Boolean!
   unsubscribeFromMarketing(token: String!): String!

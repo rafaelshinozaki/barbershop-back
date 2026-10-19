@@ -1797,9 +1797,30 @@ model ClientSubscription {
   plan                 ClientSubscriptionPlan      @relation(fields: [planId], references: [id])
   payments             ClientSubscriptionPayment[]
 
+  uses                 ClientSubscriptionUse[]
+
   @@index([barbershopId])
   @@index([clientAccountId])
   @@index([barbershopId, status])
+}
+
+// Sessão do clube usada (na venda ou na baixa direta pela ficha): quem deu,
+// quando e o ciclo. A baixa fora de venda se desfaz (a sessão volta se ainda
+// é o mesmo ciclo); a da venda, apagando a venda.
+model ClientSubscriptionUse {
+  id                   Int                @id @default(autoincrement())
+  createdAt            DateTime           @default(now())
+  clientSubscriptionId Int
+  saleId               Int?
+  usedByUserId         Int
+  // Início do ciclo em que a sessão foi usada (a sessão só volta no mesmo ciclo)
+  periodStart          DateTime?
+  undoneAt             DateTime?
+  undoneByUserId       Int?
+  clientSubscription   ClientSubscription @relation(fields: [clientSubscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([clientSubscriptionId])
+  @@index([saleId])
 }
 
 model ClientSubscriptionPayment {

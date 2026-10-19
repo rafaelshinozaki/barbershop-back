@@ -720,6 +720,10 @@ const RESTORABLE_PACKAGE: Prisma.ClientPackageWhereInput = {
 };
 export const TIP_REACHED_PROFESSIONAL_MESSAGE =
   'A caixinha deste atendimento já ficou com o profissional. Apague a caixinha antes de trocar o profissional.';
+export const CLUB_USE_IN_SALE_MESSAGE =
+  'Esta sessão do clube está numa venda. Apague a venda para desfazer.';
+export const CLUB_UNDO_OLD_CYCLE_MESSAGE =
+  'Esta sessão é de um ciclo do clube que já acabou: não volta.';
 export const PACKAGE_UNDO_CLOSED_MESSAGE =
   'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.';
 /** Categorias de despesa (as que o sistema lança também: SALARY e RENT) */
@@ -8402,10 +8406,25 @@ export class BarbershopService {
     if (accountId == null) return [];
     const subs = await this.prisma.clientSubscription.findMany({
       where: { barbershopId, clientAccountId: accountId, status: 'ACTIVE' },
-      include: { clientAccount: true, plan: { include: { service: true } } },
+      include: {
+        clientAccount: true,
+        plan: { include: { service: true } },
+        // As sessões usadas (as últimas), com quem deu a baixa
+        uses: { where: { undoneAt: null }, orderBy: { createdAt: 'desc' }, take: 8 },
+      },
       orderBy: { createdAt: 'desc' },
     });
-    return subs.map((s) => this.toClientSubscriptionResult(s));
+    const names = await this.userNames(subs.flatMap((s) => s.uses.map((u) => u.usedByUserId)));
+    return subs.map((s) => ({
+      ...this.toClientSubscriptionResult(s),
+      uses: s.uses.map((u) => ({
+        id: u.id,
+        createdAt: u.createdAt.toISOString(),
+        saleId: u.saleId,
+        usedByName: names.get(u.usedByUserId) ?? null,
+        undoneAt: null,
+      })),
+    }));
   }
 
   /** Conta do clube desta ficha, ou null se o cliente não tem conta. */
@@ -8784,12 +8803,34 @@ export class BarbershopService {
   }
 
   /** Staff registra que o cliente usou uma sessão da assinatura neste ciclo (mesmo padrão manual de debitClientPackageSession — não é acionado automaticamente pelo agendamento). */
+  /** Registro da sessão do clube usada (quem, quando, venda e ciclo) */
+  private async recordClubUse(
+    tx: Prisma.TransactionClient,
+    subscriptionId: number,
+    userId: number,
+    saleId: number | null,
+  ) {
+    const sub = await tx.clientSubscription.findUniqueOrThrow({
+      where: { id: subscriptionId },
+      select: { currentPeriodStart: true },
+    });
+    await tx.clientSubscriptionUse.create({
+      data: {
+        clientSubscriptionId: subscriptionId,
+        saleId,
+        usedByUserId: userId,
+        periodStart: sub.currentPeriodStart,
+      },
+    });
+  }
+
   async redeemClientSubscriptionSession(
     userId: number,
     barbershopId: number,
     subscriptionId: number,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    // Como a baixa do pacote: recepção para cima (barbeiro dava baixa de qualquer cliente)
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
     const subscription = await this.prisma.clientSubscription.findFirst({
       where: { id: subscriptionId, barbershopId },
       include: { plan: true },
@@ -8799,24 +8840,60 @@ export class BarbershopService {
       throw new BadRequestException('Assinatura não está ativa');
     }
     const limit = subscription.sessionsPerCycle;
-    // Baixa condicional: dois cliques juntos (ou dois barbeiros) não passam
-    // do limite — antes os dois liam o mesmo saldo e gravavam +1 cada
-    const { count } = await this.prisma.clientSubscription.updateMany({
-      where: {
-        id: subscriptionId,
-        status: 'ACTIVE',
-        ...(limit != null ? { usedThisCycle: { lt: limit } } : {}),
-      },
-      data: { usedThisCycle: { increment: 1 } },
+    await this.prisma.$transaction(async (tx) => {
+      // Baixa condicional: dois cliques juntos (ou dois barbeiros) não passam
+      // do limite — antes os dois liam o mesmo saldo e gravavam +1 cada
+      const { count } = await tx.clientSubscription.updateMany({
+        where: {
+          id: subscriptionId,
+          status: 'ACTIVE',
+          ...(limit != null ? { usedThisCycle: { lt: limit } } : {}),
+        },
+        data: { usedThisCycle: { increment: 1 } },
+      });
+      if (count === 0) {
+        throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
+      }
+      await this.recordClubUse(tx, subscriptionId, userId, null);
     });
-    if (count === 0) {
-      throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
-    }
     const updated = await this.prisma.clientSubscription.findUniqueOrThrow({
       where: { id: subscriptionId },
       include: { clientAccount: true, plan: { include: { service: true } } },
     });
     return this.toClientSubscriptionResult(updated);
+  }
+
+  /**
+   * Desfaz a baixa direta (fora de venda) de uma sessão do clube: a sessão
+   * volta se ainda é o mesmo ciclo. A da venda se desfaz apagando a venda.
+   */
+  async undoClientSubscriptionUse(userId: number, barbershopId: number, useId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'reception');
+    const use = await this.prisma.clientSubscriptionUse.findFirst({
+      where: { id: useId, clientSubscription: { barbershopId } },
+      include: { clientSubscription: { select: { currentPeriodStart: true } } },
+    });
+    if (!use) throw new NotFoundException('Baixa não encontrada');
+    if (use.undoneAt) throw new BadRequestException('Esta baixa já foi desfeita.');
+    if (use.saleId) {
+      throw new BadRequestException(CLUB_USE_IN_SALE_MESSAGE);
+    }
+    const sameCycle =
+      (use.periodStart?.getTime() ?? null) ===
+      (use.clientSubscription.currentPeriodStart?.getTime() ?? null);
+    if (!sameCycle) throw new BadRequestException(CLUB_UNDO_OLD_CYCLE_MESSAGE);
+    await this.prisma.$transaction(async (tx) => {
+      const undone = await tx.clientSubscriptionUse.updateMany({
+        where: { id: use.id, undoneAt: null },
+        data: { undoneAt: new Date(), undoneByUserId: userId },
+      });
+      if (undone.count !== 1) throw new BadRequestException('Esta baixa já foi desfeita.');
+      await tx.clientSubscription.updateMany({
+        where: { id: use.clientSubscriptionId, usedThisCycle: { gt: 0 } },
+        data: { usedThisCycle: { decrement: 1 } },
+      });
+    });
+    return true;
   }
 
   // ============ WALK-INS (Queue) ============
@@ -9286,6 +9363,7 @@ export class BarbershopService {
         if (count === 0) {
           throw new BadRequestException('Assinatura não tem sessões restantes neste ciclo');
         }
+        await this.recordClubUse(tx, clubRedeem.id, userId, sale.id);
       }
       if (packageRedeem) {
         const debited = await tx.$executeRaw`
@@ -9806,6 +9884,10 @@ export class BarbershopService {
             OR: [{ currentPeriodStart: null }, { currentPeriodStart: { lte: existing.createdAt } }],
           },
           data: { usedThisCycle: { decrement: 1 } },
+        });
+        await tx.clientSubscriptionUse.updateMany({
+          where: { saleId, undoneAt: null },
+          data: { undoneAt: new Date(), undoneByUserId: userId },
         });
       }
       if (existing.giftCardId && existing.giftCardAmountApplied) {

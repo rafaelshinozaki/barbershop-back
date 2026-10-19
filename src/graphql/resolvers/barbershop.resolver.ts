@@ -1437,6 +1437,17 @@ export class BarbershopResolver {
     return this.barbershopService.undoClientPackageUse(user.id, barbershopId, id);
   }
 
+  /** Desfaz a baixa direta de uma sessão do clube (a sessão volta no mesmo ciclo) */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async undoClientSubscriptionUse(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.undoClientSubscriptionUse(user.id, barbershopId, id);
+  }
+
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
   @UseGuards(GraphQLJwtAuthGuard)

@@ -17,6 +17,7 @@ import {
   NETWORK_AGENDA_CAP,
   assertStaffAppointmentSource,
   WALK_IN_TRANSITION_MESSAGE,
+  CLUB_UNDO_OLD_CYCLE_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -1960,6 +1961,70 @@ describe('BarbershopService (integração com o banco)', () => {
       await prisma.clientSubscription.deleteMany({ where: { clientAccountId: client.id } });
       await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
       await prisma.clientAccount.delete({ where: { id: client.id } });
+    });
+
+    it('baixa direta do clube: registro, desfazer no mesmo ciclo e recepção para cima (item 222)', async () => {
+      const client = await prisma.clientAccount.create({
+        data: { email: `clube-uso-${RUN}@test.local`, name: 'Cliente do clube' },
+      });
+      const plan = await prisma.clientSubscriptionPlan.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Clube uso',
+          price: new Decimal(60),
+          stripePriceId: `price_uso_${RUN}`,
+        },
+      });
+      const periodStart = new Date(Date.now() - 86_400_000);
+      const sub = await prisma.clientSubscription.create({
+        data: {
+          barbershopId: A.shopId,
+          clientAccountId: client.id,
+          planId: plan.id,
+          stripeSubscriptionId: `sub_uso_${RUN}`,
+          status: 'ACTIVE',
+          currentPeriodStart: periodStart,
+        },
+      });
+      try {
+        // Barbeiro não dá baixa direta (como no pacote)
+        await expect(
+          service.redeemClientSubscriptionSession(A.staffUserId, A.shopId, sub.id),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        await service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id);
+        const [use] = await prisma.clientSubscriptionUse.findMany({
+          where: { clientSubscriptionId: sub.id },
+        });
+        expect(use).toMatchObject({ usedByUserId: A.ownerId, saleId: null });
+
+        // Desfazer devolve a sessão e não desfaz duas vezes
+        await service.undoClientSubscriptionUse(A.ownerId, A.shopId, use.id);
+        expect(
+          (await prisma.clientSubscription.findUniqueOrThrow({ where: { id: sub.id } }))
+            .usedThisCycle,
+        ).toBe(0);
+        await expect(
+          service.undoClientSubscriptionUse(A.ownerId, A.shopId, use.id),
+        ).rejects.toThrow('já foi desfeita');
+
+        // Baixa de um ciclo que acabou não volta
+        await service.redeemClientSubscriptionSession(A.ownerId, A.shopId, sub.id);
+        const old = await prisma.clientSubscriptionUse.findFirstOrThrow({
+          where: { clientSubscriptionId: sub.id, undoneAt: null },
+        });
+        await prisma.clientSubscription.update({
+          where: { id: sub.id },
+          data: { currentPeriodStart: new Date(), usedThisCycle: 0 },
+        });
+        await expect(
+          service.undoClientSubscriptionUse(A.ownerId, A.shopId, old.id),
+        ).rejects.toThrow(CLUB_UNDO_OLD_CYCLE_MESSAGE);
+      } finally {
+        await prisma.clientSubscription.deleteMany({ where: { id: sub.id } });
+        await prisma.clientSubscriptionPlan.delete({ where: { id: plan.id } });
+        await prisma.clientAccount.delete({ where: { id: client.id } });
+      }
     });
 
     it('limite do plano vale pra quem assinar depois; vazio volta a ilimitado', async () => {

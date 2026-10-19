@@ -2276,12 +2276,14 @@ Foi lida a importação da planilha (clientes, serviços e horários vindos de o
 
 Foram lidos os planos do clube (criar, editar preço e sessões, desativar), a ligação da ficha com a conta do clube, a sessão usada na venda e a baixa direta de sessão.
 
-222. ⬜ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
+222. ✅ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
      - A baixa só soma 1 em `usedThisCycle`. Não grava quem deu a baixa, quando, nem para qual atendimento. O pacote de sessões tem esse registro (`ClientPackageUse`, com quem usou e "desfazer"), o clube não.
      - Não existe desfazer: um clique errado tira do cliente uma sessão que ele pagou, até o próximo ciclo.
      - A baixa aceita o acesso mais baixo (barbeiro e barbeiro básico, de qualquer cliente da unidade). A baixa do pacote exige recepção para cima.
      
      **Fazer:** registro de cada sessão usada do clube (quem, quando, atendimento ou venda), mostrado na ficha do cliente, com "desfazer" para a baixa feita fora de venda (devolve a sessão se o ciclo ainda é o mesmo). A baixa direta exige recepção para cima, como no pacote.
+     
+     **Feito:** cada sessão do clube usada vira um registro (`ClientSubscriptionUse`: quem deu a baixa, quando, a venda e o ciclo), na venda e na baixa direta. A ficha do cliente mostra as últimas baixas (`uses` em `customerSubscriptions`). A baixa direta pode ser desfeita (`undoClientSubscriptionUse`) e a sessão volta se ainda é o mesmo ciclo (`CLUB_UNDO_OLD_CYCLE`). A baixa da venda só se desfaz apagando a venda (`CLUB_USE_IN_SALE`), e apagar a venda marca a baixa como desfeita. A baixa direta exige recepção para cima, como no pacote. O front mostra quem deu a baixa e o botão de desfazer. Teste em `barbershop.service.int.spec.ts`.
 
 ### Sexagésima oitava rodada (2026-10-19): taxa de falta
 
