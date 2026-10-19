@@ -73,6 +73,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Horário da escala inválido (HH:MM, início antes do fim, intervalo dentro do expediente)':
     'SHIFT_INVALID',
   'Este dia já tem escala. Edite o dia na escala da semana.': 'SHIFT_DAY_TAKEN',
+  'O seu pagamento é definido e registrado pelo dono': 'OWN_PAY_FORBIDDEN',
+  'Esse período ainda não acabou. Registre o pagamento até hoje.': 'PAY_PERIOD_NOT_OVER',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
