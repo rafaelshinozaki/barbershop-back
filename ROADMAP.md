@@ -1997,3 +1997,14 @@ Foram lidos remarcar e cancelar pelo link do cliente (estorno do sinal, aviso e 
      **Fazer:** excluir a conta cancela as entradas da lista de espera das fichas ligadas a ela (e as online com o e-mail da conta) e apaga o `contactEmail` delas, na mesma transação.
      
      **Feito:** excluir a conta do cliente cancela as entradas da lista de espera das fichas ligadas e as online com o e-mail da conta, e apaga o e-mail informado nelas, na mesma transação.
+
+### Quadragésima oitava rodada (2026-10-19): falhas intermitentes da CI
+
+Com o log das execuções que falharam e passaram na segunda tentativa (#282 no back, #150 no front), as duas falhas vieram de causas reais.
+
+194. ✅ **Busca pública cai inteira quando uma unidade some no meio** (back: `searchPublicBarbershops`): a busca faz duas consultas (candidatas e, depois, os dados do card das que vão aparecer). Uma unidade apagada entre as duas (exclusão de conta do dono, por exemplo) fazia o `must` lançar "unidade N ausente" e a busca devolvia erro para quem estava buscando. Na CI, outro teste apagava uma unidade em paralelo.
+     
+     **Feito:** a unidade que sumiu entre as consultas sai do resultado. Teste simula a unidade apagada entre as duas consultas.
+195. ✅ **E2E de avaliações falha de novo na nova tentativa** (front: `e2e/closures-reviews.spec.ts`): quando a primeira tentativa caía no meio, o horário criado pelo teste ficava, e a nova tentativa usava o mesmo horário: "Este profissional já tem um agendamento nesse horário".
+     
+     **Feito:** o teste apaga os horários que sobraram do cliente fixo antes de criar o novo, como o teste da agenda já fazia.

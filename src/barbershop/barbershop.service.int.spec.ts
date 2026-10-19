@@ -2420,6 +2420,30 @@ describe('BarbershopService (integração com o banco)', () => {
         limit: 500,
       });
       expect(barbershops.map((r) => r.slug)).not.toContain(slug);
+
+      // Unidade apagada entre as duas consultas da busca: sai do resultado,
+      // a busca não cai (antes o "must" derrubava a busca inteira)
+      const original = prisma.barbershop.findMany.bind(prisma.barbershop);
+      let calls = 0;
+      const spy = jest.spyOn(prisma.barbershop, 'findMany').mockImplementation(((
+        args: Parameters<typeof original>[0],
+      ) => {
+        calls++;
+        if (calls !== 2) return original(args);
+        return original(args).then((rows) =>
+          (rows as Array<{ id: number }>).filter((r) => r.id !== shopId),
+        );
+      }) as never);
+      try {
+        const results = await service.searchPublicBarbershops({
+          businessType: 'beauty_salon',
+          limit: 500,
+        });
+        expect(calls).toBe(2);
+        expect(results.map((r) => r.slug)).not.toContain(slug);
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 
