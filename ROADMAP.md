@@ -2082,3 +2082,17 @@ Foram lidas a escala da equipe (a tela da semana e as mutações antigas de um d
 204. ⬜ **Barbeiro vê as folgas dos colegas, inclusive o motivo** (back: `getBarberTimeOffsByBarber`): a agenda do barbeiro mostra só as folgas dele (`getBarbershopTimeOffs` filtra pelo próprio profissional), mas a consulta por profissional aceita qualquer um da unidade com o acesso mais baixo. O barbeiro lê as datas e o motivo das folgas dos colegas, inclusive afastamento por doença (`SICK`), que é dado de saúde.
      
      **Fazer:** barbeiro e barbeiro básico só consultam as próprias folgas. Recepção para cima vê o período de todos, e o motivo `SICK` aparece só para gerente e dono.
+
+### Quinquagésima quarta rodada (2026-10-19): cancelamentos em lote
+
+Foram lidos os fechamentos da unidade (prévia, cadastro e cancelamento dos afetados), o "cancelar daqui em diante" da série e o cancelamento e a remarcação pelo link do cliente.
+
+205. ⬜ **"Cancelar daqui em diante" na série cancela e estorna horários que já passaram** (back: `cancelFromHere` em `appointment-series.service.ts`):
+     - A busca pega os horários `CONFIRMED` da série a partir do horário clicado, sem olhar se já passaram. Muitos atendimentos feitos ficam `CONFIRMED` (ninguém marca concluído). Clicar num horário antigo, ou no de hoje que já aconteceu, cancela esses atendimentos e estorna o sinal e o pago antes pelo app de serviço que já foi feito. O fechamento da unidade já evita isso ("confirmado que já começou fica").
+     - O cancelamento comum recusa horário com venda ("Apague ou estorne a venda antes"). O da série (e o do fechamento) não confere: o horário fica cancelado com a venda dele no caixa.
+     - O aviso ao cliente só sai se o primeiro horário cancelado é futuro. Clicando num horário passado, os futuros são cancelados sem aviso. O e-mail usado é o da ficha, não o de contato do horário (`appointmentContactEmail`), como no resto.
+     
+     **Fazer:** cancelar só os horários que ainda não começaram, pular os que têm venda (e dizer quantos ficaram), e avisar o cliente pelos futuros cancelados com o e-mail de contato do horário.
+206. ⬜ **Fechamento que cancela horários não atualiza a agenda nem o histórico** (back: `ClosureService.set`, `closure.resolver.ts`): com "cancelar os afetados", os horários são cancelados direto no banco. O resolver não avisa a agenda aberta (`realtime.notify`), então quem está com a agenda aberta continua vendo os horários até recarregar e pode atender ou cobrar um horário já cancelado. A notificação de atividade do cancelamento (`appointmentStatusChanged`) também não sai, ao contrário do cancelamento comum, do da série e do cliente.
+     
+     **Fazer:** avisar a agenda e registrar a atividade de cada horário cancelado pelo fechamento (e também quando reservas de sinal são liberadas).
