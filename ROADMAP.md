@@ -2264,3 +2264,13 @@ Foi lido o fechamento da conta do horário (`createSale` com `appointmentId`): o
      - A conta do horário não confere que o cliente da venda é o cliente do horário. Dá para fechar o horário do cliente A em nome do cliente B: o sinal e o pago antes de A abatem a conta de B, B ganha os pontos de fidelidade e completa a indicação com dinheiro que A pagou.
      
      **Fazer:** conta menor que o já pago é recusada com a mesma mensagem da edição (ou devolve a diferença pelo estorno parcial, se o pago foi pelo app). A conta de um horário usa o cliente do horário (outro cliente é recusado).
+
+### Septuagésima primeira rodada (2026-10-19): apagar a ficha do cliente
+
+Foram lidos o cadastro, a edição, o bloqueio e a remoção da ficha do cliente.
+
+226. ⬜ **Apagar a ficha some com o pacote pago, os pontos e as taxas do cliente** (back: `deleteCustomer`; continuação do item 49):
+     - Antes de anonimizar, a remoção confere só os horários marcados. O pacote de sessões ainda ativo (pago, com sessões sobrando), os pontos de fidelidade e as taxas de falta pendentes ficam presos numa ficha "Cliente removido", que some das listas: ninguém acha para usar as sessões ou devolver o valor, e a taxa pendente continua na lista de taxas com o nome "Cliente removido".
+     - A indicação do cliente (quem indicou e quem foi indicado) continua ligada à ficha anonimizada.
+     
+     **Fazer:** a remoção avisa o que o cliente ainda tem (pacotes ativos com o valor das sessões não usadas, pontos, taxas pendentes) e pede para resolver antes (usar, devolver ou perdoar), como já faz com os horários. Taxa pendente de ficha removida sai da lista como perdoada.
