@@ -314,6 +314,42 @@ function checkMoney(label: string, value: number | null | undefined, currency?: 
     throw new BadRequestException(`${label} inválido`);
   }
 }
+/** Duração do serviço: de 1 minuto a 12 horas, em minutos inteiros */
+export const SERVICE_DURATION_MESSAGE = 'A duração do serviço vai de 1 minuto a 12 horas.';
+export const SERVICE_DEPOSIT_MESSAGE = 'O sinal não pode ser maior que o preço do serviço.';
+export const STOCK_MOVEMENT_MESSAGE = 'Tipo de movimentação de estoque inválido.';
+export const STOCK_QUANTITY_MESSAGE = 'Informe uma quantidade diferente de zero.';
+export const STOCK_MIN_MESSAGE = 'O estoque mínimo não pode ser negativo.';
+const STOCK_MOVEMENTS = ['PURCHASE', 'ADJUSTMENT', 'LOSS', 'TRANSFER'];
+function checkServiceDuration(value: number | null | undefined) {
+  if (value == null) return;
+  if (!Number.isInteger(value) || value < 1 || value > 720) {
+    throw new BadRequestException(SERVICE_DURATION_MESSAGE);
+  }
+}
+/**
+ * Preço, sinal e duração do serviço (antes ia qualquer número: duração zero
+ * travava a agenda, preço negativo virava desconto e o sinal passava do preço).
+ */
+function checkServiceValues(
+  data: {
+    price?: number | Decimal | null;
+    depositAmount?: number | Decimal | null;
+    durationMinutes?: number | null;
+  },
+  currency: string | null | undefined,
+  current?: { price: number | Decimal },
+) {
+  const price = data.price != null ? Number(data.price) : undefined;
+  const deposit = data.depositAmount != null ? Number(data.depositAmount) : undefined;
+  checkMoney('Preço do serviço', price, currency);
+  checkMoney('Sinal', deposit, currency);
+  checkServiceDuration(data.durationMinutes);
+  const finalPrice = price ?? (current ? Number(current.price) : undefined);
+  if (deposit != null && finalPrice != null && deposit > finalPrice) {
+    throw new BadRequestException(SERVICE_DEPOSIT_MESSAGE);
+  }
+}
 /** Sessões de pacote ou de plano: pelo menos 1. Zero cobraria sem poder usar. */
 function checkSessionCount(label: string, value: number | null | undefined) {
   if (value == null) return;
@@ -3094,7 +3130,8 @@ export class BarbershopService {
       displayOrder?: number;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkServiceValues(data, shop.currency);
     const { depositAmount, ...rest } = data;
     return this.prisma.barbershopService.create({
       data: {
@@ -3132,11 +3169,21 @@ export class BarbershopService {
       displayOrder: number;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const current = await this.prisma.barbershopService.findFirst({
       where: { id: serviceId, barbershopId },
     });
     if (!current) throw new NotFoundException('Serviço não encontrado');
+    // O sinal é conferido com o preço que vai ficar (o novo ou o atual)
+    checkServiceValues(
+      {
+        ...data,
+        depositAmount:
+          data.depositAmount !== undefined ? data.depositAmount : current.depositAmount,
+      },
+      shop.currency,
+      current,
+    );
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
     const depositAmount =
       data.depositAmount !== undefined
@@ -3236,7 +3283,9 @@ export class BarbershopService {
       icon?: string;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    checkMoney('Preço de venda', Number(data.salePrice), shop.currency);
+    checkMoney('Custo', data.costPrice != null ? Number(data.costPrice) : null, shop.currency);
     if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
     return this.prisma.barbershopProduct.create({
       data: {
@@ -3244,7 +3293,7 @@ export class BarbershopService {
         ...data,
         categoryId: data.categoryId ?? null,
         salePrice: new Decimal(data.salePrice),
-        costPrice: data.costPrice ? new Decimal(data.costPrice) : null,
+        costPrice: data.costPrice != null ? new Decimal(data.costPrice) : null,
         unit: data.unit ?? 'UNIT',
       },
     });
@@ -3277,11 +3326,17 @@ export class BarbershopService {
       icon: string;
     }>,
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const current = await this.prisma.barbershopProduct.findFirst({
       where: { id: productId, barbershopId },
     });
     if (!current) throw new NotFoundException('Produto não encontrado');
+    checkMoney(
+      'Preço de venda',
+      data.salePrice != null ? Number(data.salePrice) : null,
+      shop.currency,
+    );
+    checkMoney('Custo', data.costPrice != null ? Number(data.costPrice) : null, shop.currency);
     if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
     const salePrice = data.salePrice !== undefined ? new Decimal(data.salePrice) : undefined;
     const costPrice = data.costPrice !== undefined ? new Decimal(data.costPrice) : undefined;
@@ -3338,6 +3393,14 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
+    // "SALE" é só da baixa automática da venda: uma entrada manual com esse
+    // tipo se confundia com ela no estorno
+    if (data.movementType != null && !STOCK_MOVEMENTS.includes(data.movementType)) {
+      throw new BadRequestException(STOCK_MOVEMENT_MESSAGE);
+    }
+    if (!Number.isFinite(data.quantityChange) || data.quantityChange === 0) {
+      throw new BadRequestException(STOCK_QUANTITY_MESSAGE);
+    }
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: data.productId, barbershopId },
     });
@@ -3381,6 +3444,9 @@ export class BarbershopService {
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
+    if (data.minQuantity != null && (!Number.isFinite(data.minQuantity) || data.minQuantity < 0)) {
+      throw new BadRequestException(STOCK_MIN_MESSAGE);
+    }
     const product = await this.prisma.barbershopProduct.findFirst({
       where: { id: productId, barbershopId },
     });

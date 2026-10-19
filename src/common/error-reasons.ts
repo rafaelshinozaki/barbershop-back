@@ -52,6 +52,11 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A unidade está suspensa pela plataforma e não pode enviar campanhas agora.':
     'MARKETING_SUSPENDED',
   'Esta conta foi excluída: a candidatura não pode mais ser aceita.': 'JOB_APPLICANT_DELETED',
+  'A duração do serviço vai de 1 minuto a 12 horas.': 'SERVICE_DURATION_INVALID',
+  'O sinal não pode ser maior que o preço do serviço.': 'SERVICE_DEPOSIT_ABOVE_PRICE',
+  'Tipo de movimentação de estoque inválido.': 'STOCK_MOVEMENT_INVALID',
+  'Informe uma quantidade diferente de zero.': 'STOCK_QUANTITY_INVALID',
+  'O estoque mínimo não pode ser negativo.': 'STOCK_MIN_INVALID',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
