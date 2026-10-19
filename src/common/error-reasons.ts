@@ -86,6 +86,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'TIP_REACHED_PROFESSIONAL',
   'Essa caixinha veio de um atendimento. Apague pela caixinha do atendimento.':
     'TIP_ENTRY_FROM_APPOINTMENT',
+  'Essa mudança de situação não vale para este cliente da fila.': 'WALK_IN_TRANSITION_INVALID',
+  'O cupom já tinha sido usado em outra compra. O pagamento foi estornado: faça o pedido de novo.':
+    'COUPON_REFUSED_REFUNDED',
+  'Cupom de porcentagem vai de 1 a 100, e o de valor fixo precisa de valor maior que zero.':
+    'COUPON_VALUE_INVALID',
+  'Confirme seu e-mail para aceitar o convite.': 'FRIEND_INVITE_EMAIL_NOT_CONFIRMED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

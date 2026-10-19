@@ -39,6 +39,7 @@ import {
 } from '@/common';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { appUrl, supportEmail } from '../../common/app-urls';
+import { dropPushSubscriptions } from '../../push/push.service';
 
 // Link de redefinição: no banco fica só o hash (quem lê o banco não consegue
 // usar o link), como já é no fluxo do cliente final
@@ -1088,7 +1089,11 @@ export class UserService {
    * ou redefinir a senha não derrubava ninguém: quem tinha roubado a conta
    * continuava logado depois que o dono trocava a senha.
    */
-  private async revokeSessions(userId: number, keepSessionToken?: string) {
+  private async revokeSessions(
+    userId: number,
+    keepSessionToken?: string,
+    keepPushEndpoint?: string | null,
+  ) {
     await this.prisma.activeSession.deleteMany({
       where: {
         userId,
@@ -1100,6 +1105,17 @@ export class UserService {
       where: { userId },
       data: { sessionVersion: { increment: 1 } },
     });
+    // Os avisos no celular dos aparelhos derrubados param também (a conta da
+    // equipe e a área do cliente ligada); só o aparelho que pediu continua
+    const linked = await this.prisma.clientAccount.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    await dropPushSubscriptions(
+      this.prisma,
+      { userId, clientAccountIds: linked.map((c) => c.id) },
+      keepSessionToken ? keepPushEndpoint : null,
+    );
   }
 
   /**
@@ -1708,6 +1724,7 @@ export class UserService {
     newPassword: string,
     code: string,
     currentSessionToken?: string,
+    keepPushEndpoint?: string | null,
   ) {
     const valid = await this.verifyChangePasswordCode(userId, code, true);
 
@@ -1739,7 +1756,7 @@ export class UserService {
       data: { password: hashedPassword },
     });
     // As outras sessões caem; quem trocou a senha continua logado
-    await this.revokeSessions(userId, currentSessionToken);
+    await this.revokeSessions(userId, currentSessionToken, keepPushEndpoint);
 
     this.logger.log(`Password changed for user ${userId}`);
 

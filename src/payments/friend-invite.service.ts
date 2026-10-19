@@ -25,6 +25,76 @@ function emailConfirmedOf(user: {
 
 const INVITES_PER_DAY = 5;
 const MAX_REWARDS = 12;
+export const FRIEND_EMAIL_NOT_CONFIRMED = 'Confirme seu e-mail para aceitar o convite.';
+
+/** O token do convite é o link de aceite: só vai no e-mail do amigo, nunca para quem convida */
+function withoutToken<T extends { inviteToken?: string }>(invite: T): Omit<T, 'inviteToken'> {
+  const { inviteToken: _token, ...rest } = invite;
+  return rest;
+}
+
+/** Cupom de 1 mês grátis do convite, já entregue à conta */
+async function createFriendInviteCoupon(
+  db: Prisma.TransactionClient,
+  userId: number,
+  type: 'INVITER' | 'FRIEND',
+  inviteId: number,
+) {
+  const couponCode = `FRIEND_${type}_${inviteId}_${randomBytes(4).toString('hex').toUpperCase()}`;
+  const coupon = await db.coupon.create({
+    data: {
+      code: couponCode,
+      name:
+        type === 'INVITER' ? 'Convite Aceito - 1 Mês Grátis' : 'Convite de Amigo - 1 Mês Grátis',
+      description:
+        type === 'INVITER'
+          ? 'Você ganhou 1 mês grátis porque o amigo que você convidou assinou um plano!'
+          : 'Você ganhou 1 mês grátis por aceitar o convite de um amigo!',
+      type: 'FREE_MONTH',
+      value: 1, // 1 mês grátis
+      maxUses: 1,
+      isActive: true,
+      validFrom: new Date(),
+      validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 ano
+      applicablePlans: null, // Aplicável a todos os planos
+    },
+  });
+  await db.userCoupon.create({ data: { userId, couponId: coupon.id } });
+  return coupon;
+}
+
+/**
+ * Primeiro plano pago do amigo convidado: só aí quem convidou ganha o mês
+ * grátis (antes saía no aceite, e dava pra ganhar com contas inventadas).
+ * Chamar na transação que registra o pagamento; devolve o que mandar no e-mail.
+ */
+export async function rewardInviterOnFirstPayment(
+  tx: Prisma.TransactionClient,
+  friendUserId: number,
+) {
+  const invite = await tx.friendInvite.findFirst({
+    where: { acceptedByUserId: friendUserId, status: 'ACCEPTED', inviterCouponId: null },
+    include: {
+      inviter: { select: { id: true, fullName: true, email: true, isActive: true } },
+      acceptedByUser: { select: { fullName: true, email: true } },
+    },
+  });
+  if (!invite || !invite.inviter.isActive) return null;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
+    'friend-invite:' + invite.inviterId
+  }))`;
+  const rewards = await tx.friendInvite.count({
+    where: { inviterId: invite.inviterId, inviterCouponId: { not: null } },
+  });
+  if (rewards >= MAX_REWARDS) return null;
+  const coupon = await createFriendInviteCoupon(tx, invite.inviterId, 'INVITER', invite.id);
+  const { count } = await tx.friendInvite.updateMany({
+    where: { id: invite.id, inviterCouponId: null },
+    data: { inviterCouponId: coupon.id },
+  });
+  if (count !== 1) throw new BadRequestException('Convite já foi processado');
+  return { invite, couponCode: coupon.code };
+}
 
 @Injectable()
 export class FriendInviteService {
@@ -84,7 +154,7 @@ export class FriendInviteService {
         where: { inviterId: userId, createdAt: { gte: startOfDay } },
       }),
       this.prisma.friendInvite.count({
-        where: { inviterId: userId, status: 'ACCEPTED' },
+        where: { inviterId: userId, inviterCouponId: { not: null } },
       }),
     ]);
     if (sentToday >= INVITES_PER_DAY) {
@@ -123,7 +193,7 @@ export class FriendInviteService {
     // Enviar email de convite
     await this.sendInviteEmail(invite);
 
-    return invite;
+    return withoutToken(invite);
   }
 
   /** Pode convidar? (a tela mostra a confirmação do e-mail antes de deixar enviar) */
@@ -207,7 +277,7 @@ export class FriendInviteService {
    * Lista convites enviados por um usuário
    */
   async getSentInvites(userId: number) {
-    return this.prisma.friendInvite.findMany({
+    const invites = await this.prisma.friendInvite.findMany({
       where: {
         inviterId: userId,
       },
@@ -242,6 +312,7 @@ export class FriendInviteService {
         createdAt: 'desc',
       },
     });
+    return invites.map(withoutToken);
   }
 
   /**
@@ -287,7 +358,13 @@ export class FriendInviteService {
     // Verificar se o usuário que está aceitando tem o email correto
     const acceptingUser = await this.prisma.user.findUnique({
       where: { id: acceptedByUserId },
-      select: { email: true, createdAt: true },
+      select: {
+        email: true,
+        createdAt: true,
+        provider: true,
+        emailVerifiedAt: true,
+        clientAccount: { select: { emailVerifiedAt: true } },
+      },
     });
     if (!acceptingUser) {
       throw new NotFoundException('Usuário não encontrado');
@@ -295,6 +372,10 @@ export class FriendInviteService {
 
     if (acceptingUser.email.toLowerCase() !== invite.friendEmail.toLowerCase()) {
       throw new BadRequestException('Este convite não é para você');
+    }
+    // A conta tem que provar que é dona do e-mail convidado (a tela manda o código)
+    if (!emailConfirmedOf(acceptingUser)) {
+      throw new BadRequestException(FRIEND_EMAIL_NOT_CONFIRMED);
     }
 
     // Verificar se o usuário que está aceitando é um novo usuário (conta criada após o convite)
@@ -349,16 +430,10 @@ export class FriendInviteService {
       friendCoupon: { select: { id: true, code: true, name: true, value: true, type: true } },
     } as const;
 
-    // O status sai de PENDING antes dos cupons. Dois cliques: só o primeiro
-    // cria cupom. A trava serializa os aceites do mesmo indicador, senão o
-    // teto de meses conta duas vezes ao mesmo tempo.
+    // O status sai de PENDING antes do cupom. Dois cliques: só o primeiro
+    // cria cupom. O amigo ganha o mês grátis no aceite; quem convidou, só
+    // quando o amigo paga o primeiro plano (rewardInviterOnFirstPayment)
     const updatedInvite = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
-        'friend-invite:' + invite.inviterId
-      }))`;
-      const rewards = await tx.friendInvite.count({
-        where: { inviterId: invite.inviterId, status: 'ACCEPTED' },
-      });
       const claimed = await tx.friendInvite.updateMany({
         where: { id: invite.id, status: 'PENDING' },
         data: { status: 'ACCEPTED', acceptedByUserId },
@@ -366,16 +441,7 @@ export class FriendInviteService {
       if (claimed.count !== 1) {
         throw new BadRequestException('Convite já foi processado');
       }
-      if (rewards >= MAX_REWARDS) {
-        return tx.friendInvite.findUniqueOrThrow({ where: { id: invite.id }, include: inviteView });
-      }
-      const inviterCoupon = await this.createFriendInviteCoupon(
-        tx,
-        invite.inviter.id,
-        'INVITER',
-        invite.id,
-      );
-      const friendCoupon = await this.createFriendInviteCoupon(
+      const friendCoupon = await createFriendInviteCoupon(
         tx,
         acceptedByUserId,
         'FRIEND',
@@ -383,55 +449,20 @@ export class FriendInviteService {
       );
       return tx.friendInvite.update({
         where: { id: invite.id },
-        data: { inviterCouponId: inviterCoupon.id, friendCouponId: friendCoupon.id },
+        data: { friendCouponId: friendCoupon.id },
         include: inviteView,
       });
     });
 
-    const hasBenefits = updatedInvite.inviterCouponId != null;
-    await this.sendInviteAcceptedEmails(updatedInvite, hasBenefits);
+    await this.sendInviteAcceptedEmails(updatedInvite);
 
     return {
       success: true,
-      message: hasBenefits
-        ? 'Convite aceito com sucesso! Ambos ganharam 1 mês grátis.'
-        : 'Convite aceito. O limite de meses grátis de quem convidou já foi atingido.',
-      invite: updatedInvite,
-      hasBenefits,
+      message:
+        'Convite aceito! Você ganhou 1 mês grátis. Quem convidou ganha quando você assinar um plano.',
+      invite: withoutToken(updatedInvite),
+      hasBenefits: true,
     };
-  }
-
-  /**
-   * Cria um cupom para convite de amigo
-   */
-  private async createFriendInviteCoupon(
-    db: Prisma.TransactionClient,
-    userId: number,
-    type: 'INVITER' | 'FRIEND',
-    inviteId: number,
-  ) {
-    const couponCode = `FRIEND_${type}_${inviteId}_${randomBytes(4).toString('hex').toUpperCase()}`;
-
-    const coupon = await db.coupon.create({
-      data: {
-        code: couponCode,
-        name:
-          type === 'INVITER' ? 'Convite Aceito - 1 Mês Grátis' : 'Convite de Amigo - 1 Mês Grátis',
-        description:
-          type === 'INVITER'
-            ? 'Você ganhou 1 mês grátis por ter seu convite aceito!'
-            : 'Você ganhou 1 mês grátis por aceitar o convite de um amigo!',
-        type: 'FREE_MONTH',
-        value: 1, // 1 mês grátis
-        maxUses: 1,
-        isActive: true,
-        validFrom: new Date(),
-        validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 ano
-        applicablePlans: null, // Aplicável a todos os planos
-      },
-    });
-    await db.userCoupon.create({ data: { userId, couponId: coupon.id } });
-    return coupon;
   }
 
   /**
@@ -461,78 +492,43 @@ export class FriendInviteService {
   /**
    * Envia emails de confirmação quando o convite é aceito
    */
-  private async sendInviteAcceptedEmails(invite: any, hasBenefits = true) {
-    if (hasBenefits) {
-      // Email para quem enviou o convite (com benefícios)
-      await this.emailService.sendTemplateEmail(
-        invite.inviterId,
-        'friend_invite_accepted_inviter',
-        {
-          InviterName: invite.inviter.fullName,
-          FriendName: invite.acceptedByUser.fullName,
-          CouponCode: invite.inviterCoupon.code,
-          AppName: 'Barbershop',
-        },
-        {
-          pt: 'Seu convite foi aceito! - 1 mês grátis',
-          en: 'Your invitation was accepted! - 1 month free',
-          es: '¡Tu invitación fue aceptada! - 1 mes gratis',
-        },
-        `Friend invite accepted by ${invite.acceptedByUser.email}`,
-        invite.inviter.email,
-      );
+  private async sendInviteAcceptedEmails(invite: any) {
+    // Quem convidou: aceito (o mês grátis chega quando o amigo assinar)
+    await this.emailService.sendTemplateEmail(
+      invite.inviterId,
+      'friend_invite_accepted_inviter_no_benefits',
+      {
+        InviterName: invite.inviter.fullName,
+        FriendName: invite.acceptedByUser.fullName,
+        AppName: 'Barbershop',
+      },
+      {
+        pt: 'Seu convite foi aceito!',
+        en: 'Your invitation was accepted!',
+        es: '¡Tu invitación fue aceptada!',
+      },
+      `Friend invite accepted by ${invite.acceptedByUser.email}`,
+      invite.inviter.email,
+    );
 
-      // Email para quem aceitou o convite (com benefícios)
-      await this.emailService.sendTemplateEmail(
-        invite.acceptedByUserId,
-        'friend_invite_accepted_friend',
-        {
-          FriendName: invite.acceptedByUser.fullName,
-          InviterName: invite.inviter.fullName,
-          CouponCode: invite.friendCoupon.code,
-          AppName: 'Barbershop',
-        },
-        {
-          pt: 'Convite aceito! - 1 mês grátis',
-          en: 'Invitation accepted! - 1 month free',
-          es: '¡Invitación aceptada! - 1 mes gratis',
-        },
-        `Friend invite accepted by ${invite.acceptedByUser.email}`,
-        invite.acceptedByUser.email,
-      );
-    } else {
-      // Email para quem enviou o convite (sem benefícios - usuário já existia)
-      await this.emailService.sendTemplateEmail(
-        invite.inviterId,
-        'friend_invite_accepted_inviter_no_benefits',
-        {
-          InviterName: invite.inviter.fullName,
-          FriendName: invite.acceptedByUser.fullName,
-          AppName: 'Barbershop',
-        },
-        {
-          pt: 'Seu convite foi aceito!',
-          en: 'Your invitation was accepted!',
-          es: '¡Tu invitación fue aceptada!',
-        },
-        `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
-        invite.inviter.email,
-      );
-
-      // Email para quem aceitou o convite (sem benefícios - usuário já existia)
-      await this.emailService.sendTemplateEmail(
-        invite.acceptedByUserId,
-        'friend_invite_accepted_friend_no_benefits',
-        {
-          FriendName: invite.acceptedByUser.fullName,
-          InviterName: invite.inviter.fullName,
-          AppName: 'Barbershop',
-        },
-        { pt: 'Convite aceito!', en: 'Invitation accepted!', es: '¡Invitación aceptada!' },
-        `Friend invite accepted by ${invite.acceptedByUser.email} (existing user)`,
-        invite.acceptedByUser.email,
-      );
-    }
+    // Quem aceitou: o cupom de 1 mês grátis
+    await this.emailService.sendTemplateEmail(
+      invite.acceptedByUserId,
+      'friend_invite_accepted_friend',
+      {
+        FriendName: invite.acceptedByUser.fullName,
+        InviterName: invite.inviter.fullName,
+        CouponCode: invite.friendCoupon.code,
+        AppName: 'Barbershop',
+      },
+      {
+        pt: 'Convite aceito! - 1 mês grátis',
+        en: 'Invitation accepted! - 1 month free',
+        es: '¡Invitación aceptada! - 1 mes gratis',
+      },
+      `Friend invite accepted by ${invite.acceptedByUser.email}`,
+      invite.acceptedByUser.email,
+    );
   }
 
   /**

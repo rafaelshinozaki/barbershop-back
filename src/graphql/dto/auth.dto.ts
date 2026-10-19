@@ -500,6 +500,14 @@ export class ResetPasswordWithCodeInput {
   @Field()
   @IsString()
   code: string;
+
+  @Field({
+    nullable: true,
+    description: 'Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)',
+  })
+  @IsOptional()
+  @IsString()
+  pushEndpoint?: string;
 }
 
 @InputType()

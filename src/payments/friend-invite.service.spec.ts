@@ -425,7 +425,8 @@ describe('FriendInviteService', () => {
         },
       });
 
-      expect(result).toEqual(mockInvites);
+      // O token (link de aceite) não volta para quem convidou
+      expect(result).toEqual(mockInvites.map(({ inviteToken: _t, ...rest }) => rest));
     });
   });
 

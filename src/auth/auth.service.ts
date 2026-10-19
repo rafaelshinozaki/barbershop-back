@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { UserDTO } from './users/dto/user.dto';
 import { IpLocationService } from '@/common/ip-location.service';
 import { supportEmail } from '../common/app-urls';
+import { dropPushSubscriptions } from '../push/push.service';
 
 @Injectable()
 export class AuthService {
@@ -138,7 +139,7 @@ export class AuthService {
     });
   }
 
-  async logoutOtherSessions(user: UserDTO, _req: Request) {
+  async logoutOtherSessions(user: UserDTO, _req: Request, keepPushEndpoint?: string | null) {
     // A sessão some da ActiveSession: o login deixa de aceitar o token.
     // sessionToken, não IP — várias sessões podem compartilhar o mesmo IP.
     const removed = await this.prisma.activeSession.deleteMany({
@@ -150,6 +151,16 @@ export class AuthService {
     if (removed.count > 0) {
       this.logger.log(`Invalidated ${removed.count} sessions for user ${user.id}`);
     }
+    // O aparelho derrubado também para de receber os avisos no celular
+    const linked = await this.prisma.clientAccount.findMany({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    await dropPushSubscriptions(
+      this.prisma,
+      { userId: user.id, clientAccountIds: linked.map((c) => c.id) },
+      keepPushEndpoint,
+    );
   }
 
   // Método para agendar limpeza de cache

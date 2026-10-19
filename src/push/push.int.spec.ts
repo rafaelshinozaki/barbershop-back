@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import * as webpush from 'web-push';
 import { PrismaService } from '../prisma/prisma.service';
 import { RetentionService } from '../privacy/retention.service';
-import { PushService, type PushPayload } from './push.service';
+import { dropPushSubscriptions, PushService, type PushPayload } from './push.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -129,6 +129,21 @@ describe('Notificação no celular (integração)', () => {
 
     await push.unsubscribe(endpoint('pt'));
     expect(await push.sendToClient(clientId, build)).toBe(0);
+  });
+
+  it('sessões derrubadas: as inscrições da conta saem, menos a do aparelho que pediu (item 219)', async () => {
+    await push.subscribe({ userId }, sub('drop-a'));
+    await push.subscribe({ userId }, sub('drop-b'));
+    await push.subscribe({ clientAccountId: clientId }, sub('drop-c'));
+    await dropPushSubscriptions(
+      prisma,
+      { userId, clientAccountIds: [clientId] },
+      endpoint('drop-a'),
+    );
+    const left = await prisma.pushSubscription.findMany({
+      where: { endpoint: { in: ['drop-a', 'drop-b', 'drop-c'].map(endpoint) } },
+    });
+    expect(left.map((r) => r.endpoint)).toEqual([endpoint('drop-a')]);
   });
 
   it('guarda: aparelho sem uso há 6 meses sai', async () => {

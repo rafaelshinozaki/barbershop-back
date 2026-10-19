@@ -1,5 +1,5 @@
 // src\auth\users\dto\change-password.dto.ts
-import { IsString, IsEmail } from 'class-validator';
+import { IsString, IsEmail, IsOptional } from 'class-validator';
 import { InputType, Field } from '@nestjs/graphql';
 
 @InputType()
@@ -19,4 +19,12 @@ export class ChangePasswordInput {
   @Field()
   @IsString()
   code: string;
+
+  @Field({
+    nullable: true,
+    description: 'Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)',
+  })
+  @IsOptional()
+  @IsString()
+  pushEndpoint?: string;
 }

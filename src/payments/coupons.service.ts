@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { isAfter, isBefore } from 'date-fns';
@@ -16,6 +22,19 @@ export interface CouponValidationResult {
   coupon?: any;
   discountAmount?: number;
   originalAmount?: number;
+}
+
+/** Quanto tempo a cobrança criada segura o uso do cupom */
+export const COUPON_RESERVATION_MS = 60 * 60 * 1000;
+export const COUPON_VALUE_MESSAGE =
+  'Cupom de porcentagem vai de 1 a 100, e o de valor fixo precisa de valor maior que zero.';
+
+/** Porcentagem de 1 a 100 e valor fixo positivo (negativo aumentava o preço) */
+export function couponValueOk(type: string, value: number) {
+  if (!Number.isFinite(value)) return false;
+  if (type === COUPON_TYPE.PERCENTAGE) return value >= 1 && value <= 100;
+  if (type === COUPON_TYPE.FIXED_AMOUNT) return value > 0;
+  return value >= 0;
 }
 
 /** Lista vazia = vale pra todos os planos (null); "[]" travaria o cupom pra nenhum. */
@@ -43,6 +62,9 @@ export class CouponsService {
     applicablePlans?: number[];
   }) {
     this.logger.log(`Creating coupon with code: ${data.code}`);
+    if (!couponValueOk(data.type, Number(data.value))) {
+      throw new BadRequestException(COUPON_VALUE_MESSAGE);
+    }
 
     const applicablePlansJson = plansToJson(data.applicablePlans) ?? null;
 
@@ -98,8 +120,16 @@ export class CouponsService {
       return { isValid: false, error: 'Cupom expirado' };
     }
 
-    // Verificar limite de usos
-    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+    if (!couponValueOk(coupon.type, Number(coupon.value))) {
+      return { isValid: false, error: 'Cupom inválido' };
+    }
+
+    // Verificar limite de usos (as cobranças em aberto de outras pessoas
+    // seguram um uso cada)
+    if (
+      coupon.maxUses &&
+      coupon.usedCount + (await this.heldByOthers(this.prisma, coupon.id, userId)) >= coupon.maxUses
+    ) {
       return { isValid: false, error: 'Cupom esgotado' };
     }
 
@@ -198,20 +228,84 @@ export class CouponsService {
     };
   }
 
-  /** Marca o cupom como usado por este usuário e soma um uso no cupom. */
+  /** Usos que as cobranças em aberto de outras pessoas seguram */
+  private heldByOthers(client: Prisma.TransactionClient, couponId: number, userId: number) {
+    return client.couponReservation.count({
+      where: { couponId, userId: { not: userId }, expiresAt: { gt: new Date() } },
+    });
+  }
+
+  /**
+   * Reserva o uso do cupom para a cobrança criada (com prazo). A cobrança
+   * anterior da mesma pessoa com o mesmo cupom perde a reserva: devolve os
+   * ids dela para quem chamou cancelar no Stripe.
+   */
+  async reserve(couponId: number, userId: number, paymentIntentId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'coupon:' + couponId}))`;
+      const coupon = await tx.coupon.findUnique({
+        where: { id: couponId },
+        select: { maxUses: true, usedCount: true },
+      });
+      if (!coupon) throw new BadRequestException('Cupom não encontrado');
+      const used = await tx.userCoupon.findUnique({
+        where: { userId_couponId: { userId, couponId } },
+        select: { usedAt: true },
+      });
+      if (used?.usedAt) throw new BadRequestException('Cupom já foi utilizado por este usuário');
+      if (
+        coupon.maxUses &&
+        coupon.usedCount + (await this.heldByOthers(tx, couponId, userId)) >= coupon.maxUses
+      ) {
+        throw new BadRequestException('Cupom esgotado');
+      }
+      const previous = await tx.couponReservation.findMany({
+        where: { couponId, userId },
+        select: { paymentIntentId: true },
+      });
+      await tx.couponReservation.deleteMany({ where: { couponId, userId } });
+      await tx.couponReservation.create({
+        data: {
+          couponId,
+          userId,
+          paymentIntentId,
+          expiresAt: new Date(Date.now() + COUPON_RESERVATION_MS),
+        },
+      });
+      return previous.map((r) => r.paymentIntentId);
+    });
+  }
+
   /**
    * Registra o uso dentro da transação de quem ativa o plano, com trava por
    * cupom: checkouts ao mesmo tempo passavam todos pela validação (uso único
-   * por pessoa, limite de usos) e o cupom valia várias vezes. Devolve false
-   * se o uso não cabe mais.
+   * por pessoa, limite de usos) e o cupom valia várias vezes. Com cobrança,
+   * só vale a que tem a reserva do cupom (outra aba ou cobrança guardada
+   * não). Devolve false se o uso não cabe mais.
    */
-  async claimUse(tx: Prisma.TransactionClient, couponId: number, userId: number) {
+  async claimUse(
+    tx: Prisma.TransactionClient,
+    couponId: number,
+    userId: number,
+    paymentIntentId?: string | null,
+  ) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'coupon:' + couponId}))`;
     const coupon = await tx.coupon.findUnique({
       where: { id: couponId },
       select: { maxUses: true, usedCount: true },
     });
-    if (!coupon || (coupon.maxUses && coupon.usedCount >= coupon.maxUses)) return false;
+    if (!coupon) return false;
+    let held = await this.heldByOthers(tx, couponId, userId);
+    if (paymentIntentId) {
+      const reservation = await tx.couponReservation.findUnique({ where: { paymentIntentId } });
+      if (!reservation || reservation.couponId !== couponId || reservation.userId !== userId) {
+        return false;
+      }
+      await tx.couponReservation.delete({ where: { id: reservation.id } });
+      // Reserva dentro do prazo já estava contada no limite
+      if (reservation.expiresAt > new Date()) held = -1;
+    }
+    if (coupon.maxUses && held >= 0 && coupon.usedCount + held >= coupon.maxUses) return false;
     const used = await tx.userCoupon.findUnique({
       where: { userId_couponId: { userId, couponId } },
       select: { usedAt: true },
@@ -265,6 +359,15 @@ export class CouponsService {
     },
   ) {
     const { applicablePlans, code, ...rest } = data;
+    if (rest.value !== undefined || rest.type !== undefined) {
+      const current = await this.prisma.coupon.findUnique({
+        where: { id },
+        select: { type: true, value: true },
+      });
+      const type = typeof rest.type === 'string' ? rest.type : current?.type ?? '';
+      const value = rest.value !== undefined ? Number(rest.value) : Number(current?.value ?? 0);
+      if (!couponValueOk(type, value)) throw new BadRequestException(COUPON_VALUE_MESSAGE);
+    }
     const coupon = await this.withUniqueCode(() =>
       this.prisma.coupon.update({
         where: { id },

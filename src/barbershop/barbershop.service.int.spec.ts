@@ -16,6 +16,7 @@ import {
   BarbershopService,
   NETWORK_AGENDA_CAP,
   assertStaffAppointmentSource,
+  WALK_IN_TRANSITION_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -439,6 +440,71 @@ describe('BarbershopService (integração com o banco)', () => {
       ).resolves.toMatchObject({ status: 'IN_PROGRESS' });
       await prisma.walkInService.deleteMany({ where: { walkInId: own.id } });
       await prisma.walkIn.delete({ where: { id: own.id } });
+    });
+
+    it('fila: barbeiro pega quem está sem profissional, a troca segue uma ordem e a fila é do dia (itens 215 e 216)', async () => {
+      const entry = (barberId?: number) =>
+        service.createWalkIn(A.ownerId, A.shopId, {
+          customerId: A.customerId,
+          barberId,
+          customerName: 'Fila do dia',
+          services: [{ serviceId: A.serviceId }],
+        });
+      const free = await entry();
+      // O barbeiro começa o atendimento de quem está sem profissional e vira o profissional
+      const started = await service.updateWalkInStatus(
+        A.staffUserId,
+        A.shopId,
+        free.id,
+        'IN_PROGRESS',
+      );
+      expect(started).toMatchObject({ status: 'IN_PROGRESS', barberId: A.barberId });
+      await expect(
+        service.updateWalkInStatus(A.staffUserId, A.shopId, free.id, 'COMPLETED'),
+      ).resolves.toMatchObject({ status: 'COMPLETED' });
+      // Concluído não volta para a fila
+      await expect(
+        service.updateWalkInStatus(A.ownerId, A.shopId, free.id, 'WAITING'),
+      ).rejects.toThrow(WALK_IN_TRANSITION_MESSAGE);
+
+      // A recepção escolhe quem atende; o de outro profissional o barbeiro não vê
+      const other = await entry();
+      await service.updateWalkInStatus(
+        A.ownerId,
+        A.shopId,
+        other.id,
+        'IN_PROGRESS',
+        A.otherBarberId,
+      );
+      await expect(
+        service.updateWalkInStatus(A.staffUserId, A.shopId, other.id, 'COMPLETED'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      // Voltar para a fila vai para o fim, não para a posição antiga
+      const back = await entry();
+      const returned = await service.updateWalkInStatus(A.ownerId, A.shopId, other.id, 'WAITING');
+      expect(returned.queuePosition).toBeGreaterThan(back.queuePosition);
+
+      // Entrada de ontem não aparece, não conta no número e a rotina fecha
+      const yesterday = await entry();
+      await prisma.walkIn.update({
+        where: { id: yesterday.id },
+        data: { createdAt: new Date(Date.now() - 2 * 86_400_000), queuePosition: 99 },
+      });
+      const list = await service.getWalkIns(A.ownerId, A.shopId);
+      expect(list.map((w) => w.id)).not.toContain(yesterday.id);
+      const next = await entry();
+      expect(next.queuePosition).toBeLessThan(99);
+      await service.closeStaleWalkIns();
+      expect((await prisma.walkIn.findUniqueOrThrow({ where: { id: yesterday.id } })).status).toBe(
+        'NOT_SERVED',
+      );
+      expect((await prisma.walkIn.findUniqueOrThrow({ where: { id: next.id } })).status).toBe(
+        'WAITING',
+      );
+
+      const ids = [free, other, back, yesterday, next].map((w) => w.id);
+      await prisma.walkInService.deleteMany({ where: { walkInId: { in: ids } } });
+      await prisma.walkIn.deleteMany({ where: { id: { in: ids } } });
     });
 
     it('pacote não é vendido pra cliente de outra franquia', async () => {

@@ -99,8 +99,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Log out all other sessions' })
   @ApiResponse({ status: 200, description: 'Other sessions logged out' })
   @Post('logout/others')
-  async logoutOtherSessions(@CurrentUser() user: UserDTO, @Req() req: Request) {
-    await this.authService.logoutOtherSessions(user, req);
+  async logoutOtherSessions(
+    @CurrentUser() user: UserDTO,
+    @Req() req: Request,
+    @Body() body?: { pushEndpoint?: string },
+  ) {
+    await this.authService.logoutOtherSessions(user, req, body?.pushEndpoint);
     return { success: true };
   }
 

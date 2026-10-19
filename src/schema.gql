@@ -852,6 +852,9 @@ input ChangePasswordInput {
   email: String!
   newPassword: String!
   oldPassword: String!
+
+  """Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)"""
+  pushEndpoint: String
 }
 
 type ChangePlanResponse {
@@ -2274,7 +2277,7 @@ type Mutation {
   linkMyClientAccount(password: String!): Boolean!
   login(input: LoginInput!): User!
   logout: Boolean!
-  logoutOtherSessions: Boolean!
+  logoutOtherSessions(pushEndpoint: String): Boolean!
   markAllNotificationsAsRead: CommonResponse!
   markNoShowFeeCollected(barbershopId: Int!, id: Int!, paymentMethod: String): Boolean!
   markNotificationAsRead(id: Int!): CommonResponse!
@@ -2419,7 +2422,7 @@ type Mutation {
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserRole(role: String!, userId: Int!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
-  updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
+  updateWalkInStatus(barberId: Int, barbershopId: Int!, id: Int!, status: String!): WalkIn!
   useSavedCardForPlan(setupIntentId: String!): UseSavedCardResponse!
   validateCoupon(amount: Float!, code: String!, planId: Int!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!
@@ -3581,6 +3584,9 @@ input ResetPasswordWithCodeInput {
   code: String!
   currentPassword: String!
   newPassword: String!
+
+  """Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)"""
+  pushEndpoint: String
 }
 
 type ResourceType {

@@ -234,8 +234,18 @@ describe('Backoffice fase 2 (integração)', () => {
       { get: () => undefined } as never,
       {} as never,
     );
+    // O aparelho derrubado também para de receber notificação no celular (item 219)
+    await prisma.pushSubscription.create({
+      data: {
+        endpoint: `https://fcm.googleapis.com/fcm/send/bo2-${ownerId}-${Date.now()}`,
+        p256dh: 'p'.repeat(87),
+        auth: 'a'.repeat(22),
+        userId: ownerId,
+      },
+    });
     expect(await users.revokeAllSessions(ownerId)).toBe(2);
     expect(await prisma.activeSession.count({ where: { userId: ownerId } })).toBe(0);
+    expect(await prisma.pushSubscription.count({ where: { userId: ownerId } })).toBe(0);
     await expect(users.revokeAllSessions(999_999_999)).rejects.toBeInstanceOf(NotFoundException);
   });
 

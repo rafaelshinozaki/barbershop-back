@@ -2203,42 +2203,52 @@ Foram lidos a conta do cliente (perfil, favoritos, profissionais favoritos, busc
 
 Foram lidas a fila de quem chega sem horário (entrar, listar, mudar a situação), o painel ("na fila agora") e o histórico de serviços do cliente.
 
-215. ⬜ **Barbeiro põe cliente na fila "sem profissional" e depois não consegue atender** (back: `createWalkIn`, `updateWalkInStatus`): o barbeiro pode criar a entrada da fila sem profissional ("só na própria fila, ou sem profissional"). Mas mudar a situação exige que a entrada seja dele (`walkIn.barberId !== ownBarberId`), e a entrada sem profissional não é de ninguém: o barbeiro recebe "Cliente da fila não encontrado" ao começar o atendimento. Na unidade sem recepção, ninguém além do gerente ou do dono tira esse cliente da fila. Começar o atendimento (`IN_PROGRESS`) também não grava quem atendeu.
+215. ✅ **Barbeiro põe cliente na fila "sem profissional" e depois não consegue atender** (back: `createWalkIn`, `updateWalkInStatus`): o barbeiro pode criar a entrada da fila sem profissional ("só na própria fila, ou sem profissional"). Mas mudar a situação exige que a entrada seja dele (`walkIn.barberId !== ownBarberId`), e a entrada sem profissional não é de ninguém: o barbeiro recebe "Cliente da fila não encontrado" ao começar o atendimento. Na unidade sem recepção, ninguém além do gerente ou do dono tira esse cliente da fila. Começar o atendimento (`IN_PROGRESS`) também não grava quem atendeu.
      
      **Fazer:** o barbeiro pode pegar a entrada sem profissional, e começar o atendimento grava o profissional (o barbeiro que pegou ou o escolhido pela recepção). A troca de situação segue uma ordem (não volta de concluído para esperando com a posição antiga).
-216. ⬜ **A fila nunca fecha: quem ficou esperando ontem continua na frente hoje** (back: `createWalkIn`, `getWalkIns`, painel `walkInsWaiting`): não há rotina que encerre a fila do dia. Entrada que ficou `WAITING` ou `IN_PROGRESS` (o cliente foi embora, ninguém marcou) continua na fila nos dias seguintes, na frente de quem chega hoje. A posição nova é o maior número entre as que esperam, então a numeração só cresce. O painel mostra "na fila" contando essas entradas antigas.
+     
+     **Feito:** o barbeiro (e o básico) mexe na própria fila e também no cliente sem profissional. Começar o atendimento (`IN_PROGRESS`) grava quem atende: o escolhido pela recepção (argumento novo `barberId` em `updateWalkInStatus`), o barbeiro que pegou ou o que já estava na entrada. A troca de situação segue uma ordem: esperando → em atendimento ou cancelado; em atendimento → concluído, cancelado ou de volta à fila (no fim, com posição nova). Concluído e cancelado não voltam (`WALK_IN_TRANSITION_INVALID`). Teste em `barbershop.service.int.spec.ts`.
+216. ✅ **A fila nunca fecha: quem ficou esperando ontem continua na frente hoje** (back: `createWalkIn`, `getWalkIns`, painel `walkInsWaiting`): não há rotina que encerre a fila do dia. Entrada que ficou `WAITING` ou `IN_PROGRESS` (o cliente foi embora, ninguém marcou) continua na fila nos dias seguintes, na frente de quem chega hoje. A posição nova é o maior número entre as que esperam, então a numeração só cresce. O painel mostra "na fila" contando essas entradas antigas.
      
      **Fazer:** a fila é do dia, no fuso da unidade: a lista e o painel mostram só as entradas de hoje, e uma rotina de madrugada marca as que sobraram como não atendidas (situação própria, fora das faltas de agendamento). A posição recomeça a cada dia.
+     
+     **Feito:** a fila é do dia, no fuso da unidade: a lista (`getWalkIns`) e o painel (`walkInsWaiting`) mostram só as entradas de hoje, e a posição recomeça a cada dia. A rotina `close-stale-walk-ins` (de hora em hora) marca como `NOT_SERVED` ("não atendido", fora das faltas de agendamento) o que ficou esperando ou em atendimento de um dia que já acabou no fuso de cada unidade. Teste em `barbershop.service.int.spec.ts`.
 
 ### Sexagésima segunda rodada (2026-10-19): cupom do plano
 
 Foram lidos os cupons do plano (validação, desconto, reserva do cupom do convite de amigo, uso registrado na ativação) e a cobrança do plano.
 
-217. ⬜ **Cupom de uso único dá desconto em várias cobranças** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `CouponsService.validateCoupon`, `claimUse`):
+217. ✅ **Cupom de uso único dá desconto em várias cobranças** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `CouponsService.validateCoupon`, `claimUse`):
      - O cupom é só conferido ao criar a cobrança (`validateCoupon`), e o uso é registrado depois do pagamento (`claimUse`). Quando o registro falha porque o cupom já foi usado (ou esgotou), a cobrança já paga ativa o plano mesmo assim e só fica um aviso no log ("já pago, o plano vale").
      - Abrindo o checkout com o cupom em várias abas (ou guardando a cobrança criada para pagar depois), cada cobrança sai com o desconto. Pagando uma de cada vez, o usuário compra vários períodos com desconto, ou 100% grátis no caso do mês grátis com valor acima do mínimo da Stripe, com um cupom de uso único. O cupom público com limite de usos também passa do limite.
      - Na validação, o valor e o tipo do cupom não são conferidos: cupom de porcentagem negativa (erro de digitação no backoffice) aumenta o preço.
      
      **Fazer:** reservar o uso do cupom ao criar a cobrança (com prazo, como a reserva do sinal), e cancelar a cobrança anterior do mesmo usuário com o mesmo cupom. Na ativação, cobrança paga com cupom que não foi reservado para ela é estornada na diferença (ou recusada antes do pagamento). Porcentagem de 1 a 100 e valor fixo positivo ao criar e editar o cupom.
+     
+     **Feito:** o uso do cupom é reservado ao criar a cobrança (`CouponReservation`, uma hora, ligada ao PaymentIntent). A reserva em aberto de outra pessoa conta no limite de usos, na validação e na reserva. Criar outra cobrança com o mesmo cupom tira a reserva da anterior e cancela a anterior no Stripe. Na ativação, `claimUse` só aceita a cobrança que tem a reserva. Cobrança paga sem a reserva (outra aba, cobrança guardada) não ativa o plano e é estornada inteira (`COUPON_REFUSED_REFUNDED`). O plano grátis pelo cupom (sem cobrança) segue com a trava de antes, contando as reservas. Porcentagem de 1 a 100 e valor fixo maior que zero ao criar e editar, no back e no backoffice-back (`COUPON_VALUE_INVALID`). Cupom salvo antes com valor fora disso não vale no checkout. Teste em `checkout-coupon.int.spec.ts` e `test/admin-writes.spec.ts` (backoffice-back).
 
 ### Sexagésima terceira rodada (2026-10-19): convidar amigos
 
 Foi lido o "Convidar amigos" (dono convida outro dono e os dois ganham 1 mês grátis): criar, listar, aceitar e os cupons.
 
-218. ⬜ **Quem convida ganha os meses grátis sozinho, com contas inventadas** (back: `FriendInviteService.createInvite`, `getSentInvites`, `acceptInvite`; `friend-invite.controller.ts`):
+218. ✅ **Quem convida ganha os meses grátis sozinho, com contas inventadas** (back: `FriendInviteService.createInvite`, `getSentInvites`, `acceptInvite`; `friend-invite.controller.ts`):
      - A criação e a lista "convites enviados" devolvem a linha inteira do convite, com o `inviteToken`: quem convida tem o link de aceite sem precisar do e-mail do amigo.
      - O aceite confere só que o e-mail da conta é o do convite e que a conta foi criada depois do convite. Não confere se esse e-mail foi confirmado (o cadastro entra sem confirmar). Basta convidar um e-mail inventado, criar a conta com ele, entrar e aceitar com o próprio link: quem convidou ganha 1 mês grátis, até 5 por dia e 12 no total, sem nenhum amigo pagar nada.
      - O mês grátis de quem convida sai no aceite, não quando o amigo vira cliente pagante.
      
      **Fazer:** não devolver o token para quem convida (a tela só precisa da situação). O aceite exige o e-mail da conta confirmado. O cupom de quem convidou só sai quando o amigo paga o primeiro plano (o do amigo pode sair no aceite).
+     
+     **Feito:** a criação e a lista de convites enviados não devolvem mais o `inviteToken` (o link só vai no e-mail do amigo). O aceite exige o e-mail da conta confirmado (`FRIEND_INVITE_EMAIL_NOT_CONFIRMED`); a tela do aceite mostra a confirmação por código, a mesma de "Convidar amigos". O amigo ganha o mês grátis no aceite. Quem convidou só ganha quando o amigo paga o primeiro plano: no checkout pago ou na primeira renovação paga depois do mês grátis (`rewardInviterOnFirstPayment`, com o mesmo teto de 12 meses, agora contando os meses entregues). Ele recebe o e-mail com o cupom nessa hora. Teste em `friend-invite.int.spec.ts`.
 
 ### Sexagésima quarta rodada (2026-10-19): sessões e notificação no celular
 
 Foram lidos os limites do plano (profissionais e unidades, troca para plano menor), a edição da equipe, as notificações do sininho e a notificação no celular (inscrição, saída e limpeza).
 
-219. ⬜ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
+219. ✅ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
      
      **Fazer:** ao derrubar sessões (outras sessões, troca e redefinição de senha, na equipe e no cliente), apagar as inscrições de push da conta, menos a do aparelho que pediu (o front manda o endpoint atual junto, quando houver).
+     
+     **Feito:** ao derrubar sessões, as inscrições de push da conta saem junto (`dropPushSubscriptions`), menos a do aparelho que pediu. Isso vale para "sair das outras sessões" (`logoutOtherSessions(pushEndpoint)`), a troca de senha (`pushEndpoint` em `ChangePasswordInput` e `ResetPasswordWithCodeInput`) e o "derrubar sessões" do backoffice, que apaga todas. As inscrições da área do cliente ligada também saem. Na área do cliente, a redefinição de senha pelo link e a retomada da conta pelo login social também apagam as inscrições. O front manda o endpoint do aparelho atual. Teste em `push.int.spec.ts` e `backoffice-phase2.int.spec.ts`.
 
 ### Sexagésima quinta rodada (2026-10-19): exclusão da conta do dono
 
