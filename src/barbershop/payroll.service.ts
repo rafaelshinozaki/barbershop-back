@@ -63,6 +63,8 @@ export const PAY_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
 /** Teto do valor fixo e do lançamento, em real. Nas outras moedas, moneyCap. */
 const MAX_AMOUNT = 1_000_000;
 const MAX_PERIOD_DAYS = 400;
+export const TIP_ENTRY_MESSAGE =
+  'Essa caixinha veio de um atendimento. Apague pela caixinha do atendimento.';
 export const OWN_PAY_MESSAGE = 'O seu pagamento é definido e registrado pelo dono';
 export const PERIOD_NOT_OVER_MESSAGE =
   'Esse período ainda não acabou. Registre o pagamento até hoje.';
@@ -319,6 +321,11 @@ export class PayrollService {
       throw new BadRequestException(
         'Esse lançamento já entrou num pagamento. Desfaça o pagamento antes.',
       );
+    }
+    // A caixinha do atendimento sai só apagando a caixinha (senão ela ficava
+    // no atendimento e no caixa, "não paga" para sempre)
+    if (await this.prisma.appointmentTip.findFirst({ where: { payEntryId: entry.id } })) {
+      throw new BadRequestException(TIP_ENTRY_MESSAGE);
     }
     await this.ensureCashStillOpen(entry.cashSessionId);
     await this.prisma.$transaction(async (tx) => {

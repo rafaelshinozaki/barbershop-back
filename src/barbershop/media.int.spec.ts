@@ -5,7 +5,11 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
-import { BarbershopMediaService, MAX_GALLERY_PHOTOS } from './media.service';
+import {
+  BarbershopMediaService,
+  MAX_GALLERY_PHOTOS,
+  PHOTO_KEY_USED_MESSAGE,
+} from './media.service';
 import { BarberAvatarResolver } from '../graphql/resolvers/media.resolver';
 import { ShopSeoService } from '../seo/shop-seo.service';
 
@@ -158,6 +162,23 @@ describe('Fotos da página pública (integração, S3 simulado)', () => {
     await settle();
     expect(deleted).toContain(up.key);
     expect((await media.listPhotos(ownerId, shopId)).map((p) => p.id)).toEqual([b.id]);
+  });
+
+  it('foto ocultada pela moderação não volta confirmando a mesma chave', async () => {
+    const up = await media.galleryUpload(ownerId, shopId);
+    const photo = await media.addPhoto(ownerId, shopId, up.key);
+    await prisma.barbershopPhoto.update({
+      where: { id: photo.id },
+      data: { hiddenAt: new Date() },
+    });
+    await expect(media.addPhoto(ownerId, shopId, up.key)).rejects.toThrow(PHOTO_KEY_USED_MESSAGE);
+    expect(
+      await prisma.barbershopPhoto.count({ where: { barbershopId: shopId, key: up.key } }),
+    ).toBe(1);
+    // Apagar a ocultada tira o arquivo do S3 antes de responder
+    deleted.length = 0;
+    await media.removePhoto(ownerId, shopId, photo.id);
+    expect(deleted).toEqual([up.key]);
   });
 
   it(`galeria tem limite de ${MAX_GALLERY_PHOTOS} fotos`, async () => {

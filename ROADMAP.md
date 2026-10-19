@@ -2154,42 +2154,50 @@ Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do 
 
 Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, ordem e remoção), a moderação de conteúdo público, a verificação de identidade (a troca de nome já tira a verificação, no app e no backoffice), o chat do atendimento e o suporte.
 
-211. ⬜ **Foto ocultada pela moderação volta para a galeria com o mesmo arquivo** (back: `BarbershopMediaService.addPhoto`, `listPhotos`, `removePhoto`; banco: `BarbershopPhoto`):
+211. ✅ **Foto ocultada pela moderação volta para a galeria com o mesmo arquivo** (back: `BarbershopMediaService.addPhoto`, `listPhotos`, `removePhoto`; banco: `BarbershopPhoto`):
      - A tela da galeria devolve cada foto com a chave do arquivo (`key`), inclusive a ocultada. `addPhoto` aceita qualquer chave da pasta da unidade, sem conferir se ela já está em uso. O gerente confirma de novo a chave da foto ocultada e ela volta para a página pública numa linha nova, sem `hiddenAt`.
      - A mesma chave em duas linhas também quebra a outra: apagar uma apaga o arquivo no S3 e a outra fica com a imagem quebrada.
      - A capa, o logo, a foto dos profissionais e os posts do Instagram publicados aparecem na página pública sem botão de denúncia própria (só a unidade inteira pode ser denunciada).
      
      **Fazer:** chave única por unidade na galeria, e recusar confirmar chave que já foi usada (inclusive de foto apagada ou ocultada). Não devolver a chave do arquivo na tela, só o link. Denúncia e ocultação também para a capa, a foto dos profissionais e os posts publicados.
+     
+     **Feito:** chave única por unidade na galeria (`@@unique([barbershopId, key])`; a migração junta as linhas repetidas na mais antiga, oculta se alguma estava oculta, e passa as denúncias para ela). `addPhoto` recusa a chave que já está na galeria, inclusive a da foto ocultada (`PHOTO_KEY_USED`). Apagar a foto ocultada tira o arquivo do S3 antes de responder, então a chave de uma foto apagada não traz o arquivo de volta. A tela não recebe a chave como campo (só o link de download, que é assinado). A denúncia da capa, da foto dos profissionais e dos posts publicados virou o item 229. Teste em `media.int.spec.ts`.
 
 ### Quinquagésima oitava rodada (2026-10-19): convite da equipe
 
 Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta e aceitar com a conta que já existe) e o vínculo temporário.
 
-212. ⬜ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
+212. ✅ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
      - O gerente recebe o link do convite: a criação devolve o convite inteiro, com o token, e a lista da equipe mostra `pendingInviteToken` para a tela oferecer o link. Assim ele pode convidar qualquer e-mail que ainda não tem conta, abrir o próprio link e criar a conta com a senha que quiser.
      - A conta nasce com `emailVerifiedAt` ("o link do convite chegou neste e-mail"), mas quem abriu não precisou receber o e-mail. O documento digitado fica gravado e passa a contar como já usado (`idDocTaken`). A dona do e-mail e do CPF não consegue se cadastrar ("Já existe uma conta com estes dados") até descobrir e recuperar a senha, e o documento continua preso.
      - Se já existe conta com esse e-mail entrando pelo Google, a busca só olha `provider: 'local'` e a chave única é e-mail + forma de entrada: o aceite cria uma segunda conta com o mesmo e-mail, em vez de mandar entrar com a conta que já existe (a tela de validação diz que a conta existe, mas o aceite direto pela API passa).
      
      **Fazer:** a conta criada pelo convite não nasce com o e-mail confirmado quando o link pode ter sido compartilhado: manda o código de confirmação para o e-mail antes de liberar o acesso (ou exige o código no aceite). O documento só passa a valer como usado depois da confirmação. Conta existente com qualquer forma de entrada leva para "entrar com a sua conta".
+     
+     **Feito:** cada envio do e-mail do convite leva no link uma chave nova (`?k=`) que só vai no e-mail; o banco guarda só o hash (`EmployeeInvite.emailKeyHash`). O gerente continua vendo o link do convite, mas sem a chave. Criar a conta pelo convite (`acceptInvite`) exige a chave (`INVITE_EMAIL_KEY_REQUIRED`): só quem recebeu o e-mail cria a conta, então o e-mail confirmado e o documento gravado passam a valer só para quem provou ser dono do e-mail. Quem abriu o link compartilhado vê "abra pelo link do e-mail" e pode pedir o reenvio na própria tela (`POST /employee-invites/resend-email/:token`, uma vez por minuto, com chave nova). Conta com o mesmo e-mail em qualquer forma de entrada (senha ou Google) leva a "entre com a sua conta" (`INVITE_EXISTING_ACCOUNT`), em vez de criar outra. Aceitar com a conta que já existe (logado) não muda. Teste em `multi-unit.int.spec.ts`.
 
 ### Quinquagésima nona rodada (2026-10-19): caixinha e pagamento da equipe
 
 Foram lidas a caixinha registrada à mão (registrar, apagar, a que entra no caixa e a que vira lançamento do profissional), a caixinha pelo app e o sinal online.
 
-213. ⬜ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
+213. ✅ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
      - A caixinha que a unidade recebe pelo profissional (cartão, maquininha ou dinheiro deixado no balcão) vira um lançamento `TIP` no pagamento da equipe (`payEntryId`). Em "Pagamento da equipe", `deleteEntry` apaga esse lançamento como qualquer avulso: só confere se já entrou num pagamento e se o caixa está aberto. A despesa que veio de vale, pagamento ou aluguel já é protegida assim ("desfaça pela tela de origem"), a caixinha não.
      - Depois disso a caixinha continua no atendimento e no caixa (o dinheiro entrou na gaveta), mas o profissional não recebe, a tela da caixinha mostra "não paga" para sempre, e apagar a caixinha depois não acha o lançamento.
      - Trocar o profissional de um atendimento concluído deixa a caixinha e o lançamento com o profissional antigo.
      
      **Fazer:** o lançamento que veio de caixinha só sai apagando a caixinha (mensagem dizendo onde). Ao trocar o profissional de um atendimento com caixinha ainda não paga, mover a caixinha e o lançamento para o novo (ou recusar a troca com aviso).
+     
+     **Feito:** `PayrollService.deleteEntry` recusa o lançamento que veio de uma caixinha (`TIP_ENTRY_FROM_APPOINTMENT`, "apague pela caixinha do atendimento"). Trocar o profissional de um atendimento (`updateAppointment`) leva junto a caixinha que a unidade recebeu e ainda não repassou (a caixinha e o lançamento passam para o profissional novo). A caixinha que já ficou com o profissional (na mão dele, pelo app ou já paga num fechamento) recusa a troca (`TIP_REACHED_PROFESSIONAL`). Teste em `tip.int.spec.ts`.
 
 ### Sexagésima rodada (2026-10-19): conta do cliente
 
 Foram lidos a conta do cliente (perfil, favoritos, profissionais favoritos, busca de negócios, login social e histórico).
 
-214. ⬜ **Histórico do cliente mostra o valor na moeda da rede, não na da unidade** (back: `ClientAuthService.getHistory`): a moeda de cada linha vem da rede da ficha (`network.currency`). Desde que cada unidade tem a própria moeda (`Barbershop.currency`, itens 184 e 188), a venda feita numa unidade em pesos de uma rede em reais aparece no histórico do cliente com o símbolo do real (e a caixinha do atendimento também). A venda sem ficha cai em `BRL` fixo.
+214. ✅ **Histórico do cliente mostra o valor na moeda da rede, não na da unidade** (back: `ClientAuthService.getHistory`): a moeda de cada linha vem da rede da ficha (`network.currency`). Desde que cada unidade tem a própria moeda (`Barbershop.currency`, itens 184 e 188), a venda feita numa unidade em pesos de uma rede em reais aparece no histórico do cliente com o símbolo do real (e a caixinha do atendimento também). A venda sem ficha cai em `BRL` fixo.
      
      **Fazer:** usar a moeda da unidade de cada atendimento e de cada venda (`barbershop.currency`), como o caixa, a venda e o cartão-presente já fazem.
+     
+     **Feito:** `ClientAuthService.getHistory` usa a moeda da unidade de cada atendimento e de cada venda (`barbershop.currency`), como o caixa, a venda e o cartão-presente. A venda sem ficha não cai mais em `BRL` fixo. Teste em `client-auth.int.spec.ts`.
 
 ### Sexagésima primeira rodada (2026-10-19): fila por ordem de chegada
 
@@ -2326,3 +2334,6 @@ Foram lidos a série de horários (criar e pular datas), o expediente do dia com
      - A unidade também pode denunciar de novo, sem limite, a avaliação que a moderação já decidiu manter.
      
      **Fazer:** denúncia pública da avaliação da unidade com a resposta (alvo novo na moderação), e na moderação a opção de ocultar só a resposta. Avaliação que a moderação manteve não volta para a fila pela mesma unidade, a não ser que o comentário mude.
+229. ⬜ **Capa, foto dos profissionais e posts publicados não têm denúncia nem ocultação próprias** (back: `ModerationService`, `REPORT_TARGETS`; front: página pública da unidade e do profissional): só a foto da galeria tem denúncia e ocultação. A capa, o logo, a foto de cada profissional e os posts do Instagram publicados aparecem na página pública e só dá para denunciar a unidade inteira. A moderação não tem como esconder só aquela imagem.
+     
+     **Fazer:** alvos novos na denúncia pública (capa, foto do profissional e post publicado), com o botão na página, e na moderação a opção de ocultar só a imagem (a unidade envia outra).

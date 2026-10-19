@@ -13,7 +13,7 @@ import { langForCountry } from '../email/language';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { BarbershopService, parseEngagementPeriod } from './barbershop.service';
 import * as bcrypt from 'bcryptjs';
 import { isStaffType, StaffType, staffRoleLabel, takesAppointments } from './staff-roles';
@@ -61,7 +61,18 @@ export interface AcceptEmployeeInviteInput {
   birthdate: string;
   gender: string;
   address?: AcceptEmployeeInviteAddress;
+  /** Chave do link que chegou no e-mail convidado (prova que a pessoa recebeu) */
+  emailKey?: string;
 }
+
+export const INVITE_EMAIL_KEY_MESSAGE =
+  'Abra o convite pelo link que chegou no e-mail convidado. Se não chegou, peça o reenvio nesta tela.';
+export const INVITE_EXISTING_ACCOUNT_MESSAGE =
+  'Já existe uma conta com este e-mail. Entre com ela para aceitar o convite.';
+export const INVITE_EMAIL_RECENT_MESSAGE =
+  'O e-mail do convite acabou de ser enviado. Confira a caixa de entrada e o spam.';
+const EMAIL_RESEND_GAP_MS = 60_000;
+const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
 
 @Injectable()
 export class EmployeeInviteService {
@@ -272,7 +283,7 @@ export class EmployeeInviteService {
   /**
    * Valida token do convite (endpoint público).
    */
-  async validateInvite(inviteToken: string) {
+  async validateInvite(inviteToken: string, emailKey?: string) {
     const invite = await this.prisma.employeeInvite.findUnique({
       where: { inviteToken },
       include: {
@@ -313,6 +324,8 @@ export class EmployeeInviteService {
       minimumAge: WORK_MINIMUM_AGE,
       // Já tem conta: entra com ela pra aceitar (não cria outra)
       existingAccount: !!existingAccount,
+      // Veio pelo link do e-mail (pode criar a conta); senão, a tela pede o reenvio
+      emailConfirmed: this.emailKeyMatches(invite.emailKeyHash, emailKey),
     };
   }
 
@@ -342,12 +355,20 @@ export class EmployeeInviteService {
       throw new BadRequestException('Este convite não está mais disponível');
     }
 
+    // Quem abriu o link compartilhado pelo gerente não provou ser dono do e-mail
+    if (!this.emailKeyMatches(invite.emailKeyHash, data.emailKey)) {
+      throw new BadRequestException(INVITE_EMAIL_KEY_MESSAGE);
+    }
+
+    // Conta com esse e-mail em qualquer forma de entrada (senha ou Google):
+    // aceita com ela, não cria outra
     const existingUser = await this.prisma.user.findFirst({
-      where: {
-        email: { equals: normalizeEmail(invite.email), mode: 'insensitive' },
-        provider: 'local',
-      },
+      where: { email: { equals: normalizeEmail(invite.email), mode: 'insensitive' } },
+      select: { id: true },
     });
+    if (existingUser) {
+      throw new BadRequestException(INVITE_EXISTING_ACCOUNT_MESSAGE);
+    }
 
     // Mesma checagem de documento duplicado do signup principal (ver
     // UserService.createUser). O número salvo pode estar mascarado (CPF) e o
@@ -358,7 +379,7 @@ export class EmployeeInviteService {
       ? await idDocTaken(this.prisma, documentNumber, documentCountry)
       : false;
 
-    if (existingUser || documentAlreadyExists) {
+    if (documentAlreadyExists) {
       throw new BadRequestException('Já existe uma conta com estes dados');
     }
 
@@ -406,7 +427,7 @@ export class EmployeeInviteService {
           readTerms: true,
           membership: 'FREE',
           isActive: true,
-          // O link do convite chegou neste e-mail
+          // A chave do link só chega no e-mail convidado
           emailVerifiedAt: new Date(),
           roleId: role.id,
           trialStartDate: new Date(),
@@ -557,9 +578,48 @@ export class EmployeeInviteService {
     return { success: true, barbershopId: invite.barbershopId };
   }
 
+  private emailKeyMatches(hash: string | null, key?: string | null) {
+    return !!hash && !!key && hashKey(key) === hash;
+  }
+
+  /**
+   * Reenvia o e-mail do convite pela tela do aceite (quem abriu o link
+   * compartilhado sem a chave): nova chave, mesmo link, uma vez por minuto
+   */
+  async resendInviteEmail(inviteToken: string) {
+    const invite = await this.prisma.employeeInvite.findUnique({
+      where: { inviteToken },
+      include: {
+        inviter: { select: { fullName: true } },
+        barbershop: { select: { name: true, country: true } },
+        barber: { select: { staffType: true, isActive: true } },
+      },
+    });
+    if (!invite || invite.status !== 'PENDING' || invite.expiresAt < new Date()) {
+      throw new NotFoundException('Convite não encontrado');
+    }
+    if (!invite.barber?.isActive) {
+      throw new BadRequestException('Este convite não está mais disponível');
+    }
+    if (
+      invite.emailKeySentAt &&
+      Date.now() - invite.emailKeySentAt.getTime() < EMAIL_RESEND_GAP_MS
+    ) {
+      throw new BadRequestException(INVITE_EMAIL_RECENT_MESSAGE);
+    }
+    await this.sendEmployeeInviteEmail(invite);
+    return { sent: true };
+  }
+
+  /** Cada envio leva uma chave nova no link (só no e-mail) e guarda o hash dela */
   private async sendEmployeeInviteEmail(invite: any) {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-    const inviteUrl = `${frontendUrl}/accept-employee-invite/${invite.inviteToken}`;
+    const emailKey = randomBytes(24).toString('hex');
+    await this.prisma.employeeInvite.update({
+      where: { id: invite.id },
+      data: { emailKeyHash: hashKey(emailKey), emailKeySentAt: new Date() },
+    });
+    const inviteUrl = `${frontendUrl}/accept-employee-invite/${invite.inviteToken}?k=${emailKey}`;
     // O convidado ainda não tem conta nem idioma salvo: usa a língua do
     // país da unidade (quem vai trabalhar numa unidade do México lê
     // espanhol, mesmo que o dono use o app em português)

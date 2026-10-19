@@ -107,6 +107,8 @@ const PUBLIC_ROUTES: Record<string, string> = {
   'auth/users/users.controller.ts#createUser': 'cadastro',
   'barbershop/employee-invite.controller.ts#validateInvite': 'convite (token)',
   'barbershop/employee-invite.controller.ts#acceptInvite': 'convite (token)',
+  'barbershop/employee-invite.controller.ts#resendInviteEmail':
+    'convite (token), só manda ao e-mail convidado',
   'calendar/calendar.controller.ts#appointment': 'arquivo .ics do agendamento (token)',
   'calendar/calendar.controller.ts#feed': 'agenda assinável (token secreto no nome)',
   'health/health.controller.ts#getHealth': 'health check',

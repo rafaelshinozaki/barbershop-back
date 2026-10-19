@@ -7,7 +7,7 @@ import { EmployeeInviteService } from './employee-invite.service';
 describe('EmployeeInviteService — idioma do convite', () => {
   const sent: unknown[][] = [];
   const service = new EmployeeInviteService(
-    {} as never,
+    { employeeInvite: { update: async () => undefined } } as never,
     {
       sendCustomerEmail: async (...args: unknown[]) => {
         sent.push(args);

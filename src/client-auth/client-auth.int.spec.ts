@@ -211,9 +211,12 @@ describe('Conta do cliente final (integração com o banco)', () => {
         status: 'CONFIRMED',
       },
     });
+    // A moeda é a da unidade, não a da rede (item 214)
+    await prisma.barbershop.update({ where: { id: shopId }, data: { currency: 'MXN' } });
     const history = await historyOf(account.id);
+    await prisma.barbershop.update({ where: { id: shopId }, data: { currency: 'BRL' } });
     expect(history).toHaveLength(1);
-    expect(history[0]).toMatchObject({ type: 'SALE', total: 80 });
+    expect(history[0]).toMatchObject({ type: 'SALE', total: 80, currency: 'MXN' });
 
     await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.verifyEmail('token-inventado')).rejects.toBeInstanceOf(

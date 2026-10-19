@@ -808,7 +808,7 @@ export class ClientAuthService {
   async getHistory(clientAccountId: number): Promise<ClientHistoryEntry[]> {
     const customers = await this.prisma.customer.findMany({
       where: { clientAccountId },
-      select: { id: true, network: { select: { name: true, currency: true } } },
+      select: { id: true, network: { select: { name: true } } },
     });
     if (customers.length === 0) return [];
 
@@ -816,7 +816,6 @@ export class ClientAuthService {
     const networkNameByCustomer = new Map(
       customers.map((c) => [c.id, c.network?.name ?? 'Negócio']),
     );
-    const currencyByCustomer = new Map(customers.map((c) => [c.id, c.network?.currency ?? 'BRL']));
 
     const [appointments, sales, walkIns] = await Promise.all([
       // Só o que já passou: os próximos ficam em "Próximos horários" (antes
@@ -824,7 +823,8 @@ export class ClientAuthService {
       this.prisma.appointment.findMany({
         where: { customerId: { in: customerIds }, startAt: { lt: new Date() } },
         include: {
-          barbershop: { select: { name: true, slug: true } },
+          // Cada unidade tem a própria moeda (a da rede pode ser outra)
+          barbershop: { select: { name: true, slug: true, currency: true } },
           services: { include: { service: { select: { name: true } } } },
           barber: { select: { name: true } },
           professionalReview: { select: { rating: true } },
@@ -835,7 +835,7 @@ export class ClientAuthService {
       }),
       this.prisma.sale.findMany({
         where: { customerId: { in: customerIds }, paymentStatus: 'PAID' },
-        include: { barbershop: { select: { name: true } } },
+        include: { barbershop: { select: { name: true, currency: true } } },
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),
@@ -864,7 +864,7 @@ export class ClientAuthService {
         detail: serviceNames || null,
         status: a.status,
         total: null,
-        currency: currencyByCustomer.get(a.customerId) ?? null,
+        currency: a.barbershop.currency,
         barberName: a.barber?.name ?? null,
         barberId: a.barberId,
         serviceIds: a.services.map((s) => s.serviceId),
@@ -887,7 +887,7 @@ export class ClientAuthService {
         detail: null,
         status: s.paymentStatus,
         total: Number(s.total),
-        currency: s.customerId ? currencyByCustomer.get(s.customerId) ?? 'BRL' : 'BRL',
+        currency: s.barbershop.currency,
       });
     });
 
