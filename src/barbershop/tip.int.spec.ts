@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { TipService } from './tip.service';
+import { PayrollService, TIP_ENTRY_MESSAGE } from './payroll.service';
+import { TIP_REACHED_PROFESSIONAL_MESSAGE } from './barbershop.service';
 import { ConnectService } from './connect.service';
 import { createReviewToken } from './appointment-link';
 
@@ -443,5 +445,45 @@ describe('Caixinha do atendimento (integração)', () => {
     // Atendimento não concluído não recebe caixinha pelo link
     const open = await appointment(shopId, proBarber, 'CONFIRMED');
     await expect(tips.appTipOptions(createReviewToken(open.id))).rejects.toThrow();
+  });
+
+  it('lançamento da caixinha só sai pela caixinha; trocar o profissional leva a caixinha junto (item 213)', async () => {
+    const payroll = new PayrollService(prisma, barbershops);
+    const other = (
+      await prisma.barber.findFirstOrThrow({ where: { barbershopId: shopId, userId: users.outro } })
+    ).id;
+    const appt = await appointment(shopId, proBarber);
+    const card = await tips.add(users.dono, shopId, appt.id, {
+      destination: 'professional',
+      method: 'CARD',
+      amount: 12,
+    });
+    const tipRow = await prisma.appointmentTip.findUniqueOrThrow({ where: { id: card.id } });
+    await expect(
+      payroll.deleteEntry(users.dono, shopId, tipRow.payEntryId as number),
+    ).rejects.toThrow(TIP_ENTRY_MESSAGE);
+
+    // Recebida pela unidade e ainda não repassada: vai com o atendimento
+    await barbershops.updateAppointment(users.dono, shopId, appt.id, { barberId: other });
+    expect(
+      (await prisma.appointmentTip.findUniqueOrThrow({ where: { id: card.id } })).barberId,
+    ).toBe(other);
+    expect(
+      (
+        await prisma.barberPayEntry.findUniqueOrThrow({
+          where: { id: tipRow.payEntryId as number },
+        })
+      ).barberId,
+    ).toBe(other);
+
+    // A que ficou na mão do profissional não muda de dono: recusa a troca
+    await tips.add(users.dono, shopId, appt.id, {
+      destination: 'professional',
+      method: 'PIX',
+      amount: 5,
+    });
+    await expect(
+      barbershops.updateAppointment(users.dono, shopId, appt.id, { barberId: proBarber }),
+    ).rejects.toThrow(TIP_REACHED_PROFESSIONAL_MESSAGE);
   });
 });

@@ -82,6 +82,10 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'INVITE_EXISTING_ACCOUNT',
   'O e-mail do convite acabou de ser enviado. Confira a caixa de entrada e o spam.':
     'INVITE_EMAIL_RECENT',
+  'A caixinha deste atendimento já ficou com o profissional. Apague a caixinha antes de trocar o profissional.':
+    'TIP_REACHED_PROFESSIONAL',
+  'Essa caixinha veio de um atendimento. Apague pela caixinha do atendimento.':
+    'TIP_ENTRY_FROM_APPOINTMENT',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

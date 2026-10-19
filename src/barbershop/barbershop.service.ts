@@ -704,6 +704,8 @@ const RESTORABLE_PACKAGE: Prisma.ClientPackageWhereInput = {
   status: { in: ['ACTIVE', 'COMPLETED'] },
   remainderRefundedAt: null,
 };
+export const TIP_REACHED_PROFESSIONAL_MESSAGE =
+  'A caixinha deste atendimento já ficou com o profissional. Apague a caixinha antes de trocar o profissional.';
 export const PACKAGE_UNDO_CLOSED_MESSAGE =
   'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.';
 /** Categorias de despesa (as que o sistema lança também: SALARY e RENT) */
@@ -4309,6 +4311,26 @@ export class BarbershopService {
     );
   }
 
+  /**
+   * Trocar o profissional de um atendimento com caixinha dele: só quando a
+   * caixinha ainda está com a unidade (recebida por ela e não repassada).
+   * A que já chegou ao profissional (na mão, pelo app ou já paga) fica com ele
+   */
+  private async ensureTipsCanMove(appointmentId: number) {
+    const tips = await this.prisma.appointmentTip.findMany({
+      where: { appointmentId, destination: 'professional' },
+      select: { receivedByUnit: true, method: true, payEntryId: true },
+    });
+    const entryIds = tips.map((t) => t.payEntryId).filter((id): id is number => id != null);
+    const paid = entryIds.length
+      ? await this.prisma.barberPayEntry.count({
+          where: { id: { in: entryIds }, payoutId: { not: null } },
+        })
+      : 0;
+    const reached = paid > 0 || tips.some((t) => !t.receivedByUnit || t.method === 'STRIPE');
+    if (reached) throw new BadRequestException(TIP_REACHED_PROFESSIONAL_MESSAGE);
+  }
+
   async updateAppointment(
     userId: number,
     barbershopId: number,
@@ -4338,8 +4360,10 @@ export class BarbershopService {
       throw new ForbiddenException('Seu cargo só permite mexer na sua própria agenda.');
     }
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
-    if (data.barberId && data.barberId !== appointment.barberId) {
-      await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
+    const barberChanged = !!data.barberId && data.barberId !== appointment.barberId;
+    if (barberChanged) {
+      await this.ensureBarberOfBarbershop(barbershopId, data.barberId as number, { active: true });
+      await this.ensureTipsCanMove(appointmentId);
     }
     if (data.resourceId) await this.ensureResourceOfBarbershop(barbershopId, data.resourceId);
     if (
@@ -4400,6 +4424,25 @@ export class BarbershopService {
           appointmentId,
           tx,
         );
+      }
+      if (barberChanged) {
+        // A caixinha que a unidade recebeu e ainda não repassou vai com o
+        // atendimento para o profissional novo (e o lançamento dela também)
+        const tips = await tx.appointmentTip.findMany({
+          where: { appointmentId, destination: 'professional' },
+          select: { id: true, payEntryId: true },
+        });
+        await tx.appointmentTip.updateMany({
+          where: { id: { in: tips.map((t) => t.id) } },
+          data: { barberId },
+        });
+        await tx.barberPayEntry.updateMany({
+          where: {
+            id: { in: tips.map((t) => t.payEntryId).filter((id): id is number => id != null) },
+            payoutId: null,
+          },
+          data: { barberId },
+        });
       }
       return tx.appointment.update({
         where: { id: appointmentId },

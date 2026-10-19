@@ -2180,12 +2180,14 @@ Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta
 
 Foram lidas a caixinha registrada à mão (registrar, apagar, a que entra no caixa e a que vira lançamento do profissional), a caixinha pelo app e o sinal online.
 
-213. ⬜ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
+213. ✅ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
      - A caixinha que a unidade recebe pelo profissional (cartão, maquininha ou dinheiro deixado no balcão) vira um lançamento `TIP` no pagamento da equipe (`payEntryId`). Em "Pagamento da equipe", `deleteEntry` apaga esse lançamento como qualquer avulso: só confere se já entrou num pagamento e se o caixa está aberto. A despesa que veio de vale, pagamento ou aluguel já é protegida assim ("desfaça pela tela de origem"), a caixinha não.
      - Depois disso a caixinha continua no atendimento e no caixa (o dinheiro entrou na gaveta), mas o profissional não recebe, a tela da caixinha mostra "não paga" para sempre, e apagar a caixinha depois não acha o lançamento.
      - Trocar o profissional de um atendimento concluído deixa a caixinha e o lançamento com o profissional antigo.
      
      **Fazer:** o lançamento que veio de caixinha só sai apagando a caixinha (mensagem dizendo onde). Ao trocar o profissional de um atendimento com caixinha ainda não paga, mover a caixinha e o lançamento para o novo (ou recusar a troca com aviso).
+     
+     **Feito:** `PayrollService.deleteEntry` recusa o lançamento que veio de uma caixinha (`TIP_ENTRY_FROM_APPOINTMENT`, "apague pela caixinha do atendimento"). Trocar o profissional de um atendimento (`updateAppointment`) leva junto a caixinha que a unidade recebeu e ainda não repassou (a caixinha e o lançamento passam para o profissional novo). A caixinha que já ficou com o profissional (na mão dele, pelo app ou já paga num fechamento) recusa a troca (`TIP_REACHED_PROFESSIONAL`). Teste em `tip.int.spec.ts`.
 
 ### Sexagésima rodada (2026-10-19): conta do cliente
 
