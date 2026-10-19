@@ -863,6 +863,11 @@ model Review {
   reportedAt      DateTime?
   reportReason    String?
   hiddenAt        DateTime?
+  // Só a resposta da unidade ocultada pela moderação (denúncia do público)
+  replyHiddenAt   DateTime?
+  // Comentário que a moderação decidiu manter: a unidade não denuncia de
+  // novo o mesmo texto
+  reportDismissedComment String?
 
   @@unique([barbershopId, clientAccountId])
   @@unique([barbershopId, customerId])

@@ -105,6 +105,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Informe a forma em que o sinal foi recebido.': 'DEPOSIT_METHOD_REQUIRED',
   'Esse sinal entrou num caixa que já foi fechado e não pode mais ser desmarcado.':
     'DEPOSIT_CASH_CLOSED',
+  'A moderação já analisou esta avaliação e decidiu mantê-la. Ela só volta à análise se o cliente mudar o texto.':
+    'REVIEW_KEPT_BY_MODERATION',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

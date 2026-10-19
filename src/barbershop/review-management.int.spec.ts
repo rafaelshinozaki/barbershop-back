@@ -2,10 +2,11 @@
  * Avaliações do lado da unidade e da moderação, contra o Postgres de
  * verdade: resposta pública, denúncia e ocultar (sai da página e da nota).
  */
+import { ModerationService } from './moderation.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
-import { ReviewManagementService } from './review-management.service';
+import { REVIEW_KEPT_MESSAGE, ReviewManagementService } from './review-management.service';
 
 // O link de descadastro do e-mail é assinado (no CI não há .env)
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -226,5 +227,36 @@ describe('Responder, denunciar e moderar avaliações (integração)', () => {
     await reviews.moderate(bad, false);
     expect((await barbershops.getBarbershopReviews(shopId)).map((r) => r.id)).toContain(bad);
     expect((await reviews.listForModeration()).find((r) => r.id === bad)).toBeUndefined();
+    // Mantida pela moderação: a unidade não denuncia de novo o mesmo texto (item 228)
+    await expect(reviews.report(ownerId, shopId, bad, 'de novo')).rejects.toThrow(
+      REVIEW_KEPT_MESSAGE,
+    );
+    // O cliente mudou o texto: volta a poder denunciar
+    await prisma.review.update({ where: { id: bad }, data: { comment: 'Outro texto' } });
+    await reviews.report(ownerId, shopId, bad, 'Continua ofendendo');
+  });
+
+  it('o público denuncia a resposta da unidade; a moderação oculta só a resposta (item 228)', async () => {
+    const moderation = new ModerationService(prisma, { getDownloadUrl: async () => '' } as never);
+    await reviews.reply(ownerId, shopId, good, 'Resposta com dado pessoal');
+    await moderation.report(
+      { targetType: 'shop_review', targetId: good, reason: 'offensive' },
+      '200.0.0.9',
+    );
+    const item = (await moderation.queue()).find(
+      (i) => i.targetType === 'shop_review' && i.targetId === good,
+    );
+    expect(item?.text).toContain('Resposta com dado pessoal');
+
+    await moderation.resolve(ownerId, 'shop_review', good, 'hide_reply');
+    const shown = (await barbershops.getBarbershopReviews(shopId)).find((r) => r.id === good);
+    // A avaliação do cliente continua; a resposta sai
+    expect(shown).toBeDefined();
+    expect(shown?.reply).toBeNull();
+    // Restaurar volta a resposta
+    await moderation.resolve(ownerId, 'shop_review', good, 'restore');
+    expect((await barbershops.getBarbershopReviews(shopId)).find((r) => r.id === good)?.reply).toBe(
+      'Resposta com dado pessoal',
+    );
   });
 });

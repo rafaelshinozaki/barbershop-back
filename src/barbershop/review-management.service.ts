@@ -20,6 +20,9 @@ const reviewerName = (r: {
  * - o admin da plataforma modera as denunciadas: oculta (sai da página e da
  *   nota média) ou mantém. A unidade não apaga avaliação.
  */
+export const REVIEW_KEPT_MESSAGE =
+  'A moderação já analisou esta avaliação e decidiu mantê-la. Ela só volta à análise se o cliente mudar o texto.';
+
 @Injectable()
 export class ReviewManagementService {
   private readonly logger = new Logger(ReviewManagementService.name);
@@ -75,8 +78,21 @@ export class ReviewManagementService {
     await this.prisma.review.update({
       where: { id: reviewId },
       data: reply
-        ? { reply, repliedAt: new Date(), repliedByUserId: userId, replyStale: false }
-        : { reply: null, repliedAt: null, repliedByUserId: null, replyStale: false },
+        ? {
+            reply,
+            repliedAt: new Date(),
+            repliedByUserId: userId,
+            replyStale: false,
+            // Resposta nova (texto novo): volta a aparecer e pode ser denunciada de novo
+            replyHiddenAt: null,
+          }
+        : {
+            reply: null,
+            repliedAt: null,
+            repliedByUserId: null,
+            replyStale: false,
+            replyHiddenAt: null,
+          },
     });
     // Primeira resposta: o cliente fica sabendo (editar depois não reenvia)
     if (reply && !before.reply) {
@@ -151,6 +167,13 @@ export class ReviewManagementService {
       throw new BadRequestException(`Motivo com no máximo ${MAX_REASON} caracteres`);
     }
     if (review.hiddenAt) throw new BadRequestException('Esta avaliação já foi ocultada');
+    // A moderação já decidiu manter este texto: só volta à fila se o comentário mudar
+    if (
+      review.reportDismissedComment != null &&
+      review.reportDismissedComment === (review.comment ?? '')
+    ) {
+      throw new BadRequestException(REVIEW_KEPT_MESSAGE);
+    }
     await this.prisma.review.update({
       where: { id: reviewId },
       data: { reportedAt: new Date(), reportReason: text },
@@ -196,7 +219,13 @@ export class ReviewManagementService {
       where: { id: reviewId },
       data: hide
         ? { hiddenAt: new Date() }
-        : { hiddenAt: null, reportedAt: null, reportReason: null },
+        : {
+            hiddenAt: null,
+            reportedAt: null,
+            reportReason: null,
+            // Mantida com denúncia: guarda o texto decidido
+            ...(review.reportedAt ? { reportDismissedComment: review.comment ?? '' } : {}),
+          },
     });
     return true;
   }
