@@ -6,7 +6,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, NO_SHOW_FEE_NOT_PENDING_MESSAGE } from './barbershop.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -317,6 +317,58 @@ describe('Taxa de falta (integração)', () => {
     } finally {
       await prisma.giftCard.deleteMany({ where: { networkId } });
       await prisma.barbershop.delete({ where: { id: lisbon.id } });
+    }
+  });
+
+  it('sinal retido entra na taxa, valor em centavos, só perdoa pendente, barbeiro vê só as dele (item 223)', async () => {
+    const withDeposit = async (amount: number) => {
+      const id = await appointment();
+      await prisma.appointment.update({
+        where: { id },
+        data: { depositPaid: true, depositPaidAt: new Date(), depositAmount: amount },
+      });
+      return id;
+    };
+    // Taxa fixa de 30: sinal de 20 retido → cobra 10; sinal de 40 → nada
+    const partial = await withDeposit(20);
+    await shops.updateAppointment(ownerId, shopId, partial, { status: 'NO_SHOW' });
+    expect(await waitFor(async () => !!(await feeOf(partial)))).toBe(true);
+    expect(Number((await feeOf(partial))!.amount)).toBe(10);
+    const covered = await withDeposit(40);
+    await shops.updateAppointment(ownerId, shopId, covered, { status: 'NO_SHOW' });
+    expect(await waitFor(async () => !!(await feeOf(covered)), 500)).toBe(false);
+
+    // Porcentagem arredondada para centavos: 80 × 12,345% = 9,876 → 9,88
+    await prisma.network.update({
+      where: { id: networkId },
+      data: { noShowFeeType: 'PERCENT', noShowFeeValue: 12.345 },
+    });
+    try {
+      const pct = await appointment();
+      await shops.updateAppointment(ownerId, shopId, pct, { status: 'NO_SHOW' });
+      expect(await waitFor(async () => !!(await feeOf(pct)))).toBe(true);
+      expect(Number((await feeOf(pct))!.amount)).toBe(9.88);
+    } finally {
+      await prisma.network.update({
+        where: { id: networkId },
+        data: { noShowFeeType: 'FIXED', noShowFeeValue: 30 },
+      });
+    }
+
+    // Já cobrada não vira "perdoada"
+    const fee = (await feeOf(partial))!;
+    await shops.markNoShowFeeCollected(ownerId, shopId, fee.id, 'CASH');
+    await expect(shops.waiveNoShowFee(ownerId, shopId, fee.id)).rejects.toThrow(
+      NO_SHOW_FEE_NOT_PENDING_MESSAGE,
+    );
+
+    // O barbeiro que não atende esses horários não vê as taxas
+    expect((await shops.getBarbershopNoShowFees(ownerId, shopId)).length).toBeGreaterThan(0);
+    await prisma.barber.updateMany({ where: { userId: basicId }, data: { staffType: 'barber' } });
+    try {
+      expect(await shops.getBarbershopNoShowFees(basicId, shopId)).toEqual([]);
+    } finally {
+      await prisma.barber.updateMany({ where: { userId: basicId }, data: { staffType: 'basic' } });
     }
   });
 });

@@ -97,7 +97,7 @@ import { currentPricing } from '../pricing/pricing';
 import { currencyForCountry, timezoneForPlace } from '../common/place-locale';
 import { payoutReport, type PayoutCharge } from './payout-report';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
-import { moneyCap, toMinorUnits } from '../common/money-units';
+import { moneyCap, roundMoney, toMinorUnits } from '../common/money-units';
 
 // Mesmas opções do seletor de cores do front (Radix Themes)
 /** Agenda da franquia: período máximo pedido (6 semanas = visão de mês) */
@@ -724,6 +724,8 @@ export const CLUB_USE_IN_SALE_MESSAGE =
   'Esta sessão do clube está numa venda. Apague a venda para desfazer.';
 export const CLUB_UNDO_OLD_CYCLE_MESSAGE =
   'Esta sessão é de um ciclo do clube que já acabou: não volta.';
+export const NO_SHOW_FEE_NOT_PENDING_MESSAGE =
+  'Só dá pra perdoar a taxa pendente. A já cobrada sai apagando a venda dela.';
 export const PACKAGE_UNDO_CLOSED_MESSAGE =
   'Este pacote foi cancelado ou teve o restante devolvido: a sessão não volta.';
 /** Categorias de despesa (as que o sistema lança também: SALARY e RENT) */
@@ -4717,6 +4719,10 @@ export class BarbershopService {
       startAt: Date;
       services: Array<{ unitPrice: Decimal; quantity: number }>;
       customer: { id: number };
+      depositPaid?: boolean | null;
+      depositPaidAt?: Date | null;
+      depositAmount?: Decimal | null;
+      depositRefundedAt?: Date | null;
     },
     newStatus: string,
   ) {
@@ -4753,6 +4759,16 @@ export class BarbershopService {
     } else if (network.noShowFeeType === 'FIXED' && network.noShowFeeValue) {
       feeAmount = network.noShowFeeValue;
     }
+    // O sinal pago online que a unidade reteve já é parte da taxa: cobra só o
+    // que falta (nada, se o sinal cobre). Em centavos da moeda da unidade.
+    const retained =
+      appointment.depositPaid && appointment.depositPaidAt && !appointment.depositRefundedAt
+        ? Number(appointment.depositAmount ?? 0)
+        : 0;
+    feeAmount = roundMoney(
+      roundMoney(feeAmount, barbershop.currency) - retained,
+      barbershop.currency,
+    );
     if (feeAmount <= 0) return;
 
     await this.prisma.noShowFee.create({
@@ -8183,9 +8199,14 @@ export class BarbershopService {
   }
 
   async getBarbershopNoShowFees(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
+    // Recepção para cima vê todas; o barbeiro, só as dos atendimentos dele
+    const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
     const fees = await this.prisma.noShowFee.findMany({
-      where: { barbershopId },
+      where: {
+        barbershopId,
+        ...(ownBarberId !== null ? { appointment: { barberId: ownBarberId } } : {}),
+      },
       include: { customer: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -8251,10 +8272,12 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const fee = await this.prisma.noShowFee.findFirst({ where: { id, barbershopId } });
     if (!fee) throw new NotFoundException('Taxa não encontrada');
-    await this.prisma.noShowFee.update({
-      where: { id },
+    // Só a pendente: a já cobrada tem a venda no caixa (apague a venda antes)
+    const waived = await this.prisma.noShowFee.updateMany({
+      where: { id, status: 'PENDING' },
       data: { status: 'WAIVED' },
     });
+    if (waived.count === 0) throw new BadRequestException(NO_SHOW_FEE_NOT_PENDING_MESSAGE);
     return true;
   }
 
