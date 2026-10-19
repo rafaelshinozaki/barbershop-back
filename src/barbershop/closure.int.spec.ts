@@ -210,6 +210,8 @@ describe('Feriados e fechamentos (integração)', () => {
       cancelAffected: true,
     });
     expect(result).toMatchObject({ affectedCount: 2, cancelledCount: 2 });
+    // Os ids voltam pro resolver avisar a agenda e registrar a atividade (item 206)
+    expect([...result.cancelledIds].sort()).toEqual([afternoon!.id, noEmail!.id].sort());
     const statuses = await prisma.appointment.findMany({
       where: { id: { in: [morning!.id, afternoon!.id, noEmail!.id] } },
       orderBy: { id: 'asc' },

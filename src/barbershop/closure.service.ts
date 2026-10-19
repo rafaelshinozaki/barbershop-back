@@ -247,6 +247,7 @@ export class ClosureService {
     }
     const affected = await this.affected(barbershopId, timeZone, dates, openTime, closeTime);
     let cancelled = 0;
+    const cancelledIds: number[] = [];
     if (input.cancelAffected) {
       for (const a of affected) {
         // Condicional: não passa por cima de quem mudou no meio tempo
@@ -256,6 +257,7 @@ export class ClosureService {
         });
         if (res.count === 0) continue;
         cancelled++;
+        cancelledIds.push(a.id);
         // A unidade fechou: o sinal pago online volta pro cliente. (Lista de
         // espera não: com a unidade fechada, esse horário não existe mais.)
         await this.barbershopService
@@ -274,7 +276,14 @@ export class ClosureService {
         }
       }
     }
-    return { dates, affectedCount: affected.length, cancelledCount: cancelled };
+    // Quem chama avisa a agenda aberta e registra a atividade de cada um
+    return {
+      dates,
+      affectedCount: affected.length,
+      cancelledCount: cancelled,
+      cancelledIds,
+      releasedHolds: holds.length,
+    };
   }
 
   async remove(userId: number, barbershopId: number, date: string) {

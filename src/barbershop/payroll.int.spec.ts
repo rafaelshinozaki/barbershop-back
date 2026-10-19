@@ -9,7 +9,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
-import { PayrollService } from './payroll.service';
+import { OWN_PAY_MESSAGE, PERIOD_NOT_OVER_MESSAGE, PayrollService } from './payroll.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const MONTH_FROM = '2026-08-01';
@@ -415,5 +415,34 @@ describe('Pagamento da equipe (integração)', () => {
       await prisma.barberPayEntry.deleteMany({ where: { notes: { contains: `#${late.id}` } } });
       await prisma.sale.deleteMany({ where: { id: late.id } });
     }
+  });
+
+  it('gerente que atende não mexe no próprio pagamento; o dono mexe (item 208)', async () => {
+    await prisma.barber.update({ where: { id: ana }, data: { staffType: 'manager' } });
+    try {
+      await expect(
+        payroll.addEntry(barberUserId, shopId, { barberId: ana, type: 'BONUS', amount: 500 }),
+      ).rejects.toThrow(OWN_PAY_MESSAGE);
+      await expect(
+        payroll.setConfig(barberUserId, shopId, ana, { payType: 'FIXED', fixedAmount: 9000 }),
+      ).rejects.toThrow(OWN_PAY_MESSAGE);
+      // No colega, o gerente lança normalmente
+      const bonus = await payroll.addEntry(barberUserId, shopId, {
+        barberId: beto,
+        type: 'BONUS',
+        amount: 5,
+      });
+      await expect(payroll.deleteEntry(barberUserId, shopId, bonus.id)).resolves.toBe(true);
+    } finally {
+      await prisma.barber.update({ where: { id: ana }, data: { staffType: 'barber' } });
+    }
+  });
+
+  it('não paga período que ainda não acabou (item 207)', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const future = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
+    await expect(
+      payroll.pay(ownerId, shopId, { barberId: beto, from: today, to: future, method: 'PIX' }),
+    ).rejects.toThrow(PERIOD_NOT_OVER_MESSAGE);
   });
 });

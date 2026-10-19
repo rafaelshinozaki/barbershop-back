@@ -359,4 +359,32 @@ describe('Nota do cliente (integração)', () => {
     expect(await prisma.customerRating.findUnique({ where: { id: old.id } })).toBeNull();
     expect(await prisma.customerRating.findUnique({ where: { id: active.id } })).not.toBeNull();
   });
+
+  it('quem saiu da unidade não avalia mais; atendimento importado não vira nota', async () => {
+    const appt = await appointment('a', 'outro', customerA, 5);
+    await prisma.barber.update({
+      where: { id: barbers.outro },
+      data: { accessEndsAt: new Date(Date.now() - HOUR) },
+    });
+    try {
+      expect((await ratings.pendingForMe(users.outro)).map((p) => p.appointmentId)).not.toContain(
+        appt.id,
+      );
+      await expect(
+        ratings.rate(users.outro, shops.a, appt.id, 'professional', 1, 1),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    } finally {
+      await prisma.barber.update({ where: { id: barbers.outro }, data: { accessEndsAt: null } });
+    }
+
+    const imported = await appointment('a', 'pro', customerA, 6);
+    await prisma.appointment.update({ where: { id: imported.id }, data: { source: 'HISTORY' } });
+    expect((await ratings.pendingForMe(users.pro)).map((p) => p.appointmentId)).not.toContain(
+      imported.id,
+    );
+    expect((await ratings.forAppointment(users.pro, shops.a, imported.id)).sides).toEqual([]);
+    await expect(
+      ratings.rate(users.pro, shops.a, imported.id, 'professional', 1, 1),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

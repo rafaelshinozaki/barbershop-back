@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -58,6 +63,9 @@ export const PAY_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
 /** Teto do valor fixo e do lançamento, em real. Nas outras moedas, moneyCap. */
 const MAX_AMOUNT = 1_000_000;
 const MAX_PERIOD_DAYS = 400;
+export const OWN_PAY_MESSAGE = 'O seu pagamento é definido e registrado pelo dono';
+export const PERIOD_NOT_OVER_MESSAGE =
+  'Esse período ainda não acabou. Registre o pagamento até hoje.';
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 type Shop = { id: number; timezone: string | null; currency: string };
@@ -108,10 +116,21 @@ export class PayrollService {
   private async barberOf(barbershopId: number, barberId: number) {
     const barber = await this.prisma.barber.findFirst({
       where: { id: barberId, barbershopId },
-      select: { id: true, name: true, staffType: true, isActive: true },
+      select: { id: true, name: true, staffType: true, isActive: true, userId: true },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     return barber;
+  }
+
+  /**
+   * Gerente que também atende não mexe no próprio pagamento (como na regra
+   * de comissão): forma de pagamento, lançamentos, pagar e desfazer, só o dono
+   */
+  private ensureNotOwnPay(shop: unknown, userId: number, barber: { userId: number | null }) {
+    if (barber.userId !== userId) return;
+    if ((shop as { accessLevel?: string }).accessLevel !== 'owner') {
+      throw new ForbiddenException(OWN_PAY_MESSAGE);
+    }
   }
 
   private async openCashSessionId(barbershopId: number, method?: string | null) {
@@ -157,7 +176,7 @@ export class PayrollService {
     data: { payType: string; fixedAmount?: number | null; payPeriod?: string | null },
   ) {
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    await this.barberOf(barbershopId, barberId);
+    this.ensureNotOwnPay(shop, userId, await this.barberOf(barbershopId, barberId));
     if (!(PAY_TYPES as readonly string[]).includes(data.payType)) {
       throw new BadRequestException('Forma de pagamento inválida');
     }
@@ -237,6 +256,7 @@ export class PayrollService {
   ) {
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const barber = await this.barberOf(barbershopId, data.barberId);
+    this.ensureNotOwnPay(shop, userId, barber);
     if (!(ENTRY_TYPES as readonly string[]).includes(data.type)) {
       throw new BadRequestException('Tipo de lançamento inválido');
     }
@@ -289,11 +309,12 @@ export class PayrollService {
 
   /** Lançamento errado (ainda fora de um fechamento): apaga, junto com a despesa do vale. */
   async deleteEntry(userId: number, barbershopId: number, entryId: number) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const entry = await this.prisma.barberPayEntry.findFirst({
       where: { id: entryId, barbershopId },
     });
     if (!entry) throw new NotFoundException('Lançamento não encontrado');
+    this.ensureNotOwnPay(shop, userId, await this.barberOf(barbershopId, entry.barberId));
     if (entry.payoutId) {
       throw new BadRequestException(
         'Esse lançamento já entrou num pagamento. Desfaça o pagamento antes.',
@@ -436,8 +457,14 @@ export class PayrollService {
   ) {
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const barber = await this.barberOf(barbershopId, data.barberId);
+    this.ensureNotOwnPay(shop, userId, barber);
     if (!(PAY_METHODS as readonly string[]).includes(data.method)) {
       throw new BadRequestException('Forma de pagamento inválida');
+    }
+    // Período que ainda não acabou: as vendas do resto dele cairiam num
+    // período já pago e a comissão delas nunca seria paga
+    if (data.to > this.dayOf(shop, new Date())) {
+      throw new BadRequestException(PERIOD_NOT_OVER_MESSAGE);
     }
     const { start, end } = this.range(shop, data.from, data.to);
     const cashSessionId = await this.openCashSessionId(barbershopId, data.method);
@@ -531,11 +558,12 @@ export class PayrollService {
 
   /** Pagamento registrado errado: volta tudo (lançamentos em aberto, despesa apagada). */
   async undoPayout(userId: number, barbershopId: number, payoutId: number) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const payout = await this.prisma.barberPayout.findFirst({
       where: { id: payoutId, barbershopId },
     });
     if (!payout) throw new NotFoundException('Pagamento não encontrado');
+    this.ensureNotOwnPay(shop, userId, await this.barberOf(barbershopId, payout.barberId));
     await this.ensureCashStillOpen(payout.cashSessionId);
     if (payout.carryOverEntryId) {
       const carry = await this.prisma.barberPayEntry.findUnique({

@@ -2111,34 +2111,44 @@ Foram lidos os fechamentos da unidade (prévia, cadastro e cancelamento dos afet
      **Fazer:** cancelar só os horários que ainda não começaram, pular os que têm venda (e dizer quantos ficaram), e avisar o cliente pelos futuros cancelados com o e-mail de contato do horário.
      
      **Feito:** "cancelar daqui em diante" só pega horários da série que ainda não começaram e pula os que têm venda. O aviso sai pelos cancelados mesmo quando o horário clicado já passou, para o e-mail de contato do horário (`appointmentContactEmail`).
-206. ⬜ **Fechamento que cancela horários não atualiza a agenda nem o histórico** (back: `ClosureService.set`, `closure.resolver.ts`): com "cancelar os afetados", os horários são cancelados direto no banco. O resolver não avisa a agenda aberta (`realtime.notify`), então quem está com a agenda aberta continua vendo os horários até recarregar e pode atender ou cobrar um horário já cancelado. A notificação de atividade do cancelamento (`appointmentStatusChanged`) também não sai, ao contrário do cancelamento comum, do da série e do cliente.
+206. ✅ **Fechamento que cancela horários não atualiza a agenda nem o histórico** (back: `ClosureService.set`, `closure.resolver.ts`): com "cancelar os afetados", os horários são cancelados direto no banco. O resolver não avisa a agenda aberta (`realtime.notify`), então quem está com a agenda aberta continua vendo os horários até recarregar e pode atender ou cobrar um horário já cancelado. A notificação de atividade do cancelamento (`appointmentStatusChanged`) também não sai, ao contrário do cancelamento comum, do da série e do cliente.
      
      **Fazer:** avisar a agenda e registrar a atividade de cada horário cancelado pelo fechamento (e também quando reservas de sinal são liberadas).
+     
+     **Feito:** o fechamento devolve os horários que cancelou. O resolver avisa a agenda aberta (`realtime.notify`) quando cancela horários ou libera reservas de sinal, e registra a atividade de cada horário cancelado, como no cancelamento avulso.
 
 ### Quinquagésima quinta rodada (2026-10-19): pagamento da equipe
 
 Foram lidos o pagamento da equipe (forma de pagamento, vales, bônus e descontos, prévia, pagar e desfazer o pagamento) e o ajuste de comissão quando muda uma venda de período já pago.
 
-207. ⬜ **Pagar um período que ainda não terminou perde a comissão do resto dele** (back: `PayrollService.pay`, `preview`; `createSale`):
+207. ✅ **Pagar um período que ainda não terminou perde a comissão do resto dele** (back: `PayrollService.pay`, `preview`; `createSale`):
      - O período aceita fim no futuro. Pagar o mês no dia 15 grava o pagamento até o dia 31, com a comissão das vendas até o dia 15.
      - As vendas pagas do dia 16 ao 31 caem num período já pago. Não dá para pagar de novo (`overlapping`), o período seguinte começa no dia 1º, e a venda nova não gera o ajuste de comissão (`commissionAdjustment` só roda ao editar ou apagar venda). A comissão dessas vendas nunca é paga.
      - O fixo do período entra inteiro, mesmo o período não tendo acabado.
      
      **Fazer:** recusar pagamento com fim depois de hoje (no fuso da unidade), ou gravar o fim do pagamento como hoje. A prévia avisa que o período ainda não acabou.
-208. ⬜ **Gerente que também atende define e paga o próprio salário e bônus** (back: `PayrollService.setConfig`, `addEntry`, `deleteEntry`, `pay`, `undoPayout`): a regra de comissão já não deixa o gerente mexer na própria comissão ("A sua comissão é definida pelo dono", `ensureNotOwnCommission`). O pagamento da equipe não tem a mesma trava: o gerente que é profissional da unidade troca a própria forma de pagamento para fixo com qualquer valor, lança bônus para si, apaga os próprios descontos e vales, e registra o próprio pagamento.
+     
+     **Feito:** registrar o pagamento de um período que termina depois de hoje (no fuso da unidade) é recusado com "Esse período ainda não acabou". A prévia continua livre para acompanhar o mês em andamento.
+208. ✅ **Gerente que também atende define e paga o próprio salário e bônus** (back: `PayrollService.setConfig`, `addEntry`, `deleteEntry`, `pay`, `undoPayout`): a regra de comissão já não deixa o gerente mexer na própria comissão ("A sua comissão é definida pelo dono", `ensureNotOwnCommission`). O pagamento da equipe não tem a mesma trava: o gerente que é profissional da unidade troca a própria forma de pagamento para fixo com qualquer valor, lança bônus para si, apaga os próprios descontos e vales, e registra o próprio pagamento.
      
      **Fazer:** a mesma trava da comissão em todo o pagamento da equipe: no próprio profissional, só o dono configura, lança, apaga, paga e desfaz. O gerente continua vendo o próprio extrato.
+     
+     **Feito:** no próprio profissional, só o dono configura a forma de pagamento, lança e apaga lançamentos, paga e desfaz o pagamento. O gerente continua fazendo tudo isso para os colegas e vendo o próprio extrato.
 
 ### Quinquagésima sexta rodada (2026-10-19): avaliações nos dois sentidos
 
 Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do profissional (página pública, "minhas avaliações", resposta) e a nota que a equipe dá ao cliente (pontualidade e trato).
 
-209. ⬜ **Quem saiu da unidade continua avaliando os clientes dela** (back: `CustomerRatingService.rate`, `forAppointment`, `pendingForMe`, `sendDailyDigest`): o lado "profissional" é dado a quem tem o `userId` do profissional do atendimento, sem conferir se a pessoa ainda está na unidade. Quem foi desligado (profissional inativo, vínculo encerrado ou acesso revogado) continua vendo a lista de pendentes com o nome dos clientes, recebe o resumo diário e dá nota a eles por até 30 dias, e essa nota entra na média do cliente que as outras equipes da rede veem.
+209. ✅ **Quem saiu da unidade continua avaliando os clientes dela** (back: `CustomerRatingService.rate`, `forAppointment`, `pendingForMe`, `sendDailyDigest`): o lado "profissional" é dado a quem tem o `userId` do profissional do atendimento, sem conferir se a pessoa ainda está na unidade. Quem foi desligado (profissional inativo, vínculo encerrado ou acesso revogado) continua vendo a lista de pendentes com o nome dos clientes, recebe o resumo diário e dá nota a eles por até 30 dias, e essa nota entra na média do cliente que as outras equipes da rede veem.
      
      **Fazer:** o lado profissional exige o profissional ativo, com o vínculo valendo e acesso à unidade. A lista de pendentes e o resumo diário seguem a mesma regra.
-210. ⬜ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
+     
+     **Feito:** o lado profissional da nota do cliente (`rate`, `forAppointment`) exige que quem atendeu ainda esteja na unidade: profissional ativo, vínculo valendo (`accessStartsAt`/`accessEndsAt`) e acesso à unidade. A lista de pendentes e o resumo diário filtram o profissional pelo vínculo atual (`currentEngagement`). Teste em `customer-rating.int.spec.ts`.
+210. ✅ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
      
      **Fazer:** avaliação às cegas: em "Minhas avaliações", a avaliação de um atendimento só aparece depois que o profissional avaliou aquele cliente ou depois que o prazo de avaliar passou. Até lá, entra só na média.
+     
+     **Feito:** `ProfessionalReviewService.mine` só devolve a avaliação de um atendimento que já tem a nota do profissional ao cliente, que passou do prazo de 30 dias para dar essa nota (`RATE_WINDOW_MS`) ou que veio de importação. Até lá, a avaliação conta só na média (o resumo e a página pública não mudaram). O texto da tela explica a regra (front). Teste em `professional-review.int.spec.ts`.
 
 ### Quinquagésima sétima rodada (2026-10-19): fotos e moderação
 
@@ -2236,9 +2246,11 @@ Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da 
 
 Foi lida a importação da planilha (clientes, serviços e horários vindos de outro sistema) e o que acontece depois com os horários importados.
 
-221. ⬜ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
+221. ✅ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
      
      **Fazer:** a nota do cliente, a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` (e `IMPORT` que ainda não aconteceu), como o pedido de avaliação já faz.
+     
+     **Feito:** a nota do cliente (`rate`, `forAppointment`), a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` ou `IMPORT`, como o pedido de avaliação já fazia. Teste em `customer-rating.int.spec.ts`.
 
 ### Sexagésima sétima rodada (2026-10-19): clube de assinatura
 

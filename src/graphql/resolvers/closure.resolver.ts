@@ -15,6 +15,8 @@ import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
 import { ClosureService } from '../../barbershop/closure.service';
 import { ClosureType } from '../types/public-booking.type';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 
 @InputType()
 export class ClosureInput {
@@ -72,7 +74,11 @@ export class SetClosureResultType {
 @UseGuards(GraphQLJwtAuthGuard)
 @UseFilters(GqlHttpExceptionFilter)
 export class ClosureResolver {
-  constructor(private readonly closures: ClosureService) {}
+  constructor(
+    private readonly closures: ClosureService,
+    private readonly realtime: RealtimeService,
+    private readonly activity: ActivityNotificationsService,
+  ) {}
 
   @Query(() => [ClosureType])
   async barbershopClosures(
@@ -97,7 +103,16 @@ export class ClosureResolver {
     @Args('input') input: ClosureInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.closures.set(user.id, barbershopId, input);
+    const result = await this.closures.set(user.id, barbershopId, input);
+    // Horários cancelados (ou reservas de sinal liberadas): a agenda aberta
+    // atualiza na hora, e cada cancelamento entra na atividade, como no avulso
+    if (result.cancelledIds.length || result.releasedHolds) {
+      this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
+    }
+    for (const id of result.cancelledIds) {
+      void this.activity.appointmentStatusChanged(id, 'CANCELLED', user.id);
+    }
+    return result;
   }
 
   @Mutation(() => Boolean)
