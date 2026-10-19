@@ -2285,3 +2285,14 @@ Foram lidos o agendamento pela equipe (sinal sugerido pelo serviço, sinal infor
      - Os serviços do horário também vêm com `unitPrice` e `quantity` sem conferência (negativo, zero), e esse preço é a base da taxa de falta, do preço mostrado ao cliente no link e do sinal.
      
      **Fazer:** sinal pago à mão só da recepção para cima, com forma de pagamento, e o recebimento vira lançamento no caixa aberto (como o aluguel e a caixinha em dinheiro). O valor do sinal passa por `checkMoney` e não passa do preço. Preço e quantidade dos serviços do horário com a mesma conferência da venda.
+
+### Septuagésima terceira rodada (2026-10-19): resposta pública às avaliações
+
+Foram lidos a série de horários (criar e pular datas), o expediente do dia com horário especial, as permissões por cargo do backoffice e a resposta da unidade às avaliações (responder, avisar o cliente, denunciar, moderar).
+
+228. ⬜ **A resposta pública da unidade a uma avaliação não tem como ser denunciada nem moderada** (back: `ReviewManagementService.reply`, `moderate`; `ModerationService` e `REPORT_TARGETS`):
+     - Dono e gerente respondem a avaliação e o texto aparece na página da unidade, sem filtro além do tamanho. A moderação de avaliações da unidade só existe para a denúncia que a própria unidade faz contra o comentário do cliente.
+     - A denúncia pública (`REPORT_TARGETS`: foto, avaliação do profissional, perfil e unidade inteira) não tem a avaliação da unidade nem a resposta dela. O cliente que é ofendido na resposta, ou tem o telefone ou outro dado pessoal exposto nela, só consegue denunciar a unidade inteira ou abrir um pedido no suporte, e a moderação não tem como ocultar só a resposta.
+     - A unidade também pode denunciar de novo, sem limite, a avaliação que a moderação já decidiu manter.
+     
+     **Fazer:** denúncia pública da avaliação da unidade com a resposta (alvo novo na moderação), e na moderação a opção de ocultar só a resposta. Avaliação que a moderação manteve não volta para a fila pela mesma unidade, a não ser que o comentário mude.
