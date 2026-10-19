@@ -202,9 +202,14 @@ export class AuthResolver {
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
-  async logoutOtherSessions(@CurrentUser() user: UserDTO, @Context() context: any) {
+  async logoutOtherSessions(
+    @CurrentUser() user: UserDTO,
+    @Context() context: any,
+    // Inscrição de push deste aparelho (as dos aparelhos derrubados saem)
+    @Args('pushEndpoint', { nullable: true }) pushEndpoint?: string,
+  ) {
     const { req } = context;
-    await this.authService.logoutOtherSessions(user, req);
+    await this.authService.logoutOtherSessions(user, req, pushEndpoint);
     return true;
   }
 
@@ -330,6 +335,7 @@ export class AuthResolver {
       input.newPassword,
       input.code,
       user.sessionToken,
+      input.pushEndpoint,
     );
     return true;
   }

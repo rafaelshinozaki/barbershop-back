@@ -279,6 +279,7 @@ export class UserResolver {
       input.newPassword,
       input.code,
       user.sessionToken,
+      input.pushEndpoint,
     );
   }
 

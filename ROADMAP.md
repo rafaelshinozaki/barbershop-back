@@ -2244,9 +2244,11 @@ Foi lido o "Convidar amigos" (dono convida outro dono e os dois ganham 1 mês gr
 
 Foram lidos os limites do plano (profissionais e unidades, troca para plano menor), a edição da equipe, as notificações do sininho e a notificação no celular (inscrição, saída e limpeza).
 
-219. ⬜ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
+219. ✅ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
      
      **Fazer:** ao derrubar sessões (outras sessões, troca e redefinição de senha, na equipe e no cliente), apagar as inscrições de push da conta, menos a do aparelho que pediu (o front manda o endpoint atual junto, quando houver).
+     
+     **Feito:** ao derrubar sessões, as inscrições de push da conta saem junto (`dropPushSubscriptions`), menos a do aparelho que pediu. Isso vale para "sair das outras sessões" (`logoutOtherSessions(pushEndpoint)`), a troca de senha (`pushEndpoint` em `ChangePasswordInput` e `ResetPasswordWithCodeInput`) e o "derrubar sessões" do backoffice, que apaga todas. As inscrições da área do cliente ligada também saem. Na área do cliente, a redefinição de senha pelo link e a retomada da conta pelo login social também apagam as inscrições. O front manda o endpoint do aparelho atual. Teste em `push.int.spec.ts` e `backoffice-phase2.int.spec.ts`.
 
 ### Sexagésima quinta rodada (2026-10-19): exclusão da conta do dono
 

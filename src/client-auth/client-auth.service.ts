@@ -20,6 +20,7 @@ import { ClientAccountDTO } from './dto/client-account.dto';
 import { AccountLinkService } from './account-link.service';
 import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
+import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
 
 export const CLIENT_TOKEN_PURPOSE = {
@@ -303,6 +304,8 @@ export class ClientAuthService {
         sessionVersion: { increment: 1 },
       },
     });
+    // Senha redefinida: os aparelhos derrubados param de receber os avisos
+    await dropPushSubscriptions(this.prisma, { clientAccountIds: [account.id] });
     await this.prisma.clientAccountToken.updateMany({
       where: { clientAccountId: account.id, usedAt: null },
       data: { usedAt: new Date() },
@@ -441,6 +444,7 @@ export class ClientAuthService {
         where: { id: account.id },
         data: { emailVerifiedAt: new Date(), password: null, sessionVersion: { increment: 1 } },
       });
+      await dropPushSubscriptions(this.prisma, { clientAccountIds: [account.id] });
     }
 
     if (account && !existingLink) {

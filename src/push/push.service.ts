@@ -6,6 +6,29 @@ import { type Lang, normalizeLang } from '@/email/language';
 import { assertPushEndpoint } from './push-endpoint';
 import { supportEmail } from '../common/app-urls';
 
+/**
+ * Sessões derrubadas (outras sessões, troca ou redefinição de senha): as
+ * inscrições de push da conta saem junto, menos a do aparelho que pediu.
+ * Senão o aparelho derrubado seguia recebendo os avisos (chat, suporte).
+ */
+export async function dropPushSubscriptions(
+  db: Pick<PrismaService, 'pushSubscription'>,
+  owner: { userId?: number; clientAccountIds?: number[] },
+  keepEndpoint?: string | null,
+) {
+  const or = [
+    ...(owner.userId != null ? [{ userId: owner.userId }] : []),
+    ...(owner.clientAccountIds?.length
+      ? [{ clientAccountId: { in: owner.clientAccountIds } }]
+      : []),
+  ];
+  if (!or.length) return 0;
+  const { count } = await db.pushSubscription.deleteMany({
+    where: { OR: or, ...(keepEndpoint ? { endpoint: { not: keepEndpoint } } : {}) },
+  });
+  return count;
+}
+
 export type PushPayload = {
   title: string;
   body: string;
