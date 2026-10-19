@@ -2218,12 +2218,14 @@ Foram lidas a fila de quem chega sem horário (entrar, listar, mudar a situaçã
 
 Foram lidos os cupons do plano (validação, desconto, reserva do cupom do convite de amigo, uso registrado na ativação) e a cobrança do plano.
 
-217. ⬜ **Cupom de uso único dá desconto em várias cobranças** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `CouponsService.validateCoupon`, `claimUse`):
+217. ✅ **Cupom de uso único dá desconto em várias cobranças** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `CouponsService.validateCoupon`, `claimUse`):
      - O cupom é só conferido ao criar a cobrança (`validateCoupon`), e o uso é registrado depois do pagamento (`claimUse`). Quando o registro falha porque o cupom já foi usado (ou esgotou), a cobrança já paga ativa o plano mesmo assim e só fica um aviso no log ("já pago, o plano vale").
      - Abrindo o checkout com o cupom em várias abas (ou guardando a cobrança criada para pagar depois), cada cobrança sai com o desconto. Pagando uma de cada vez, o usuário compra vários períodos com desconto, ou 100% grátis no caso do mês grátis com valor acima do mínimo da Stripe, com um cupom de uso único. O cupom público com limite de usos também passa do limite.
      - Na validação, o valor e o tipo do cupom não são conferidos: cupom de porcentagem negativa (erro de digitação no backoffice) aumenta o preço.
      
      **Fazer:** reservar o uso do cupom ao criar a cobrança (com prazo, como a reserva do sinal), e cancelar a cobrança anterior do mesmo usuário com o mesmo cupom. Na ativação, cobrança paga com cupom que não foi reservado para ela é estornada na diferença (ou recusada antes do pagamento). Porcentagem de 1 a 100 e valor fixo positivo ao criar e editar o cupom.
+     
+     **Feito:** o uso do cupom é reservado ao criar a cobrança (`CouponReservation`, uma hora, ligada ao PaymentIntent). A reserva em aberto de outra pessoa conta no limite de usos, na validação e na reserva. Criar outra cobrança com o mesmo cupom tira a reserva da anterior e cancela a anterior no Stripe. Na ativação, `claimUse` só aceita a cobrança que tem a reserva. Cobrança paga sem a reserva (outra aba, cobrança guardada) não ativa o plano e é estornada inteira (`COUPON_REFUSED_REFUNDED`). O plano grátis pelo cupom (sem cobrança) segue com a trava de antes, contando as reservas. Porcentagem de 1 a 100 e valor fixo maior que zero ao criar e editar, no back e no backoffice-back (`COUPON_VALUE_INVALID`). Cupom salvo antes com valor fora disso não vale no checkout. Teste em `checkout-coupon.int.spec.ts` e `test/admin-writes.spec.ts` (backoffice-back).
 
 ### Sexagésima terceira rodada (2026-10-19): convidar amigos
 

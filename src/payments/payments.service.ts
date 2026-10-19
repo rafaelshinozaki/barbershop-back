@@ -72,6 +72,9 @@ function monthlyPrice(plan: { price: Prisma.Decimal | number; billingCycle: stri
   return Number(plan.price) / (plan.billingCycle === 'YEARLY' ? 12 : 1);
 }
 
+export const COUPON_REFUSED_MESSAGE =
+  'O cupom já tinha sido usado em outra compra. O pagamento foi estornado: faça o pedido de novo.';
+
 function couponFromMetadata(metadata?: Record<string, string>): CheckoutCoupon | undefined {
   const couponId = Number(metadata?.couponId);
   if (!couponId) return undefined;
@@ -776,6 +779,23 @@ export class PaymentsService {
       },
     });
 
+    if (coupon) {
+      // Reserva o uso do cupom para esta cobrança; a cobrança anterior com o
+      // mesmo cupom (outra aba, checkout guardado) é cancelada
+      let replaced: string[];
+      try {
+        replaced = await this.couponsService.reserve(coupon.couponId, userId, paymentIntent.id);
+      } catch (error) {
+        await this.stripeService.cancelPaymentIntent(paymentIntent.id).catch(() => undefined);
+        throw error;
+      }
+      for (const old of replaced) {
+        await this.stripeService
+          .cancelPaymentIntent(old)
+          .catch((e) => this.logger.warn(`Cobrança ${old} com cupom não cancelada: ${e}`));
+      }
+    }
+
     return {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
@@ -887,6 +907,7 @@ export class PaymentsService {
 
     // A tela e o webhook do Stripe confirmam o mesmo pagamento, às vezes ao
     // mesmo tempo: a trava por pagamento garante uma assinatura só
+    let couponRefused = false;
     const result = await this.prisma.$transaction(async (tx) => {
       if (paymentIntentId) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
@@ -900,11 +921,16 @@ export class PaymentsService {
       }
 
       // Cupom: o uso é registrado aqui, com trava. Sem cobrança (plano
-      // grátis pelo cupom), uso que não cabe mais não ativa nada; já pago, o
-      // plano vale e só fica no log
-      if (coupon && !(await this.couponsService.claimUse(tx, coupon.couponId, userId))) {
+      // grátis pelo cupom), uso que não cabe mais não ativa nada. Cobrança
+      // paga sem a reserva do cupom (outra aba, cobrança guardada) é
+      // estornada inteira, sem ativar o plano com o desconto
+      if (
+        coupon &&
+        !(await this.couponsService.claimUse(tx, coupon.couponId, userId, paymentIntentId))
+      ) {
         if (!paymentIntentId) throw new BadRequestException('Cupom já foi utilizado');
-        this.logger.warn(`Cupom ${coupon.couponId} usado de novo pelo user ${userId} (já pago)`);
+        couponRefused = true;
+        return null;
       }
 
       // A assinatura anterior (ex.: o Free) é encerrada
@@ -947,6 +973,23 @@ export class PaymentsService {
       });
       return { subscription, created: true };
     });
+
+    if (!result) {
+      if (couponRefused && paymentIntentId) {
+        this.logger.warn(
+          `Cupom ${coupon?.couponId} sem reserva na cobrança ${paymentIntentId}: estorno`,
+        );
+        await this.stripeService
+          .createRefund(
+            paymentIntentId,
+            undefined,
+            'duplicate',
+            `coupon-refused:${paymentIntentId}`,
+          )
+          .catch((e) => this.logger.error(`Estorno da cobrança ${paymentIntentId} falhou: ${e}`));
+      }
+      throw new BadRequestException(COUPON_REFUSED_MESSAGE);
+    }
 
     if (result.created) {
       // O cartão usado vira o padrão: é ele que a renovação cobra

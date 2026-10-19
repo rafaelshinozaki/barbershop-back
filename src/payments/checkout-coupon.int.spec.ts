@@ -6,8 +6,8 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CouponsService, COUPON_TYPE } from './coupons.service';
-import { PaymentsService } from './payments.service';
+import { CouponsService, COUPON_TYPE, COUPON_VALUE_MESSAGE } from './coupons.service';
+import { COUPON_REFUSED_MESSAGE, PaymentsService } from './payments.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -32,7 +32,11 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
       status: 'succeeded',
       metadata: intents.get(id)!.metadata,
     }),
+    cancelPaymentIntent: async (id: string) => void cancelled.push(id),
+    createRefund: async (id: string) => void refunded.push(id),
   };
+  const cancelled: string[] = [];
+  const refunded: string[] = [];
   const payments = new PaymentsService(prisma, stripe as never, {} as never, coupons);
 
   let userId: number;
@@ -178,6 +182,62 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
     await expect(
       payments.createPaymentIntentForCheckout(userId, planId, 'NAO-EXISTE'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('cupom de uso único em duas abas: só a cobrança mais nova leva o desconto (item 217)', async () => {
+    const coupon = await newCoupon(COUPON_TYPE.PERCENTAGE, 50);
+    const first = await payments.createPaymentIntentForCheckout(userId, planId, coupon.code);
+    const second = await payments.createPaymentIntentForCheckout(userId, planId, coupon.code);
+    // A cobrança anterior com o mesmo cupom é cancelada no Stripe
+    expect(cancelled).toContain(first.paymentIntentId);
+
+    // Se a antiga foi paga mesmo assim, é estornada e não ativa nada
+    const before = await prisma.subscription.count({ where: { userId } });
+    await expect(payments.confirmPaymentIntent(userId, first.paymentIntentId!)).rejects.toThrow(
+      COUPON_REFUSED_MESSAGE,
+    );
+    expect(refunded).toContain(first.paymentIntentId);
+    expect(await prisma.subscription.count({ where: { userId } })).toBe(before);
+
+    await payments.confirmPaymentIntent(userId, second.paymentIntentId!);
+    expect((await prisma.coupon.findUnique({ where: { id: coupon.id } }))!.usedCount).toBe(1);
+    expect(await prisma.couponReservation.count({ where: { couponId: coupon.id } })).toBe(0);
+  });
+
+  it('cupom público com limite: a cobrança em aberto de alguém segura o uso', async () => {
+    const coupon = await newCoupon(COUPON_TYPE.PERCENTAGE, 20);
+    await prisma.coupon.update({ where: { id: coupon.id }, data: { maxUses: 1 } });
+    await prisma.couponReservation.create({
+      data: {
+        couponId: coupon.id,
+        userId: userId + 999_999,
+        paymentIntentId: `pi_outro_${RUN}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    expect((await coupons.validateCoupon(coupon.code, userId, planId, 100)).error).toBe(
+      'Cupom esgotado',
+    );
+    // Reserva vencida não segura mais
+    await prisma.couponReservation.updateMany({
+      where: { couponId: coupon.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    expect((await coupons.validateCoupon(coupon.code, userId, planId, 100)).isValid).toBe(true);
+  });
+
+  it('porcentagem fora de 1 a 100 e valor fixo não positivo não entram', async () => {
+    for (const [type, value] of [
+      [COUPON_TYPE.PERCENTAGE, -10],
+      [COUPON_TYPE.PERCENTAGE, 150],
+      [COUPON_TYPE.FIXED_AMOUNT, 0],
+    ] as const) {
+      await expect(
+        coupons.createCoupon({ code: `NEG${value}${RUN}`.slice(0, 30), name: 'x', type, value }),
+      ).rejects.toThrow(COUPON_VALUE_MESSAGE);
+    }
+    const ok = await newCoupon(COUPON_TYPE.PERCENTAGE, 10);
+    await expect(coupons.updateCoupon(ok.id, { value: -5 })).rejects.toThrow(COUPON_VALUE_MESSAGE);
   });
 
   describe('gestão no backoffice', () => {

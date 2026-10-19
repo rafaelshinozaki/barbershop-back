@@ -252,6 +252,22 @@ model Coupon {
   inviterInvites        FriendInvite[] @relation("InviterCoupon")
   payments              Payment[]      @relation("AppliedCoupons")
   userCoupons           UserCoupon[]
+  reservations          CouponReservation[]
+}
+
+// Uso do cupom reservado para uma cobrança (PaymentIntent) ainda não paga:
+// conta no limite de usos até vencer, e só a cobrança reservada usa o cupom
+model CouponReservation {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  couponId        Int
+  userId          Int
+  paymentIntentId String   @unique
+  expiresAt       DateTime
+  coupon          Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, expiresAt])
+  @@index([userId, couponId])
 }
 
 model UserCoupon {
