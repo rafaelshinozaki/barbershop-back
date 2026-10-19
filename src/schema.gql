@@ -416,8 +416,6 @@ type Barber {
   isActive: Boolean!
   name: String!
   pendingInviteExpiresAt: DateTime
-
-  """Link do convite ainda pendente. Só gerente e dono recebem."""
   pendingInviteToken: String
   phone: String!
   specialization: String
@@ -534,8 +532,6 @@ type Barbershop {
   instagramUrl: String
   isActive: Boolean!
   linkedinUrl: String
-
-  """Antecedência mínima do agendamento online, em minutos (0, 30, 60, 120, 1440)"""
   minBookingLeadMinutes: Int!
   myAccessLevel: String
   name: String!
@@ -1777,7 +1773,9 @@ type GiftCardType {
   code: String!
   createdAt: String!
 
-  """Moeda do cartão (a da unidade que vendeu); só vale em unidade da mesma moeda"""
+  """
+  Moeda do cartão (a da unidade que vendeu); só vale em unidade da mesma moeda
+  """
   currency: String
   expiresAt: String
   id: Int!
@@ -3173,8 +3171,6 @@ type PublicBarbershopType {
   latitude: Float
   linkedinUrl: String
   longitude: Float
-
-  """Antecedência mínima do agendamento online, em minutos"""
   minBookingLeadMinutes: Int!
   name: String!
   onlineDeposit: Boolean!
@@ -3951,8 +3947,6 @@ input StartSoloPracticeInput {
   phone: String!
   postalCode: String!
   state: String!
-
-  """Fuso do navegador (IANA). O back só aceita se for um fuso do país."""
   timezone: String
 }
 
@@ -4207,7 +4201,9 @@ input UpdateBarbershopInput {
   isActive: Boolean
   linkedinUrl: String
 
-  """Antecedência mínima do agendamento online, em minutos: 0, 30, 60, 120 ou 1440"""
+  """
+  Antecedência mínima do agendamento online, em minutos: 0, 30, 60, 120 ou 1440
+  """
   minBookingLeadMinutes: Int
   name: String
   phone: String

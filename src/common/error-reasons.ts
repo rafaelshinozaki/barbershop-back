@@ -47,6 +47,11 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Seu cargo só permite pôr clientes na sua própria fila.': 'WALK_IN_OWN_QUEUE_ONLY',
   'Este cartão-presente foi vendido em outra moeda e não vale nesta unidade.':
     'GIFT_CARD_OTHER_CURRENCY',
+  'Esta unidade não está recebendo pelo app no momento. Fale diretamente com ela.':
+    'SHOP_NOT_RECEIVING',
+  'A unidade está suspensa pela plataforma e não pode enviar campanhas agora.':
+    'MARKETING_SUSPENDED',
+  'Esta conta foi excluída: a candidatura não pode mais ser aceita.': 'JOB_APPLICANT_DELETED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

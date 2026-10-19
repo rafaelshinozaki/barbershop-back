@@ -220,6 +220,17 @@ export class AccountDeletionService {
         where: { acceptedByUserId: userId },
         data: { acceptedByUserId: null },
       }),
+      // Candidaturas esperando resposta saem, e convite ainda não aceito
+      // para o e-mail da conta deixa de valer (item 192): aceitar depois
+      // cobrava a taxa por um convite que ninguém recebe
+      this.prisma.jobApplication.updateMany({
+        where: { userId, status: 'pending' },
+        data: { status: 'withdrawn', decidedAt: new Date() },
+      }),
+      this.prisma.employeeInvite.updateMany({
+        where: { email: { equals: user.email, mode: 'insensitive' }, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      }),
       // Conta de cliente ligada continua, sem a ligação: sem a senha da
       // equipe, entra de novo pela "esqueci a senha" (ou login social)
       this.prisma.clientAccount.updateMany({

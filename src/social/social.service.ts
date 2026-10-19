@@ -449,8 +449,17 @@ export class SocialService {
     if (!post || post.status !== 'SCHEDULED') return;
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: post.barbershopId },
-      select: { closedAt: true },
+      select: {
+        closedAt: true,
+        platformSuspendedAt: true,
+        network: { select: { platformSuspendedAt: true } },
+      },
     });
+    // Suspensa pela plataforma: fica agendada (sem publicar nem cancelar) até
+    // a suspensão sair (item 190)
+    if (!shop?.closedAt && (shop?.platformSuspendedAt || shop?.network?.platformSuspendedAt)) {
+      return;
+    }
     if (shop?.closedAt) {
       await this.prisma.socialPost.update({
         where: { id: postId },

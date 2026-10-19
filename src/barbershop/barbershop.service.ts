@@ -271,6 +271,8 @@ export const MARKETING_MONTHLY_LIMIT_MESSAGE =
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.';
 /** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
 export const WAITLIST_OFFER_MINUTES = 30;
+export const MARKETING_SUSPENDED_MESSAGE =
+  'A unidade está suspensa pela plataforma e não pode enviar campanhas agora.';
 export const GIFT_CARD_OTHER_CURRENCY_MESSAGE =
   'Este cartão-presente foi vendido em outra moeda e não vale nesta unidade.';
 // Texto fixo (o catálogo de erros casa pela mensagem): acompanha WAITLIST_MAX_DAYS_AHEAD
@@ -5299,6 +5301,12 @@ export class BarbershopService {
     inactiveDays?: number,
     networkWide = false,
   ) {
+    // Quem saiu das campanhas em qualquer ficha da rede: o mesmo e-mail ou o
+    // mesmo telefone em outra ficha também não recebe (item 191)
+    const optedOut = await this.prisma.customer.findMany({
+      where: { networkId, marketingOptOut: true },
+      select: { email: true, phone: true },
+    });
     // Bloqueado pela unidade não recebe. Gerente manda só pra quem já foi
     // atendido na unidade; a rede inteira é só do dono (antes o gerente de
     // uma unidade disparava pros clientes de todas)
@@ -5336,7 +5344,8 @@ export class BarbershopService {
       ]);
       const recentIds = new Set(recent.map((r) => r.customerId));
       const inactiveIds = ever.map((r) => r.customerId).filter((id) => !recentIds.has(id));
-      return this.uniqueByEmail(
+      return this.uniqueRecipients(
+        optedOut,
         await this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } }),
       );
     }
@@ -5355,27 +5364,44 @@ export class BarbershopService {
       const customers = await this.prisma.customer.findMany({
         where: { ...baseWhere, birthDate: { not: null } },
       });
-      return this.uniqueByEmail(
+      return this.uniqueRecipients(
+        optedOut,
         customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth),
       );
     }
 
     // ALL
-    return this.uniqueByEmail(await this.prisma.customer.findMany({ where: baseWhere }));
+    return this.uniqueRecipients(
+      optedOut,
+      await this.prisma.customer.findMany({ where: baseWhere }),
+    );
   }
 
-  /** A mesma pessoa (mesmo e-mail, fichas duplicadas) recebe a campanha uma vez. */
-  private uniqueByEmail<T extends { email: string | null }>(customers: T[]): T[] {
-    const seen = new Set<string>();
+  /**
+   * A mesma pessoa recebe a campanha uma vez: fichas duplicadas com o mesmo
+   * e-mail (sem diferença de caixa) ou o mesmo telefone (normalizado) contam
+   * como uma. Quem saiu das campanhas em qualquer ficha com esse e-mail ou
+   * telefone fica de fora (antes o WhatsApp ia pela ficha repetida).
+   */
+  private uniqueRecipients<T extends { email: string | null; phone: string | null }>(
+    optedOut: { email: string | null; phone: string | null }[],
+    customers: T[],
+  ): T[] {
+    const emailOf = (c: { email: string | null }) => c.email?.trim().toLowerCase() || null;
+    const phoneOf = (c: { phone: string | null }) =>
+      c.phone ? normalizePhoneToE164(c.phone) ?? null : null;
+    const outEmails = new Set(optedOut.map(emailOf).filter((e): e is string => !!e));
+    const outPhones = new Set(optedOut.map(phoneOf).filter((p): p is string => !!p));
+    const seenEmails = new Set<string>();
+    const seenPhones = new Set<string>();
     const out: T[] = [];
     for (const customer of customers) {
-      const email = customer.email?.trim().toLowerCase();
-      if (!email) {
-        out.push(customer);
-        continue;
-      }
-      if (seen.has(email)) continue;
-      seen.add(email);
+      const email = emailOf(customer);
+      const phone = phoneOf(customer);
+      if ((email && outEmails.has(email)) || (phone && outPhones.has(phone))) continue;
+      if ((email && seenEmails.has(email)) || (phone && seenPhones.has(phone))) continue;
+      if (email) seenEmails.add(email);
+      if (phone) seenPhones.add(phone);
       out.push(customer);
     }
     return out;
@@ -5420,6 +5446,10 @@ export class BarbershopService {
     },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    // Unidade ou rede suspensa pela plataforma não dispara campanha (item 190)
+    if (barbershop.platformSuspendedAt || barbershop.network?.platformSuspendedAt) {
+      throw new BadRequestException(MARKETING_SUSPENDED_MESSAGE);
+    }
     // Uma campanha por dia por unidade: disparos repetidos derrubam a
     // reputação de envio do domínio da plataforma (todas as unidades)
     const since = new Date(Date.now() - MARKETING_MIN_INTERVAL_HOURS * 3_600_000);
@@ -5448,6 +5478,7 @@ export class BarbershopService {
         ? customers
             .map((c) => normalizePhoneToE164(c.phone))
             .filter((phone): phone is string => !!phone)
+            .filter((phone, i, all) => all.indexOf(phone) === i)
         : [];
 
     if (emailRecipients.length > 0) {

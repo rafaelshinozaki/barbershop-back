@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { assertShopInService } from './public-shop';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import type Stripe from 'stripe';
@@ -192,9 +193,17 @@ export class TipService {
 
   /** Pra onde vai a caixinha de cada destino (null = não recebe pelo app) */
   private async destinations(appt: Awaited<ReturnType<TipService['appointmentByToken']>>) {
-    const professional = appt.barber.professionalId
-      ? await this.connect.destination('professional', appt.barber.professionalId)
+    // Profissional suspenso pela moderação não recebe caixinha pelo app
+    const suspended = appt.barber.professionalId
+      ? await this.prisma.professional.findFirst({
+          where: { id: appt.barber.professionalId, suspendedAt: { not: null } },
+          select: { id: true },
+        })
       : null;
+    const professional =
+      appt.barber.professionalId && !suspended
+        ? await this.connect.destination('professional', appt.barber.professionalId)
+        : null;
     const unit =
       appt.barbershop.practiceKind === 'solo'
         ? null
@@ -205,6 +214,8 @@ export class TipService {
   /** Página do link: quem recebe caixinha pelo app e as que o cliente já deu */
   async appTipOptions(token: string) {
     const appt = await this.appointmentByToken(token);
+    // Unidade encerrada ou suspensa não recebe caixinha pelo app (item 190)
+    await assertShopInService(this.prisma, appt.barbershopId);
     const dest = await this.destinations(appt);
     const given = await this.prisma.appointmentTip.findMany({
       // Estornada não conta como dada
@@ -230,6 +241,7 @@ export class TipService {
       throw new BadRequestException('Destino da caixinha inválido');
     }
     const appt = await this.appointmentByToken(token);
+    await assertShopInService(this.prisma, appt.barbershopId);
     const limits = appTipLimits(appt.barbershop.currency);
     if (!(amount >= limits.min) || amount > limits.max) {
       throw new BadRequestException(`A caixinha pelo app vai de ${limits.min} a ${limits.max}`);

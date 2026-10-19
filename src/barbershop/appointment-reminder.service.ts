@@ -14,6 +14,7 @@ import { ReviewRequestService } from './review-request.service';
 import { CustomerRatingService } from './customer-rating.service';
 import { DepositPaymentService } from './deposit-payment.service';
 import { BarbershopService } from './barbershop.service';
+import { JobOpeningService } from './job-opening.service';
 import { reminderCoveredByNotice } from './reminder-window';
 import { appointmentContactEmail } from './appointment-contact';
 import type { Job } from 'bullmq';
@@ -193,6 +194,8 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'pass-waitlist-offers', repeat: { every: 5 * 60 * 1000 } },
       // Lista de espera: dia que passou ou cliente que já agendou sai da fila
       { id: 'close-stale-waitlist', repeat: { every: 60 * 60 * 1000 } },
+      // Vaga: candidato aceito que não entrou na equipe libera a vaga e a taxa
+      { id: 'release-unjoined-applications', repeat: { every: 60 * 60 * 1000 } },
     ]);
   }
 }
@@ -205,6 +208,7 @@ export class AppointmentReminderProcessor extends WorkerHost {
     private readonly deposits: DepositPaymentService,
     private readonly customerRatings: CustomerRatingService,
     private readonly barbershops: BarbershopService,
+    private readonly jobs: JobOpeningService,
   ) {
     super();
   }
@@ -214,6 +218,9 @@ export class AppointmentReminderProcessor extends WorkerHost {
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
     if (job.name === 'pass-waitlist-offers') return this.barbershops.passExpiredWaitlistOffers();
     if (job.name === 'close-stale-waitlist') return this.barbershops.closeStaleWaitlistEntries();
+    if (job.name === 'release-unjoined-applications') {
+      return this.jobs.releaseUnjoinedApplications();
+    }
     if (job.name === 'expire-deposit-holds') {
       await this.deposits.remindPendingHolds();
       return this.deposits.expireHolds();

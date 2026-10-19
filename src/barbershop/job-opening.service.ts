@@ -33,6 +33,47 @@ type Notice = Record<Lang, { title: string; message: string }>;
 
 const FEE_KIND = 'job_fill_fee';
 
+export const JOB_APPLICANT_DELETED_MESSAGE =
+  'Esta conta foi excluída: a candidatura não pode mais ser aceita.';
+
+/** Candidato aceito que não entrou: a vaga não é mais dele */
+const RELEASED_NOTICE = (title: string): Notice => ({
+  pt: {
+    title: 'Convite da vaga encerrado',
+    message: `O convite da vaga "${title}" não foi aceito a tempo e deixou de valer.`,
+  },
+  en: {
+    title: 'Opening invite ended',
+    message: `The invite for "${title}" wasn't accepted in time and is no longer valid.`,
+  },
+  es: {
+    title: 'Invitación de la vacante cerrada',
+    message: `La invitación de la vacante "${title}" no se aceptó a tiempo y dejó de valer.`,
+  },
+});
+
+/** Para quem aceitou (e pagou): a pessoa não entrou, a taxa volta */
+const PAYER_NOTICE = (title: string, refunded: boolean): Notice => ({
+  pt: {
+    title: 'Candidato não entrou na equipe',
+    message: `O convite da vaga "${title}" não foi aceito.${
+      refunded ? ' A taxa paga foi devolvida no cartão.' : ''
+    }`,
+  },
+  en: {
+    title: "Candidate didn't join",
+    message: `The invite for "${title}" wasn't accepted.${
+      refunded ? ' The fee was refunded to your card.' : ''
+    }`,
+  },
+  es: {
+    title: 'El candidato no entró al equipo',
+    message: `La invitación de la vacante "${title}" no se aceptó.${
+      refunded ? ' La tarifa pagada se devolvió a la tarjeta.' : ''
+    }`,
+  },
+});
+
 /** Até quantos dias à frente a vaga pode começar */
 const MAX_DAYS_AHEAD = 180;
 /** Duração máxima do vínculo de uma vaga (freelancer, não contratação fixa) */
@@ -437,10 +478,16 @@ export class JobOpeningService {
       where: { id: applicationId, jobOpening: { barbershopId } },
       include: {
         jobOpening: true,
-        user: { select: { id: true, email: true, fullName: true, phone: true } },
+        user: {
+          select: { id: true, email: true, fullName: true, phone: true, deleted_at: true },
+        },
       },
     });
     if (!application) throw new NotFoundException('Candidatura não encontrada');
+    // Conta excluída: o convite iria para um e-mail que ninguém recebe
+    if (application.user.deleted_at) {
+      throw new BadRequestException(JOB_APPLICANT_DELETED_MESSAGE);
+    }
     if (application.status !== 'pending') {
       throw new BadRequestException('Esta candidatura já foi respondida');
     }
@@ -758,6 +805,113 @@ export class JobOpeningService {
   }
 
   /** Quem ainda esperava resposta: recusa e avisa (vaga preenchida ou encerrada). */
+  /**
+   * Candidatura aceita que não virou equipe: o convite venceu, foi cancelado
+   * (ou sumiu) ou o período da vaga acabou sem o aceite. A candidatura sai
+   * (`expired`), o convite pendente deixa de valer, a taxa volta para quem
+   * pagou e a vaga preenchida reabre se o período ainda não acabou (item 192).
+   * Roda de hora em hora.
+   */
+  async releaseUnjoinedApplications(now = new Date()) {
+    const accepted = await this.prisma.jobApplication.findMany({
+      where: { status: 'accepted' },
+      include: { jobOpening: true },
+      take: 500,
+    });
+    if (!accepted.length) return 0;
+    const inviteIds = accepted.map((a) => a.inviteId).filter((id): id is number => id != null);
+    const invites = new Map(
+      (
+        await this.prisma.employeeInvite.findMany({
+          where: { id: { in: inviteIds } },
+          select: { id: true, status: true, expiresAt: true, barberId: true },
+        })
+      ).map((i) => [i.id, i]),
+    );
+    let released = 0;
+    for (const application of accepted) {
+      const invite = application.inviteId != null ? invites.get(application.inviteId) : undefined;
+      if (invite?.status === 'ACCEPTED') continue;
+      const opening = application.jobOpening;
+      const { today } = await this.today(opening.barbershopId);
+      const periodOver = opening.endDate < today;
+      const lapsed = !invite || invite.status !== 'PENDING' || invite.expiresAt < now || periodOver;
+      if (!lapsed) continue;
+      const claimed = await this.prisma.jobApplication.updateMany({
+        where: { id: application.id, status: 'accepted' },
+        data: { status: 'expired', decidedAt: now },
+      });
+      if (claimed.count === 0) continue;
+      released++;
+      if (invite?.status === 'PENDING') {
+        await this.prisma.$transaction([
+          this.prisma.employeeInvite.updateMany({
+            where: { id: invite.id, status: 'PENDING' },
+            data: { status: 'EXPIRED' },
+          }),
+          // O cadastro nasceu do convite e ninguém aceitou: sai da equipe ativa
+          this.prisma.barber.updateMany({
+            where: { id: invite.barberId, userId: null },
+            data: { isActive: false },
+          }),
+        ]);
+      }
+      const refunded = await this.refundFee(application);
+      if (opening.status === 'filled' && !periodOver) {
+        await this.prisma.jobOpening.updateMany({
+          where: { id: opening.id, status: 'filled' },
+          data: { status: 'open' },
+        });
+      }
+      await this.notify([application.userId], RELEASED_NOTICE(opening.title), '/jobs');
+      if (application.feePayerUserId) {
+        await this.notify(
+          [application.feePayerUserId],
+          PAYER_NOTICE(opening.title, refunded),
+          `/barbershops/${opening.barbershopId}/jobs`,
+        );
+      }
+    }
+    if (released)
+      this.logger.log(`Vagas: ${released} candidatura(s) aceita(s) sem entrar na equipe`);
+    return released;
+  }
+
+  /** Devolve a taxa paga (uma vez só); true se havia taxa a devolver */
+  private async refundFee(application: {
+    id: number;
+    feePaidAt: Date | null;
+    feeRefundedAt: Date | null;
+    feePaymentIntentId: string | null;
+  }) {
+    if (!application.feePaidAt || application.feeRefundedAt || !application.feePaymentIntentId) {
+      return false;
+    }
+    const claimed = await this.prisma.jobApplication.updateMany({
+      where: { id: application.id, feeRefundedAt: null },
+      data: { feeRefundedAt: new Date() },
+    });
+    if (claimed.count === 0) return false;
+    const intentId = application.feePaymentIntentId;
+    try {
+      await this.stripe?.createRefund(
+        intentId,
+        undefined,
+        'requested_by_customer',
+        `job-fee-refund-${intentId}`,
+      );
+    } catch (err) {
+      this.logger.error(`Erro ao devolver a taxa da vaga ${intentId}:`, err);
+      // Não devolveu: tenta de novo na próxima execução
+      await this.prisma.jobApplication.update({
+        where: { id: application.id },
+        data: { feeRefundedAt: null },
+      });
+      return false;
+    }
+    return true;
+  }
+
   private async rejectPending(openingId: number, texts: Notice) {
     const pending = await this.prisma.jobApplication.findMany({
       where: { jobOpeningId: openingId, status: 'pending' },

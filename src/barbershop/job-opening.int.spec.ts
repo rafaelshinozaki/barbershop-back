@@ -137,7 +137,7 @@ describe('Vagas para freelancer (integração)', () => {
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.network.deleteMany({ where: { id: networkId } });
     await prisma.userNotification.deleteMany({
-      where: { userId: { in: [ownerId, staffId, proId, pro2Id, pro3Id] } },
+      where: { user: { email: { endsWith: `-${RUN}@test.local` } } },
     });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
     await prisma.$disconnect();
@@ -371,6 +371,102 @@ describe('Vagas para freelancer (integração)', () => {
       const free = await opening({ title: 'Vaga sem taxa' });
       const c = await paid.apply(pro2Id, free.id);
       expect((await paid.accept(ownerId, shopId, c.id)).status).toBe('filled');
+    } finally {
+      setCurrentPricing({});
+      if (keyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = keyBefore;
+    }
+  });
+
+  it('aceito que não entra: a vaga reabre e a taxa volta; conta excluída não é aceita (item 192)', async () => {
+    const intents = new Map<string, any>();
+    const refunds: string[] = [];
+    let seq = 0;
+    const stripe = {
+      createPaymentIntent: async (amount: number, _c: string, _x: unknown, opts: any) => {
+        const pi = {
+          id: `pi_job_sem_${RUN}_${++seq}`,
+          amount,
+          status: 'requires_payment_method',
+          client_secret: `secret_sem_${seq}`,
+          metadata: { ...opts.metadata },
+        };
+        intents.set(pi.id, pi);
+        return pi;
+      },
+      retrievePaymentIntent: async (id: string) => intents.get(id),
+      cancelPaymentIntent: async () => undefined,
+      createRefund: async (id: string) => void refunds.push(id),
+    };
+    const keyBefore = process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = 'sk_test_simulado';
+    const paid = new JobOpeningService(
+      prisma,
+      barbershops,
+      invites,
+      { notifyUsers: () => undefined, notify: () => undefined } as never,
+      { sendToUsers: async () => undefined } as never,
+      stripe as never,
+    );
+    try {
+      await prisma.barber.updateMany({
+        where: { barbershopId: shopId, userId: null },
+        data: { isActive: false },
+      });
+      const pro4Id = await createUser('pro-quatro-y');
+      const job = await opening({ title: 'Vaga que ninguém assumiu' });
+      const a = await paid.apply(pro4Id, job.id);
+      await paid.startAcceptPayment(ownerId, shopId, a.id);
+      const piId = (await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } }))
+        .feePaymentIntentId!;
+      intents.get(piId).status = 'succeeded';
+      expect((await paid.confirmAcceptPayment(ownerId, shopId, a.id)).opening.status).toBe(
+        'filled',
+      );
+      const { inviteId } = await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } });
+
+      // Convite ainda valendo: nada muda
+      await paid.releaseUnjoinedApplications();
+      expect((await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } })).status).toBe(
+        'accepted',
+      );
+
+      // O convite venceu sem o aceite
+      await prisma.employeeInvite.update({
+        where: { id: inviteId! },
+        data: { expiresAt: new Date(Date.now() - 60_000) },
+      });
+      expect(await paid.releaseUnjoinedApplications()).toBeGreaterThanOrEqual(1);
+      const app = await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id } });
+      expect(app.status).toBe('expired');
+      expect(app.feeRefundedAt).toBeInstanceOf(Date);
+      expect(refunds).toContain(piId);
+      expect((await prisma.jobOpening.findUniqueOrThrow({ where: { id: job.id } })).status).toBe(
+        'open',
+      );
+      const invite = await prisma.employeeInvite.findUniqueOrThrow({
+        where: { id: inviteId! },
+        include: { barber: true },
+      });
+      expect(invite.status).toBe('EXPIRED');
+      expect(invite.barber.isActive).toBe(false);
+      expect((await notificationsOf(ownerId)).map((n) => n.title)).toContain(
+        'Candidato não entrou na equipe',
+      );
+      // Uma vez só: a taxa não volta duas vezes
+      await paid.releaseUnjoinedApplications();
+      expect(refunds.filter((r) => r === piId)).toHaveLength(1);
+
+      // Conta excluída: a candidatura pendente não é aceita
+      setCurrentPricing({ jobFillFeeCents: 0 });
+      const other = await opening({ title: 'Vaga de quem saiu' });
+      const b = await paid.apply(pro2Id, other.id);
+      await prisma.user.update({ where: { id: pro2Id }, data: { deleted_at: new Date() } });
+      try {
+        await expect(paid.accept(ownerId, shopId, b.id)).rejects.toThrow('conta foi excluída');
+      } finally {
+        await prisma.user.update({ where: { id: pro2Id }, data: { deleted_at: null } });
+      }
     } finally {
       setCurrentPricing({});
       if (keyBefore === undefined) delete process.env.STRIPE_SECRET_KEY;
