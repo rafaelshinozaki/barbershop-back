@@ -2274,3 +2274,25 @@ Foram lidos o cadastro, a edição, o bloqueio e a remoção da ficha do cliente
      - A indicação do cliente (quem indicou e quem foi indicado) continua ligada à ficha anonimizada.
      
      **Fazer:** a remoção avisa o que o cliente ainda tem (pacotes ativos com o valor das sessões não usadas, pontos, taxas pendentes) e pede para resolver antes (usar, devolver ou perdoar), como já faz com os horários. Taxa pendente de ficha removida sai da lista como perdoada.
+
+### Septuagésima segunda rodada (2026-10-19): sinal marcado pela equipe
+
+Foram lidos o agendamento pela equipe (sinal sugerido pelo serviço, sinal informado e "sinal pago"), a venda e o fechamento do caixa.
+
+227. ⬜ **Equipe marca "sinal pago" de qualquer valor, e esse dinheiro nunca entra no caixa** (back: `createAppointment`, `createSale`, `closeCashSession`):
+     - Ao criar o horário pela agenda, `depositAmount` e `depositPaid` vêm da tela sem conferência: valor negativo, maior que o preço dos serviços, e qualquer cargo (barbeiro e barbeiro básico na própria agenda) marca o sinal como pago. Não fica registrado quem recebeu, quando, nem por qual forma.
+     - Na conta, o "sinal pago" é descontado do que se cobra (`depositApplied`) e entra no faturamento, mas não entra no caixa: o fechamento só conta as vendas em dinheiro pelo total cobrado. Um barbeiro marca "sinal pago R$ 80" no próprio horário, recebe tudo em dinheiro, a conta fecha em R$ 0 e o caixa não espera esses R$ 80.
+     - Os serviços do horário também vêm com `unitPrice` e `quantity` sem conferência (negativo, zero), e esse preço é a base da taxa de falta, do preço mostrado ao cliente no link e do sinal.
+     
+     **Fazer:** sinal pago à mão só da recepção para cima, com forma de pagamento, e o recebimento vira lançamento no caixa aberto (como o aluguel e a caixinha em dinheiro). O valor do sinal passa por `checkMoney` e não passa do preço. Preço e quantidade dos serviços do horário com a mesma conferência da venda.
+
+### Septuagésima terceira rodada (2026-10-19): resposta pública às avaliações
+
+Foram lidos a série de horários (criar e pular datas), o expediente do dia com horário especial, as permissões por cargo do backoffice e a resposta da unidade às avaliações (responder, avisar o cliente, denunciar, moderar).
+
+228. ⬜ **A resposta pública da unidade a uma avaliação não tem como ser denunciada nem moderada** (back: `ReviewManagementService.reply`, `moderate`; `ModerationService` e `REPORT_TARGETS`):
+     - Dono e gerente respondem a avaliação e o texto aparece na página da unidade, sem filtro além do tamanho. A moderação de avaliações da unidade só existe para a denúncia que a própria unidade faz contra o comentário do cliente.
+     - A denúncia pública (`REPORT_TARGETS`: foto, avaliação do profissional, perfil e unidade inteira) não tem a avaliação da unidade nem a resposta dela. O cliente que é ofendido na resposta, ou tem o telefone ou outro dado pessoal exposto nela, só consegue denunciar a unidade inteira ou abrir um pedido no suporte, e a moderação não tem como ocultar só a resposta.
+     - A unidade também pode denunciar de novo, sem limite, a avaliação que a moderação já decidiu manter.
+     
+     **Fazer:** denúncia pública da avaliação da unidade com a resposta (alvo novo na moderação), e na moderação a opção de ocultar só a resposta. Avaliação que a moderação manteve não volta para a fila pela mesma unidade, a não ser que o comentário mude.
