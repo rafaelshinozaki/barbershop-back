@@ -332,6 +332,13 @@ function checkMoney(label: string, value: number | null | undefined, currency?: 
 }
 /** Duração do serviço: de 1 minuto a 12 horas, em minutos inteiros */
 export const SERVICE_DURATION_MESSAGE = 'A duração do serviço vai de 1 minuto a 12 horas.';
+export const APPOINTMENT_DEPOSIT_MESSAGE =
+  'O sinal não pode ser maior que o preço dos serviços do horário.';
+export const DEPOSIT_RECEPTION_MESSAGE =
+  'O sinal recebido à mão é marcado pela recepção para cima.';
+export const DEPOSIT_METHOD_MESSAGE = 'Informe a forma em que o sinal foi recebido.';
+export const DEPOSIT_CASH_CLOSED_MESSAGE =
+  'Esse sinal entrou num caixa que já foi fechado e não pode mais ser desmarcado.';
 export const SERVICE_DEPOSIT_MESSAGE = 'O sinal não pode ser maior que o preço do serviço.';
 export const STOCK_MOVEMENT_MESSAGE = 'Tipo de movimentação de estoque inválido.';
 export const STOCK_QUANTITY_MESSAGE = 'Informe uma quantidade diferente de zero.';
@@ -4201,6 +4208,8 @@ export class BarbershopService {
       source?: string;
       depositAmount?: number;
       depositPaid?: boolean;
+      /** Forma do sinal recebido à mão (obrigatória com depositPaid) */
+      depositPaymentMethod?: string;
       services: Array<{ serviceId: number; quantity?: number; unitPrice: number }>;
       /** Agendamento recorrente (ver AppointmentSeriesService) */
       seriesId?: string;
@@ -4232,7 +4241,17 @@ export class BarbershopService {
       barbershopId,
       data.services.map((s) => s.serviceId),
     );
-    const { services, depositAmount, depositPaid, ...appointmentData } = data;
+    const { services, depositAmount, depositPaid, depositPaymentMethod, ...appointmentData } = data;
+    // Preço e quantidade com a mesma conferência da venda: é a base da taxa
+    // de falta, do preço no link do cliente e do sinal
+    for (const s of services) {
+      checkMoney('Preço do serviço', s.unitPrice, barbershop.currency);
+      const qty = s.quantity ?? 1;
+      if (!Number.isInteger(qty) || qty < 1 || qty > 1000) {
+        throw new BadRequestException('Quantidade inválida');
+      }
+    }
+    checkMoney('Sinal', depositAmount, barbershop.currency);
     // Se nenhum valor de sinal foi informado, usa o sugerido no primeiro
     // serviço (se essa unidade configurou um) — evita a equipe ter que
     // lembrar de repetir o valor toda vez.
@@ -4243,6 +4262,15 @@ export class BarbershopService {
       });
       resolvedDeposit = svc?.depositAmount ? Number(svc.depositAmount) : undefined;
     }
+    const servicesTotal = services.reduce((sum, s) => sum + s.unitPrice * (s.quantity ?? 1), 0);
+    if (resolvedDeposit != null && resolvedDeposit > servicesTotal + 0.005) {
+      throw new BadRequestException(APPOINTMENT_DEPOSIT_MESSAGE);
+    }
+    // Sinal pago à mão: da recepção para cima, com a forma, e o dinheiro
+    // entra no caixa aberto (antes qualquer cargo marcava e ele não entrava)
+    const manualDeposit = depositPaid
+      ? await this.manualDepositReceipt(userId, barbershop, depositPaymentMethod)
+      : null;
     const created = await this.prisma.$transaction(async (tx) => {
       // Checagem de conflito e gravação sob a mesma trava (ver lockSchedule)
       await this.lockSchedule(tx, data.barberId, data.resourceId);
@@ -4272,6 +4300,7 @@ export class BarbershopService {
           source: appointmentData.source ?? 'PHONE',
           depositAmount: resolvedDeposit != null ? new Decimal(resolvedDeposit) : null,
           depositPaid: depositPaid ?? false,
+          ...(manualDeposit ?? {}),
         },
       });
       await tx.appointmentService.createMany({
@@ -5017,11 +5046,42 @@ export class BarbershopService {
     return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
+  /**
+   * Recebimento do sinal à mão: recepção para cima, forma de pagamento
+   * válida; em dinheiro, entra no caixa aberto (conta no fechamento)
+   */
+  private async manualDepositReceipt(
+    userId: number,
+    barbershop: { id: number; accessLevel: AccessLevel },
+    method: string | null | undefined,
+  ) {
+    if (ACCESS_RANK[barbershop.accessLevel] < ACCESS_RANK.reception) {
+      throw new ForbiddenException(DEPOSIT_RECEPTION_MESSAGE);
+    }
+    if (!method || !SALE_PAYMENT_METHODS.includes(method)) {
+      throw new BadRequestException(DEPOSIT_METHOD_MESSAGE);
+    }
+    const session =
+      method === 'CASH'
+        ? await this.prisma.cashSession.findFirst({
+            where: { barbershopId: barbershop.id, status: 'OPEN' },
+            select: { id: true },
+          })
+        : null;
+    return {
+      depositManualMethod: method,
+      depositReceivedAt: new Date(),
+      depositReceivedByUserId: userId,
+      depositCashSessionId: session?.id ?? null,
+    };
+  }
+
   async setAppointmentDepositPaid(
     userId: number,
     barbershopId: number,
     appointmentId: number,
     depositPaid: boolean,
+    paymentMethod?: string | null,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     const appointment = await this.prisma.appointment.findFirst({
@@ -5035,9 +5095,34 @@ export class BarbershopService {
         'Sinal pago online: use "Estornar sinal" pra devolver ao cliente.',
       );
     }
+    if (depositPaid === appointment.depositPaid) return appointment;
+    if (depositPaid) {
+      const receipt = await this.manualDepositReceipt(userId, barbershop, paymentMethod);
+      return this.prisma.appointment.update({
+        where: { id: appointmentId },
+        data: { depositPaid: true, ...receipt },
+      });
+    }
+    // Desmarcar: da recepção para cima, e só se o caixa em que entrou está aberto
+    if (ACCESS_RANK[barbershop.accessLevel] < ACCESS_RANK.reception) {
+      throw new ForbiddenException(DEPOSIT_RECEPTION_MESSAGE);
+    }
+    if (appointment.depositCashSessionId != null) {
+      const session = await this.prisma.cashSession.findUnique({
+        where: { id: appointment.depositCashSessionId },
+        select: { status: true },
+      });
+      if (session?.status !== 'OPEN') throw new BadRequestException(DEPOSIT_CASH_CLOSED_MESSAGE);
+    }
     return this.prisma.appointment.update({
       where: { id: appointmentId },
-      data: { depositPaid },
+      data: {
+        depositPaid: false,
+        depositManualMethod: null,
+        depositReceivedAt: null,
+        depositReceivedByUserId: null,
+        depositCashSessionId: null,
+      },
     });
   }
 
@@ -10295,7 +10380,7 @@ export class BarbershopService {
     if (!session) {
       throw new NotFoundException('Nenhum caixa aberto para esta unidade');
     }
-    const [cashSales, cashExpenses, cashRent, cashTips] = await Promise.all([
+    const [cashSales, cashExpenses, cashRent, cashTips, cashDeposits] = await Promise.all([
       this.prisma.sale.aggregate({
         where: {
           cashSessionId: session.id,
@@ -10318,12 +10403,18 @@ export class BarbershopService {
         where: { cashSessionId: session.id, method: 'CASH' },
         _sum: { amount: true },
       }),
+      // Sinal recebido em dinheiro pela equipe (a conta depois desconta ele)
+      this.prisma.appointment.aggregate({
+        where: { depositCashSessionId: session.id, depositPaid: true, depositManualMethod: 'CASH' },
+        _sum: { depositAmount: true },
+      }),
     ]);
     const openingBalance = Number(session.openingBalance);
     const cashIn =
       Number(cashSales._sum.total ?? 0) +
       Number(cashRent._sum.amount ?? 0) +
-      Number(cashTips._sum.amount ?? 0);
+      Number(cashTips._sum.amount ?? 0) +
+      Number(cashDeposits._sum.depositAmount ?? 0);
     const cashOut = Number(cashExpenses._sum.amount ?? 0);
     const expectedBalance = openingBalance + cashIn - cashOut;
     const difference = data.countedBalance - expectedBalance;

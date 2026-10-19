@@ -2339,12 +2339,14 @@ Foram lidos o cadastro, a edição, o bloqueio e a remoção da ficha do cliente
 
 Foram lidos o agendamento pela equipe (sinal sugerido pelo serviço, sinal informado e "sinal pago"), a venda e o fechamento do caixa.
 
-227. ⬜ **Equipe marca "sinal pago" de qualquer valor, e esse dinheiro nunca entra no caixa** (back: `createAppointment`, `createSale`, `closeCashSession`):
+227. ✅ **Equipe marca "sinal pago" de qualquer valor, e esse dinheiro nunca entra no caixa** (back: `createAppointment`, `createSale`, `closeCashSession`):
      - Ao criar o horário pela agenda, `depositAmount` e `depositPaid` vêm da tela sem conferência: valor negativo, maior que o preço dos serviços, e qualquer cargo (barbeiro e barbeiro básico na própria agenda) marca o sinal como pago. Não fica registrado quem recebeu, quando, nem por qual forma.
      - Na conta, o "sinal pago" é descontado do que se cobra (`depositApplied`) e entra no faturamento, mas não entra no caixa: o fechamento só conta as vendas em dinheiro pelo total cobrado. Um barbeiro marca "sinal pago R$ 80" no próprio horário, recebe tudo em dinheiro, a conta fecha em R$ 0 e o caixa não espera esses R$ 80.
      - Os serviços do horário também vêm com `unitPrice` e `quantity` sem conferência (negativo, zero), e esse preço é a base da taxa de falta, do preço mostrado ao cliente no link e do sinal.
      
      **Fazer:** sinal pago à mão só da recepção para cima, com forma de pagamento, e o recebimento vira lançamento no caixa aberto (como o aluguel e a caixinha em dinheiro). O valor do sinal passa por `checkMoney` e não passa do preço. Preço e quantidade dos serviços do horário com a mesma conferência da venda.
+     
+     **Feito:** o sinal pago à mão (ao criar o horário ou por `setAppointmentDepositPaid`) é só da recepção para cima (`DEPOSIT_RECEPTION_ONLY`) e exige a forma (`DEPOSIT_METHOD_REQUIRED`). O horário guarda a forma, quando, quem recebeu e o caixa aberto, e o sinal em dinheiro entra no fechamento do caixa. Desmarcar é da recepção para cima e só enquanto aquele caixa está aberto (`DEPOSIT_CASH_CLOSED`). O valor do sinal passa por `checkMoney` e não passa do preço dos serviços do horário (`APPOINTMENT_DEPOSIT_TOO_HIGH`). Preço e quantidade dos serviços do horário têm a mesma conferência da venda. No front, "Marcar como recebido" pede a forma. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima terceira rodada (2026-10-19): resposta pública às avaliações
 

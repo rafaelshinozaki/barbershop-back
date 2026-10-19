@@ -21,6 +21,10 @@ import {
   SALE_APPOINTMENT_CUSTOMER_MESSAGE,
   SALE_BELOW_APPLIED_MESSAGE,
   CUSTOMER_HAS_PACKAGES_MESSAGE,
+  APPOINTMENT_DEPOSIT_MESSAGE,
+  DEPOSIT_RECEPTION_MESSAGE,
+  DEPOSIT_METHOD_MESSAGE,
+  DEPOSIT_CASH_CLOSED_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -677,6 +681,58 @@ describe('BarbershopService (integração com o banco)', () => {
       expect(sale.customerId).toBe(customer.id);
       await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
       await prisma.sale.delete({ where: { id: sale.id } });
+    });
+
+    it('sinal à mão: recepção para cima, com a forma, dentro do preço e no caixa (item 227)', async () => {
+      const make = (over: Record<string, unknown>, userId = A.ownerId) =>
+        service.createAppointment(userId, A.shopId, {
+          customerId: A.customerId,
+          barberId: A.barberId,
+          startAt: at(day, '07:00'),
+          endAt: at(day, '07:30'),
+          services: [{ serviceId: A.serviceId, unitPrice: 50 }],
+          ...over,
+        } as never);
+      await expect(make({ services: [{ serviceId: A.serviceId, unitPrice: -5 }] })).rejects.toThrow(
+        'Preço do serviço inválido',
+      );
+      await expect(
+        make({ services: [{ serviceId: A.serviceId, unitPrice: 50, quantity: 0 }] }),
+      ).rejects.toThrow('Quantidade inválida');
+      await expect(make({ depositAmount: -1 })).rejects.toThrow('Sinal inválido');
+      await expect(make({ depositAmount: 80 })).rejects.toThrow(APPOINTMENT_DEPOSIT_MESSAGE);
+      // O barbeiro não marca sinal pago, e sem a forma ninguém marca
+      await expect(
+        make({ depositAmount: 20, depositPaid: true, depositPaymentMethod: 'CASH' }, A.staffUserId),
+      ).rejects.toThrow(DEPOSIT_RECEPTION_MESSAGE);
+      await expect(make({ depositAmount: 20, depositPaid: true })).rejects.toThrow(
+        DEPOSIT_METHOD_MESSAGE,
+      );
+
+      // Em dinheiro: entra no caixa aberto e conta no fechamento
+      await prisma.cashSession.updateMany({
+        where: { barbershopId: A.shopId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      const session = await service.openCashSession(A.ownerId, A.shopId, 0);
+      const appt = await make({
+        depositAmount: 20,
+        depositPaid: true,
+        depositPaymentMethod: 'CASH',
+      });
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appt!.id } });
+      expect(row).toMatchObject({
+        depositManualMethod: 'CASH',
+        depositReceivedByUserId: A.ownerId,
+        depositCashSessionId: session.id,
+      });
+      const closed = await service.closeCashSession(A.ownerId, A.shopId, { countedBalance: 20 });
+      expect(Number(closed.expectedBalance)).toBe(20);
+      // Caixa fechado: o sinal não se desmarca mais
+      await expect(
+        service.setAppointmentDepositPaid(A.ownerId, A.shopId, appt!.id, false),
+      ).rejects.toThrow(DEPOSIT_CASH_CLOSED_MESSAGE);
+      await prisma.appointment.delete({ where: { id: appt!.id } });
     });
 
     it('cartão-presente não nasce vencido, e assinatura já cancelada não chama a Stripe', async () => {
