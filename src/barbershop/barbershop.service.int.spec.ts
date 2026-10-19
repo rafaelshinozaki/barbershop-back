@@ -20,6 +20,7 @@ import {
   CLUB_UNDO_OLD_CYCLE_MESSAGE,
   SALE_APPOINTMENT_CUSTOMER_MESSAGE,
   SALE_BELOW_APPLIED_MESSAGE,
+  CUSTOMER_HAS_PACKAGES_MESSAGE,
 } from './barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -1165,7 +1166,49 @@ describe('BarbershopService (integração com o banco)', () => {
       );
       await prisma.appointment.update({ where: { id: future.id }, data: { status: 'CANCELLED' } });
 
+      // Pacote ativo com sessões sobrando: pede para usar ou devolver antes (item 226)
+      const offer = await prisma.servicePackage.create({
+        data: {
+          barbershopId: A.shopId,
+          serviceId: A.serviceId,
+          name: 'Pacote ficha',
+          totalSessions: 3,
+          price: new Decimal(90),
+        },
+      });
+      const pkg = await prisma.clientPackage.create({
+        data: {
+          barbershopId: A.shopId,
+          customerId: c.id,
+          servicePackageId: offer.id,
+          totalSessions: 3,
+          usedSessions: 1,
+        },
+      });
+      await expect(service.deleteCustomer(A.ownerId, A.shopId, c.id)).rejects.toThrow(
+        CUSTOMER_HAS_PACKAGES_MESSAGE,
+      );
+      await prisma.clientPackage.update({ where: { id: pkg.id }, data: { status: 'COMPLETED' } });
+      // Pontos e taxa pendente não ficam presos na ficha removida
+      await prisma.customer.update({ where: { id: c.id }, data: { loyaltyPoints: 40 } });
+      const fee = await prisma.noShowFee.create({
+        data: {
+          appointmentId: future.id,
+          customerId: c.id,
+          barbershopId: A.shopId,
+          amount: new Decimal(20),
+          currency: 'BRL',
+          reason: 'NO_SHOW',
+        },
+      });
+
       await service.deleteCustomer(A.ownerId, A.shopId, c.id);
+      expect((await prisma.noShowFee.findUniqueOrThrow({ where: { id: fee.id } })).status).toBe(
+        'WAIVED',
+      );
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).loyaltyPoints).toBe(
+        0,
+      );
       const row = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
       expect(row).toMatchObject({ name: 'Cliente removido', phone: '', email: null, notes: null });
       expect(row.deletedAt).toBeInstanceOf(Date);

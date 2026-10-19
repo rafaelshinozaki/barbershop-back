@@ -98,6 +98,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'NO_SHOW_FEE_NOT_PENDING',
   'A conta do horário é do cliente do horário. Para outro cliente, registre uma venda separada.':
     'SALE_APPOINTMENT_CUSTOMER',
+  'Este cliente tem pacote ativo com sessões sobrando. Use as sessões ou devolva o valor antes de apagar a ficha.':
+    'CUSTOMER_HAS_PACKAGES',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

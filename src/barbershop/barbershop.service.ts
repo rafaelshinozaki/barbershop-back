@@ -752,6 +752,8 @@ export const PAYMENT_STATUS_INVALID_MESSAGE = 'Situação de pagamento inválida
 export const PAYMENT_METHOD_INVALID_MESSAGE = 'Forma de pagamento inválida';
 export const SALE_TYPE_LOCKED_MESSAGE =
   'O tipo e os itens desta venda não mudam. Apague e lance de novo.';
+export const CUSTOMER_HAS_PACKAGES_MESSAGE =
+  'Este cliente tem pacote ativo com sessões sobrando. Use as sessões ou devolva o valor antes de apagar a ficha.';
 export const SALE_APPOINTMENT_CUSTOMER_MESSAGE =
   'A conta do horário é do cliente do horário. Para outro cliente, registre uma venda separada.';
 export const SALE_BELOW_APPLIED_MESSAGE =
@@ -2902,6 +2904,12 @@ export class BarbershopService {
         'Este cliente tem horários marcados. Cancele os horários antes de apagar a ficha.',
       );
     }
+    // Pacote pago com sessões sobrando: some na ficha removida (ninguém acha
+    // pra usar nem devolver). Resolve antes, como os horários
+    const packages = await this.prisma.clientPackage.count({
+      where: { customerId, status: 'ACTIVE', remainderRefundedAt: null },
+    });
+    if (packages > 0) throw new BadRequestException(CUSTOMER_HAS_PACKAGES_MESSAGE);
     // Anonimiza em vez de apagar: a exclusão em cascata levava atendimentos,
     // caixinhas, pagamentos e a avaliação do profissional (registro
     // financeiro fica 5 anos; avaliação não some apagando o cliente). Saem os
@@ -2909,6 +2917,15 @@ export class BarbershopService {
     await this.prisma.$transaction([
       this.prisma.consentForm.deleteMany({ where: { customerId } }),
       this.prisma.waitlistEntry.deleteMany({ where: { customerId } }),
+      // Taxa pendente da ficha removida sai da lista como perdoada
+      this.prisma.noShowFee.updateMany({
+        where: { customerId, status: 'PENDING' },
+        data: { status: 'WAIVED' },
+      }),
+      // Indicação ainda não completada sai (a completada fica como registro)
+      this.prisma.customerReferral.deleteMany({
+        where: { completedAt: null, OR: [{ referrerId: customerId }, { referredId: customerId }] },
+      }),
       this.prisma.customer.update({
         where: { id: customerId },
         data: {
@@ -2921,6 +2938,8 @@ export class BarbershopService {
           marketingOptOut: true,
           isActive: false,
           blockedReason: null,
+          // Pontos não ficam presos numa ficha que ninguém acha
+          loyaltyPoints: 0,
           deletedAt: new Date(),
         },
       }),

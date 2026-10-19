@@ -2327,11 +2327,13 @@ Foi lido o fechamento da conta do horário (`createSale` com `appointmentId`): o
 
 Foram lidos o cadastro, a edição, o bloqueio e a remoção da ficha do cliente.
 
-226. ⬜ **Apagar a ficha some com o pacote pago, os pontos e as taxas do cliente** (back: `deleteCustomer`; continuação do item 49):
+226. ✅ **Apagar a ficha some com o pacote pago, os pontos e as taxas do cliente** (back: `deleteCustomer`; continuação do item 49):
      - Antes de anonimizar, a remoção confere só os horários marcados. O pacote de sessões ainda ativo (pago, com sessões sobrando), os pontos de fidelidade e as taxas de falta pendentes ficam presos numa ficha "Cliente removido", que some das listas: ninguém acha para usar as sessões ou devolver o valor, e a taxa pendente continua na lista de taxas com o nome "Cliente removido".
      - A indicação do cliente (quem indicou e quem foi indicado) continua ligada à ficha anonimizada.
      
      **Fazer:** a remoção avisa o que o cliente ainda tem (pacotes ativos com o valor das sessões não usadas, pontos, taxas pendentes) e pede para resolver antes (usar, devolver ou perdoar), como já faz com os horários. Taxa pendente de ficha removida sai da lista como perdoada.
+     
+     **Feito:** apagar a ficha recusa quando o cliente tem pacote ativo com sessões sobrando (`CUSTOMER_HAS_PACKAGES`: usar as sessões ou devolver o valor antes), como já fazia com os horários marcados. Na remoção, a taxa de falta pendente vira perdoada (sai da lista), os pontos de fidelidade zeram e a indicação ainda não completada (como quem indicou ou quem foi indicado) sai; a completada fica como registro. Teste em `barbershop.service.int.spec.ts`.
 
 ### Septuagésima segunda rodada (2026-10-19): sinal marcado pela equipe
 
