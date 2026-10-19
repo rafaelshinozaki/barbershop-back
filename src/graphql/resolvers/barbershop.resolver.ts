@@ -1201,12 +1201,15 @@ export class BarbershopResolver {
     @Args('id', { type: () => Int }) id: number,
     @Args('status') status: string,
     @CurrentUser() user: UserDTO,
+    // Quem vai atender, ao começar o atendimento de quem está sem profissional
+    @Args('barberId', { type: () => Int, nullable: true }) barberId?: number,
   ) {
     const result = await this.barbershopService.updateWalkInStatus(
       user.id,
       barbershopId,
       id,
       status,
+      barberId,
     );
     this.realtime.notify(barbershopId, 'WALK_IN', 'UPDATED');
     return result;

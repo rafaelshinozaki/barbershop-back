@@ -194,6 +194,8 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       { id: 'pass-waitlist-offers', repeat: { every: 5 * 60 * 1000 } },
       // Lista de espera: dia que passou ou cliente que já agendou sai da fila
       { id: 'close-stale-waitlist', repeat: { every: 60 * 60 * 1000 } },
+      // Fila por ordem de chegada: o que sobrou do dia anterior vira "não atendido"
+      { id: 'close-stale-walk-ins', repeat: { every: 60 * 60 * 1000 } },
       // Vaga: candidato aceito que não entrou na equipe libera a vaga e a taxa
       { id: 'release-unjoined-applications', repeat: { every: 60 * 60 * 1000 } },
     ]);
@@ -218,6 +220,7 @@ export class AppointmentReminderProcessor extends WorkerHost {
     if (job.name === 'enqueue-review-requests') return this.reviewRequests.enqueueDueRequests();
     if (job.name === 'pass-waitlist-offers') return this.barbershops.passExpiredWaitlistOffers();
     if (job.name === 'close-stale-waitlist') return this.barbershops.closeStaleWaitlistEntries();
+    if (job.name === 'close-stale-walk-ins') return this.barbershops.closeStaleWalkIns();
     if (job.name === 'release-unjoined-applications') {
       return this.jobs.releaseUnjoinedApplications();
     }

@@ -2419,7 +2419,7 @@ type Mutation {
   updateUserProfile(input: UpdateUserInput!): User!
   updateUserRole(role: String!, userId: Int!): User!
   updateUserSystemConfig(input: UpdateUserSystemConfigInput!): Boolean!
-  updateWalkInStatus(barbershopId: Int!, id: Int!, status: String!): WalkIn!
+  updateWalkInStatus(barberId: Int, barbershopId: Int!, id: Int!, status: String!): WalkIn!
   useSavedCardForPlan(setupIntentId: String!): UseSavedCardResponse!
   validateCoupon(amount: Float!, code: String!, planId: Int!): CouponValidationResult!
   verify2FA(input: Verify2FAInput!): User!

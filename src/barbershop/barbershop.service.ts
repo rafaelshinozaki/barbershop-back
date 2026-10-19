@@ -286,6 +286,14 @@ export const GIFT_CARD_OTHER_CURRENCY_MESSAGE =
 // Texto fixo (o catálogo de erros casa pela mensagem): acompanha WAITLIST_MAX_DAYS_AHEAD
 export const WAITLIST_DAY_RANGE_MESSAGE = 'Escolha um dia entre hoje e os próximos 60 dias';
 export const WALK_IN_OWN_QUEUE_MESSAGE = 'Seu cargo só permite pôr clientes na sua própria fila.';
+export const WALK_IN_TRANSITION_MESSAGE =
+  'Essa mudança de situação não vale para este cliente da fila.';
+
+/** Começo do dia de hoje no fuso da unidade: a fila é do dia */
+function queueDayStart(timezone: string | null | undefined, now = new Date()) {
+  const tz = safeTimeZone(timezone);
+  return zonedTimeToUtc(toZonedParts(now, tz).dateStr, 0, tz);
+}
 /** Agendamento que conta como "já tem horário" (fecha a entrada da lista) */
 const WAITLIST_BOOKED_STATUSES = ['CONFIRMED', 'PENDING_PAYMENT', 'COMPLETED'];
 
@@ -490,7 +498,13 @@ function checkSaleConsistency(data: {
   }
 }
 
-const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+// NOT_SERVED: ficou na fila de um dia que acabou (a rotina da madrugada marca)
+const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NOT_SERVED'];
+/** Para onde cada situação da fila pode ir (concluída e cancelada não voltam) */
+const WALK_IN_NEXT: Record<string, string[]> = {
+  WAITING: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['COMPLETED', 'CANCELLED', 'WAITING'],
+};
 
 /** Centavos certos (soma de float deixava 26,999999…) */
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -1476,7 +1490,14 @@ export class BarbershopService {
       ),
       opts.includeQueue
         ? this.prisma.walkIn.count({
-            where: { barbershopId: { in: shopIds }, status: 'WAITING' },
+            // Só a fila de hoje de cada unidade
+            where: {
+              status: 'WAITING',
+              OR: shops.map((shop) => ({
+                barbershopId: shop.id,
+                createdAt: { gte: queueDayStart(shop.timezone, now) },
+              })),
+            },
           })
         : Promise.resolve(0),
       this.prisma.appointment.findMany({
@@ -8719,11 +8740,7 @@ export class BarbershopService {
     const created = await this.prisma.$transaction(async (tx) => {
       // A posição sai dentro da trava: duas entradas juntas não ficam com o mesmo número
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in:${barbershopId}`}))`;
-      const maxPos = await tx.walkIn.aggregate({
-        where: { barbershopId, status: 'WAITING' },
-        _max: { queuePosition: true },
-      });
-      const queuePosition = (maxPos._max.queuePosition ?? 0) + 1;
+      const queuePosition = await this.nextQueuePosition(tx, barbershopId, barbershop.timezone);
       const walkIn = await tx.walkIn.create({
         data: {
           barbershopId,
@@ -8756,7 +8773,8 @@ export class BarbershopService {
     filters?: { status?: string; limit?: number; offset?: number },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
-    const where: any = { barbershopId };
+    // A fila é do dia (no fuso da unidade): a de ontem não fica na frente
+    const where: any = { barbershopId, createdAt: { gte: queueDayStart(barbershop.timezone) } };
     if (filters?.status) where.status = filters.status;
     const walkIns = await this.prisma.walkIn.findMany({
       where,
@@ -8769,28 +8787,86 @@ export class BarbershopService {
     return walkIns.map((w) => this.hideWalkInContact(canSee, w));
   }
 
-  async updateWalkInStatus(userId: number, barbershopId: number, walkInId: number, status: string) {
+  /** Próxima posição da fila de hoje (recomeça a cada dia); chamar dentro da trava */
+  private async nextQueuePosition(
+    tx: Prisma.TransactionClient,
+    barbershopId: number,
+    timezone: string | null | undefined,
+  ) {
+    const maxPos = await tx.walkIn.aggregate({
+      where: { barbershopId, status: 'WAITING', createdAt: { gte: queueDayStart(timezone) } },
+      _max: { queuePosition: true },
+    });
+    return (maxPos._max.queuePosition ?? 0) + 1;
+  }
+
+  async updateWalkInStatus(
+    userId: number,
+    barbershopId: number,
+    walkInId: number,
+    status: string,
+    barberId?: number | null,
+  ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     if (!WALK_IN_STATUSES.includes(status)) throw new BadRequestException('Status inválido');
     // Só a fila desta unidade (o id sozinho mexia na fila de qualquer uma)
     const walkIn = await this.prisma.walkIn.findFirst({
       where: { id: walkInId, barbershopId },
-      select: { id: true, barberId: true },
+      select: { id: true, barberId: true, status: true },
     });
     if (!walkIn) throw new NotFoundException('Cliente da fila não encontrado');
-    // Recepção para cima mexe em qualquer um. Barbeiro e básico, só na própria fila.
+    // Recepção para cima mexe em qualquer um. Barbeiro e básico, na própria
+    // fila e no cliente sem profissional (que ele pega ao começar)
     const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
-    if (ownBarberId !== null && walkIn.barberId !== ownBarberId) {
+    if (ownBarberId !== null && walkIn.barberId !== null && walkIn.barberId !== ownBarberId) {
       throw new NotFoundException('Cliente da fila não encontrado');
     }
-    const data: any = { status };
-    if (status === 'IN_PROGRESS') data.servedAt = new Date();
-    const updated = await this.prisma.walkIn.update({
-      where: { id: walkInId },
-      data,
+    if (ownBarberId !== null && barberId != null && barberId !== ownBarberId) {
+      throw new ForbiddenException(WALK_IN_OWN_QUEUE_MESSAGE);
+    }
+    if (status !== walkIn.status && !(WALK_IN_NEXT[walkIn.status] ?? []).includes(status)) {
+      throw new BadRequestException(WALK_IN_TRANSITION_MESSAGE);
+    }
+    const data: Prisma.WalkInUncheckedUpdateInput = { status };
+    if (status === 'IN_PROGRESS' && walkIn.status !== 'IN_PROGRESS') {
+      data.servedAt = new Date();
+      // Grava quem atendeu: o escolhido pela recepção, o barbeiro que pegou
+      // ou o que já estava na entrada
+      const serving = barberId ?? walkIn.barberId ?? ownBarberId;
+      if (serving != null && serving !== walkIn.barberId) {
+        await this.ensureBarberOfBarbershop(barbershopId, serving, { active: true });
+      }
+      data.barberId = serving;
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (status === 'WAITING' && walkIn.status !== 'WAITING') {
+        // Volta para a fila no fim (não com a posição antiga)
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in:${barbershopId}`}))`;
+        data.queuePosition = await this.nextQueuePosition(tx, barbershopId, barbershop.timezone);
+        data.servedAt = null;
+      }
+      return tx.walkIn.update({ where: { id: walkInId }, data });
     });
     // O telefone que a lista esconde não volta pela resposta
     return this.hideWalkInContact(await this.contactVisibility(userId, barbershop), updated);
+  }
+
+  /**
+   * Fila do dia que acabou (no fuso de cada unidade): quem ficou esperando ou
+   * em atendimento sem ninguém marcar vira "não atendido", fora das faltas
+   */
+  async closeStaleWalkIns() {
+    const closed = await this.prisma.$executeRaw`
+      UPDATE "WalkIn" w
+         SET status = 'NOT_SERVED'
+        FROM "Barbershop" b
+        LEFT JOIN pg_timezone_names t ON t.name = b.timezone
+       WHERE b.id = w."barbershopId"
+         AND w.status IN ('WAITING', 'IN_PROGRESS')
+         AND (w."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE COALESCE(t.name, 'UTC'))::date
+             < (now() AT TIME ZONE COALESCE(t.name, 'UTC'))::date`;
+    if (closed) this.logger.log(`Fila: ${closed} entrada(s) de dias anteriores fechada(s)`);
+    return { closed };
   }
 
   // ============ SERVICE HISTORY ============

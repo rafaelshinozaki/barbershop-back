@@ -86,6 +86,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'TIP_REACHED_PROFESSIONAL',
   'Essa caixinha veio de um atendimento. Apague pela caixinha do atendimento.':
     'TIP_ENTRY_FROM_APPOINTMENT',
+  'Essa mudança de situação não vale para este cliente da fila.': 'WALK_IN_TRANSITION_INVALID',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
