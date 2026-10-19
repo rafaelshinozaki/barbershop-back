@@ -342,4 +342,68 @@ describe('Agendamento recorrente (integração)', () => {
       );
     }
   });
+
+  it('cancelar daqui em diante pula o que já passou e o horário com venda', async () => {
+    const seriesId = `serie-${RUN}-passado`;
+    const make = (startAt: Date, index: number) =>
+      prisma.appointment.create({
+        data: {
+          barbershopId: shopId,
+          customerId,
+          barberId: beto,
+          startAt,
+          endAt: new Date(startAt.getTime() + 30 * 60_000),
+          seriesId,
+          seriesIndex: index,
+        },
+      });
+    const past = await make(new Date(Date.now() - 7 * 86_400_000), 0);
+    const withSale = await make(at(addDays(monday, 21), '08:00'), 1);
+    const future = await make(at(addDays(monday, 28), '08:00'), 2);
+    await prisma.sale.create({
+      data: {
+        barbershopId: shopId,
+        customerId,
+        appointmentId: withSale.id,
+        saleType: 'SERVICE',
+        subtotal: 50,
+        total: 50,
+        paymentStatus: 'PENDING',
+      },
+    });
+    await settle();
+    emails.length = 0;
+    const { cancelledCount } = await series.cancelFromHere(ownerId, shopId, past.id);
+    expect(cancelledCount).toBe(1);
+    const status = async (id: number) =>
+      (await prisma.appointment.findUniqueOrThrow({ where: { id } })).status;
+    expect(await status(past.id)).toBe('CONFIRMED');
+    expect(await status(withSale.id)).toBe('CONFIRMED');
+    expect(await status(future.id)).toBe('CANCELLED');
+    // Clicou num horário passado: o aviso dos futuros sai mesmo assim
+    await until(() => emails.some((e) => e.template === 'appointment_cancelled'));
+    await prisma.sale.deleteMany({ where: { appointmentId: withSale.id } });
+  });
+
+  it('barbeira vê só as próprias folgas; motivo de doença só pra ela e pra gestão', async () => {
+    const off = (barberId: number) =>
+      prisma.barberTimeOff.create({
+        data: {
+          barberId,
+          startAt: at(addDays(monday, 35), '00:00'),
+          endAt: at(addDays(monday, 36), '00:00'),
+          reason: 'SICK',
+        },
+      });
+    await off(ana);
+    await off(beto);
+    await expect(barbershops.getBarberTimeOffsByBarber(staffUserId, beto)).rejects.toThrow(
+      'Profissional não encontrado',
+    );
+    const mine = await barbershops.getBarberTimeOffsByBarber(staffUserId, ana);
+    expect(mine.map((t) => t.reason)).toEqual(['SICK']);
+    const owner = await barbershops.getBarberTimeOffsByBarber(ownerId, beto);
+    expect(owner.map((t) => t.reason)).toEqual(['SICK']);
+    await prisma.barberTimeOff.deleteMany({ where: { barberId: { in: [ana, beto] } } });
+  });
 });

@@ -2086,25 +2086,31 @@ Foram lidas as regras de comissão (criar, editar e apagar), o cálculo da comis
 
 Foram lidas a escala da equipe (a tela da semana e as mutações antigas de um dia), as folgas e as checagens de conflito entre unidades.
 
-203. ⬜ **A escala da semana não confere conflito com outra unidade** (back: `setWeeklySchedule` em `schedule.service.ts`, usada pela tela da semana; `createBarberSchedule`, `updateBarberSchedule`):
+203. ✅ **A escala da semana não confere conflito com outra unidade** (back: `setWeeklySchedule` em `schedule.service.ts`, usada pela tela da semana; `createBarberSchedule`, `updateBarberSchedule`):
      - A mesma pessoa atendendo em duas unidades não pode ter escala sobreposta (horizonte "Identidade `Professional` + agenda única"). A checagem (`ensureShiftFreeAcrossShops`) só existe nas mutações antigas de um dia. A tela da semana, que é a que o front usa, grava sem conferir, e as duas unidades oferecem o mesmo horário na página pública. O dia "segue a unidade" também não é conferido contra a escala da outra.
      - As mutações antigas, ainda abertas na API, não conferem o formato da hora, início antes do fim, o dia da semana (0 a 6) nem o intervalo dentro do expediente, como a tela da semana confere. Repetir o dia dá erro 500 (chave única por profissional e dia).
      
      **Fazer:** a mesma checagem entre unidades na escala da semana, com a escala efetiva do dia (a própria ou a da unidade). As mutações antigas passam pela validação da tela da semana (ou saem da API, se nada mais usa).
-204. ⬜ **Barbeiro vê as folgas dos colegas, inclusive o motivo** (back: `getBarberTimeOffsByBarber`): a agenda do barbeiro mostra só as folgas dele (`getBarbershopTimeOffs` filtra pelo próprio profissional), mas a consulta por profissional aceita qualquer um da unidade com o acesso mais baixo. O barbeiro lê as datas e o motivo das folgas dos colegas, inclusive afastamento por doença (`SICK`), que é dado de saúde.
+     
+     **Feito:** a escala da semana confere cada dia (o horário próprio ou, no dia que segue a unidade, o horário da unidade) contra a escala própria da mesma pessoa nas outras unidades em que ela está ativa. O horário padrão da outra unidade não entra na conta: com ele, quem atende em duas unidades não conseguiria marcar escala em nenhuma das duas. As mutações antigas de um dia passam pela mesma validação da tela da semana (dia de 0 a 6, HH:MM, início antes do fim, intervalo dentro do expediente), e repetir um dia que já tem escala responde com mensagem em vez de erro 500.
+204. ✅ **Barbeiro vê as folgas dos colegas, inclusive o motivo** (back: `getBarberTimeOffsByBarber`): a agenda do barbeiro mostra só as folgas dele (`getBarbershopTimeOffs` filtra pelo próprio profissional), mas a consulta por profissional aceita qualquer um da unidade com o acesso mais baixo. O barbeiro lê as datas e o motivo das folgas dos colegas, inclusive afastamento por doença (`SICK`), que é dado de saúde.
      
      **Fazer:** barbeiro e barbeiro básico só consultam as próprias folgas. Recepção para cima vê o período de todos, e o motivo `SICK` aparece só para gerente e dono.
+     
+     **Feito:** barbeiro e barbeiro básico só consultam as próprias folgas (a do colega responde "não encontrado"). O motivo `SICK` aparece para gerente, dono e o próprio profissional; para os outros vira `OTHER`, na consulta por profissional e no fundo da agenda.
 
 ### Quinquagésima quarta rodada (2026-10-19): cancelamentos em lote
 
 Foram lidos os fechamentos da unidade (prévia, cadastro e cancelamento dos afetados), o "cancelar daqui em diante" da série e o cancelamento e a remarcação pelo link do cliente.
 
-205. ⬜ **"Cancelar daqui em diante" na série cancela e estorna horários que já passaram** (back: `cancelFromHere` em `appointment-series.service.ts`):
+205. ✅ **"Cancelar daqui em diante" na série cancela e estorna horários que já passaram** (back: `cancelFromHere` em `appointment-series.service.ts`):
      - A busca pega os horários `CONFIRMED` da série a partir do horário clicado, sem olhar se já passaram. Muitos atendimentos feitos ficam `CONFIRMED` (ninguém marca concluído). Clicar num horário antigo, ou no de hoje que já aconteceu, cancela esses atendimentos e estorna o sinal e o pago antes pelo app de serviço que já foi feito. O fechamento da unidade já evita isso ("confirmado que já começou fica").
      - O cancelamento comum recusa horário com venda ("Apague ou estorne a venda antes"). O da série (e o do fechamento) não confere: o horário fica cancelado com a venda dele no caixa.
      - O aviso ao cliente só sai se o primeiro horário cancelado é futuro. Clicando num horário passado, os futuros são cancelados sem aviso. O e-mail usado é o da ficha, não o de contato do horário (`appointmentContactEmail`), como no resto.
      
      **Fazer:** cancelar só os horários que ainda não começaram, pular os que têm venda (e dizer quantos ficaram), e avisar o cliente pelos futuros cancelados com o e-mail de contato do horário.
+     
+     **Feito:** "cancelar daqui em diante" só pega horários da série que ainda não começaram e pula os que têm venda. O aviso sai pelos cancelados mesmo quando o horário clicado já passou, para o e-mail de contato do horário (`appointmentContactEmail`).
 206. ⬜ **Fechamento que cancela horários não atualiza a agenda nem o histórico** (back: `ClosureService.set`, `closure.resolver.ts`): com "cancelar os afetados", os horários são cancelados direto no banco. O resolver não avisa a agenda aberta (`realtime.notify`), então quem está com a agenda aberta continua vendo os horários até recarregar e pode atender ou cobrar um horário já cancelado. A notificação de atividade do cancelamento (`appointmentStatusChanged`) também não sai, ao contrário do cancelamento comum, do da série e do cliente.
      
      **Fazer:** avisar a agenda e registrar a atividade de cada horário cancelado pelo fechamento (e também quando reservas de sinal são liberadas).

@@ -1,3 +1,4 @@
+import { appointmentContactEmail } from './appointment-contact';
 import {
   BadRequestException,
   ForbiddenException,
@@ -245,12 +246,17 @@ export class AppointmentSeriesService {
     if (!appt) throw new NotFoundException('Agendamento não encontrado');
     if (!appt.seriesId) throw new BadRequestException('Este horário não faz parte de uma série');
     await this.barbershopService.ensureCanBookForBarber(userId, barbershopId, appt.barberId);
+    // Só o que ainda não começou: atendimento já feito (que ficou CONFIRMED)
+    // não é cancelado nem estornado. Horário com venda fica (o cancelamento
+    // avulso também recusa)
+    const now = new Date();
     const targets = await this.prisma.appointment.findMany({
       where: {
         seriesId: appt.seriesId,
         barbershopId,
         status: 'CONFIRMED',
-        startAt: { gte: appt.startAt },
+        startAt: { gte: appt.startAt > now ? appt.startAt : now },
+        sale: { is: null },
       },
       select: {
         id: true,
@@ -258,6 +264,8 @@ export class AppointmentSeriesService {
         barberId: true,
         depositPaid: true,
         depositPaidAt: true,
+        contactEmail: true,
+        customer: { select: { email: true } },
         services: { select: { serviceId: true } },
       },
       orderBy: { startAt: 'asc' },
@@ -297,8 +305,9 @@ export class AppointmentSeriesService {
         .refundPrepayment(t.id)
         .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${t.id}:`, err));
     }
-    const email = await this.customerEmail(appt.customerId);
-    if (email && allowed[0].startAt > new Date()) {
+    // E-mail de contato do horário (o informado no agendamento ou o da ficha)
+    const email = appointmentContactEmail(allowed[0]);
+    if (email) {
       const { timeZone, country } = await this.shop(barbershopId);
       this.barbershopService
         .notifyAppointmentCancelled(
