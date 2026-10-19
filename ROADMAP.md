@@ -2154,3 +2154,11 @@ Foram lidas a caixinha registrada à mão (registrar, apagar, a que entra no cai
      - Trocar o profissional de um atendimento concluído deixa a caixinha e o lançamento com o profissional antigo.
      
      **Fazer:** o lançamento que veio de caixinha só sai apagando a caixinha (mensagem dizendo onde). Ao trocar o profissional de um atendimento com caixinha ainda não paga, mover a caixinha e o lançamento para o novo (ou recusar a troca com aviso).
+
+### Sexagésima rodada (2026-10-19): conta do cliente
+
+Foram lidos a conta do cliente (perfil, favoritos, profissionais favoritos, busca de negócios, login social e histórico).
+
+214. ⬜ **Histórico do cliente mostra o valor na moeda da rede, não na da unidade** (back: `ClientAuthService.getHistory`): a moeda de cada linha vem da rede da ficha (`network.currency`). Desde que cada unidade tem a própria moeda (`Barbershop.currency`, itens 184 e 188), a venda feita numa unidade em pesos de uma rede em reais aparece no histórico do cliente com o símbolo do real (e a caixinha do atendimento também). A venda sem ficha cai em `BRL` fixo.
+     
+     **Fazer:** usar a moeda da unidade de cada atendimento e de cada venda (`barbershop.currency`), como o caixa, a venda e o cartão-presente já fazem.
