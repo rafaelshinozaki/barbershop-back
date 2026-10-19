@@ -2132,3 +2132,103 @@ Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, 
      - A capa, o logo, a foto dos profissionais e os posts do Instagram publicados aparecem na página pública sem botão de denúncia própria (só a unidade inteira pode ser denunciada).
      
      **Fazer:** chave única por unidade na galeria, e recusar confirmar chave que já foi usada (inclusive de foto apagada ou ocultada). Não devolver a chave do arquivo na tela, só o link. Denúncia e ocultação também para a capa, a foto dos profissionais e os posts publicados.
+
+### Quinquagésima oitava rodada (2026-10-19): convite da equipe
+
+Foram lidos o convite da equipe (criar, reenviar, validar, aceitar criando conta e aceitar com a conta que já existe) e o vínculo temporário.
+
+212. ⬜ **Gerente cria conta com o e-mail (e o documento) de outra pessoa, já como e-mail confirmado** (back: `EmployeeInviteService.acceptInvite`, `createInvite`, `getBarbers`):
+     - O gerente recebe o link do convite: a criação devolve o convite inteiro, com o token, e a lista da equipe mostra `pendingInviteToken` para a tela oferecer o link. Assim ele pode convidar qualquer e-mail que ainda não tem conta, abrir o próprio link e criar a conta com a senha que quiser.
+     - A conta nasce com `emailVerifiedAt` ("o link do convite chegou neste e-mail"), mas quem abriu não precisou receber o e-mail. O documento digitado fica gravado e passa a contar como já usado (`idDocTaken`). A dona do e-mail e do CPF não consegue se cadastrar ("Já existe uma conta com estes dados") até descobrir e recuperar a senha, e o documento continua preso.
+     - Se já existe conta com esse e-mail entrando pelo Google, a busca só olha `provider: 'local'` e a chave única é e-mail + forma de entrada: o aceite cria uma segunda conta com o mesmo e-mail, em vez de mandar entrar com a conta que já existe (a tela de validação diz que a conta existe, mas o aceite direto pela API passa).
+     
+     **Fazer:** a conta criada pelo convite não nasce com o e-mail confirmado quando o link pode ter sido compartilhado: manda o código de confirmação para o e-mail antes de liberar o acesso (ou exige o código no aceite). O documento só passa a valer como usado depois da confirmação. Conta existente com qualquer forma de entrada leva para "entrar com a sua conta".
+
+### Quinquagésima nona rodada (2026-10-19): caixinha e pagamento da equipe
+
+Foram lidas a caixinha registrada à mão (registrar, apagar, a que entra no caixa e a que vira lançamento do profissional), a caixinha pelo app e o sinal online.
+
+213. ⬜ **Apagar no pagamento da equipe a caixinha que veio do atendimento deixa a caixinha sem dono** (back: `PayrollService.deleteEntry`; `TipService.add`, `remove`):
+     - A caixinha que a unidade recebe pelo profissional (cartão, maquininha ou dinheiro deixado no balcão) vira um lançamento `TIP` no pagamento da equipe (`payEntryId`). Em "Pagamento da equipe", `deleteEntry` apaga esse lançamento como qualquer avulso: só confere se já entrou num pagamento e se o caixa está aberto. A despesa que veio de vale, pagamento ou aluguel já é protegida assim ("desfaça pela tela de origem"), a caixinha não.
+     - Depois disso a caixinha continua no atendimento e no caixa (o dinheiro entrou na gaveta), mas o profissional não recebe, a tela da caixinha mostra "não paga" para sempre, e apagar a caixinha depois não acha o lançamento.
+     - Trocar o profissional de um atendimento concluído deixa a caixinha e o lançamento com o profissional antigo.
+     
+     **Fazer:** o lançamento que veio de caixinha só sai apagando a caixinha (mensagem dizendo onde). Ao trocar o profissional de um atendimento com caixinha ainda não paga, mover a caixinha e o lançamento para o novo (ou recusar a troca com aviso).
+
+### Sexagésima rodada (2026-10-19): conta do cliente
+
+Foram lidos a conta do cliente (perfil, favoritos, profissionais favoritos, busca de negócios, login social e histórico).
+
+214. ⬜ **Histórico do cliente mostra o valor na moeda da rede, não na da unidade** (back: `ClientAuthService.getHistory`): a moeda de cada linha vem da rede da ficha (`network.currency`). Desde que cada unidade tem a própria moeda (`Barbershop.currency`, itens 184 e 188), a venda feita numa unidade em pesos de uma rede em reais aparece no histórico do cliente com o símbolo do real (e a caixinha do atendimento também). A venda sem ficha cai em `BRL` fixo.
+     
+     **Fazer:** usar a moeda da unidade de cada atendimento e de cada venda (`barbershop.currency`), como o caixa, a venda e o cartão-presente já fazem.
+
+### Sexagésima primeira rodada (2026-10-19): fila por ordem de chegada
+
+Foram lidas a fila de quem chega sem horário (entrar, listar, mudar a situação), o painel ("na fila agora") e o histórico de serviços do cliente.
+
+215. ⬜ **Barbeiro põe cliente na fila "sem profissional" e depois não consegue atender** (back: `createWalkIn`, `updateWalkInStatus`): o barbeiro pode criar a entrada da fila sem profissional ("só na própria fila, ou sem profissional"). Mas mudar a situação exige que a entrada seja dele (`walkIn.barberId !== ownBarberId`), e a entrada sem profissional não é de ninguém: o barbeiro recebe "Cliente da fila não encontrado" ao começar o atendimento. Na unidade sem recepção, ninguém além do gerente ou do dono tira esse cliente da fila. Começar o atendimento (`IN_PROGRESS`) também não grava quem atendeu.
+     
+     **Fazer:** o barbeiro pode pegar a entrada sem profissional, e começar o atendimento grava o profissional (o barbeiro que pegou ou o escolhido pela recepção). A troca de situação segue uma ordem (não volta de concluído para esperando com a posição antiga).
+216. ⬜ **A fila nunca fecha: quem ficou esperando ontem continua na frente hoje** (back: `createWalkIn`, `getWalkIns`, painel `walkInsWaiting`): não há rotina que encerre a fila do dia. Entrada que ficou `WAITING` ou `IN_PROGRESS` (o cliente foi embora, ninguém marcou) continua na fila nos dias seguintes, na frente de quem chega hoje. A posição nova é o maior número entre as que esperam, então a numeração só cresce. O painel mostra "na fila" contando essas entradas antigas.
+     
+     **Fazer:** a fila é do dia, no fuso da unidade: a lista e o painel mostram só as entradas de hoje, e uma rotina de madrugada marca as que sobraram como não atendidas (situação própria, fora das faltas de agendamento). A posição recomeça a cada dia.
+
+### Sexagésima segunda rodada (2026-10-19): cupom do plano
+
+Foram lidos os cupons do plano (validação, desconto, reserva do cupom do convite de amigo, uso registrado na ativação) e a cobrança do plano.
+
+217. ⬜ **Cupom de uso único dá desconto em várias cobranças** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `CouponsService.validateCoupon`, `claimUse`):
+     - O cupom é só conferido ao criar a cobrança (`validateCoupon`), e o uso é registrado depois do pagamento (`claimUse`). Quando o registro falha porque o cupom já foi usado (ou esgotou), a cobrança já paga ativa o plano mesmo assim e só fica um aviso no log ("já pago, o plano vale").
+     - Abrindo o checkout com o cupom em várias abas (ou guardando a cobrança criada para pagar depois), cada cobrança sai com o desconto. Pagando uma de cada vez, o usuário compra vários períodos com desconto, ou 100% grátis no caso do mês grátis com valor acima do mínimo da Stripe, com um cupom de uso único. O cupom público com limite de usos também passa do limite.
+     - Na validação, o valor e o tipo do cupom não são conferidos: cupom de porcentagem negativa (erro de digitação no backoffice) aumenta o preço.
+     
+     **Fazer:** reservar o uso do cupom ao criar a cobrança (com prazo, como a reserva do sinal), e cancelar a cobrança anterior do mesmo usuário com o mesmo cupom. Na ativação, cobrança paga com cupom que não foi reservado para ela é estornada na diferença (ou recusada antes do pagamento). Porcentagem de 1 a 100 e valor fixo positivo ao criar e editar o cupom.
+
+### Sexagésima terceira rodada (2026-10-19): convidar amigos
+
+Foi lido o "Convidar amigos" (dono convida outro dono e os dois ganham 1 mês grátis): criar, listar, aceitar e os cupons.
+
+218. ⬜ **Quem convida ganha os meses grátis sozinho, com contas inventadas** (back: `FriendInviteService.createInvite`, `getSentInvites`, `acceptInvite`; `friend-invite.controller.ts`):
+     - A criação e a lista "convites enviados" devolvem a linha inteira do convite, com o `inviteToken`: quem convida tem o link de aceite sem precisar do e-mail do amigo.
+     - O aceite confere só que o e-mail da conta é o do convite e que a conta foi criada depois do convite. Não confere se esse e-mail foi confirmado (o cadastro entra sem confirmar). Basta convidar um e-mail inventado, criar a conta com ele, entrar e aceitar com o próprio link: quem convidou ganha 1 mês grátis, até 5 por dia e 12 no total, sem nenhum amigo pagar nada.
+     - O mês grátis de quem convida sai no aceite, não quando o amigo vira cliente pagante.
+     
+     **Fazer:** não devolver o token para quem convida (a tela só precisa da situação). O aceite exige o e-mail da conta confirmado. O cupom de quem convidou só sai quando o amigo paga o primeiro plano (o do amigo pode sair no aceite).
+
+### Sexagésima quarta rodada (2026-10-19): sessões e notificação no celular
+
+Foram lidos os limites do plano (profissionais e unidades, troca para plano menor), a edição da equipe, as notificações do sininho e a notificação no celular (inscrição, saída e limpeza).
+
+219. ⬜ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
+     
+     **Fazer:** ao derrubar sessões (outras sessões, troca e redefinição de senha, na equipe e no cliente), apagar as inscrições de push da conta, menos a do aparelho que pediu (o front manda o endpoint atual junto, quando houver).
+
+### Sexagésima quinta rodada (2026-10-19): exclusão da conta do dono
+
+Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da Stripe e a exclusão da conta do dono (prévia e apagamento).
+
+220. ⬜ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
+     - A prévia da exclusão da conta mostra só horários futuros, o pago pelo app e o resto do clube (`deletionImpact`). Os pacotes ativos e o valor a devolver (`activePackagesOf`), que a prévia de encerrar uma unidade já mostra (item 134), não aparecem, nem os aluguéis de cadeira em atraso.
+     - Os cartões-presente com saldo não aparecem em nenhuma das duas prévias. Na exclusão da conta, a rede é apagada em cascata e leva os cartões: o cliente que pagou o cartão perde o saldo sem aviso. Ao encerrar a última unidade da rede, o cartão continua "ativo" sem unidade onde usar.
+     
+     **Fazer:** a prévia da exclusão da conta usa a mesma soma da prévia da unidade (pacotes e aluguéis em atraso) e as duas mostram os cartões-presente com saldo, por moeda. Na exclusão, avisar por e-mail quem tem pacote ou cartão com saldo (quando há e-mail), como já é feito com os horários cancelados.
+
+### Sexagésima sexta rodada (2026-10-19): importação da planilha
+
+Foi lida a importação da planilha (clientes, serviços e horários vindos de outro sistema) e o que acontece depois com os horários importados.
+
+221. ⬜ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
+     
+     **Fazer:** a nota do cliente, a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` (e `IMPORT` que ainda não aconteceu), como o pedido de avaliação já faz.
+
+### Sexagésima sétima rodada (2026-10-19): clube de assinatura
+
+Foram lidos os planos do clube (criar, editar preço e sessões, desativar), a ligação da ficha com a conta do clube, a sessão usada na venda e a baixa direta de sessão.
+
+222. ⬜ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
+     - A baixa só soma 1 em `usedThisCycle`. Não grava quem deu a baixa, quando, nem para qual atendimento. O pacote de sessões tem esse registro (`ClientPackageUse`, com quem usou e "desfazer"), o clube não.
+     - Não existe desfazer: um clique errado tira do cliente uma sessão que ele pagou, até o próximo ciclo.
+     - A baixa aceita o acesso mais baixo (barbeiro e barbeiro básico, de qualquer cliente da unidade). A baixa do pacote exige recepção para cima.
+     
+     **Fazer:** registro de cada sessão usada do clube (quem, quando, atendimento ou venda), mostrado na ficha do cliente, com "desfazer" para a baixa feita fora de venda (devolve a sessão se o ciclo ainda é o mesmo). A baixa direta exige recepção para cima, como no pacote.
