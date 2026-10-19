@@ -2008,3 +2008,16 @@ Com o log das execuções que falharam e passaram na segunda tentativa (#282 no 
 195. ✅ **E2E de avaliações falha de novo na nova tentativa** (front: `e2e/closures-reviews.spec.ts`): quando a primeira tentativa caía no meio, o horário criado pelo teste ficava, e a nova tentativa usava o mesmo horário: "Este profissional já tem um agendamento nesse horário".
      
      **Feito:** o teste apaga os horários que sobraram do cliente fixo antes de criar o novo, como o teste da agenda já fazia.
+
+### Quadragésima nona rodada (2026-10-19): valores do catálogo
+
+Foram lidos o clube de assinatura (sessões por ciclo, cancelamento, sessão devolvida ao apagar a venda), os produtos, o estoque e o cadastro de serviços.
+
+196. ✅ **Catálogo aceita qualquer número: serviço sem duração, preço negativo, sinal maior que o preço** (back: `createService`, `updateService`, `createProduct`, `updateProduct`, `adjustInventory`, `updateInventoryItem`):
+     - Duração do serviço zero, negativa ou fracionada passava; a agenda e os horários livres usam essa duração.
+     - Preço do serviço e do produto (e o custo) podiam ser negativos ou absurdos, enquanto o resto do dinheiro do app passa por `checkMoney`.
+     - O sinal online podia ser maior que o preço do serviço (o cliente pagava de sinal mais do que o atendimento custa), inclusive baixando o preço depois.
+     - Custo zero do produto virava "sem custo" (`null`).
+     - O ajuste manual de estoque aceitava qualquer texto como tipo (inclusive `SALE`, que é o da baixa da venda) e quantidade zero; o estoque mínimo aceitava negativo.
+     
+     **Feito:** duração de 1 minuto a 12 horas, em minutos inteiros; preço, sinal, preço de venda e custo passam por `checkMoney` (sem negativo, com teto na moeda da unidade); o sinal não passa do preço que vai ficar (o novo ou o atual). Custo zero fica zero. O ajuste de estoque aceita só `PURCHASE`, `ADJUSTMENT`, `LOSS` e `TRANSFER` e quantidade diferente de zero; o mínimo não pode ser negativo. O formulário de serviço do front confere a duração máxima e o sinal acima do preço antes de enviar.
