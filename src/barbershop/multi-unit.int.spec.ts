@@ -6,7 +6,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { ScheduleService } from './schedule.service';
+import {
+  SHIFT_DAY_TAKEN_MESSAGE,
+  SHIFT_INVALID_MESSAGE,
+  BarbershopService,
+} from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -363,6 +368,42 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     ]);
     expect(inA.professionalId).toBeTruthy();
     expect(inB.professionalId).toBe(inA.professionalId);
+  });
+
+  it('a escala da semana também confere a outra unidade; dado inválido não passa', async () => {
+    const schedules = new ScheduleService(prisma, service);
+    const dow = (new Date(`${day}T12:00:00Z`).getUTCDay() + 1) % 7;
+    // Na A ele já tem 09:00–12:00 nesse dia (teste anterior)
+    await expect(
+      schedules.setWeeklySchedule(shops[1].ownerId, proInB, [
+        { dayOfWeek: dow, mode: 'CUSTOM', startTime: '10:00', endTime: '13:00' },
+      ]),
+    ).rejects.toThrow(/outra unidade/);
+    await expect(
+      service.createBarberSchedule(shops[1].ownerId, {
+        barberId: proInB,
+        dayOfWeek: (dow + 1) % 7,
+        startTime: '14:00',
+        endTime: '13:00',
+      }),
+    ).rejects.toThrow(SHIFT_INVALID_MESSAGE);
+    await expect(
+      service.createBarberSchedule(shops[1].ownerId, {
+        barberId: proInB,
+        dayOfWeek: 9,
+        startTime: '09:00',
+        endTime: '10:00',
+      }),
+    ).rejects.toThrow('Dia da semana inválido');
+    // O dia já tem escala (12:00–18:00, do teste anterior): repetir não dá erro 500
+    await expect(
+      service.createBarberSchedule(shops[1].ownerId, {
+        barberId: proInB,
+        dayOfWeek: dow,
+        startTime: '18:00',
+        endTime: '19:00',
+      }),
+    ).rejects.toThrow(SHIFT_DAY_TAKEN_MESSAGE);
   });
 
   it('o horário dele é um só: a outra unidade vê "ocupado", sem detalhes', async () => {

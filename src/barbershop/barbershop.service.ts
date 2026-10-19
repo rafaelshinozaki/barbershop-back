@@ -227,6 +227,14 @@ const MAX_DESCRIPTION = 1000;
 const PORTFOLIO_PHOTOS = 12;
 const MAX_AGENDA_ROWS = 3000;
 const TIME_OFF_REASONS = ['VACATION', 'SICK', 'PERSONAL', 'OTHER'];
+/**
+ * Afastamento por doença é dado de saúde: o motivo aparece pra gerente e dono
+ * (e pro próprio profissional); pros outros vira "Outro".
+ */
+function timeOffReasonFor(level: AccessLevel, ownOnly = false) {
+  const full = ownOnly || ACCESS_RANK[level] >= ACCESS_RANK.manager;
+  return (reason: string) => (full || reason !== 'SICK' ? reason : 'OTHER');
+}
 
 /**
  * Link de rede social da página pública: aceita o link completo ou só o
@@ -644,6 +652,32 @@ export const SALE_PAYMENT_METHODS = [
   'OTHER',
 ];
 const STAFF_PAYMENT_STATUSES = ['PENDING', 'PAID'];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+export const SHIFT_INVALID_MESSAGE =
+  'Horário da escala inválido (HH:MM, início antes do fim, intervalo dentro do expediente)';
+export const SHIFT_DAY_TAKEN_MESSAGE = 'Este dia já tem escala. Edite o dia na escala da semana.';
+/** Expediente HH:MM com início antes do fim e intervalo (os dois ou nenhum) dentro dele */
+function checkShift(
+  start: string,
+  end: string,
+  breakStart?: string | null,
+  breakEnd?: string | null,
+) {
+  const ok = (t?: string | null) => !!t && HHMM.test(t);
+  if (!ok(start) || !ok(end) || start >= end || !!breakStart !== !!breakEnd) {
+    throw new BadRequestException(SHIFT_INVALID_MESSAGE);
+  }
+  if (!breakStart || !breakEnd) return;
+  if (
+    !ok(breakStart) ||
+    !ok(breakEnd) ||
+    breakStart >= breakEnd ||
+    breakStart <= start ||
+    breakEnd >= end
+  ) {
+    throw new BadRequestException(SHIFT_INVALID_MESSAGE);
+  }
+}
 const COMMISSION_ITEM_TYPES = ['ALL', 'SERVICE', 'PRODUCT'];
 export const COMMISSION_ITEM_TYPE_INVALID_MESSAGE = 'Tipo da regra de comissão inválido';
 export const COVERED_SESSION_QUANTITY_MESSAGE =
@@ -3561,6 +3595,16 @@ export class BarbershopService {
     const barber = await this.prisma.barber.findUnique({ where: { id: input.barberId } });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     await this.ensureCanManageBarber(userId, barber.barbershopId, barber.id);
+    // As mesmas regras da escala da semana (antes passava qualquer texto)
+    if (!Number.isInteger(input.dayOfWeek) || input.dayOfWeek < 0 || input.dayOfWeek > 6) {
+      throw new BadRequestException('Dia da semana inválido');
+    }
+    checkShift(input.startTime, input.endTime, input.breakStart, input.breakEnd);
+    const taken = await this.prisma.barberSchedule.findUnique({
+      where: { barberId_dayOfWeek: { barberId: barber.id, dayOfWeek: input.dayOfWeek } },
+      select: { id: true },
+    });
+    if (taken) throw new BadRequestException(SHIFT_DAY_TAKEN_MESSAGE);
     await this.ensureShiftFreeAcrossShops(
       input.barberId,
       input.dayOfWeek,
@@ -3602,6 +3646,12 @@ export class BarbershopService {
     const endTime = data.endTime ?? schedule.endTime;
     const active = data.isActive ?? schedule.isActive;
     if (active) {
+      checkShift(
+        startTime,
+        endTime,
+        data.breakStart !== undefined ? data.breakStart : schedule.breakStart,
+        data.breakEnd !== undefined ? data.breakEnd : schedule.breakEnd,
+      );
       await this.ensureShiftFreeAcrossShops(
         schedule.barberId,
         schedule.dayOfWeek,
@@ -3683,7 +3733,12 @@ export class BarbershopService {
       orderBy: { startAt: 'asc' },
       take: 500,
     });
-    return rows.map(({ barber, ...t }) => ({ ...t, barberName: barber.name }));
+    const reason = timeOffReasonFor(barbershop.accessLevel, own !== null);
+    return rows.map(({ barber, ...t }) => ({
+      ...t,
+      reason: reason(t.reason),
+      barberName: barber.name,
+    }));
   }
 
   async deleteBarberTimeOff(userId: number, timeOffId: number) {
@@ -3722,17 +3777,24 @@ export class BarbershopService {
   ) {
     const barber = await this.prisma.barber.findUnique({ where: { id: barberId } });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
-    await this.ensureBarbershopAccess(userId, barber.barbershopId, 'basic');
+    const shop = await this.ensureBarbershopAccess(userId, barber.barbershopId, 'basic');
+    // Barbeiro e barbeiro básico: só as próprias folgas (como na agenda)
+    const own = await this.ownBarberIdIfBarber(userId, shop);
+    if (own !== null && own !== barberId) {
+      throw new NotFoundException('Profissional não encontrado');
+    }
     const where: any = { barberId };
     if (filters?.startAt || filters?.endAt) {
       where.AND = [];
       if (filters.startAt) where.AND.push({ endAt: { gte: filters.startAt } });
       if (filters.endAt) where.AND.push({ startAt: { lte: filters.endAt } });
     }
-    return this.prisma.barberTimeOff.findMany({
+    const rows = await this.prisma.barberTimeOff.findMany({
       where,
       orderBy: { startAt: 'desc' },
     });
+    const reason = timeOffReasonFor(shop.accessLevel, own !== null);
+    return rows.map((t) => ({ ...t, reason: reason(t.reason) }));
   }
 
   // ============ APPOINTMENTS ============
@@ -3886,8 +3948,13 @@ export class BarbershopService {
     return [barberId];
   }
 
-  /** Escala semanal: o mesmo turno não vale em duas unidades. */
-  private async ensureShiftFreeAcrossShops(
+  /**
+   * Escala semanal: o mesmo turno não vale em duas unidades. Compara com a
+   * escala própria da pessoa nas outras unidades em que está ativa. O horário
+   * padrão da outra unidade (dia sem escala própria) não entra: com ele, quem
+   * atende em duas unidades não conseguiria marcar escala em nenhuma.
+   */
+  async ensureShiftFreeAcrossShops(
     barberId: number,
     dayOfWeek: number,
     startTime: string,
@@ -3901,7 +3968,12 @@ export class BarbershopService {
     const others = ids.filter((id) => id !== barberId);
     if (others.length === 0) return;
     const shifts = await this.prisma.barberSchedule.findMany({
-      where: { barberId: { in: others }, dayOfWeek, isActive: true },
+      where: {
+        barberId: { in: others },
+        dayOfWeek,
+        isActive: true,
+        barber: currentEngagement(),
+      },
       select: { startTime: true, endTime: true },
     });
     if (shifts.some((shift) => shiftsOverlap(startTime, endTime, shift.startTime, shift.endTime))) {
@@ -5892,6 +5964,14 @@ export class BarbershopService {
       };
     }
 
+    return this.shopHoursOn(barbershopId, dayOfWeek);
+  }
+
+  /** Horário da unidade no dia da semana (o cadastrado ou o padrão) */
+  async shopHoursOn(
+    barbershopId: number,
+    dayOfWeek: number,
+  ): Promise<{ start: string; end: string } | null> {
     const barbershop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
       select: { businessHours: true },

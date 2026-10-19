@@ -70,6 +70,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A sessão do pacote ou do clube cobre um atendimento: uma linha do serviço, quantidade 1.':
     'COVERED_SESSION_QUANTITY',
   'Tipo da regra de comissão inválido': 'COMMISSION_ITEM_TYPE_INVALID',
+  'Horário da escala inválido (HH:MM, início antes do fim, intervalo dentro do expediente)':
+    'SHIFT_INVALID',
+  'Este dia já tem escala. Edite o dia na escala da semana.': 'SHIFT_DAY_TAKEN',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

@@ -181,6 +181,22 @@ export class ScheduleService {
         }
       }
     }
+    // A mesma pessoa em outra unidade: o expediente efetivo do dia (o próprio
+    // ou o da unidade) não pode cruzar o de lá
+    for (const d of days) {
+      if (d.mode === 'OFF') continue;
+      const window =
+        d.mode === 'CUSTOM'
+          ? { start: d.startTime as string, end: d.endTime as string }
+          : await this.barbershopService.shopHoursOn(barber.barbershopId, d.dayOfWeek);
+      if (!window) continue;
+      await this.barbershopService.ensureShiftFreeAcrossShops(
+        barberId,
+        d.dayOfWeek,
+        window.start,
+        window.end,
+      );
+    }
     // Escala ampliada pode abrir vaga para quem está na lista de espera
     await this.barbershopService.withWaitlistOpening(barber.barbershopId, { barberId }, () =>
       this.prisma.$transaction(
