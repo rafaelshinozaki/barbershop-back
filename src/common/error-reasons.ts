@@ -91,6 +91,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'COUPON_REFUSED_REFUNDED',
   'Cupom de porcentagem vai de 1 a 100, e o de valor fixo precisa de valor maior que zero.':
     'COUPON_VALUE_INVALID',
+  'Confirme seu e-mail para aceitar o convite.': 'FRIEND_INVITE_EMAIL_NOT_CONFIRMED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

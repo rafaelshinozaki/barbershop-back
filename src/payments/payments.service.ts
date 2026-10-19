@@ -14,6 +14,7 @@ import { Prisma } from '@prisma/client';
 import { StripeService } from '../stripe/stripe.service';
 import { EmailService } from '../email/email.service';
 import { CouponsService } from './coupons.service';
+import { rewardInviterOnFirstPayment } from './friend-invite.service';
 import Stripe from 'stripe';
 import { appUrl, supportEmail } from '../common/app-urls';
 import { timeZoneForOwner } from '../common/owner-timezone';
@@ -971,7 +972,9 @@ export class PaymentsService {
         where: { id: userId },
         data: { membership: MEMBERSHIP_STATUS.PAID },
       });
-      return { subscription, created: true };
+      // Primeiro plano pago de quem veio por convite: quem convidou ganha agora
+      const reward = paymentIntentId ? await rewardInviterOnFirstPayment(tx, userId) : null;
+      return { subscription, created: true, reward };
     });
 
     if (!result) {
@@ -991,6 +994,9 @@ export class PaymentsService {
       throw new BadRequestException(COUPON_REFUSED_MESSAGE);
     }
 
+    if (result.created && 'reward' in result && result.reward) {
+      await this.sendInviterReward(result.reward);
+    }
     if (result.created) {
       // O cartão usado vira o padrão: é ele que a renovação cobra
       if (paymentMethodId && user.stripeCustomerId) {
@@ -1279,6 +1285,32 @@ export class PaymentsService {
    * Renovação paga: baixa o pagamento e empurra o vencimento. Idempotente
    * (webhook e job podem chegar juntos): só quem baixa o pendente avança.
    */
+  /** E-mail de quem convidou com o cupom do mês grátis (falha não derruba o pagamento) */
+  private async sendInviterReward(
+    reward: NonNullable<Awaited<ReturnType<typeof rewardInviterOnFirstPayment>>>,
+  ) {
+    const { invite, couponCode } = reward;
+    await this.emailService
+      .sendTemplateEmail(
+        invite.inviterId,
+        'friend_invite_accepted_inviter',
+        {
+          InviterName: invite.inviter.fullName,
+          FriendName: invite.acceptedByUser?.fullName ?? '',
+          CouponCode: couponCode,
+          AppName: 'Barbershop',
+        },
+        {
+          pt: 'Seu amigo assinou! - 1 mês grátis',
+          en: 'Your friend subscribed! - 1 month free',
+          es: '¡Tu amigo se suscribió! - 1 mes gratis',
+        },
+        `Friend invite reward for invite ${invite.id}`,
+        invite.inviter.email,
+      )
+      .catch((e) => this.logger.warn(`E-mail do mês grátis do convite ${invite.id}: ${e}`));
+  }
+
   async finalizeRenewalPayment(paymentId: number) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -1303,9 +1335,11 @@ export class PaymentsService {
         where: { id: payment.subscription.userId },
         data: { membership: MEMBERSHIP_STATUS.PAID },
       });
-      return true;
+      // Primeira renovação paga depois do mês grátis do convite também conta
+      return { reward: await rewardInviterOnFirstPayment(tx, payment.subscription.userId) };
     });
     if (!done) return;
+    if (done.reward) await this.sendInviterReward(done.reward);
 
     const { user, plan } = payment.subscription;
     this.logger.log(
