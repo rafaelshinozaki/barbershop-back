@@ -2195,3 +2195,11 @@ Foi lido o "Convidar amigos" (dono convida outro dono e os dois ganham 1 mês gr
      - O mês grátis de quem convida sai no aceite, não quando o amigo vira cliente pagante.
      
      **Fazer:** não devolver o token para quem convida (a tela só precisa da situação). O aceite exige o e-mail da conta confirmado. O cupom de quem convidou só sai quando o amigo paga o primeiro plano (o do amigo pode sair no aceite).
+
+### Sexagésima quarta rodada (2026-10-19): sessões e notificação no celular
+
+Foram lidos os limites do plano (profissionais e unidades, troca para plano menor), a edição da equipe, as notificações do sininho e a notificação no celular (inscrição, saída e limpeza).
+
+219. ⬜ **Derrubar as outras sessões ou trocar a senha não desliga a notificação no celular dos outros aparelhos** (back: `AuthService.logoutOtherSessions`, `UsersService.revokeSessions` na troca e na redefinição de senha; o mesmo na área do cliente com `sessionVersion`): a sessão derrubada deixa de entrar, mas a inscrição de push do aparelho continua ligada à conta (só a saída pelo próprio aparelho, a desativação e a exclusão da conta apagam). Quem estava com a conta roubada, ou o aparelho antigo de quem trocou a senha por segurança, continua recebendo os avisos: nome do cliente que escreveu no chat, respostas do suporte, vagas e Destaque.
+     
+     **Fazer:** ao derrubar sessões (outras sessões, troca e redefinição de senha, na equipe e no cliente), apagar as inscrições de push da conta, menos a do aparelho que pediu (o front manda o endpoint atual junto, quando houver).
