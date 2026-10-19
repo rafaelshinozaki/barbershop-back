@@ -497,6 +497,9 @@ model GiftCard {
   message        String?
   isActive       Boolean   @default(true)
   expiresAt      DateTime?
+  // Moeda da unidade que vendeu (sem unidade, a da rede): só vale em
+  // unidade da mesma moeda. Vazio (antigo) = moeda da rede.
+  currency       String?
   // Venda que emitiu este cartão. Apagar essa venda cancela o cartão se
   // ninguém usou o saldo (ver deleteSale).
   saleId         Int?      @unique

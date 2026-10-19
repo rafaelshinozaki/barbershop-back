@@ -1935,17 +1935,21 @@ Foram lidos a lista de espera (entrada manual e online, aviso no cancelamento e 
 
 Foram lidos o caixa (abrir, fechar e o esperado em dinheiro: vendas, despesas, aluguel e caixinha), o pacote de sessões (validade e sessão coberta), o pedido de avaliação (nota inteira de 1 a 5, só atendimento concluído), o vale-presente, a fidelidade e a taxa de no-show, e as contas de "Resultados" e "Financeiro" do backoffice.
 
-188. ⬜ **Vale-presente, pontos e taxa fixa de no-show ignoram a moeda da unidade** (back: `GiftCard`, `createGiftCard`, `createSale`, fidelidade e `NoShowFee` na `Network`):
+188. ✅ **Vale-presente, pontos e taxa fixa de no-show ignoram a moeda da unidade** (back: `GiftCard`, `createGiftCard`, `createSale`, fidelidade e `NoShowFee` na `Network`):
      - Desde o item 184, cada unidade tem a própria moeda, e uma rede pode ter unidades em países diferentes (BR e PT, por exemplo).
      - O vale-presente é da rede e não guarda moeda. Um vale de 100 vendido em real é aceito numa unidade em euro como 100 euros, e vice-versa.
      - A fidelidade (`loyaltyPointsPerCurrencyUnit`, `loyaltyPointValue`) e a taxa fixa de no-show (`noShowFeeValue` com tipo `FIXED`) são um número só para a rede: 1 ponto por real e 1 ponto por iene não são a mesma coisa, e a taxa fixa de 30 vira 30 euros na unidade de Portugal.
      - `createGiftCard` não passa o valor por `checkMoney` (sem teto, como os outros valores de dinheiro).
      
      **Fazer:** o vale-presente grava a moeda da unidade que vendeu (sem unidade, a da rede) e só é aceito em unidade da mesma moeda (mensagem clara na consulta e na venda). Pontos ganhos e resgatados e a taxa fixa de no-show valem só nas unidades na moeda da rede; nas outras, a fidelidade e a taxa fixa ficam desligadas até haver configuração por moeda. O valor do vale passa por `checkMoney`.
-189. ⬜ **"Resultados" do backoffice: o repassado não inclui o aluguel e mistura moedas** (backoffice-back: `results.ts`, `finance.ts`):
+     
+     **Feito:** o vale-presente grava a moeda da unidade que vendeu (sem unidade, a da rede; os antigos ficam na da rede, pela migração) e só é aceito, na consulta e na venda, em unidade da mesma moeda. O valor do vale passa por `checkMoney`. Numa unidade em moeda diferente da rede, a fidelidade fica desligada (ganhar, resgatar e consultar pontos) e a taxa fixa de no-show não é gerada nem mostrada na política da página pública; a taxa em percentual continua valendo. No front, a lista de vales mostra cada um na moeda dele, e o valor do vale novo aparece na moeda da unidade que vende.
+189. ✅ **"Resultados" do backoffice: o repassado não inclui o aluguel e mistura moedas** (backoffice-back: `results.ts`, `finance.ts`):
      - `paidOut` soma `SubscriptionPayout` e `DepositPayout`, mas não o `ChairRentPayout` (repasse do aluguel, item 178). O aluguel no cartão entra no `passThrough` (dinheiro de terceiros que passou pela plataforma) e o repasse dele nunca sai: o saldo do período fica sempre maior do que é.
      - Os repasses não filtram moeda: repasse em euro é somado aos valores em real. Todo o resto do quadro já separa (`currency = 'BRL'`, com "outras moedas" à parte).
      - O `passThrough` não desconta o aluguel estornado (`refundedAmount`, item 180) e não inclui o sinal cobrado na conta da plataforma (sem Connect), que tem repasse próprio (`DepositPayout`, item 176). Entra o repasse do sinal, mas não o dinheiro que ele repassa.
      - No "Financeiro", o total do Destaque (`totalCents`, `last30Cents`) soma compras de todas as moedas e mostra tudo como real.
      
      **Fazer:** `paidOut` soma os três repasses, só das unidades em real (os outros contam em "outras moedas"). `passThrough` desconta o aluguel estornado e inclui o sinal sem Connect não estornado. O total do Destaque no "Financeiro" filtra a moeda da plataforma (e conta o resto à parte, como em "Resultados").
+     
+     **Feito:** em "Resultados", o repassado soma clube, sinal e aluguel, só das unidades em real. O dinheiro de terceiros desconta o aluguel estornado e inclui o sinal cobrado na conta da plataforma que não voltou. No "Financeiro", o total do Destaque conta só as compras em real.

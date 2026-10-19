@@ -1058,6 +1058,12 @@ export class GiftCardType {
   @Field(() => Int)
   networkId: number;
 
+  @Field({
+    nullable: true,
+    description: 'Moeda do cartão (a da unidade que vendeu); só vale em unidade da mesma moeda',
+  })
+  currency?: string;
+
   @Field()
   code: string;
 

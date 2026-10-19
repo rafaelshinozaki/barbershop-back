@@ -45,6 +45,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'SHOP_CURRENCY_LOCKED',
   'Escolha um dia entre hoje e os próximos 60 dias': 'WAITLIST_DAY_OUT_OF_RANGE',
   'Seu cargo só permite pôr clientes na sua própria fila.': 'WALK_IN_OWN_QUEUE_ONLY',
+  'Este cartão-presente foi vendido em outra moeda e não vale nesta unidade.':
+    'GIFT_CARD_OTHER_CURRENCY',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',
