@@ -2221,3 +2221,14 @@ Foi lida a importação da planilha (clientes, serviços e horários vindos de o
 221. ⬜ **Horários antigos importados da planilha viram "clientes para avaliar"** (back: `CustomerRatingService.pendingForMe`, `sendDailyDigest`, `rate`): a importação grava o histórico como `COMPLETED` com `source: 'HISTORY'`. O pedido de avaliação ao cliente já pula esses horários, mas a nota que o profissional dá ao cliente não: os atendimentos importados dos últimos 30 dias aparecem na lista de pendentes (e os que terminaram nas últimas 26 horas entram no resumo diário por e-mail), e o profissional pode dar nota de pontualidade e trato a atendimentos que nem passaram pelo app. Essa nota entra na média que as outras equipes da rede veem.
      
      **Fazer:** a nota do cliente, a lista de pendentes e o resumo diário pulam os horários com origem `HISTORY` (e `IMPORT` que ainda não aconteceu), como o pedido de avaliação já faz.
+
+### Sexagésima sétima rodada (2026-10-19): clube de assinatura
+
+Foram lidos os planos do clube (criar, editar preço e sessões, desativar), a ligação da ficha com a conta do clube, a sessão usada na venda e a baixa direta de sessão.
+
+222. ⬜ **Baixa direta de sessão do clube não deixa registro, não se desfaz e qualquer barbeiro faz** (back: `redeemClientSubscriptionSession`):
+     - A baixa só soma 1 em `usedThisCycle`. Não grava quem deu a baixa, quando, nem para qual atendimento. O pacote de sessões tem esse registro (`ClientPackageUse`, com quem usou e "desfazer"), o clube não.
+     - Não existe desfazer: um clique errado tira do cliente uma sessão que ele pagou, até o próximo ciclo.
+     - A baixa aceita o acesso mais baixo (barbeiro e barbeiro básico, de qualquer cliente da unidade). A baixa do pacote exige recepção para cima.
+     
+     **Fazer:** registro de cada sessão usada do clube (quem, quando, atendimento ou venda), mostrado na ficha do cliente, com "desfazer" para a baixa feita fora de venda (devolve a sessão se o ciclo ainda é o mesmo). A baixa direta exige recepção para cima, como no pacote.
