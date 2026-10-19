@@ -222,6 +222,11 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       futureAppointments: 0,
       onlineRefunds: [],
       clubRefunds: [],
+      activePackages: 0,
+      packageRefunds: [],
+      overdueChairRents: [],
+      giftCards: 0,
+      giftCardBalances: [],
       requiresPassword: true,
       blocked: false,
     });
@@ -346,6 +351,66 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     expect(cancelled.attachments[0].contentType).toContain('method=CANCEL');
     expect(cancelled.attachments[0].content).toContain(`UID:appointment-${appt.id}@barbershop`);
     expect(await prisma.appointment.count({ where: { id: appt.id } })).toBe(0);
+  });
+
+  it('pacotes e cartões-presente com saldo aparecem na prévia e o cliente é avisado (item 220)', async () => {
+    const owner = await createUser('saldos', ownerRoleId);
+    const { network, shop, customer } = await createBusiness(owner.id, 'saldos');
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: { email: `cli-pacote-${RUN}@test.local` },
+    });
+    const svc = await prisma.barbershopService.create({
+      data: { barbershopId: shop.id, name: 'Corte', durationMinutes: 30, price: 50 },
+    });
+    const offer = await prisma.servicePackage.create({
+      data: {
+        barbershopId: shop.id,
+        serviceId: svc.id,
+        name: '4 cortes',
+        totalSessions: 4,
+        price: 160,
+      },
+    });
+    await prisma.clientPackage.create({
+      data: {
+        barbershopId: shop.id,
+        customerId: customer.id,
+        servicePackageId: offer.id,
+        totalSessions: 4,
+        usedSessions: 1,
+      },
+    });
+    await prisma.giftCard.create({
+      data: {
+        networkId: network.id,
+        code: `GC${RUN}`,
+        initialValue: 100,
+        remainingValue: 40,
+        purchaserEmail: `cli-cartao-${RUN}@test.local`,
+      },
+    });
+
+    const preview = await service.preview(owner.id);
+    expect(preview).toMatchObject({
+      activePackages: 1,
+      packageRefunds: [{ currency: 'BRL', amount: 120 }],
+      giftCards: 1,
+      giftCardBalances: [{ currency: 'BRL', amount: 40 }],
+    });
+    // A prévia de encerrar a última unidade da rede mostra os cartões também
+    expect(await barbershopService.getBarbershopDeletionPreview(owner.id, shop.id)).toMatchObject({
+      activePackages: 1,
+      giftCards: 1,
+    });
+
+    emails.length = 0;
+    await service.deleteAccount(owner.id, { password: PASSWORD });
+    const notices = emails.filter((e) => e.meta === 'balances-before-deletion').map((e) => e.to);
+    expect(notices.sort()).toEqual([
+      `cli-cartao-${RUN}@test.local`,
+      `cli-pacote-${RUN}@test.local`,
+    ]);
   });
 
   it('funcionário: o perfil de barbeiro fica na empresa, desligado da conta', async () => {

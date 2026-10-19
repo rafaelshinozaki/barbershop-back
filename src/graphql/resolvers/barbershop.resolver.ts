@@ -138,6 +138,13 @@ export class BarbershopDeletionPreviewType {
   @Field(() => [DeletionRefundType])
   packageRefunds: DeletionRefundType[];
 
+  // Cartões-presente com saldo (só na última unidade da rede: ficam sem onde usar)
+  @Field(() => Int)
+  giftCards: number;
+
+  @Field(() => [DeletionRefundType])
+  giftCardBalances: DeletionRefundType[];
+
   @Field(() => Int)
   activeClientSubscriptions: number;
 }

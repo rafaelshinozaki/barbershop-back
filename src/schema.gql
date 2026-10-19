@@ -4,11 +4,16 @@
 
 type AccountDeletionPreviewType {
   activeClientSubscriptions: Int!
+  activePackages: Int!
   barbershops: [String!]!
   blocked: Boolean!
   clubRefunds: [DeletionRefundType!]!
   futureAppointments: Int!
+  giftCardBalances: [DeletionRefundType!]!
+  giftCards: Int!
   onlineRefunds: [DeletionRefundType!]!
+  overdueChairRents: [DeletionRefundType!]!
+  packageRefunds: [DeletionRefundType!]!
   requiresPassword: Boolean!
 }
 
@@ -572,6 +577,8 @@ type BarbershopDeletionPreviewType {
   activePackages: Int!
   clubRefunds: [DeletionRefundType!]!
   futureAppointments: Int!
+  giftCardBalances: [DeletionRefundType!]!
+  giftCards: Int!
   onlineRefunds: [DeletionRefundType!]!
   overdueChairRents: [DeletionRefundType!]!
   packageRefunds: [DeletionRefundType!]!

@@ -2263,24 +2263,135 @@ export class BarbershopService {
   /** O que a exclusão da unidade leva junto: pra mostrar antes de confirmar */
   async getBarbershopDeletionPreview(userId: number, id: number) {
     await this.ensureBarbershopAccess(userId, id, 'owner');
-    const [impact, activeClientSubscriptions, packages, overdueChairRents] = await Promise.all([
-      this.deletionImpact([id]),
-      this.prisma.clientSubscription.count({
-        where: { barbershopId: id, status: { not: 'CANCELED' } },
-      }),
-      this.activePackagesOf(id),
-      this.overdueChairRentsOf([id]),
+    const shop = await this.prisma.barbershop.findUniqueOrThrow({
+      where: { id },
+      select: { networkId: true },
+    });
+    // Última unidade da rede: os cartões-presente ficam sem onde usar
+    const others = await this.prisma.barbershop.count({
+      where: { networkId: shop.networkId, id: { not: id } },
+    });
+    const [impact, activeClientSubscriptions, packages, overdueChairRents, giftCards] =
+      await Promise.all([
+        this.deletionImpact([id]),
+        this.prisma.clientSubscription.count({
+          where: { barbershopId: id, status: { not: 'CANCELED' } },
+        }),
+        this.activePackagesOf([id]),
+        this.overdueChairRentsOf([id]),
+        this.giftCardBalancesOf(others === 0 ? [shop.networkId] : []),
+      ]);
+    return { ...impact, activeClientSubscriptions, ...packages, overdueChairRents, ...giftCards };
+  }
+
+  /** Cartões-presente com saldo das redes, por moeda (a do cartão, ou a da rede) */
+  async giftCardBalancesOf(networkIds: number[]) {
+    if (networkIds.length === 0) return { giftCards: 0, giftCardBalances: [] };
+    const cards = await this.prisma.giftCard.findMany({
+      where: {
+        networkId: { in: networkIds },
+        isActive: true,
+        remainingValue: { gt: 0 },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { remainingValue: true, currency: true, network: { select: { currency: true } } },
+    });
+    const byCurrency = new Map<string, number>();
+    for (const c of cards) {
+      const currency = c.currency || c.network.currency || 'BRL';
+      byCurrency.set(currency, round2((byCurrency.get(currency) ?? 0) + Number(c.remainingValue)));
+    }
+    return {
+      giftCards: cards.length,
+      giftCardBalances: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+    };
+  }
+
+  /**
+   * Antes de apagar a conta do dono: avisa por e-mail quem tem pacote ativo
+   * ou cartão-presente com saldo nessas unidades/redes (quando há e-mail).
+   * O cancelamento dos horários já tem o próprio aviso.
+   */
+  async notifyBalancesBeforeDeletion(barbershopIds: number[], networkIds: number[]) {
+    const [packages, cards] = await Promise.all([
+      barbershopIds.length
+        ? this.prisma.clientPackage.findMany({
+            where: { barbershopId: { in: barbershopIds }, status: 'ACTIVE' },
+            select: {
+              customer: { select: { email: true } },
+              barbershop: { select: { name: true, country: true } },
+            },
+          })
+        : [],
+      networkIds.length
+        ? this.prisma.giftCard.findMany({
+            where: { networkId: { in: networkIds }, isActive: true, remainingValue: { gt: 0 } },
+            select: {
+              purchaserEmail: true,
+              network: {
+                select: { name: true, barbershops: { select: { country: true }, take: 1 } },
+              },
+            },
+          })
+        : [],
     ]);
-    return { ...impact, activeClientSubscriptions, ...packages, overdueChairRents };
+    const notices = new Map<string, { name: string; country: string | null }>();
+    for (const p of packages) {
+      if (p.customer?.email) notices.set(p.customer.email.toLowerCase(), p.barbershop);
+    }
+    for (const c of cards) {
+      if (c.purchaserEmail) {
+        notices.set(c.purchaserEmail.toLowerCase(), {
+          name: c.network.name ?? '',
+          country: c.network.barbershops[0]?.country ?? null,
+        });
+      }
+    }
+    for (const [to, shop] of notices) {
+      const lang = langForCountry(shop.country);
+      // A mensagem do modelo é HTML: o nome entra escapado
+      const name = shop.name.replace(
+        /[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c),
+      );
+      const text = {
+        pt: {
+          subject: `${shop.name} encerrou o atendimento pelo app`,
+          message: `${name} encerrou a conta no app. O pacote de sessões ou o cartão-presente que você tem com eles não vale mais pelo app: fale direto com o estabelecimento sobre o saldo.`,
+        },
+        en: {
+          subject: `${shop.name} stopped using the app`,
+          message: `${name} closed its account on the app. Your session package or gift card with them no longer works through the app: contact the business directly about the balance.`,
+        },
+        es: {
+          subject: `${shop.name} dejó de atender por la app`,
+          message: `${name} cerró su cuenta en la app. Tu paquete de sesiones o tarjeta de regalo con ellos ya no vale por la app: habla directamente con el establecimiento sobre el saldo.`,
+        },
+      }[lang];
+      // Montado agora (enfileirado pronto): depois da exclusão não há mais a unidade
+      await this.notificationQueue
+        .email({
+          kind: 'customer',
+          loggedAgainstUserId: 0,
+          template: 'admin_notification',
+          context: { title: text.subject, message: text.message, type: 'warning' },
+          subject: text.subject,
+          meta: 'balances-before-deletion',
+          to,
+          lang,
+        })
+        .catch((err) => this.logger.warn(`Aviso de saldo antes da exclusão não saiu: ${err}`));
+    }
   }
 
   /**
    * Pacotes ativos da unidade e o que falta devolver aos clientes (sessões
    * não usadas × o que foi pago por sessão), por moeda.
    */
-  private async activePackagesOf(barbershopId: number) {
+  async activePackagesOf(barbershopIds: number[]) {
+    if (barbershopIds.length === 0) return { activePackages: 0, packageRefunds: [] };
     const packages = await this.prisma.clientPackage.findMany({
-      where: { barbershopId, status: 'ACTIVE' },
+      where: { barbershopId: { in: barbershopIds }, status: 'ACTIVE' },
       select: {
         totalSessions: true,
         usedSessions: true,
@@ -2626,7 +2737,7 @@ export class BarbershopService {
   }
 
   /** Mensalidade manual já vencida, que continua devida depois do encerramento. */
-  private async overdueChairRentsOf(barbershopIds: number[]) {
+  async overdueChairRentsOf(barbershopIds: number[]) {
     if (barbershopIds.length === 0) return [];
     const payments = await this.prisma.chairRentPayment.findMany({
       where: {

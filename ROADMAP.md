@@ -2254,11 +2254,13 @@ Foram lidos os limites do plano (profissionais e unidades, troca para plano meno
 
 Foram lidos a agenda assinável (link do calendário), o sitemap, os eventos da Stripe e a exclusão da conta do dono (prévia e apagamento).
 
-220. ⬜ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
+220. ✅ **Excluir a conta do dono apaga pacotes e cartões-presente com saldo sem mostrar nem avisar** (back: `AccountDeletionService.preview`, `erase`; `deletionImpact`, `getBarbershopDeletionPreview`):
      - A prévia da exclusão da conta mostra só horários futuros, o pago pelo app e o resto do clube (`deletionImpact`). Os pacotes ativos e o valor a devolver (`activePackagesOf`), que a prévia de encerrar uma unidade já mostra (item 134), não aparecem, nem os aluguéis de cadeira em atraso.
      - Os cartões-presente com saldo não aparecem em nenhuma das duas prévias. Na exclusão da conta, a rede é apagada em cascata e leva os cartões: o cliente que pagou o cartão perde o saldo sem aviso. Ao encerrar a última unidade da rede, o cartão continua "ativo" sem unidade onde usar.
      
      **Fazer:** a prévia da exclusão da conta usa a mesma soma da prévia da unidade (pacotes e aluguéis em atraso) e as duas mostram os cartões-presente com saldo, por moeda. Na exclusão, avisar por e-mail quem tem pacote ou cartão com saldo (quando há e-mail), como já é feito com os horários cancelados.
+     
+     **Feito:** a prévia da exclusão da conta usa a mesma soma da prévia de encerrar uma unidade: pacotes ativos com o valor a devolver (`activePackagesOf`, agora para várias unidades) e aluguéis de cadeira vencidos. As duas prévias mostram os cartões-presente com saldo, por moeda (`giftCardBalancesOf`). Na conta, isso vale para todas as redes. Na unidade, só quando é a última da rede, porque aí o cartão fica sem onde usar. Na exclusão da conta, quem tem pacote ativo (e-mail da ficha) ou cartão-presente com saldo (e-mail de quem comprou) recebe um aviso por e-mail antes de apagar (`notifyBalancesBeforeDeletion`), como os horários cancelados. O front mostra os novos campos nas duas prévias. Teste em `account-deletion.int.spec.ts`.
 
 ### Sexagésima sexta rodada (2026-10-19): importação da planilha
 
