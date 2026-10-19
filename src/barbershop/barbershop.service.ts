@@ -8039,9 +8039,10 @@ export class BarbershopService {
       createdAt: r.createdAt.toISOString(),
       // Logado: nome da conta; pelo link do e-mail: nome da ficha
       reviewerName: this.privacyName(r.clientAccount?.name ?? r.customer?.name ?? 'Cliente'),
-      reply: r.reply,
+      // Resposta ocultada pela moderação não aparece (a avaliação continua)
+      reply: r.replyHiddenAt ? null : r.reply,
       replyStale: r.replyStale,
-      repliedAt: r.repliedAt?.toISOString() ?? null,
+      repliedAt: r.replyHiddenAt ? null : r.repliedAt?.toISOString() ?? null,
     }));
   }
 

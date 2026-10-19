@@ -17,6 +17,8 @@ export const REPORT_TARGETS = [
   'professional_review',
   'professional_profile',
   'barbershop',
+  // Avaliação da unidade com a resposta dela (a moderação pode ocultar só a resposta)
+  'shop_review',
 ] as const;
 export type ReportTarget = (typeof REPORT_TARGETS)[number];
 /**
@@ -41,7 +43,7 @@ export const REPORT_REASONS = [
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
-export type ModerationAction = 'hide' | 'dismiss' | 'restore';
+export type ModerationAction = 'hide' | 'hide_reply' | 'dismiss' | 'restore';
 const MAX_DETAILS = 500;
 const QUEUE_REPORTS = 500;
 
@@ -137,6 +139,13 @@ export class ModerationService {
           select: { searchHiddenAt: true, isActive: true },
         });
         return b && b.isActive ? { hidden: b.searchHiddenAt != null } : null;
+      }
+      case 'shop_review': {
+        const r = await this.prisma.review.findUnique({
+          where: { id },
+          select: { hiddenAt: true },
+        });
+        return r ? { hidden: r.hiddenAt != null } : null;
       }
     }
   }
@@ -241,6 +250,12 @@ export class ModerationService {
         WHERE b."searchHiddenAt" IS NOT NULL
         GROUP BY b.id
         UNION ALL
+        SELECT 'shop_review', rv.id, MAX(r."createdAt")
+        FROM "Review" rv
+        JOIN "ContentReport" r ON r."targetType" = 'shop_review' AND r."targetId" = rv.id
+        WHERE rv."hiddenAt" IS NOT NULL OR rv."replyHiddenAt" IS NOT NULL
+        GROUP BY rv.id
+        UNION ALL
         SELECT 'chat_thread', t.id, MAX(r."createdAt")
         FROM "ChatThread" t
         JOIN "ContentReport" r
@@ -317,6 +332,27 @@ export class ModerationService {
           hidden: b.searchHiddenAt != null,
         };
       }
+      case 'shop_review': {
+        const r = await this.prisma.review.findUnique({
+          where: { id },
+          include: {
+            barbershop: { select: { name: true, slug: true } },
+            customer: { select: { name: true } },
+            clientAccount: { select: { name: true } },
+          },
+        });
+        if (!r) return null;
+        const reviewer = reviewerLabel(r.clientAccount?.name ?? r.customer?.name);
+        return {
+          title: `${r.barbershop.name} · ${'★'.repeat(r.rating)} · ${reviewer}`,
+          text: [r.comment, r.reply ? `Resposta da unidade: ${r.reply}` : null]
+            .filter(Boolean)
+            .join('\n'),
+          imageUrl: null,
+          link: `/u/${r.barbershop.slug}`,
+          hidden: r.hiddenAt != null || r.replyHiddenAt != null,
+        };
+      }
       case 'chat_thread': {
         const t = await this.prisma.chatThread.findUnique({
           where: { id },
@@ -360,12 +396,22 @@ export class ModerationService {
     if (!MODERATED_TARGETS.includes(targetType as ModeratedTarget)) {
       throw new BadRequestException('Tipo de conteúdo inválido');
     }
-    if (!['hide', 'dismiss', 'restore'].includes(action)) {
+    if (!['hide', 'hide_reply', 'dismiss', 'restore'].includes(action)) {
       throw new BadRequestException('Ação inválida');
     }
     const type = targetType as ModeratedTarget;
+    if (action === 'hide_reply' && type !== 'shop_review') {
+      throw new BadRequestException('Ação inválida');
+    }
     if (!(await this.summary(type, targetId))) {
       throw new NotFoundException('Conteúdo não encontrado');
+    }
+    if (action === 'hide_reply') {
+      // Só a resposta da unidade sai da página; a avaliação do cliente fica
+      await this.prisma.review.update({
+        where: { id: targetId },
+        data: { replyHiddenAt: new Date() },
+      });
     }
     if (action === 'hide' || action === 'restore') {
       await this.setHidden(type, targetId, action === 'hide' ? new Date() : null);
@@ -375,7 +421,7 @@ export class ModerationService {
       await this.prisma.contentReport.updateMany({
         where: { targetType: type, targetId, status: 'open' },
         data: {
-          status: action === 'hide' ? 'actioned' : 'dismissed',
+          status: action === 'hide' || action === 'hide_reply' ? 'actioned' : 'dismissed',
           resolvedAt: new Date(),
           resolvedByUserId: adminUserId,
         },
@@ -532,6 +578,13 @@ export class ModerationService {
         return;
       case 'barbershop':
         await this.prisma.barbershop.update({ where: { id }, data: { searchHiddenAt: at } });
+        return;
+      case 'shop_review':
+        // Restaurar volta a avaliação e a resposta
+        await this.prisma.review.update({
+          where: { id },
+          data: at ? { hiddenAt: at } : { hiddenAt: null, replyHiddenAt: null },
+        });
         return;
       case 'chat_thread':
         // "Ocultar" uma conversa é encerrá-la: fica visível, sem mensagem nova
