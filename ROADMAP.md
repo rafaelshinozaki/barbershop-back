@@ -2162,3 +2162,14 @@ Foram lidos a conta do cliente (perfil, favoritos, profissionais favoritos, busc
 214. ⬜ **Histórico do cliente mostra o valor na moeda da rede, não na da unidade** (back: `ClientAuthService.getHistory`): a moeda de cada linha vem da rede da ficha (`network.currency`). Desde que cada unidade tem a própria moeda (`Barbershop.currency`, itens 184 e 188), a venda feita numa unidade em pesos de uma rede em reais aparece no histórico do cliente com o símbolo do real (e a caixinha do atendimento também). A venda sem ficha cai em `BRL` fixo.
      
      **Fazer:** usar a moeda da unidade de cada atendimento e de cada venda (`barbershop.currency`), como o caixa, a venda e o cartão-presente já fazem.
+
+### Sexagésima primeira rodada (2026-10-19): fila por ordem de chegada
+
+Foram lidas a fila de quem chega sem horário (entrar, listar, mudar a situação), o painel ("na fila agora") e o histórico de serviços do cliente.
+
+215. ⬜ **Barbeiro põe cliente na fila "sem profissional" e depois não consegue atender** (back: `createWalkIn`, `updateWalkInStatus`): o barbeiro pode criar a entrada da fila sem profissional ("só na própria fila, ou sem profissional"). Mas mudar a situação exige que a entrada seja dele (`walkIn.barberId !== ownBarberId`), e a entrada sem profissional não é de ninguém: o barbeiro recebe "Cliente da fila não encontrado" ao começar o atendimento. Na unidade sem recepção, ninguém além do gerente ou do dono tira esse cliente da fila. Começar o atendimento (`IN_PROGRESS`) também não grava quem atendeu.
+     
+     **Fazer:** o barbeiro pode pegar a entrada sem profissional, e começar o atendimento grava o profissional (o barbeiro que pegou ou o escolhido pela recepção). A troca de situação segue uma ordem (não volta de concluído para esperando com a posição antiga).
+216. ⬜ **A fila nunca fecha: quem ficou esperando ontem continua na frente hoje** (back: `createWalkIn`, `getWalkIns`, painel `walkInsWaiting`): não há rotina que encerre a fila do dia. Entrada que ficou `WAITING` ou `IN_PROGRESS` (o cliente foi embora, ninguém marcou) continua na fila nos dias seguintes, na frente de quem chega hoje. A posição nova é o maior número entre as que esperam, então a numeração só cresce. O painel mostra "na fila" contando essas entradas antigas.
+     
+     **Fazer:** a fila é do dia, no fuso da unidade: a lista e o painel mostram só as entradas de hoje, e uma rotina de madrugada marca as que sobraram como não atendidas (situação própria, fora das faltas de agendamento). A posição recomeça a cada dia.
