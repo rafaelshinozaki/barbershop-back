@@ -2121,3 +2121,14 @@ Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do 
 210. ⬜ **O profissional sabe que estrela cada cliente deu antes de dar a nota dele** (back: `ProfessionalReviewService.mine`; front: tela de avaliações do profissional): a nota que o cliente dá ao profissional ficou fora do histórico da unidade justamente para quem atende não revidar na nota que dá ao cliente (`visitFeedback`). Mas "Minhas avaliações" mostra cada avaliação com o nome ("Carlos S."), a data e o horário do atendimento e os serviços, e a avaliação chega logo depois do atendimento. Dentro dos 30 dias para avaliar o cliente, o profissional identifica quem deu nota baixa e responde com nota baixa de pontualidade e trato.
      
      **Fazer:** avaliação às cegas: em "Minhas avaliações", a avaliação de um atendimento só aparece depois que o profissional avaliou aquele cliente ou depois que o prazo de avaliar passou. Até lá, entra só na média.
+
+### Quinquagésima sétima rodada (2026-10-19): fotos e moderação
+
+Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, ordem e remoção), a moderação de conteúdo público, a verificação de identidade (a troca de nome já tira a verificação, no app e no backoffice), o chat do atendimento e o suporte.
+
+211. ⬜ **Foto ocultada pela moderação volta para a galeria com o mesmo arquivo** (back: `BarbershopMediaService.addPhoto`, `listPhotos`, `removePhoto`; banco: `BarbershopPhoto`):
+     - A tela da galeria devolve cada foto com a chave do arquivo (`key`), inclusive a ocultada. `addPhoto` aceita qualquer chave da pasta da unidade, sem conferir se ela já está em uso. O gerente confirma de novo a chave da foto ocultada e ela volta para a página pública numa linha nova, sem `hiddenAt`.
+     - A mesma chave em duas linhas também quebra a outra: apagar uma apaga o arquivo no S3 e a outra fica com a imagem quebrada.
+     - A capa, o logo, a foto dos profissionais e os posts do Instagram publicados aparecem na página pública sem botão de denúncia própria (só a unidade inteira pode ser denunciada).
+     
+     **Fazer:** chave única por unidade na galeria, e recusar confirmar chave que já foi usada (inclusive de foto apagada ou ocultada). Não devolver a chave do arquivo na tela, só o link. Denúncia e ocultação também para a capa, a foto dos profissionais e os posts publicados.
