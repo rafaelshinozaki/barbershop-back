@@ -2096,3 +2096,17 @@ Foram lidos os fechamentos da unidade (prévia, cadastro e cancelamento dos afet
 206. ⬜ **Fechamento que cancela horários não atualiza a agenda nem o histórico** (back: `ClosureService.set`, `closure.resolver.ts`): com "cancelar os afetados", os horários são cancelados direto no banco. O resolver não avisa a agenda aberta (`realtime.notify`), então quem está com a agenda aberta continua vendo os horários até recarregar e pode atender ou cobrar um horário já cancelado. A notificação de atividade do cancelamento (`appointmentStatusChanged`) também não sai, ao contrário do cancelamento comum, do da série e do cliente.
      
      **Fazer:** avisar a agenda e registrar a atividade de cada horário cancelado pelo fechamento (e também quando reservas de sinal são liberadas).
+
+### Quinquagésima quinta rodada (2026-10-19): pagamento da equipe
+
+Foram lidos o pagamento da equipe (forma de pagamento, vales, bônus e descontos, prévia, pagar e desfazer o pagamento) e o ajuste de comissão quando muda uma venda de período já pago.
+
+207. ⬜ **Pagar um período que ainda não terminou perde a comissão do resto dele** (back: `PayrollService.pay`, `preview`; `createSale`):
+     - O período aceita fim no futuro. Pagar o mês no dia 15 grava o pagamento até o dia 31, com a comissão das vendas até o dia 15.
+     - As vendas pagas do dia 16 ao 31 caem num período já pago. Não dá para pagar de novo (`overlapping`), o período seguinte começa no dia 1º, e a venda nova não gera o ajuste de comissão (`commissionAdjustment` só roda ao editar ou apagar venda). A comissão dessas vendas nunca é paga.
+     - O fixo do período entra inteiro, mesmo o período não tendo acabado.
+     
+     **Fazer:** recusar pagamento com fim depois de hoje (no fuso da unidade), ou gravar o fim do pagamento como hoje. A prévia avisa que o período ainda não acabou.
+208. ⬜ **Gerente que também atende define e paga o próprio salário e bônus** (back: `PayrollService.setConfig`, `addEntry`, `deleteEntry`, `pay`, `undoPayout`): a regra de comissão já não deixa o gerente mexer na própria comissão ("A sua comissão é definida pelo dono", `ensureNotOwnCommission`). O pagamento da equipe não tem a mesma trava: o gerente que é profissional da unidade troca a própria forma de pagamento para fixo com qualquer valor, lança bônus para si, apaga os próprios descontos e vales, e registra o próprio pagamento.
+     
+     **Fazer:** a mesma trava da comissão em todo o pagamento da equipe: no próprio profissional, só o dono configura, lança, apaga, paga e desfaz. O gerente continua vendo o próprio extrato.
