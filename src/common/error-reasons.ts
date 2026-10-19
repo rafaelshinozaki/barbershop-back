@@ -75,6 +75,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Este dia já tem escala. Edite o dia na escala da semana.': 'SHIFT_DAY_TAKEN',
   'O seu pagamento é definido e registrado pelo dono': 'OWN_PAY_FORBIDDEN',
   'Esse período ainda não acabou. Registre o pagamento até hoje.': 'PAY_PERIOD_NOT_OVER',
+  'Essa foto já foi enviada. Envie o arquivo de novo.': 'PHOTO_KEY_USED',
   // Validação dos DTOs (class-validator)
   'Email inválido': 'INVALID_EMAIL',
   'Nome muito curto': 'NAME_TOO_SHORT',

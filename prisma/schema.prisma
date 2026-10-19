@@ -2106,6 +2106,8 @@ model BarbershopPhoto {
   hiddenAt     DateTime?
   barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
+  // Uma linha por arquivo: a foto ocultada não volta confirmada de novo
+  @@unique([barbershopId, key])
   @@index([barbershopId, position])
 }
 

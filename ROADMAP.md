@@ -2154,12 +2154,14 @@ Foram lidos o pedido de avaliação (link, envio, edição), as avaliações do 
 
 Foram lidos a galeria, a capa e a foto dos profissionais (envio, confirmação, ordem e remoção), a moderação de conteúdo público, a verificação de identidade (a troca de nome já tira a verificação, no app e no backoffice), o chat do atendimento e o suporte.
 
-211. ⬜ **Foto ocultada pela moderação volta para a galeria com o mesmo arquivo** (back: `BarbershopMediaService.addPhoto`, `listPhotos`, `removePhoto`; banco: `BarbershopPhoto`):
+211. ✅ **Foto ocultada pela moderação volta para a galeria com o mesmo arquivo** (back: `BarbershopMediaService.addPhoto`, `listPhotos`, `removePhoto`; banco: `BarbershopPhoto`):
      - A tela da galeria devolve cada foto com a chave do arquivo (`key`), inclusive a ocultada. `addPhoto` aceita qualquer chave da pasta da unidade, sem conferir se ela já está em uso. O gerente confirma de novo a chave da foto ocultada e ela volta para a página pública numa linha nova, sem `hiddenAt`.
      - A mesma chave em duas linhas também quebra a outra: apagar uma apaga o arquivo no S3 e a outra fica com a imagem quebrada.
      - A capa, o logo, a foto dos profissionais e os posts do Instagram publicados aparecem na página pública sem botão de denúncia própria (só a unidade inteira pode ser denunciada).
      
      **Fazer:** chave única por unidade na galeria, e recusar confirmar chave que já foi usada (inclusive de foto apagada ou ocultada). Não devolver a chave do arquivo na tela, só o link. Denúncia e ocultação também para a capa, a foto dos profissionais e os posts publicados.
+     
+     **Feito:** chave única por unidade na galeria (`@@unique([barbershopId, key])`; a migração junta as linhas repetidas na mais antiga, oculta se alguma estava oculta, e passa as denúncias para ela). `addPhoto` recusa a chave que já está na galeria, inclusive a da foto ocultada (`PHOTO_KEY_USED`). Apagar a foto ocultada tira o arquivo do S3 antes de responder, então a chave de uma foto apagada não traz o arquivo de volta. A tela não recebe a chave como campo (só o link de download, que é assinado). A denúncia da capa, da foto dos profissionais e dos posts publicados virou o item 229. Teste em `media.int.spec.ts`.
 
 ### Quinquagésima oitava rodada (2026-10-19): convite da equipe
 
@@ -2326,3 +2328,6 @@ Foram lidos a série de horários (criar e pular datas), o expediente do dia com
      - A unidade também pode denunciar de novo, sem limite, a avaliação que a moderação já decidiu manter.
      
      **Fazer:** denúncia pública da avaliação da unidade com a resposta (alvo novo na moderação), e na moderação a opção de ocultar só a resposta. Avaliação que a moderação manteve não volta para a fila pela mesma unidade, a não ser que o comentário mude.
+229. ⬜ **Capa, foto dos profissionais e posts publicados não têm denúncia nem ocultação próprias** (back: `ModerationService`, `REPORT_TARGETS`; front: página pública da unidade e do profissional): só a foto da galeria tem denúncia e ocultação. A capa, o logo, a foto de cada profissional e os posts do Instagram publicados aparecem na página pública e só dá para denunciar a unidade inteira. A moderação não tem como esconder só aquela imagem.
+     
+     **Fazer:** alvos novos na denúncia pública (capa, foto do profissional e post publicado), com o botão na página, e na moderação a opção de ocultar só a imagem (a unidade envia outra).

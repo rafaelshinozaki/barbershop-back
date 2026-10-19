@@ -7,6 +7,7 @@ import { BarbershopService } from './barbershop.service';
 /** Fotos na galeria da página pública */
 export const MAX_GALLERY_PHOTOS = 30;
 const MAX_CAPTION = 140;
+export const PHOTO_KEY_USED_MESSAGE = 'Essa foto já foi enviada. Envie o arquivo de novo.';
 
 /**
  * Fotos da página pública (como a galeria do Booksy): capa larga, galeria
@@ -101,9 +102,21 @@ export class BarbershopMediaService {
     if (count >= MAX_GALLERY_PHOTOS) {
       throw new BadRequestException(`A galeria tem no máximo ${MAX_GALLERY_PHOTOS} fotos`);
     }
-    const photo = await this.prisma.barbershopPhoto.create({
-      data: { barbershopId, key, caption: text, position: (last?.position ?? -1) + 1 },
-    });
+    // Cada envio tem uma chave nova: confirmar de novo a de uma foto que existe
+    // (inclusive a ocultada pela moderação) traria a foto de volta à galeria
+    if (await this.prisma.barbershopPhoto.findFirst({ where: { barbershopId, key } })) {
+      throw new BadRequestException(PHOTO_KEY_USED_MESSAGE);
+    }
+    const photo = await this.prisma.barbershopPhoto
+      .create({
+        data: { barbershopId, key, caption: text, position: (last?.position ?? -1) + 1 },
+      })
+      .catch((err: unknown) => {
+        if ((err as { code?: string }).code === 'P2002') {
+          throw new BadRequestException(PHOTO_KEY_USED_MESSAGE);
+        }
+        throw err;
+      });
     return { ...photo, hidden: false, url: await this.s3.getDownloadUrl(photo.key) };
   }
 
@@ -114,7 +127,17 @@ export class BarbershopMediaService {
     });
     if (!photo) throw new NotFoundException('Foto não encontrada');
     await this.prisma.barbershopPhoto.delete({ where: { id: photoId } });
-    this.discard(photo.key);
+    if (photo.hiddenAt) {
+      // A ocultada pela moderação sai do S3 antes de responder: confirmar a
+      // chave de novo não pode trazer o arquivo de volta
+      await this.s3
+        .deleteObject(photo.key)
+        .catch((err) =>
+          this.logger.error(`Não apagou a foto ocultada ${photo.key}: ${String(err)}`),
+        );
+    } else {
+      this.discard(photo.key);
+    }
     return true;
   }
 
