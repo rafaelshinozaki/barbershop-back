@@ -2636,3 +2636,14 @@ Foram lidos a compra do plano pelo dono (intenção de pagamento, confirmação,
      - Quem tem o id de um plano antigo (o front manda o id; `getPlanById` também devolve plano removido) compra ou troca para ele: um plano descontinuado mais barato, com os módulos e as vagas dele, volta a ser vendido sem ninguém da plataforma saber. O mesmo vale para o plano "Premium" que a importação por planilha cria sozinha (item 256).
      
      **Fazer:** compra, ativação e troca só aceitam plano com `deleted_at` nulo (o dono que já está num plano removido continua nele até trocar); `getPlanById` não devolve plano removido para quem não é da plataforma. Teste: remover um plano e tentar comprar e trocar para ele.
+
+### Octogésima nona rodada (2026-10-20): situação do horário antes da hora
+
+Foram lidos a troca de plano pelo dono (subir na hora, descer na renovação), a métrica de buscas do piloto e a edição do horário pela equipe (início, fim e situação).
+
+260. ⬜ **A equipe marca "faltou" ou "concluído" num horário que ainda não aconteceu** (back: `updateAppointment`, `recordNoShowFee`; nota do cliente e pedido de avaliação):
+     - `updateAppointment` aceita qualquer situação da lista (`STAFF_APPOINTMENT_STATUSES`) a qualquer hora, inclusive para o próprio horário do barbeiro básico (acesso `basic`, só na própria agenda). Não confere se o horário já começou.
+     - "Faltou" (`NO_SHOW`) num horário de amanhã registra a taxa de falta para o cliente (com o sinal retido descontado), conta como falta no comparecimento da ficha e na nota do cliente, e libera o horário. O cliente não recebe aviso nenhum de que o horário dele saiu da agenda.
+     - "Concluído" (`COMPLETED`) num horário futuro libera na hora o link de avaliação pela equipe (item 246) e conta como atendimento feito nos números e nos selos do profissional.
+     
+     **Fazer:** "faltou" só depois do início do horário (com uma folga de alguns minutos) e "concluído" só depois do início; antes disso, a única saída é cancelar (que avisa o cliente). Mesma regra para a série e para o horário pela lista de espera. Teste: marcar falta num horário de amanhã é recusado.
