@@ -169,12 +169,20 @@ export function parseAdminNotificationEmail(data: unknown): AdminNotificationEma
 }
 
 /**
- * A moderação (agora na API do backoffice) ocultou ou devolveu uma foto, a
- * página de uma unidade ou o perfil de um profissional: o back avisa o dono
- * (sininho e celular).
+ * A moderação (agora na API do backoffice) ocultou ou devolveu uma foto, uma
+ * imagem da página (capa, logo, foto do profissional, post), a página de uma
+ * unidade ou o perfil de um profissional: o back avisa o dono (sininho e celular).
  */
 export const MODERATION_NOTIFY_OWNER = 'moderation.notify_owner';
-const OWNER_TARGETS = ['photo', 'barbershop', 'professional_profile'] as const;
+const OWNER_TARGETS = [
+  'photo',
+  'barbershop',
+  'professional_profile',
+  'shop_cover',
+  'shop_logo',
+  'barber_photo',
+  'social_post',
+] as const;
 export type ModerationNotifyOwnerCommand = {
   targetType: (typeof OWNER_TARGETS)[number];
   targetId: number;

@@ -2123,7 +2123,9 @@ type ModerationItemType {
   reasons: [ReportReasonCountType!]!
   targetId: Int!
 
-  """photo | professional_review | professional_profile | barbershop"""
+  """
+  photo | professional_review | professional_profile | barbershop | shop_review | shop_cover | shop_logo | barber_photo | social_post | chat_thread
+  """
   targetType: String!
   text: String
   title: String!
@@ -3219,6 +3221,9 @@ type PublicPortfolioPhotoType {
 
   """Foto da galeria (pra denunciar); null nos posts"""
   photoId: Int
+
+  """Post publicado (pra denunciar); null nas fotos da galeria"""
+  postId: Int
   url: String!
 }
 

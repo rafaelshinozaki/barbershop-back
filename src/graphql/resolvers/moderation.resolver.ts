@@ -24,7 +24,10 @@ export class ReportReasonCountType {
 /** Um conteúdo denunciado na fila do admin */
 @ObjectType()
 export class ModerationItemType {
-  @Field({ description: 'photo | professional_review | professional_profile | barbershop' })
+  @Field({
+    description:
+      'photo | professional_review | professional_profile | barbershop | shop_review | shop_cover | shop_logo | barber_photo | social_post | chat_thread',
+  })
   targetType: string;
 
   @Field(() => Int)

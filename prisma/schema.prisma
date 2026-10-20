@@ -576,6 +576,9 @@ model Barbershop {
   photoKey       String?
   // Foto de capa da página pública (larga); o photoKey é o logo
   coverKey       String?
+  // Capa e logo ocultados pela moderação (denúncia); enviar outra imagem limpa
+  coverHiddenAt  DateTime?
+  logoHiddenAt   DateTime?
   timezone       String    @default("America/Sao_Paulo")
   currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
   businessHours  String?   // JSON: {"monday":{"start":"09:00","end":"18:00"},...}
@@ -1073,6 +1076,8 @@ model Barber {
   avatarUrl      String?
   // Foto enviada (S3); vale por cima do avatarUrl
   avatarKey      String?
+  // Foto ocultada pela moderação (denúncia); trocar a foto limpa
+  avatarHiddenAt DateTime?
   specialization String?
   specialties    TreatmentCategory[] @default([])
   isActive       Boolean          @default(true)
@@ -1461,6 +1466,8 @@ model SocialPost {
   facebookPostId    String?
   instagramMediaId  String?
   errorMessage      String?
+  // Post publicado ocultado da página pública pela moderação (denúncia)
+  hiddenAt          DateTime?
   barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId])
