@@ -2707,3 +2707,22 @@ Foram lidos o código novo do descadastro de campanha pelo WhatsApp (webhook da 
      - Cada resposta recebida percorre todas as fichas da plataforma com `regexp_replace(phone, ...)` (sem índice), o que pesa à medida que a base cresce.
      
      **Fazer:** para números do Brasil, as variantes incluem o celular com e sem o nono dígito (DDD + 8 ou 9 dígitos); aceitar a palavra de saída no começo ou sozinha na frase (e "PARAR"/"CANCELAR"); responder pelo WhatsApp confirmando o descadastro (dentro da janela de 24 h, sem modelo). Guardar o telefone da ficha só com os dígitos numa coluna indexada para essa busca. Teste com `from` sem o nono dígito.
+
+### Nonagésima quinta rodada (2026-10-20): publicação dos posts e país da unidade
+
+Foram lidos o reenvio e a exclusão dos posts das redes (`retryPost`, `deletePost`), a publicação pelo agendador, a ocultação de post pela moderação, o telefone do WhatsApp pelo país da unidade (`phoneForWhatsapp`, `callingCodeForCountry`) e o idioma das mensagens (`langForCountry`).
+
+266. ⬜ **Post ocultado pela moderação volta com a mesma imagem, e a publicação não tem trava nem prazo** (back: `SocialService.createPost`, `publishDuePosts`, `publishPost`, `SocialPostsProcessor`):
+     - Ocultar um post (`SocialPost.hiddenAt`) só marca aquele registro. A tela de posts devolve a `imageKey` de cada post, e `createPost` aceita qualquer chave em `social-posts/<unidade>/`: a unidade agenda um post novo com a mesma imagem, ele sai de novo no Facebook e no Instagram e volta para a página pública, sem passar pela moderação.
+     - `publishPost` lê o post como `SCHEDULED`, chama a Meta e só no fim grava o resultado. Nada marca o post como "publicando" antes: se uma execução do agendador passa de 5 minutos (cada chamada à Meta não tem prazo próprio; o padrão do Node espera até 5 minutos), a próxima execução, em outra instância, pega os mesmos posts ainda `SCHEDULED` e publica de novo. Excluir o post nesse meio-tempo apaga o registro e a imagem do S3 enquanto ele sai na rede; a gravação final falha e o post publicado fica sem registro.
+     - Posts de unidade suspensa pela plataforma ficam `SCHEDULED` (item 190). Quando a suspensão sai, todos os vencidos são publicados de uma vez na rodada seguinte, mesmo com a data de semanas ou meses atrás (promoção de uma data que já passou).
+     - Post que saiu no Facebook e falhou no Instagram fica `PUBLISHED` com o erro no aviso; `retryPost` só aceita `FAILED`, então não há como tentar só o Instagram de novo.
+     
+     **Fazer:** ao ocultar, guardar a chave da imagem como bloqueada para a unidade e recusar em `createPost`/`retryPost` (a unidade envia outra imagem). Marcar o post como `PUBLISHING` com `updateMany` condicionado a `SCHEDULED` antes de chamar a Meta (só quem mudou a linha publica), com prazo (`AbortSignal.timeout`) em cada chamada, e recusar exclusão de post `PUBLISHING`. Post vencido há mais de um tempo (ex.: 24 h) quando a suspensão sai vira `FAILED` com o motivo, para a unidade escolher reagendar. Permitir reenviar só a rede que falhou. Testes para a chave reaproveitada, duas execuções ao mesmo tempo e suspensão encerrada.
+     
+267. ⬜ **País da unidade gravado por nome deixa a unidade sem WhatsApp e com e-mails em inglês** (back: `createBarbershop`, `shopBaseUpdate`, `callingCodeForCountry`, `langForCountry`):
+     - `Barbershop.country` é texto livre: nem o cadastro nem `shopBaseUpdate` conferem se é um código ISO. A moeda e o fuso aceitam o nome do país (`countryOf` entende "Brasil", "Brazil", "Portugal"), então uma unidade com `country = 'Brasil'` parece certa na tela.
+     - O resto do código só entende o código: `callingCodeForCountry('Brasil')` devolve `null`, e `phoneForWhatsapp` então não envia nada. Lembrete de horário, aviso da lista de espera e campanha por WhatsApp deixam de sair sem nenhum aviso (a campanha grava `whatsappQueuedCount = 0`). `langForCountry('BRASIL')` cai em inglês: os e-mails e os modelos de WhatsApp da unidade vão em inglês.
+     - O app manda o código ISO, mas a API aceita qualquer texto (cadastro, edição, importação e chamadas diretas), e o `seed.ts` grava `country: 'Brazil'` em endereços.
+     
+     **Fazer:** normalizar o país para o código ISO de duas letras no cadastro e na edição (usando o mesmo `countryOf`, que já entende os nomes) e recusar o que não for um país; migração que converte os nomes já gravados. `callingCodeForCountry` e `langForCountry` passam pela mesma normalização. Teste com `country = 'Brasil'`.
