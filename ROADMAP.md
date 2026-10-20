@@ -2521,3 +2521,15 @@ Foram lidos a área do cliente (perfil, favoritos, busca de redes, login social)
      - A pessoa recebe um aviso de vaga de um pedido que não fez, e quem digitou recebe pelo e-mail o link para agendar na ficha dela.
      
      **Fazer:** telefone que já tem ficha com outro nome ou outro e-mail não reaproveita a ficha pela página pública (cria uma ficha à parte, marcada para a equipe juntar se for a mesma pessoa), ou confirma o telefone por código. O aviso vai só pelo contato que a pessoa informou ao entrar na lista.
+
+### Octogésima primeira rodada (2026-10-20): ficha alheia pela página de agendamento
+
+Foram lidos o agendamento pela página pública (achar a ficha, preencher o e-mail, indicação), a ligação da ficha com a conta do cliente e o histórico que o cliente vê na conta.
+
+250. ⬜ **Agendar pela página com o telefone de outra pessoa entrega a ficha dela para quem agendou** (back: `createPublicAppointment`, `ClientAuthService.linkVerifiedCustomers`):
+     - A ficha é achada só pelo telefone digitado. Se a ficha da pessoa ainda não tem e-mail (o comum para quem só vai ao balcão), o e-mail digitado no agendamento passa a ser o e-mail da ficha (`customer.email`, "preenchido quando ainda não tinha").
+     - Depois, quem digitou cria a conta de cliente com esse e-mail e o confirma: `linkVerifiedCustomers` liga à conta toda ficha sem conta com o mesmo e-mail. A ficha da outra pessoa entra na conta de quem agendou, que passa a ver o histórico dela (serviços, datas, profissionais, valores das vendas e caixinhas), os próximos horários (e pode cancelar e remarcar) e o que estiver ligado à conta.
+     - A partir daí, os e-mails da ficha (confirmação, lembrete, campanhas) também vão para quem agendou.
+     - O comentário do código já protege o caso da conta logada ("não é ligada à conta logada: o telefone não é confirmado"), mas o mesmo resultado sai pelo e-mail preenchido.
+     
+     **Fazer:** o e-mail digitado na página fica só no horário (`contactEmail`), sem preencher o da ficha; a ficha só ganha e-mail pela equipe ou quando o próprio cliente confirma por código. `linkVerifiedCustomers` não liga ficha cujo e-mail veio de um agendamento pela página (guardar a origem do e-mail na ficha). Teste: ficha sem e-mail, agendar com o telefone dela e outro e-mail, criar e confirmar a conta e conferir que a ficha não entra.
