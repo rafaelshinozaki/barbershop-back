@@ -2726,3 +2726,21 @@ Foram lidos o reenvio e a exclusão dos posts das redes (`retryPost`, `deletePos
      - O app manda o código ISO, mas a API aceita qualquer texto (cadastro, edição, importação e chamadas diretas), e o `seed.ts` grava `country: 'Brazil'` em endereços.
      
      **Fazer:** normalizar o país para o código ISO de duas letras no cadastro e na edição (usando o mesmo `countryOf`, que já entende os nomes) e recusar o que não for um país; migração que converte os nomes já gravados. `callingCodeForCountry` e `langForCountry` passam pela mesma normalização. Teste com `country = 'Brasil'`.
+
+### Nonagésima sexta rodada (2026-10-20): avisos do sininho e o tempo real
+
+Foram lidos a criação dos avisos em lote (`createNotificationsForUsers`), o tempo real das telas (`RealtimeResolver`, `RealtimeService`), o sitemap, o backup, a trilha do app e as boas-vindas por cargo.
+
+268. ⬜ **Segundo aviso com o mesmo título em 5 minutos some do sininho e do celular** (back: `NotificationsService.createNotificationsForUsers`, `createLocalized`):
+     - Para evitar duplicar num reenvio, o lote pula quem já recebeu um aviso com o mesmo título nos últimos 5 minutos. O título é fixo por tipo de evento, e o que muda está na mensagem. Por isso, dois eventos diferentes no mesmo intervalo viram um só.
+     - Exemplos: o dono tira duas pessoas da equipe em seguida e só recebe "Horários para remanejar" da primeira (a mensagem diz o nome e quantos horários); a moderação oculta uma foto da unidade A e outra da unidade B da mesma rede e o dono só fica sabendo da A. O mesmo vale para os outros avisos da moderação e do Destaque.
+     - A notificação no celular sai só para `sent.userIds`, então o segundo evento também não chega no celular. Nada fica registrado de que o aviso foi descartado.
+     
+     **Fazer:** deduplicar por título **e** mensagem (ou por uma chave do evento, como `tipo:id`), não só pelo título. Teste com dois avisos de mesmo título e mensagens diferentes no mesmo minuto.
+     
+269. ⬜ **Tela aberta continua recebendo avisos em tempo real depois de sair, trocar a senha ou ter a conta desativada** (back: `RealtimeResolver`, `GraphQLJwtAuthGuard`, `getMyBarbershops`):
+     - O login e a sessão (`ActiveSession`) só são conferidos quando a assinatura (WebSocket) começa. Depois disso, o filtro de `myNotificationEvents` só compara o `userId`, e o de `networkActivity` relê `getMyBarbershops`, que não olha se a conta está ativa nem se a sessão existe.
+     - Quem sai do app em outra aba, tem as sessões derrubadas (troca de senha, "derrubar sessões", backoffice) ou a conta desativada continua com o socket aberto: recebe o título de cada aviso novo e os sinais de "a agenda mudou" das unidades, até fechar a aba. O token vencido também não fecha o socket.
+     - Não há como o servidor fechar os sockets de uma pessoa quando a sessão dela acaba.
+     
+     **Fazer:** guardar o id da sessão no contexto da assinatura e, no filtro (com o cache curto que já existe), conferir se a sessão ainda existe, se a conta está ativa e se o token não venceu. Se não estiver tudo certo, encerrar a assinatura. Ao derrubar sessões, publicar um evento que fecha os sockets daquela pessoa. Teste com logout durante uma assinatura aberta.
