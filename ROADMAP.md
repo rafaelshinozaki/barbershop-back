@@ -2647,3 +2647,14 @@ Foram lidos a troca de plano pelo dono (subir na hora, descer na renovação), a
      - "Concluído" (`COMPLETED`) num horário futuro libera na hora o link de avaliação pela equipe (item 246) e conta como atendimento feito nos números e nos selos do profissional.
      
      **Fazer:** "faltou" só depois do início do horário (com uma folga de alguns minutos) e "concluído" só depois do início; antes disso, a única saída é cancelar (que avisa o cliente). Mesma regra para a série e para o horário pela lista de espera. Teste: marcar falta num horário de amanhã é recusado.
+
+### Nonagésima rodada (2026-10-20): conta de cliente suspensa e o clube
+
+Foram lidos a cobrança da conta do horário (quando dá para cobrar e o que muda no horário) e a suspensão da conta de cliente pela plataforma (o que para, o que continua e o e-mail de aviso).
+
+261. ⬜ **Cliente suspenso pela plataforma continua pagando o clube e não consegue cancelar** (back: `ClientSuspensionService.setSuspended`; `GraphQLClientJwtAuthGuard`; clube e exclusão da conta):
+     - Suspender a conta do cliente derruba as sessões e as notificações do celular e manda o e-mail com o motivo. As assinaturas do clube dessa conta continuam ativas no Stripe e cobram o cartão todo mês.
+     - Com a conta suspensa, a guarda do cliente recusa tudo: o cliente não entra para cancelar a assinatura, nem para pedir a exclusão da conta (LGPD), que também exige estar logado. O único caminho é o suporte, e o e-mail de suspensão não diz que a cobrança continua.
+     - O mesmo cliente também segue agendando pela página pública sem login, com o mesmo telefone e e-mail (a suspensão vale só para a conta).
+     
+     **Fazer:** ao suspender, a tela do backoffice mostra as assinaturas ativas e o padrão é cancelá-las no Stripe (no fim do período ou na hora, com estorno proporcional decidido pela equipe); o e-mail de suspensão diz o que aconteceu com elas. A exclusão da conta pelo cliente funciona com a conta suspensa (pelo link enviado ao e-mail). Decidir se a suspensão também bloqueia o agendamento pela página (pelo e-mail e telefone da conta), como o bloqueio da unidade.
