@@ -422,8 +422,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'IDENTITY_VERIFICATION_HOME_SERVICE_PROFESSIONALS',
   'Sua identidade já está verificada.': 'IDENTITY_ALREADY_VERIFIED',
   'Muitas tentativas hoje. Tente de novo amanhã.': 'TOO_MANY_ATTEMPTS_TODAY',
-  'Muitas mensagens neste pedido. Tente novamente daqui a uma hora.':
-    'TOO_MANY_REPLIES_ON_TICKET',
+  'Muitas mensagens neste pedido. Tente novamente daqui a uma hora.': 'TOO_MANY_REPLIES_ON_TICKET',
   'Sessão não encontrada': 'SESSION_NOT_FOUND',
   'Resultado inválido': 'INVALID_RESULT',
   'O título vai de 3 a 80 caracteres': 'TITLE_MUST_3_80_CHARACTERS',

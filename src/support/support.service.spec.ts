@@ -63,7 +63,15 @@ function build() {
     { notifyUsers: (ids: number[]) => void pings.push(...ids) } as never,
     { sendToUsers: async () => 0 } as never,
   );
-  return { support, sent, pings, prisma, get ticket() { return ticket; } };
+  return {
+    support,
+    sent,
+    pings,
+    prisma,
+    get ticket() {
+      return ticket;
+    },
+  };
 }
 
 describe('Fale com a gente: e-mail da conta e aviso agrupado', () => {
