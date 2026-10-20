@@ -2488,3 +2488,20 @@ Foram lidos a ficha de anamnese e consentimento, a exclusão de serviço, produt
      - O mesmo vale para o pacote de sessões desse serviço, e ninguém é avisado de que há plano, pacote ou horários futuros ligados ao serviço desativado.
      
      **Fazer:** ao desativar, mostrar o que está ligado ao serviço (planos do clube com assinantes, pacotes à venda e com saldo, horários futuros) e pedir a decisão. Plano com serviço desativado sai da página pública e não aceita assinatura nova; os assinantes continuam podendo usar no balcão até a unidade cancelar o plano.
+
+### Septuagésima nona rodada (2026-10-20): quem consegue escrever avaliação
+
+Foram lidos o pedido de avaliação depois do atendimento (e-mail, link pela equipe, página do link), a avaliação feita pela conta do cliente (criar, editar, apagar) e a venda de pacote.
+
+246. ⬜ **A equipe consegue avaliar no lugar do cliente** (back: `ReviewRequestService.staffReviewLink`, `submitReview`):
+     - A recepção (e acima) pede o link de avaliação de qualquer atendimento concluído para "mandar pelo WhatsApp". O link não pede login nem código: quem abre avalia o profissional e a unidade. A própria equipe abre o link e deixa 5 estrelas; com uma ficha inventada e um atendimento marcado como concluído, dá para criar quantas avaliações quiser, que entram na nota da página e na busca.
+     - O link não vence: o e-mail automático só sai até 3 dias depois do atendimento, mas o link gerado pela equipe vale para atendimentos de anos atrás, e o link do e-mail continua aceitando avaliação (e troca de nota) para sempre.
+     - Nada marca a avaliação feita pelo link que a equipe pediu, então a moderação não tem como distinguir.
+     
+     **Fazer:** o link que a equipe pede vai para o contato do cliente (e-mail ou WhatsApp do próprio cliente, enviado pelo sistema), em vez de aparecer na tela; a avaliação guarda a origem (e-mail automático ou pedido da equipe) e quem pediu. O link vale por 30 dias depois do atendimento. Atendimento sem pagamento registrado (venda) e cliente sem contato não geram link. A fila do backoffice mostra a origem.
+
+247. ⬜ **Avaliação da unidade ocultada pela moderação volta apagando e escrevendo de novo** (back: `deleteReview`, `createOrUpdateReview`, `ReviewRequestService.submitReview`):
+     - O cliente logado apaga a própria avaliação (`deleteReview` apaga a linha) e escreve outra: a nova nasce sem `hiddenAt`, e o texto que a moderação tirou do ar volta à página e à nota. O mesmo acontece pelo link do e-mail depois de apagar pela conta (sem avaliação existente, o link cria outra).
+     - Apagar também leva a decisão da moderação (`reportDismissedComment`) e a resposta da unidade.
+     
+     **Fazer:** avaliação ocultada pela moderação não é apagada de verdade pelo cliente (some para ele, fica o registro oculto); a nova avaliação do mesmo cliente na mesma unidade nasce oculta e vai para a fila enquanto houver uma ocultada, ou o cliente só pode editar a que existe. Teste: ocultar, apagar, avaliar de novo.
