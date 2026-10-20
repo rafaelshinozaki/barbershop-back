@@ -2365,3 +2365,40 @@ Foram lidos a série de horários (criar e pular datas), o expediente do dia com
      **Fazer:** alvos novos na denúncia pública (capa, foto do profissional e post publicado), com o botão na página, e na moderação a opção de ocultar só a imagem (a unidade envia outra).
      
      **Feito:** alvos novos na denúncia pública: `shop_cover` (capa), `shop_logo` (logo), `barber_photo` (foto do profissional) e `social_post` (post publicado), com o botão "Denunciar" em cada imagem da página da unidade (a página pública manda o `postId` dos posts). Ocultar tira só a imagem (`Barbershop.coverHiddenAt`/`logoHiddenAt`, `Barber.avatarHiddenAt`, `SocialPost.hiddenAt`): a página, o card da busca e o SEO deixam de mostrá-la e a unidade continua no ar. O dono e os gerentes recebem o aviso (sininho e celular) para enviar outra imagem; a capa e a foto novas (outra chave, ou outro link digitado quando é ele que aparece) voltam à página sem esperar a moderação, e o logo novo vai para outra chave (o antigo não volta se o envio não terminar). Restaurar devolve a imagem; ocultada, não recebe denúncia nova. A fila do backoffice mostra a imagem com o link assinado e o comando de aviso ao dono aceita os tipos novos. Teste em `moderation.int.spec.ts` e `test/moderation.spec.ts` (backoffice-back).
+
+### Septuagésima quarta rodada (2026-10-20): posts das redes, agenda assinável e suporte
+
+Foram lidos a publicação dos posts no Facebook/Instagram (conectar a Página, agendar, publicar, excluir), a agenda assinável da equipe (link secreto do iCal), a guarda dos dados (LGPD), o backup, os preços da plataforma e o "Fale com a gente".
+
+230. ⬜ **Post só para o Instagram vira "publicado" sem ter sido publicado** (back: `SocialService.publishPost`):
+     - A publicação no Instagram só é tentada se a conexão ainda tem `instagramBusinessAccountId`. Se a unidade reconectou a Página e ela não tem mais Instagram vinculado (ou trocou de Página), o post agendado só para o Instagram não tenta nada, `errors` fica vazio e o post é gravado como `PUBLISHED`, com `publishedAt` e sem `instagramMediaId`.
+     - Como está "publicado", ele entra na galeria da página pública da unidade (os posts publicados completam o portfólio) e a tela mostra como enviado. A unidade não fica sabendo que nada saiu.
+     - O mesmo vale para o post para as duas redes: sem Instagram vinculado, o Facebook publica, o Instagram é pulado sem erro e o post aparece como publicado nas duas.
+     
+     **Fazer:** rede pedida e sem conta vinculada na hora de publicar conta como erro ("Nenhuma conta do Instagram vinculada à Página conectada"); só vira `PUBLISHED` o que de fato saiu em ao menos uma rede, e o aviso parcial fica no `errorMessage`. Teste com a conexão sem Instagram.
+
+231. ⬜ **Post que falhou ou foi cancelado não sai da lista e não tem como tentar de novo** (back: `SocialService.deletePost`, `createPost`; front: tela de posts):
+     - `deletePost` só aceita `SCHEDULED` ("Só é possível excluir posts ainda não publicados"). Post `FAILED` (token vencido, Página desconectada, legenda recusada) e `CANCELLED` (unidade encerrada) ficam para sempre na lista da unidade, com a imagem guardada no S3, e não existe "tentar de novo": a unidade precisa criar outro post e enviar a imagem outra vez.
+     - A legenda não tem limite no agendamento. O Instagram recusa legenda acima de 2.200 caracteres (e mais de 30 hashtags), e isso só aparece como falha na hora de publicar, dias depois do agendamento.
+     
+     **Fazer:** excluir também o que falhou ou foi cancelado (apagando a imagem do S3 quando nenhum outro post usa a chave) e uma ação "tentar de novo" que volta o post com falha para `SCHEDULED` com novo horário. Conferir a legenda no agendamento (até 2.200 caracteres e 30 hashtags quando o Instagram está marcado). Front com os dois botões e o limite no campo.
+
+232. ⬜ **Agenda assinável continua entregando a agenda (com nome e telefone dos clientes) para a conta desativada** (back: `CalendarService.feedIcs`, `ensureCanUse`; `UsersService.setUserActive`):
+     - O link do iCal não usa login: a cada leitura o acesso é conferido por `ensureAccess`, que olha o vínculo com a unidade (dono, rede ou funcionário no período), mas não a conta. Desativar a conta pela plataforma (`setUserActive(false)`, um a um ou em lote) derruba as sessões e as notificações do celular, mas o Google Agenda/Apple/Outlook continua buscando o feed a cada hora.
+     - Para o dono, a gerência e a recepção o feed é o da unidade inteira, com nome e telefone de cada cliente dos próximos 180 dias. A pessoa desativada continua recebendo isso enquanto o vínculo existir.
+     - Unidade suspensa pela plataforma (`platformSuspendedAt`) também continua servindo o feed.
+     
+     **Fazer:** o feed confere a conta (`isActive` e `deleted_at`) e responde 404 para conta desativada ou apagada; desativar a conta apaga os links de agenda dela (como as notificações do celular), e a troca de senha com "sair de todos os aparelhos" também. Unidade suspensa pela plataforma não serve feed. Teste: desativar a conta e ler o feed.
+
+233. ⬜ **"Fale com a gente" logado manda o e-mail do pedido para qualquer endereço, sem o limite do formulário público** (back: `SupportService.create`, `staffContactSupport`):
+     - Para quem é da equipe (logado), o pedido usa o e-mail digitado no formulário. O teto de 3 pedidos por destinatário por dia e o captcha valem só para quem não tem conta da equipe (`!requester.userId`), então qualquer conta cadastrada manda o e-mail "Recebemos seu pedido" da plataforma para 10 endereços por hora a cada origem (o limite do `ThrottleEmail`), cada um com o link do pedido, que mostra o título e a mensagem que ela escreveu.
+     - O inverso também acontece: com um erro de digitação no e-mail, a resposta da equipe da plataforma sobre a conta (que pode trazer dados dela) vai para um estranho, e quem pediu nunca recebe.
+     - `requesterReply` (responder pelo link) não tem limite: cada resposta reabre o pedido e manda aviso no sininho e no celular de toda a equipe de suporte.
+     
+     **Fazer:** pedido de quem está logado na equipe usa o e-mail da conta (o campo vem preenchido e travado); cliente logado também usa o da conta. Responder pelo link com limite (por exemplo, 10 mensagens por hora por pedido) e o aviso para a equipe agrupado (um por pedido enquanto não for respondido).
+
+234. ⬜ **Escolha de Página do Facebook vencida fica guardada com o token da pessoa** (back: `SocialService.handleOAuthCallback`, `loadPageChoice`; `RetentionService`):
+     - Com várias Páginas, a volta do Facebook guarda o token de longa duração da pessoa (cifrado) em `SocialPageChoice` por 15 minutos para a tela escolher. O registro só é apagado quando alguém tenta usar o código depois de vencido ou quando a mesma pessoa conecta de novo. Quem fecha a tela sem escolher deixa o token (válido por cerca de 60 dias no Facebook) guardado para sempre.
+     - A guarda diária (`RetentionService`) apaga códigos de verificação e de senha vencidos, mas não essas escolhas.
+     
+     **Fazer:** a guarda diária apaga `SocialPageChoice` vencida (e o conectar apaga as vencidas da unidade antes de criar outra). Teste na guarda.
