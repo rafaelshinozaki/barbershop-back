@@ -2505,3 +2505,19 @@ Foram lidos o pedido de avaliação depois do atendimento (e-mail, link pela equ
      - Apagar também leva a decisão da moderação (`reportDismissedComment`) e a resposta da unidade.
      
      **Fazer:** avaliação ocultada pela moderação não é apagada de verdade pelo cliente (some para ele, fica o registro oculto); a nova avaliação do mesmo cliente na mesma unidade nasce oculta e vai para a fila enquanto houver uma ocultada, ou o cliente só pode editar a que existe. Teste: ocultar, apagar, avaliar de novo.
+
+### Octogésima rodada (2026-10-20): cartão-presente e lista de espera pela página
+
+Foram lidos a área do cliente (perfil, favoritos, busca de redes, login social), o cartão-presente (vender, consultar, desativar), o cache da busca e a entrada na lista de espera pela página pública.
+
+248. ⬜ **Consultar o cartão-presente mostra ao barbeiro o telefone e o e-mail de quem comprou** (back: `lookupGiftCard`; `GiftCardType`):
+     - Na hora de cobrar, qualquer pessoa da equipe com acesso de barbeiro digita o código e recebe o cartão inteiro: valor, saldo, validade, e também nome, telefone e e-mail de quem comprou, nome de quem ganhou e a mensagem. O barbeiro não vê o contato dos clientes em nenhum outro lugar (item 24).
+     - Vender, listar e desativar cartão-presente é só do dono da rede (`getMyNetwork`): a recepção e o gerente, que fecham a conta no balcão, não conseguem vender um cartão para o cliente que está ali.
+     
+     **Fazer:** a consulta pelo código devolve só o que o caixa precisa (código, saldo, moeda, validade, ativo), e o contato de quem comprou fica para gerente e dono. Vender cartão-presente da recepção para cima, na unidade (o valor já entra na venda e no caixa dela); listar e desativar para gerente e dono.
+
+249. ⬜ **Entrar na lista de espera com o telefone de outra pessoa usa a ficha dela e manda o aviso para ela** (back: `joinPublicWaitlist`, aviso da vaga):
+     - Pela página pública, a ficha do cliente é achada só pelo telefone (`customerIdsByPhone`). Quem digita o telefone de outra pessoa (com outro nome e o próprio e-mail) entra na lista de espera com a ficha dela: a equipe vê o pedido em nome dela, e quando abre a vaga o WhatsApp vai para o telefone dela (`match.customer.phone`) e o e-mail para quem digitou.
+     - A pessoa recebe um aviso de vaga de um pedido que não fez, e quem digitou recebe pelo e-mail o link para agendar na ficha dela.
+     
+     **Fazer:** telefone que já tem ficha com outro nome ou outro e-mail não reaproveita a ficha pela página pública (cria uma ficha à parte, marcada para a equipe juntar se for a mesma pessoa), ou confirma o telefone por código. O aviso vai só pelo contato que a pessoa informou ao entrar na lista.
