@@ -2668,3 +2668,14 @@ Foram lidos a pausa da cobrança do clube (`setClubBillingPaused`), o encerramen
      - Já a suspensão pela plataforma (`platformSuspendedAt`, da unidade ou da rede) e a desativação da conta do dono (`isActive: false`) tiram a unidade do ar: a página pública, a busca e o agendamento online deixam de funcionar (`ownerAcceptsPublic`). Mas as assinaturas do clube continuam ativas, e o Stripe segue cobrando todo mês o cartão dos clientes, que não conseguem mais agendar online o serviço que estão pagando. O item 190 parou a caixinha, a avaliação, o chat, as postagens e as campanhas de unidade suspensa, mas não o clube.
      
      **Fazer:** suspender a unidade ou a rede, ou desativar o dono, pausa a cobrança do clube como a pausa da unidade (marcando o motivo, para voltar só as que essa suspensão pausou) e avisa os assinantes; tirar a suspensão retoma. Teste com a unidade suspensa pelo backoffice e com o dono desativado.
+
+### Nonagésima segunda rodada (2026-10-20): horário de funcionamento por fora da tela de horário
+
+Foram lidos o aluguel da cadeira com a unidade suspensa, a regra de comissão, a edição dos dados da unidade (moeda, fuso, país, redes, subdomínio) e o caminho do horário de funcionamento até a agenda e a busca.
+
+263. ⬜ **O horário de funcionamento entra sem conferência pela edição e pelo cadastro da unidade** (back: `updateBarbershop`, `createBarbershop`/cadastro com `barbershopData.businessHours`; `parseBusinessHours`, `shopHoursOn`):
+     - A tela de horário (`ScheduleService.setBusinessHours`) confere cada dia (HH:MM, início antes do fim), avisa a lista de espera e é só da gerência. Mas `updateBarbershop` e o cadastro aceitam o mesmo campo `businessHours` como texto livre e gravam sem conferir.
+     - Um JSON com `{"mon":{"start":"18:00","end":"09:00"}}`, `"9h"` ou dias faltando passa: `parseBusinessHours` aceita qualquer texto nos horários, e a agenda, a página pública, o "aberto agora" da busca e o próximo horário livre passam a calcular com horário invertido ou inválido (`NaN`). Um JSON quebrado volta para o horário padrão em alguns lugares (`shopHoursOn`) e fecha todos os dias em outros (`parseBusinessHours` devolve os 7 dias como fechados quando o texto é um objeto sem as chaves).
+     - Por esse caminho também não roda a conferência entre unidades da escala (item 241) nem o aviso da lista de espera.
+     
+     **Fazer:** `businessHours` sai de `updateBarbershop` (fica só na tela de horário) e o cadastro passa pela mesma conferência de `setBusinessHours`; `parseBusinessHours` descarta o dia com horário fora de HH:MM ou com início depois do fim. Teste com horário invertido pela edição da unidade.
