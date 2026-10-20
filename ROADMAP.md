@@ -2445,7 +2445,7 @@ Foram lidos a indicação do Pro entre profissionais, a agenda pessoal (modo sol
 
 240. ⬜ **Agenda pessoal encerrada não pode ser reaberta, e a nova agenda entra na rede do estabelecimento** (back: `SoloService.status`, `start`):
      - `status` procura a agenda pessoal por dono e `practiceKind: 'solo'` sem olhar `closedAt`. Depois de "excluir" a agenda (que encerra a unidade), o status continua dizendo que o modo solo está ativo, com a agenda encerrada. `start` devolve esse status e não cria outra: a pessoa fica sem agenda e sem como abrir uma nova. A contagem do mês (`soloUsage`) também soma os atendimentos da agenda encerrada.
-     - `start` usa a rede que a pessoa já tem como dona. Quem é dono de um estabelecimento e abre a agenda pessoal fica com ela na rede do estabelecimento: com a moeda, as cores e as regras de cancelamento e falta dele, e a agenda aparece para os gerentes da rede.
+     - `start` usa a rede que a pessoa já tem como dona. Quem é dono de um estabelecimento e abre a agenda pessoal fica com ela na rede do estabelecimento: com a moeda, as cores e as regras de cancelamento e falta dele.
      - Dois cliques seguidos em "começar" criam duas agendas pessoais (a checagem não é atômica).
      
      **Fazer:** `status`, `start` e `soloUsage` só olham a agenda pessoal não encerrada. A agenda pessoal tem a rede própria (criada junto, com a moeda do país dela). Trava por dono no `start` (como o `lockProUntil`). Teste: encerrar e abrir de novo.
@@ -2455,3 +2455,19 @@ Foram lidos a indicação do Pro entre profissionais, a agenda pessoal (modo sol
      - Mudar o horário da unidade também não confere os profissionais que seguem esse horário e trabalham em outra unidade (`ensureShiftFreeAcrossShops` só roda na escala do profissional). O expediente deles passa a cruzar o da outra unidade.
      
      **Fazer:** antes de salvar, devolver a lista de horários marcados que ficam fora (como o `impact` do fechamento), e a tela mostra e oferece remarcar ou cancelar avisando o cliente. O horário da unidade passa pela mesma conferência entre unidades para os profissionais que seguem esse horário.
+
+### Septuagésima sétima rodada (2026-10-20): pagar antes e excluir o horário
+
+Foram lidos o pagamento do atendimento pelo app antes do horário (pagar, confirmar, pagamento a mais), a conta de recebimento da unidade, a taxa de falta e a exclusão de um horário.
+
+242. ⬜ **Cliente que pagou o atendimento antes e faltou paga também a taxa de falta** (back: `recordNoShowFee`, `updateAppointment`; `PrepaymentService`):
+     - O cálculo da taxa de falta desconta só o sinal pago online que a unidade reteve. O atendimento pago antes pelo app (`prepaidAt`, o preço inteiro dos serviços) não entra na conta: marcar o horário como falta mantém o pagamento com a unidade e ainda registra a taxa de falta (por exemplo, 50% do serviço) como devida pelo cliente.
+     - O mesmo acontece no cancelamento tardio feito pelo cliente: o pagamento volta inteiro (correto), mas a taxa é calculada como se nada tivesse sido pago, e a equipe não tem como reter parte do valor pago em vez de cobrar de novo.
+     
+     **Fazer:** na falta, o valor pago antes cobre a taxa: a unidade retém só a taxa e devolve o resto (estorno parcial, como no `refundPrepayment` parcial), sem registrar taxa pendente. No cancelamento tardio, reter a taxa do valor pago em vez de devolver tudo e cobrar depois. Teste com horário pago antes e marcado como falta.
+
+243. ⬜ **Excluir um horário apaga as avaliações, as caixinhas, a taxa de falta e a conversa dele** (back: `deleteAppointment`; `prisma/schema.prisma`):
+     - `deleteAppointment` (gerente e dono) só recusa o horário com sinal pago online. Qualquer outro horário, inclusive concluído, é apagado de vez, e o banco apaga em cascata: a avaliação do profissional (`ProfessionalReview`), a nota do cliente (`CustomerRating`), a caixinha (`AppointmentTip`, inclusive a paga pelo app no Stripe), a taxa de falta (`NoShowFee`, inclusive a já cobrada) e a conversa do chat (`ChatThread`, inclusive a denunciada e segurada para a moderação).
+     - Na prática, o gerente apaga uma avaliação ruim do profissional (que sai da página e da nota) excluindo o horário, sem passar pela moderação. A caixinha paga pelo app e o pagamento do atendimento pelo app (`prepaidAt`, que fica no próprio horário) somem da lista de pagamentos pelo app e do repasse, com o dinheiro já na conta do Stripe.
+     
+     **Fazer:** excluir só horário que não aconteceu e não tem nada ligado: concluído, com venda, avaliação, caixinha, taxa de falta, pagamento pelo app ou conversa denunciada é recusado com a mensagem para cancelar (ou marcar falta) em vez de excluir. As relações com dinheiro e moderação passam de `Cascade` para `Restrict`. Teste: excluir horário com avaliação e com caixinha.
