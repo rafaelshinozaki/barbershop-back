@@ -2591,3 +2591,14 @@ Foram lidos o cadastro de serviço, pacote e plano do clube (valores, Stripe, mu
      - Bloquear não diz nada sobre a assinatura que o cliente já tem no clube: ela continua cobrando.
      
      **Fazer:** `ensureNotBlocked` (pela conta, pelo e-mail e pelo telefone da ficha ligada) também na assinatura do clube e na remarcação pelo link (cancelar pelo link continua liberado). Ao bloquear, a tela mostra se o cliente tem assinatura ativa no clube ou pacote com saldo e oferece cancelar a assinatura (com o estorno proporcional, se a unidade quiser).
+
+### Octogésima quinta rodada (2026-10-20): importar contas pela planilha do backoffice
+
+Foram lidos o cadastro de profissional pela equipe, o perfil público do profissional, as rotas REST de administração que o backoffice ainda usa (lista, ativar, plano, pagamento) e a importação de contas por planilha (`/user/admin/import-csv`, permissão `users.import` no backoffice).
+
+256. ⬜ **Importar contas pela planilha cria plano pago de graça, aceita os termos pela pessoa e grava e-mails no log** (back: `UsersService.importUsersFromCsv`):
+     - Linha com `membership = PAID`: a conta é criada com `membership: FREE`, e uma assinatura `active` sem fim, sem Stripe e sem cobrança é ligada ao primeiro plano pago que o banco achar (`findFirst` sem ordem: pode ser qualquer um). Se não houver plano pago, a importação cria um plano "Premium" de R$ 29,90 no catálogo de planos. A conta fica com plano pago sem pagar, e o campo `membership` diz o contrário.
+     - `readTerms` vem da planilha: a equipe da plataforma marca, em nome da pessoa, que ela leu e aceitou os termos (consentimento da LGPD). A senha também vem da planilha (a equipe sabe a senha da conta), o e-mail não é confirmado e o e-mail de boas-vindas não traz link para a pessoa criar a própria senha.
+     - O log grava o e-mail de cada linha várias vezes (`Processing user ...`, `Final data for ...`, `Successfully imported user ...`), o que o item 6 tinha tirado dos outros lugares.
+     
+     **Fazer:** a importação cria a conta sem senha e sem aceite: a pessoa recebe o link para criar a senha, confirma o e-mail e aceita os termos no primeiro acesso. Plano pago só pelo fluxo de cobrança (ou como cortesia registrada, com prazo e quem concedeu, como o Destaque cortesia); nunca criar plano no catálogo pela importação. Log só com a contagem e o número da linha.

@@ -1,4 +1,7 @@
-import { reminderCoveredByConfirmation, AppointmentReminderService } from './appointment-reminder.service';
+import {
+  reminderCoveredByConfirmation,
+  AppointmentReminderService,
+} from './appointment-reminder.service';
 import { LOCALE } from '../email/language';
 
 describe('reminderCoveredByConfirmation', () => {

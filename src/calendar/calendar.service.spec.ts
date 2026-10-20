@@ -59,9 +59,12 @@ function build(opts?: {
     network: { platformSuspendedAt: null },
     ...opts?.shop,
   };
-  const service = new CalendarService(prisma as never, {
-    ensureAccess: async () => shop,
-  } as never);
+  const service = new CalendarService(
+    prisma as never,
+    {
+      ensureAccess: async () => shop,
+    } as never,
+  );
   const users = new UserService(
     prisma as never,
     {} as never,
