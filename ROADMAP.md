@@ -2615,3 +2615,14 @@ Foram lidos o cadastro de conta da equipe (dono e profissional) pelo GraphQL e p
      - Os logs ainda gravam o e-mail das pessoas em vários pontos: a cada chamada da query `me` (duas vezes), no cadastro, no envio do código de login, na verificação, na troca de senha, na configuração do usuário, nos e-mails de boas-vindas, de fim do teste grátis e de fatura (o item 6 tirou isso dos outros serviços).
      
      **Fazer:** `createUser` passa por `validatePassword` (com a mesma mensagem da tela) e recusa `readTerms` diferente de `true`, guardando quando aceitou. A rota REST de cadastro sai (o front usa o GraphQL) ou passa pelas mesmas regras. Logs com o id da conta no lugar do e-mail.
+
+### Octogésima sétima rodada (2026-10-20): quem dispara a cobrança dos planos
+
+Foram lidos o login com código (dois passos), os e-mails com HTML (aviso de saldo, avisos de atividade, e-mail do backoffice), o arquivo de calendário (.ics) e as mutations sem guarda própria, com foco nas de pagamento.
+
+258. ⬜ **Qualquer conta logada dispara a cobrança dos planos de todos os donos** (back: `PaymentResolver.processAllRecurringPayments`, `processRecurringPayment`):
+     - `processAllRecurringPayments` só pede login (a guarda do resolver é `GraphQLJwtAuthGuard`) e roda `PaymentsService.processRecurringPayments()`, a renovação da plataforma inteira: busca todos os planos vencidos sem assinatura no Stripe e tenta cobrar cada um. Um barbeiro ou um profissional recém-cadastrado chama quantas vezes quiser.
+     - A trava de uma tentativa por dia e a chave da renovação seguram a cobrança em dobro, mas cada chamada percorre todos os planos vencidos e chama o Stripe para cada um (limite de requisições da conta da plataforma), e, no primeiro dia de atraso, a tentativa é feita na hora em que alguém chamar, não no horário do agendador. A resposta devolve a mensagem de erro interna (`error.message`).
+     - O backoffice já tem a versão de admin (`processAllRecurringPaymentsAdmin`), e a renovação roda sozinha pelo agendador.
+     
+     **Fazer:** tirar `processAllRecurringPayments` do resolver público (fica só a do backoffice, com a área Financeiro). `processRecurringPayment` (de um pagamento do próprio dono) com limite de chamadas. Respostas sem a mensagem interna. Teste: conta comum chamando a mutation recebe "sem permissão".
