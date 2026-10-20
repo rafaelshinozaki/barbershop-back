@@ -2568,3 +2568,14 @@ Foram lidos as configurações da rede (fidelidade, indicação, taxa de falta, 
      - Quando o prazo do aviso vence (ou o horário oferecido passa), `backToWaiting` e a limpeza do fim de `passExpiredWaitlistOffers` devolvem a entrada para `WAITING`, e a pessoa volta a receber avisos de vaga (e-mail e WhatsApp) depois de ter pedido para sair.
      
      **Fazer:** `leaveWaitlist` cancela a entrada `WAITING` ou `NOTIFIED` (e, se havia vaga oferecida, passa para o próximo da fila na hora). Teste: avisar, sair pelo link, vencer o prazo e conferir que a entrada continua cancelada.
+
+### Octogésima quarta rodada (2026-10-20): cliente bloqueado e o clube
+
+Foram lidos o cadastro de serviço, pacote e plano do clube (valores, Stripe, mudança de preço), a assinatura do clube pelo cliente e onde o bloqueio de cliente é conferido.
+
+255. ⬜ **Cliente bloqueado pela unidade assina o clube e remarca pelo link** (back: `subscribeToClientPlan`, `rescheduleManagedAppointment`; `ensureNotBlocked`):
+     - O bloqueio (`setCustomerBlocked`, "não agenda online em nenhuma unidade da rede") só é conferido no agendamento pela página e na entrada da lista de espera. A assinatura do clube pela conta do cliente não confere: o cliente bloqueado assina, é cobrado todo mês no cartão e não consegue agendar online o serviço que está pagando.
+     - Pelo link do e-mail, o cliente bloqueado depois de marcar continua remarcando o horário que já tinha (`rescheduleManagedAppointment` só olha o prazo e a agenda), quantas vezes quiser dentro da janela.
+     - Bloquear não diz nada sobre a assinatura que o cliente já tem no clube: ela continua cobrando.
+     
+     **Fazer:** `ensureNotBlocked` (pela conta, pelo e-mail e pelo telefone da ficha ligada) também na assinatura do clube e na remarcação pelo link (cancelar pelo link continua liberado). Ao bloquear, a tela mostra se o cliente tem assinatura ativa no clube ou pacote com saldo e oferece cancelar a assinatura (com o estorno proporcional, se a unidade quiser).
