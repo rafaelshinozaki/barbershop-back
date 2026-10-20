@@ -2402,3 +2402,33 @@ Foram lidos a publicação dos posts no Facebook/Instagram (conectar a Página, 
      - A guarda diária (`RetentionService`) apaga códigos de verificação e de senha vencidos, mas não essas escolhas.
      
      **Fazer:** a guarda diária apaga `SocialPageChoice` vencida (e o conectar apaga as vencidas da unidade antes de criar outra). Teste na guarda.
+
+### Septuagésima quinta rodada (2026-10-20): WhatsApp e avisos da equipe
+
+Foram lidos o envio por WhatsApp (lembrete, aviso da lista de espera e campanha), os avisos em tempo real (sininho e agenda), os avisos de atividade para a equipe (e-mail e sininho), o sitemap e a saúde do servidor.
+
+235. ⬜ **WhatsApp manda para número do Brasil e em português, qualquer que seja o país da unidade** (back: `normalizePhoneToE164`, `AppointmentReminderService`, `checkWaitlistOnCancellation`, `sendMarketingBlast`; `WhatsappService`):
+     - Todo telefone de cliente passa por `normalizePhoneToE164` com o DDI padrão `55`. Numa unidade dos Estados Unidos, o telefone "415 555 1234" (10 dígitos) vira `+554155551234`, um número de Curitiba: o lembrete, o aviso de vaga e a campanha (com o nome do cliente, da unidade, o serviço e o horário) vão para um estranho no Brasil.
+     - O idioma do modelo é um só para todas as mensagens (`WHATSAPP_REMINDER_TEMPLATE_LANG`, padrão `pt_BR`), e a data e a hora vão no formato do Brasil. Cliente de unidade em inglês ou espanhol recebe o lembrete em português.
+     - O log de envio grava o telefone inteiro do cliente (`Mensagem de WhatsApp (...) enviada para +55...`).
+     
+     **Fazer:** o DDI padrão vem do país da unidade (`Barbershop.country`); telefone que não dá para resolver com segurança não recebe WhatsApp. Modelo por idioma (pt, en, es) escolhido pela língua do país da unidade, como o e-mail, e data/hora no formato e no fuso dela. Log com o telefone mascarado. Teste com unidade dos EUA.
+
+236. ⬜ **Campanha por WhatsApp com quebra de linha falha para todos, e o cliente não tem como sair dela** (back: `sendMarketingBlast`, `WhatsappService.sendMarketingBlast`; front: tela de campanhas):
+     - O texto da campanha vai como parâmetro do modelo aprovado. A Meta recusa parâmetro com quebra de linha, tabulação ou mais de 4 espaços seguidos, e com mais de 1.024 caracteres. Uma campanha escrita em parágrafos falha em todos os envios (cada um tentado de novo pela fila), e o texto não tem limite nem conferência na hora de disparar.
+     - O descadastro de marketing só existe no link do e-mail. Cliente sem e-mail (a maioria no balcão) recebe campanha por WhatsApp e não tem como pedir para sair, nem a mensagem diz como.
+     
+     **Fazer:** conferir o texto para WhatsApp antes de criar a campanha (sem quebra de linha ou trocando por " · ", até 1.024 caracteres) e mostrar o limite na tela. Modelo de marketing com o botão de descadastro da Meta (ou o texto "responda SAIR") e o descadastro ligado a `marketingOptOut` da ficha; a equipe também marca "não quer receber" na ficha.
+
+237. ⬜ **Avisos da moderação, da saída de profissional e do Destaque não aparecem na hora no sininho, e o da moderação só em português** (back: `ModerationService.notifyOwner`, `warnFutureAppointments`, `FeaturedPaymentService`):
+     - Esses avisos são gravados direto com `userNotification.createMany`, sem `realtime.notifyUsers`. O sininho de quem está com a tela aberta só mostra o aviso ao recarregar a página (os avisos de atividade e do chat aparecem na hora).
+     - O aviso da moderação (imagem ocultada, unidade fora da busca, perfil suspenso) tem o texto fixo em português, para dono de unidade em inglês ou espanhol. Os outros dois já saem no idioma da pessoa.
+     - Nenhum dos três olha as preferências de aviso da pessoa.
+     
+     **Fazer:** um caminho só para aviso no sininho (o `NotificationsService.createNotificationsForUsers`), que grava, avisa em tempo real e respeita o idioma; o da moderação com o texto nos três idiomas.
+
+238. ⬜ **Conta desativada continua recebendo por e-mail o movimento da unidade** (back: `ActivityNotificationsService.deliver`):
+     - Quem recebe os avisos de atividade (agendamento, venda, encaixe, avaliação, cadeira alugada) é escolhido pelo vínculo com a unidade: dono da rede, dono da unidade, gerente, recepção e o profissional do atendimento. A busca das contas não filtra `isActive` nem `deleted_at`.
+     - Um dono ou gerente com a conta desativada pela plataforma continua recebendo por e-mail o nome do cliente, o serviço, o horário e o valor de cada venda. O mesmo vale para os avisos no sininho, que ficam acumulando.
+     
+     **Fazer:** os avisos de atividade (e os outros avisos para a equipe) só vão para conta ativa e não apagada. Teste com o gerente desativado.
