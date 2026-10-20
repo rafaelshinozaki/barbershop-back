@@ -3,12 +3,26 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { SmartLogger } from '../common/logger.util';
 import { RealtimeService } from '../realtime/realtime.service';
+import { normalizeLang, type Lang } from '../email/language';
 
 // Teto das listas do sininho (antes "não lidas" e "novas" não tinham limite)
 const MAX_LIST = 100;
 // Envio em lote em partes: um createMany/IN com dezenas de milhares de
 // usuários estoura o limite de parâmetros do Postgres (65.535)
 const BATCH_CHUNK = 1000;
+
+export type InAppPreference =
+  | 'newsInApp'
+  | 'promotionsInApp'
+  | 'securityInApp'
+  | 'instabilityInApp'
+  | 'appointmentsInApp'
+  | 'salesInApp'
+  | 'inventoryInApp'
+  | 'teamInApp'
+  | 'reviewsInApp';
+
+export type LocalizedNotice = Record<Lang, { title: string; message: string }>;
 
 @Injectable()
 export class NotificationsService {
@@ -178,13 +192,21 @@ export class NotificationsService {
     }
   }
 
-  // Método para criar notificações em lote para múltiplos usuários
+  // Método para criar notificações em lote para múltiplos usuários.
+  // Com `localized`, cada pessoa recebe no idioma da conta. Com `inApp`,
+  // quem desligou essa categoria no sininho não recebe. Os dois avisam na
+  // hora quem está com a tela aberta.
   async createNotificationsForUsers(
     userIds: number[],
-    data: Omit<CreateNotificationDto, 'userId'>,
+    data: Omit<CreateNotificationDto, 'userId'> & { localized?: LocalizedNotice },
+    options?: { inApp?: InAppPreference },
   ) {
-    this.logger.log(`Creating notifications for ${userIds.length} users: ${data.title}`);
+    const logTitle = data.localized?.pt.title ?? data.title;
+    this.logger.log(`Creating notifications for ${userIds.length} users: ${logTitle}`);
     try {
+      if (data.localized || options?.inApp) {
+        return await this.createLocalized(userIds, data, options?.inApp);
+      }
       // Pula quem já recebeu uma notificação com o mesmo título nos últimos
       // 5 minutos (evita duplicar num reenvio/duplo clique)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -203,7 +225,10 @@ export class NotificationsService {
         const alreadyNotified = new Set(existing.map((n) => n.userId));
         const notifications = chunk
           .filter((userId) => !alreadyNotified.has(userId))
-          .map((userId) => ({ ...data, userId }));
+          .map((userId) => {
+            const { localized: _localized, ...rest } = data;
+            return { ...rest, userId };
+          });
         if (notifications.length === 0) continue;
         const result = await this.prisma.userNotification.createMany({ data: notifications });
         count += result.count;
@@ -214,11 +239,76 @@ export class NotificationsService {
         );
       }
       this.logger.log(`Created ${count} notifications for multiple users`);
-      return { count };
+      return { count, userIds: uniqueIds };
     } catch (error) {
       this.logger.error(`Error creating notifications for users: ${error.message}`);
       throw error;
     }
+  }
+
+  private async createLocalized(
+    userIds: number[],
+    data: Omit<CreateNotificationDto, 'userId'> & { localized?: LocalizedNotice },
+    inApp?: InAppPreference,
+  ) {
+    const uniqueIds = [...new Set(userIds)].filter((id) => Number.isInteger(id));
+    if (!uniqueIds.length) return { count: 0, userIds: [] };
+    const localized = data.localized;
+    const titles = localized
+      ? (['pt', 'en', 'es'] as const).map((lang) => localized[lang].title)
+      : [data.title];
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: uniqueIds }, isActive: true, deleted_at: null },
+      select: {
+        id: true,
+        userSystemConfig: { select: { language: true } },
+        notificationPreference: true,
+      },
+    });
+    const existing = await this.prisma.userNotification.findMany({
+      where: {
+        userId: { in: uniqueIds },
+        title: { in: titles },
+        createdAt: { gte: fiveMinutesAgo },
+      },
+      select: { userId: true, title: true },
+    });
+    const already = new Set(existing.map((row) => `${row.userId}:${row.title}`));
+    const rows: {
+      userId: number;
+      title: string;
+      message: string;
+      type: CreateNotificationDto['type'];
+      actionUrl?: string;
+      actionText?: string;
+    }[] = [];
+    for (const user of users) {
+      const pref = user.notificationPreference as Record<string, boolean | null> | null;
+      if (inApp && pref && pref[inApp] === false) continue;
+      const lang = normalizeLang(user.userSystemConfig?.language);
+      const text = localized ? localized[lang] : { title: data.title, message: data.message };
+      if (already.has(`${user.id}:${text.title}`)) continue;
+      rows.push({
+        userId: user.id,
+        title: text.title,
+        message: text.message,
+        type: data.type,
+        actionUrl: data.actionUrl,
+        actionText: data.actionText,
+      });
+    }
+    if (rows.length) {
+      await this.prisma.userNotification.createMany({ data: rows });
+      const byTitle = new Map<string, number[]>();
+      for (const row of rows) {
+        byTitle.set(row.title, [...(byTitle.get(row.title) ?? []), row.userId]);
+      }
+      for (const [title, ids] of byTitle) this.realtime.notifyUsers(ids, 'CREATED', title);
+    }
+    const notified = rows.map((row) => row.userId);
+    this.logger.log(`Created ${rows.length} notifications for multiple users`);
+    return { count: rows.length, userIds: notified };
   }
 
   // Método para buscar todas as notificações com dados dos usuários (admin)

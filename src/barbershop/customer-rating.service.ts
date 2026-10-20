@@ -242,8 +242,8 @@ export class CustomerRatingService {
     const front = process.env.FRONTEND_URL || 'http://localhost:5173';
     let sent = 0;
     for (const [userId, appts] of byUser) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, isActive: true, deleted_at: null },
         select: {
           email: true,
           fullName: true,

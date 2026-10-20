@@ -30,6 +30,8 @@ import { reviewEditData } from './review-edit';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { UserService } from '../auth/users/users.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma, TreatmentCategory } from '@prisma/client';
@@ -89,7 +91,13 @@ import {
 import { PLANO_STATUS } from '../common/contants';
 import { S3Service } from '../aws/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { normalizePhoneToE164, phoneDigitVariants, phoneForWhatsapp } from '../common/phone.util';
+import {
+  callingCodeForCountry,
+  normalizePhoneToE164,
+  phoneDigitVariants,
+  phoneForWhatsapp,
+} from '../common/phone.util';
+import { whatsappMarketingBody } from '../whatsapp/marketing-text';
 import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { JobOpeningService } from './job-opening.service';
@@ -861,6 +869,7 @@ export class BarbershopService {
     @Optional()
     @Inject(forwardRef(() => JobOpeningService))
     private readonly jobs?: JobOpeningService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -2886,6 +2895,24 @@ export class BarbershopService {
         data: { marketingOptOut: true },
       });
     }
+    // Cliente do balcão, sem e-mail: as outras fichas com o mesmo telefone
+    // também saem das campanhas.
+    const phone = customer.phone?.trim();
+    if (data.marketingOptOut === true && phone) {
+      const variants = phoneDigitVariants(
+        phone,
+        callingCodeForCountry(barbershop.country) ?? '55',
+      );
+      if (variants.length) {
+        await this.prisma.$executeRaw`
+          UPDATE "Customer"
+             SET "marketingOptOut" = true
+           WHERE "networkId" = ${customer.networkId}
+             AND "deletedAt" IS NULL
+             AND regexp_replace(phone, '\\D', '', 'g') IN (${Prisma.join(variants)})
+        `;
+      }
+    }
     return this.prisma.customer.update({
       where: { id: customerId },
       data,
@@ -3305,10 +3332,6 @@ export class BarbershopService {
       ),
     ];
     if (!userIds.length) return;
-    const users = await this.prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, userSystemConfig: { select: { language: true } } },
-    });
     const copy: Record<Lang, { title: string; message: string }> = {
       pt: {
         title: 'Horários para remanejar',
@@ -3323,6 +3346,24 @@ export class BarbershopService {
         message: `${barberName} salió del equipo y todavía tiene ${future} cita(s). Pase esos clientes a otra persona.`,
       },
     };
+    if (this.notifications) {
+      await this.notifications.createNotificationsForUsers(
+        userIds,
+        {
+          title: copy.pt.title,
+          message: copy.pt.message,
+          type: NotificationType.WARNING,
+          actionUrl: `/barbershops/${barbershopId}/appointments`,
+          localized: copy,
+        },
+        { inApp: 'teamInApp' },
+      );
+      return;
+    }
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds }, isActive: true, deleted_at: null },
+      select: { id: true, userSystemConfig: { select: { language: true } } },
+    });
     await this.prisma.userNotification.createMany({
       data: users.map((user) => {
         const text = copy[normalizeLang(user.userSystemConfig?.language)];
@@ -6025,6 +6066,18 @@ export class BarbershopService {
       ? customers.filter((c): c is typeof c & { email: string } => !!c.email)
       : [];
     const lang = langForCountry(barbershop.country);
+    let whatsappMessage = data.message;
+    if (data.sendWhatsapp) {
+      const prepared = whatsappMarketingBody(data.message ?? '', lang);
+      if (!prepared.ok) {
+        throw new BadRequestException(
+          prepared.reason === 'too_long'
+            ? 'A mensagem do WhatsApp pode ter no máximo 1.024 caracteres.'
+            : 'Escreva a mensagem da campanha.',
+        );
+      }
+      whatsappMessage = prepared.text;
+    }
     const whatsappPhones =
       data.sendWhatsapp && this.whatsappService.isConfigured()
         ? customers
@@ -6092,7 +6145,7 @@ export class BarbershopService {
       whatsappPhones.map((phone) => ({
         kind: 'marketing' as const,
         to: phone,
-        message: data.message,
+        message: whatsappMessage,
         campaignId: campaign.id,
         lang,
       })),

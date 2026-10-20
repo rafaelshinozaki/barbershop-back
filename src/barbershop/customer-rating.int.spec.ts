@@ -46,6 +46,7 @@ describe('Nota do cliente (integração)', () => {
       await prisma.user.create({
         data: {
           email: `cr-${label}-${RUN}@test.local`,
+          isActive: true,
           password: 'x',
           fullName: `Pessoa ${label}`,
           idDocNumber: `${RUN}${label}`.slice(-20),

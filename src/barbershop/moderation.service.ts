@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../aws/s3.service';
 import { PushService } from '../push/push.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { NotificationsService, type LocalizedNotice } from '../notifications/notifications.service';
+import type { Lang } from '../email/language';
 import { reviewerLabel } from './professional-review.service';
 
 export const REPORT_TARGETS = [
@@ -47,12 +49,145 @@ const SHOP_IMAGES: ModeratedTarget[] = [
 const CHAT_EXCERPT = 30;
 
 /** Como o aviso ao dono chama cada imagem da página pública */
-const IMAGE_LABEL = {
-  shop_cover: 'A capa',
-  shop_logo: 'O logo',
-  barber_photo: 'A foto de um profissional',
-  social_post: 'Um post publicado',
-} as const;
+const IMAGE_LABEL: Record<string, Record<Lang, string>> = {
+  shop_cover: { pt: 'A capa', en: 'The cover', es: 'La portada' },
+  shop_logo: { pt: 'O logo', en: 'The logo', es: 'El logo' },
+  barber_photo: {
+    pt: 'A foto de um profissional',
+    en: "A professional's photo",
+    es: 'La foto de un profesional',
+  },
+  social_post: { pt: 'Um post publicado', en: 'A published post', es: 'Una publicación' },
+};
+
+/** Texto do sininho da moderação, nos três idiomas da conta. */
+export function moderationNotice(
+  type: ModeratedTarget,
+  hide: boolean,
+  shopName = '',
+): LocalizedNotice | null {
+  const name = shopName;
+  if (type === 'photo') {
+    return hide
+      ? {
+          pt: {
+            title: 'Foto ocultada pela moderação',
+            message: `Uma foto da galeria de ${name} foi ocultada após denúncia. Se achar que foi engano, fale com o suporte.`,
+          },
+          en: {
+            title: 'Photo hidden by moderation',
+            message: `A photo in ${name}'s gallery was hidden after a report. If this was a mistake, contact support.`,
+          },
+          es: {
+            title: 'Foto ocultada por la moderación',
+            message: `Una foto de la galería de ${name} se ocultó tras una denuncia. Si crees que fue un error, habla con soporte.`,
+          },
+        }
+      : {
+          pt: {
+            title: 'Foto de volta na galeria',
+            message: `A foto da galeria de ${name} voltou a aparecer.`,
+          },
+          en: {
+            title: 'Photo back in the gallery',
+            message: `The photo in ${name}'s gallery is visible again.`,
+          },
+          es: {
+            title: 'Foto de vuelta en la galería',
+            message: `La foto de la galería de ${name} volvió a mostrarse.`,
+          },
+        };
+  }
+  if (type !== 'barbershop' && type !== 'professional_profile' && IMAGE_LABEL[type]) {
+    const label = IMAGE_LABEL[type];
+    return hide
+      ? {
+          pt: {
+            title: 'Imagem ocultada pela moderação',
+            message: `${label.pt} de ${name} saiu da página pública após denúncia. Envie outra imagem ou, se achar que foi engano, fale com o suporte.`,
+          },
+          en: {
+            title: 'Image hidden by moderation',
+            message: `${label.en} of ${name} was removed from the public page after a report. Upload another image or, if this was a mistake, contact support.`,
+          },
+          es: {
+            title: 'Imagen ocultada por la moderación',
+            message: `${label.es} de ${name} salió de la página pública tras una denuncia. Sube otra imagen o, si crees que fue un error, habla con soporte.`,
+          },
+        }
+      : {
+          pt: {
+            title: 'Imagem de volta na página',
+            message: `${label.pt} de ${name} voltou a aparecer na página pública.`,
+          },
+          en: {
+            title: 'Image back on the page',
+            message: `${label.en} of ${name} is on the public page again.`,
+          },
+          es: {
+            title: 'Imagen de vuelta en la página',
+            message: `${label.es} de ${name} volvió a aparecer en la página pública.`,
+          },
+        };
+  }
+  if (type === 'barbershop') {
+    return hide
+      ? {
+          pt: {
+            title: 'Unidade fora da busca',
+            message: `${name} saiu da busca e do sitemap após denúncia; o link direto continua. Se achar que foi engano, fale com o suporte.`,
+          },
+          en: {
+            title: 'Location removed from search',
+            message: `${name} was removed from search and the sitemap after a report; the direct link still works. If this was a mistake, contact support.`,
+          },
+          es: {
+            title: 'Unidad fuera de la búsqueda',
+            message: `${name} salió de la búsqueda y del sitemap tras una denuncia; el enlace directo sigue. Si crees que fue un error, habla con soporte.`,
+          },
+        }
+      : {
+          pt: {
+            title: 'Unidade de volta na busca',
+            message: `${name} voltou a aparecer na busca.`,
+          },
+          en: {
+            title: 'Location back in search',
+            message: `${name} is back in search.`,
+          },
+          es: {
+            title: 'Unidad de vuelta en la búsqueda',
+            message: `${name} volvió a aparecer en la búsqueda.`,
+          },
+        };
+  }
+  if (type === 'professional_profile') {
+    return hide
+      ? {
+          pt: {
+            title: 'Perfil público suspenso',
+            message:
+              'Sua página pública saiu do ar após denúncia. Se achar que foi engano, fale com o suporte.',
+          },
+          en: {
+            title: 'Public profile suspended',
+            message:
+              'Your public page was taken down after a report. If this was a mistake, contact support.',
+          },
+          es: {
+            title: 'Perfil público suspendido',
+            message:
+              'Tu página pública salió del aire tras una denuncia. Si crees que fue un error, habla con soporte.',
+          },
+        }
+      : {
+          pt: { title: 'Perfil público de volta', message: 'Sua página pública voltou ao ar.' },
+          en: { title: 'Public profile restored', message: 'Your public page is back online.' },
+          es: { title: 'Perfil público de vuelta', message: 'Tu página pública volvió al aire.' },
+        };
+  }
+  return null;
+}
 
 export const REPORT_REASONS = [
   'offensive',
@@ -93,6 +228,7 @@ export class ModerationService {
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
     @Optional() private readonly push?: PushService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   async report(
@@ -632,9 +768,8 @@ export class ModerationService {
   async notifyOwner(type: ModeratedTarget, id: number, action: 'hide' | 'restore') {
     const hide = action === 'hide';
     let userIds: number[] = [];
-    let title = '';
-    let message = '';
     let actionUrl = '';
+    let notice: LocalizedNotice | null = null;
     if (SHOP_IMAGES.includes(type) || type === 'barbershop') {
       const barbershopId = await this.shopOf(type, id);
       if (!barbershopId) return;
@@ -657,23 +792,7 @@ export class ModerationService {
         ...shop.barbers.map((b) => b.userId),
       ].filter((u): u is number => typeof u === 'number');
       actionUrl = `/barbershops/${barbershopId}/public-page`;
-      if (type === 'photo') {
-        title = hide ? 'Foto ocultada pela moderação' : 'Foto de volta na galeria';
-        message = hide
-          ? `Uma foto da galeria de ${shop.name} foi ocultada após denúncia. Se achar que foi engano, fale com o suporte.`
-          : `A foto da galeria de ${shop.name} voltou a aparecer.`;
-      } else if (type !== 'barbershop') {
-        const what = IMAGE_LABEL[type as keyof typeof IMAGE_LABEL];
-        title = hide ? 'Imagem ocultada pela moderação' : 'Imagem de volta na página';
-        message = hide
-          ? `${what} de ${shop.name} saiu da página pública após denúncia. Envie outra imagem ou, se achar que foi engano, fale com o suporte.`
-          : `${what} de ${shop.name} voltou a aparecer na página pública.`;
-      } else {
-        title = hide ? 'Unidade fora da busca' : 'Unidade de volta na busca';
-        message = hide
-          ? `${shop.name} saiu da busca e do sitemap após denúncia; o link direto continua. Se achar que foi engano, fale com o suporte.`
-          : `${shop.name} voltou a aparecer na busca.`;
-      }
+      notice = moderationNotice(type, hide, shop.name);
     } else if (type === 'professional_profile') {
       const professional = await this.prisma.professional.findUnique({
         where: { id },
@@ -682,28 +801,50 @@ export class ModerationService {
       if (!professional) return;
       userIds = [professional.userId];
       actionUrl = '/profile-privacy';
-      title = hide ? 'Perfil público suspenso' : 'Perfil público de volta';
-      message = hide
-        ? 'Sua página pública saiu do ar após denúncia. Se achar que foi engano, fale com o suporte.'
-        : 'Sua página pública voltou ao ar.';
+      notice = moderationNotice(type, hide);
     } else {
       return;
     }
     userIds = [...new Set(userIds)];
-    if (!userIds.length) return;
+    if (!userIds.length || !notice) return;
+    const text = notice;
     try {
-      await this.prisma.userNotification.createMany({
-        data: userIds.map((userId) => ({
-          userId,
-          title,
-          message,
-          type: NotificationType.INFO,
-          actionUrl,
-        })),
-      });
-      await this.push?.sendToUsers(userIds, () => ({
-        title,
-        body: message,
+      const sent = this.notifications
+        ? await this.notifications.createNotificationsForUsers(
+            userIds,
+            {
+              title: text.pt.title,
+              message: text.pt.message,
+              type: NotificationType.INFO,
+              actionUrl,
+              localized: text,
+            },
+            { inApp: 'securityInApp' },
+          )
+        : null;
+      const fallbackIds = sent
+        ? null
+        : (
+            await this.prisma.user.findMany({
+              where: { id: { in: userIds }, isActive: true, deleted_at: null },
+              select: { id: true },
+            })
+          ).map((user) => user.id);
+      if (fallbackIds?.length) {
+        await this.prisma.userNotification.createMany({
+          data: fallbackIds.map((userId) => ({
+            userId,
+            title: text.pt.title,
+            message: text.pt.message,
+            type: NotificationType.INFO,
+            actionUrl,
+          })),
+        });
+      }
+      const pushIds = sent?.userIds ?? fallbackIds ?? [];
+      await this.push?.sendToUsers(pushIds, (lang) => ({
+        title: text[lang].title,
+        body: text[lang].message,
         url: actionUrl,
         tag: 'moderation',
       }));

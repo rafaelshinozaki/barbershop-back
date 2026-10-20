@@ -35,6 +35,7 @@ describe('ActivityNotificationsService (integração com o banco)', () => {
     const user = await prisma.user.create({
       data: {
         email: `act-${label}-${RUN}@test.local`,
+        isActive: true,
         password: 'x',
         fullName: `Teste ${label}`,
         idDocNumber: `${RUN}${label}`.slice(-20),

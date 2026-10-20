@@ -2426,24 +2426,30 @@ Foram lidos o envio por WhatsApp (lembrete, aviso da lista de espera e campanha)
      
      **Feito:** o DDI vem do país da unidade. Número local dos EUA sai com +1; número que não fecha com esse país (ou país desconhecido) não recebe WhatsApp. Quem está nos EUA e escreve o 1 na frente ("1 415 555 1234" ou "+1…") recebe mesmo numa unidade do Brasil. Dez dígitos sem DDI numa unidade do Brasil não saem: é o mesmo formato de um fixo daqui, e o WhatsApp não chuta o país. O modelo segue a língua da unidade (`pt_BR`, `en_US`, `es_ES`), e a data e a hora vão no formato e no fuso dela. O log guarda só os 4 últimos dígitos. Teste em `phone.util.spec.ts`, `appointment-reminder.service.spec.ts` e `whatsapp.service.spec.ts`.
 
-236. ⬜ **Campanha por WhatsApp com quebra de linha falha para todos, e o cliente não tem como sair dela** (back: `sendMarketingBlast`, `WhatsappService.sendMarketingBlast`; front: tela de campanhas):
+236. ✅ **Campanha por WhatsApp com quebra de linha falha para todos, e o cliente não tem como sair dela** (back: `sendMarketingBlast`, `WhatsappService.sendMarketingBlast`; front: tela de campanhas):
      - O texto da campanha vai como parâmetro do modelo aprovado. A Meta recusa parâmetro com quebra de linha, tabulação ou mais de 4 espaços seguidos, e com mais de 1.024 caracteres. Uma campanha escrita em parágrafos falha em todos os envios (cada um tentado de novo pela fila), e o texto não tem limite nem conferência na hora de disparar.
      - O descadastro de marketing só existe no link do e-mail. Cliente sem e-mail (a maioria no balcão) recebe campanha por WhatsApp e não tem como pedir para sair, nem a mensagem diz como.
      
      **Fazer:** conferir o texto para WhatsApp antes de criar a campanha (sem quebra de linha ou trocando por " · ", até 1.024 caracteres) e mostrar o limite na tela. Modelo de marketing com o botão de descadastro da Meta (ou o texto "responda SAIR") e o descadastro ligado a `marketingOptOut` da ficha; a equipe também marca "não quer receber" na ficha.
+     
+     **Feito:** antes de criar a campanha, quebra de linha e tabulação viram " · ", mais de 4 espaços viram 4, e o texto (com o aviso "responda SAIR", STOP ou SALIR) não passa de 1.024 caracteres. A tela mostra a contagem. Quem responde essa palavra sai das campanhas (`marketingOptOut`), no telefone de qualquer ficha. Na ficha, "não quer receber" continua e vale também para as outras fichas com o mesmo telefone. Teste em `marketing-text.spec.ts`.
 
-237. ⬜ **Avisos da moderação, da saída de profissional e do Destaque não aparecem na hora no sininho, e o da moderação só em português** (back: `ModerationService.notifyOwner`, `warnFutureAppointments`, `FeaturedPaymentService`):
+237. ✅ **Avisos da moderação, da saída de profissional e do Destaque não aparecem na hora no sininho, e o da moderação só em português** (back: `ModerationService.notifyOwner`, `warnFutureAppointments`, `FeaturedPaymentService`):
      - Esses avisos são gravados direto com `userNotification.createMany`, sem `realtime.notifyUsers`. O sininho de quem está com a tela aberta só mostra o aviso ao recarregar a página (os avisos de atividade e do chat aparecem na hora).
      - O aviso da moderação (imagem ocultada, unidade fora da busca, perfil suspenso) tem o texto fixo em português, para dono de unidade em inglês ou espanhol. Os outros dois já saem no idioma da pessoa.
      - Nenhum dos três olha as preferências de aviso da pessoa.
      
      **Fazer:** um caminho só para aviso no sininho (o `NotificationsService.createNotificationsForUsers`), que grava, avisa em tempo real e respeita o idioma; o da moderação com o texto nos três idiomas.
+     
+     **Feito:** moderação, saída de profissional e vencimento do Destaque passam por `createNotificationsForUsers`: grava no idioma da conta (a moderação em pt, en e es), avisa na hora quem está com a tela aberta e respeita a preferência do sininho (segurança, equipe e novidades). Teste em `notifications.service.spec.ts`.
 
-238. ⬜ **Conta desativada continua recebendo por e-mail o movimento da unidade** (back: `ActivityNotificationsService.deliver`):
+238. ✅ **Conta desativada continua recebendo por e-mail o movimento da unidade** (back: `ActivityNotificationsService.deliver`):
      - Quem recebe os avisos de atividade (agendamento, venda, encaixe, avaliação, cadeira alugada) é escolhido pelo vínculo com a unidade: dono da rede, dono da unidade, gerente, recepção e o profissional do atendimento. A busca das contas não filtra `isActive` nem `deleted_at`.
      - Um dono ou gerente com a conta desativada pela plataforma continua recebendo por e-mail o nome do cliente, o serviço, o horário e o valor de cada venda. O mesmo vale para os avisos no sininho, que ficam acumulando.
      
      **Fazer:** os avisos de atividade (e os outros avisos para a equipe) só vão para conta ativa e não apagada. Teste com o gerente desativado.
+     
+     **Feito:** agendamento, venda, encaixe, avaliação, estoque e cadeira alugada só saem para conta ativa e não apagada — e-mail e sininho. O mesmo vale para o chat da equipe, a vaga, o resumo do dia, a saída de profissional, a moderação e o vencimento do Destaque. Teste em `activity-notifications.service.spec.ts` (gerente desativado) e `notifications.service.spec.ts`.
 
 ### Septuagésima sexta rodada (2026-10-20): indicação do Pro, agenda pessoal e escala
 

@@ -335,7 +335,7 @@ export class ChatService {
     userIds = [...new Set(userIds)];
     if (!userIds.length) return;
     const users = await this.prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: userIds }, isActive: true, deleted_at: null },
       select: { id: true, userSystemConfig: { select: { language: true } } },
     });
     const who = appt.customer.name.split(' ')[0];

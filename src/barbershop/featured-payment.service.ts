@@ -12,6 +12,7 @@ import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PushService } from '../push/push.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 import { FEATURED_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import type Stripe from 'stripe';
@@ -62,6 +63,7 @@ export class FeaturedPaymentService {
     private readonly barbershops: BarbershopService,
     @Optional() private readonly push?: PushService,
     @Optional() private readonly searchCache?: SearchCacheService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /** Confere quem pode comprar e devolve o alvo (id, nome, Destaque atual) */
@@ -405,12 +407,32 @@ export class FeaturedPaymentService {
     const ids = [...new Set(userIds)];
     if (!ids.length) return;
     const copy = this.featuredCopy(shopName, until, timeZone);
-    const users = await this.prisma.user.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, userSystemConfig: { select: { language: true } } },
-    });
-    if (!users.length) return;
     try {
+      if (this.notifications) {
+        const sent = await this.notifications.createNotificationsForUsers(
+          ids,
+          {
+            title: copy.pt.title,
+            message: copy.pt.message,
+            type: NotificationType.INFO,
+            actionUrl,
+            localized: copy,
+          },
+          { inApp: 'newsInApp' },
+        );
+        await this.push?.sendToUsers(sent.userIds, (lang) => ({
+          title: copy[lang].title,
+          body: copy[lang].message,
+          url: actionUrl,
+          tag: 'featured',
+        }));
+        return;
+      }
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: ids }, isActive: true, deleted_at: null },
+        select: { id: true, userSystemConfig: { select: { language: true } } },
+      });
+      if (!users.length) return;
       await this.prisma.userNotification.createMany({
         data: users.map((user) => {
           const text = copy[normalizeLang(user.userSystemConfig?.language)];

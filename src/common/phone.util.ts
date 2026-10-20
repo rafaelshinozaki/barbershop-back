@@ -132,3 +132,16 @@ export function phoneDigitVariants(
   }
   return [...out];
 }
+
+/**
+ * Formas do telefone que a Meta manda em "from" (DDI + número, sem "+").
+ * Inclui o número nacional, para achar a ficha gravada só com o DDD.
+ */
+export function whatsappSenderVariants(from: string): string[] {
+  const digits = from.replace(/\D/g, '');
+  if (!digits) return [];
+  const out = new Set(phoneDigitVariants(`+${digits}`));
+  if (digits.startsWith('55') && digits.length > 11) out.add(digits.slice(2));
+  if (digits.startsWith('1') && digits.length === 11) out.add(digits.slice(1));
+  return [...out];
+}

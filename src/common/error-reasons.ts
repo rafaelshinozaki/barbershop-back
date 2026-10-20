@@ -19,6 +19,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'MARKETING_MONTHLY_LIMIT',
   'Quem saiu das campanhas só pode voltar a receber por conta própria.':
     'MARKETING_OPT_IN_BY_CUSTOMER',
+  'A mensagem do WhatsApp pode ter no máximo 1.024 caracteres.': 'WHATSAPP_MARKETING_TOO_LONG',
+  'Escreva a mensagem da campanha.': 'MARKETING_MESSAGE_REQUIRED',
   'Categoria não encontrada nesta unidade': 'CATEGORY_NOT_FOUND_LOCATION',
   'Histórico de atendimento não encontrado nesta unidade': 'SERVICE_HISTORY_NOT_FOUND_LOCATION',
   'Data de nascimento é obrigatória': 'BIRTHDATE_REQUIRED',

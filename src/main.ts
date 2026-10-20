@@ -53,7 +53,8 @@ async function bootstrap() {
   app.use(
     json({
       verify: (req: any, _res, buf) => {
-        if (req.originalUrl === '/stripe/webhook') {
+        const path = req.originalUrl?.split('?')[0];
+        if (path === '/stripe/webhook' || path === '/whatsapp/webhook') {
           req.rawBody = buf;
         }
       },

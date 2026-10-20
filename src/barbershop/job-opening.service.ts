@@ -934,7 +934,7 @@ export class JobOpeningService {
     const ids = [...new Set(userIds)];
     if (!ids.length) return;
     const users = await this.prisma.user.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, isActive: true, deleted_at: null },
       select: { id: true, userSystemConfig: { select: { language: true } } },
     });
     if (!users.length) return;

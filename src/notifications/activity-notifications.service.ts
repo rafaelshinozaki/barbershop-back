@@ -65,8 +65,9 @@ const escapeHtml = (s: string) =>
  * cada um.
  *
  * Quem recebe: dono da franquia, dono da unidade, gerentes da unidade e o
- * barbeiro envolvido — nunca quem fez a ação. Tudo best-effort e fora da
- * requisição: falha aqui não pode desfazer a venda/agendamento já salvos.
+ * barbeiro envolvido — nunca quem fez a ação, e nunca conta desativada ou
+ * apagada. Tudo best-effort e fora da requisição: falha aqui não pode
+ * desfazer a venda/agendamento já salvos.
  */
 @Injectable()
 export class ActivityNotificationsService {
@@ -750,7 +751,12 @@ export class ActivityNotificationsService {
     if (recipientIds.size === 0) return;
 
     const users = await this.prisma.user.findMany({
-      where: { id: { in: [...recipientIds] } },
+      where: {
+        id: { in: [...recipientIds] },
+        // Conta desativada pela plataforma, ou apagada, não vê mais o movimento
+        isActive: true,
+        deleted_at: null,
+      },
       select: {
         id: true,
         email: true,
