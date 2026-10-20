@@ -2471,3 +2471,20 @@ Foram lidos o pagamento do atendimento pelo app antes do horário (pagar, confir
      - Na prática, o gerente apaga uma avaliação ruim do profissional (que sai da página e da nota) excluindo o horário, sem passar pela moderação. A caixinha paga pelo app e o pagamento do atendimento pelo app (`prepaidAt`, que fica no próprio horário) somem da lista de pagamentos pelo app e do repasse, com o dinheiro já na conta do Stripe.
      
      **Fazer:** excluir só horário que não aconteceu e não tem nada ligado: concluído, com venda, avaliação, caixinha, taxa de falta, pagamento pelo app ou conversa denunciada é recusado com a mensagem para cancelar (ou marcar falta) em vez de excluir. As relações com dinheiro e moderação passam de `Cascade` para `Restrict`. Teste: excluir horário com avaliação e com caixinha.
+
+### Septuagésima oitava rodada (2026-10-20): ficha de saúde e o que some ao apagar
+
+Foram lidos a ficha de anamnese e consentimento, a exclusão de serviço, produto, categoria, profissional, despesa e plano do clube, e o histórico de alterações (o que cada cargo vê e o que fica mascarado).
+
+244. ⬜ **Qualquer barbeiro e a recepção leem a ficha de saúde de todos os clientes da unidade** (back: `getConsentForms`, `createConsentForm`, `signConsentForm`, `deleteConsentForm`):
+     - A ficha de anamnese e o teste de alergia guardam dado de saúde (dado sensível na LGPD). `getConsentForms` usa o acesso padrão (`barber`), então o barbeiro e a recepção leem as respostas de qualquer cliente pelo id, mesmo de quem nunca atenderam. Para comparar: o telefone e o e-mail do cliente ficam escondidos do barbeiro (item 24), e o motivo "doente" da folga de um colega aparece como "Outro" para quem não é gerente.
+     - "Assinar" é a equipe digitar um nome (`signatureName`) e pode ser feito de novo numa ficha já assinada, trocando a data da assinatura. Ficha com o consentimento revogado também pode ser "assinada".
+     - O gerente apaga de vez uma ficha assinada (teste de alergia, autorização de foto), sem ficar registro de que ela existiu.
+     
+     **Fazer:** ficha de saúde só para gerente e dono e para o profissional que tem horário com o cliente (passado recente ou futuro); a recepção vê só se existe e se está assinada, sem as respostas. Assinar só a ficha pendente e não revogada, uma vez. Ficha assinada não é apagada: é arquivada (sai da lista, fica o registro). Teste com o barbeiro lendo a ficha de um cliente que não é dele.
+
+245. ⬜ **Serviço desativado continua à venda no clube e no pacote** (back: `deleteService`, `getPublicBarbershopByslug`; clube e pacotes):
+     - Excluir um serviço só o desativa (`isActive: false`): ele sai do agendamento. Mas o plano do clube que dá direito a esse serviço continua ativo e aparece na página pública para assinar (a lista de planos só olha `plan.isActive`), e quem já assina continua pagando todo mês por um serviço que não consegue mais agendar pelo link.
+     - O mesmo vale para o pacote de sessões desse serviço, e ninguém é avisado de que há plano, pacote ou horários futuros ligados ao serviço desativado.
+     
+     **Fazer:** ao desativar, mostrar o que está ligado ao serviço (planos do clube com assinantes, pacotes à venda e com saldo, horários futuros) e pedir a decisão. Plano com serviço desativado sai da página pública e não aceita assinatura nova; os assinantes continuam podendo usar no balcão até a unidade cancelar o plano.
