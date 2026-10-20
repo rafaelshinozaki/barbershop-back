@@ -2533,3 +2533,20 @@ Foram lidos o agendamento pela página pública (achar a ficha, preencher o e-ma
      - O comentário do código já protege o caso da conta logada ("não é ligada à conta logada: o telefone não é confirmado"), mas o mesmo resultado sai pelo e-mail preenchido.
      
      **Fazer:** o e-mail digitado na página fica só no horário (`contactEmail`), sem preencher o da ficha; a ficha só ganha e-mail pela equipe ou quando o próprio cliente confirma por código. `linkVerifiedCustomers` não liga ficha cujo e-mail veio de um agendamento pela página (guardar a origem do e-mail na ficha). Teste: ficha sem e-mail, agendar com o telefone dela e outro e-mail, criar e confirmar a conta e conferir que a ficha não entra.
+
+### Octogésima segunda rodada (2026-10-20): e-mail da ficha e espaço compartilhado
+
+Foram lidos o cadastro e a edição da ficha do cliente pela equipe (e-mail, telefone, bloqueio, campanhas) e o espaço compartilhado (convidar, aceitar, sair e a vitrine dos dois lados).
+
+251. ⬜ **E-mail digitado pela equipe na ficha liga a ficha à conta de quem tiver esse e-mail** (back: `createCustomer`, `updateCustomer`; `ClientAuthService.linkVerifiedCustomers`):
+     - A ficha ganha e-mail pela equipe sem confirmação: no cadastro (do barbeiro básico para cima) e na edição (da recepção para cima). Quando alguém confirma uma conta de cliente com esse e-mail (ou entra pelo Google com ele), `linkVerifiedCustomers` liga a ficha à conta.
+     - Um erro de digitação (`maria.silva@gmail.com` no lugar de `mariasilva@gmail.com`) entrega o histórico, os próximos horários e os e-mails daquela cliente para o dono do outro endereço, sem a unidade nem a cliente saberem. Trocar o e-mail de uma ficha já ligada mantém a ligação com a conta antiga.
+     - É o mesmo caminho do item 250 (lá o e-mail vem do agendamento pela página).
+     
+     **Fazer:** ligar ficha à conta só quando o e-mail da ficha foi confirmado pelo próprio cliente (código ou link enviado ao endereço, como o "verificar e-mail" da conta) ou quando a pessoa entra com um link que a unidade mandou para ela. Até lá, a conta vê só os horários que ela mesma marcou. Trocar o e-mail da ficha desfaz a ligação com a conta.
+
+252. ⬜ **A vitrine do espaço compartilhado mostra unidade suspensa, fora da busca ou sem dono, e o convite pode ser repetido sem fim** (back: `SharedLocationService.publicLinks`, `invite`):
+     - Na página pública, a lista de quem atende no espaço (e de onde o profissional atende) filtra só `isActive`. Unidade suspensa pela plataforma, tirada da vitrine pela moderação (`searchHiddenAt`) ou de dono com a conta apagada ou desativada continua aparecendo com link, nome e endereço na página da outra unidade (a busca e o sitemap já tiram essas unidades com `ownerAcceptsPublic` e `searchHiddenAt`).
+     - Depois de recusado (ou de encerrado), o mesmo espaço convida de novo na hora, e cada convite avisa o dono e o gerente do negócio convidado (sininho e e-mail). Não há limite nem bloqueio.
+     
+     **Fazer:** `publicLinks` usa o mesmo filtro da página pública (`ownerAcceptsPublic` e `searchHiddenAt: null`). Convite recusado só pode ser refeito depois de 30 dias, e o convidado pode bloquear convites daquele espaço.
