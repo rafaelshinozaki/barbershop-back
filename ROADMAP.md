@@ -2432,3 +2432,26 @@ Foram lidos o envio por WhatsApp (lembrete, aviso da lista de espera e campanha)
      - Um dono ou gerente com a conta desativada pela plataforma continua recebendo por e-mail o nome do cliente, o serviço, o horário e o valor de cada venda. O mesmo vale para os avisos no sininho, que ficam acumulando.
      
      **Fazer:** os avisos de atividade (e os outros avisos para a equipe) só vão para conta ativa e não apagada. Teste com o gerente desativado.
+
+### Septuagésima sexta rodada (2026-10-20): indicação do Pro, agenda pessoal e escala
+
+Foram lidos a indicação do Pro entre profissionais, a agenda pessoal (modo solo), os feriados e fechamentos, a série de horários, a verificação de identidade e a escala semanal.
+
+239. ⬜ **Indicação do Pro dá meses de graça com contas descartáveis** (back: `ProReferralService.claim`):
+     - Qualquer conta nova (até 30 dias) usa o código de outro profissional, e os dois ganham 1 mês de Pro, até 12 meses para quem indicou. A conta nova não precisa ter o e-mail confirmado, telefone, documento, agenda nem um atendimento: a conta da equipe é criada sem confirmar o e-mail.
+     - Uma pessoa cria 12 contas com e-mails descartáveis, usa o próprio código em cada uma e tem um ano de Pro sem pagar.
+     
+     **Fazer:** o código só vale para conta com o e-mail confirmado, e o mês de quem indicou só é liberado quando a conta indicada fica ativa de verdade (por exemplo, o primeiro atendimento concluído na agenda dela, ou a primeira cobrança do Pro). Recusar o código quando o documento ou o telefone da conta nova é o de quem indicou.
+
+240. ⬜ **Agenda pessoal encerrada não pode ser reaberta, e a nova agenda entra na rede do estabelecimento** (back: `SoloService.status`, `start`):
+     - `status` procura a agenda pessoal por dono e `practiceKind: 'solo'` sem olhar `closedAt`. Depois de "excluir" a agenda (que encerra a unidade), o status continua dizendo que o modo solo está ativo, com a agenda encerrada. `start` devolve esse status e não cria outra: a pessoa fica sem agenda e sem como abrir uma nova. A contagem do mês (`soloUsage`) também soma os atendimentos da agenda encerrada.
+     - `start` usa a rede que a pessoa já tem como dona. Quem é dono de um estabelecimento e abre a agenda pessoal fica com ela na rede do estabelecimento: com a moeda, as cores e as regras de cancelamento e falta dele, e a agenda aparece para os gerentes da rede.
+     - Dois cliques seguidos em "começar" criam duas agendas pessoais (a checagem não é atômica).
+     
+     **Fazer:** `status`, `start` e `soloUsage` só olham a agenda pessoal não encerrada. A agenda pessoal tem a rede própria (criada junto, com a moeda do país dela). Trava por dono no `start` (como o `lockProUntil`). Teste: encerrar e abrir de novo.
+
+241. ⬜ **Mudar a escala ou o horário da unidade não mostra nem avisa quem já está marcado fora dele** (back: `ScheduleService.setWeeklySchedule`, `setBusinessHours`; front: telas de escala e de horário):
+     - O feriado/fechamento mostra antes quem é afetado e oferece cancelar avisando o cliente. Já a escala do profissional (pôr folga fixa na segunda, encurtar o expediente) e o horário da unidade (fechar o sábado) só gravam: os horários que já estavam marcados fora do novo expediente continuam lá, e ninguém fica sabendo até o cliente chegar.
+     - Mudar o horário da unidade também não confere os profissionais que seguem esse horário e trabalham em outra unidade (`ensureShiftFreeAcrossShops` só roda na escala do profissional). O expediente deles passa a cruzar o da outra unidade.
+     
+     **Fazer:** antes de salvar, devolver a lista de horários marcados que ficam fora (como o `impact` do fechamento), e a tela mostra e oferece remarcar ou cancelar avisando o cliente. O horário da unidade passa pela mesma conferência entre unidades para os profissionais que seguem esse horário.
