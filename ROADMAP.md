@@ -2573,7 +2573,7 @@ Foram lidos as configurações da rede (fidelidade, indicação, taxa de falta, 
 
 Foram lidos o cadastro de serviço, pacote e plano do clube (valores, Stripe, mudança de preço), a assinatura do clube pelo cliente e onde o bloqueio de cliente é conferido.
 
-255. ⬜ **Cliente bloqueado pela unidade assina o clube e remarca pelo link** (back: `subscribeToClientPlan`, `rescheduleManagedAppointment`; `ensureNotBlocked`):
+255. ⬜ **Cliente bloqueado pela unidade assina o clube e remarca pelo link** (back: `subscribeToPlan`, `rescheduleManagedAppointment`; `ensureNotBlocked`):
      - O bloqueio (`setCustomerBlocked`, "não agenda online em nenhuma unidade da rede") só é conferido no agendamento pela página e na entrada da lista de espera. A assinatura do clube pela conta do cliente não confere: o cliente bloqueado assina, é cobrado todo mês no cartão e não consegue agendar online o serviço que está pagando.
      - Pelo link do e-mail, o cliente bloqueado depois de marcar continua remarcando o horário que já tinha (`rescheduleManagedAppointment` só olha o prazo e a agenda), quantas vezes quiser dentro da janela.
      - Bloquear não diz nada sobre a assinatura que o cliente já tem no clube: ela continua cobrando.
