@@ -2658,3 +2658,13 @@ Foram lidos a cobrança da conta do horário (quando dá para cobrar e o que mud
      - O mesmo cliente também segue agendando pela página pública sem login, com o mesmo telefone e e-mail (a suspensão vale só para a conta).
      
      **Fazer:** ao suspender, a tela do backoffice mostra as assinaturas ativas e o padrão é cancelá-las no Stripe (no fim do período ou na hora, com estorno proporcional decidido pela equipe); o e-mail de suspensão diz o que aconteceu com elas. A exclusão da conta pelo cliente funciona com a conta suspensa (pelo link enviado ao e-mail). Decidir se a suspensão também bloqueia o agendamento pela página (pelo e-mail e telefone da conta), como o bloqueio da unidade.
+
+### Nonagésima primeira rodada (2026-10-20): clube de unidade suspensa
+
+Foram lidos a pausa da cobrança do clube (`setClubBillingPaused`), o encerramento da unidade e a exclusão da conta do dono (que cancelam as assinaturas), e o que a suspensão pela plataforma e a desativação do dono fazem com o clube.
+
+262. ⬜ **O clube continua cobrando os clientes de unidade suspensa pela plataforma ou de dono desativado** (back: `setClubBillingPaused`, suspensão da unidade e da rede pelo backoffice, `UsersService.setUserActive`):
+     - Quando o dono pausa a unidade, a cobrança do clube fica suspensa no Stripe (`pause_collection`) e volta ao reativar. Encerrar a unidade ou apagar a conta cancela as assinaturas.
+     - Já a suspensão pela plataforma (`platformSuspendedAt`, da unidade ou da rede) e a desativação da conta do dono (`isActive: false`) tiram a unidade do ar: a página pública, a busca e o agendamento online deixam de funcionar (`ownerAcceptsPublic`). Mas as assinaturas do clube continuam ativas, e o Stripe segue cobrando todo mês o cartão dos clientes, que não conseguem mais agendar online o serviço que estão pagando. O item 190 parou a caixinha, a avaliação, o chat, as postagens e as campanhas de unidade suspensa, mas não o clube.
+     
+     **Fazer:** suspender a unidade ou a rede, ou desativar o dono, pausa a cobrança do clube como a pausa da unidade (marcando o motivo, para voltar só as que essa suspensão pausou) e avisa os assinantes; tirar a suspensão retoma. Teste com a unidade suspensa pelo backoffice e com o dono desativado.
