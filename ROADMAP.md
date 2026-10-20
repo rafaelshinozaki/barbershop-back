@@ -2550,3 +2550,21 @@ Foram lidos o cadastro e a edição da ficha do cliente pela equipe (e-mail, tel
      - Depois de recusado (ou de encerrado), o mesmo espaço convida de novo na hora, e cada convite avisa o dono e o gerente do negócio convidado (sininho e e-mail). Não há limite nem bloqueio.
      
      **Fazer:** `publicLinks` usa o mesmo filtro da página pública (`ownerAcceptsPublic` e `searchHiddenAt: null`). Convite recusado só pode ser refeito depois de 30 dias, e o convidado pode bloquear convites daquele espaço.
+
+### Octogésima terceira rodada (2026-10-20): regras da rede e sair da lista de espera
+
+Foram lidos as configurações da rede (fidelidade, indicação, taxa de falta, janela de cancelamento, moeda, logo), a política de cancelamento pelo link do cliente e a lista de espera pela equipe e pelo link "sair da lista".
+
+253. ⬜ **As regras da rede (taxa de falta, janela de cancelamento, fidelidade) aceitam qualquer valor** (back: `updateNetwork`; `UpdateNetworkInput`):
+     - `updateNetwork` grava o que vier, sem conferência nenhuma (o DTO não tem validação): taxa de falta de 500% do serviço ou negativa, `noShowFeeType` com qualquer texto, janela de cancelamento negativa ou de 10.000 horas, valor do ponto de fidelidade negativo ou enorme, pontos por real e bônus de indicação sem limite, `foundationYear` qualquer, descrição e missão sem tamanho máximo.
+     - A janela de cancelamento decide até quando o cliente cancela e remarca pelo link (`loadManagedAppointment`): com uma janela enorme, o cliente nunca mais consegue cancelar pelo link (só nos minutos logo depois de agendar), e qualquer cancelamento dele vira "tardio" e gera taxa. Esses números aparecem na política de cancelamento da página pública e nos e-mails.
+     - A moeda da rede aceita qualquer texto (`"XYZ"`), e é a moeda das unidades novas e do cartão-presente vendido sem unidade; com o Stripe, a cobrança nessa moeda falha.
+     - O logo aceita qualquer link externo, mostrado na página pública (o visitante carrega a imagem de um servidor de fora).
+     
+     **Fazer:** conferir cada campo como os preços da plataforma (`PRICING_LIMITS`): taxa percentual de 0 a 100, fixa pelo `checkMoney` da moeda, tipo `PERCENT`/`FIXED`, janela de 0 a 72 horas, ponto e bônus com teto, moeda da lista suportada (e sem trocar depois de ter venda), textos com tamanho máximo e logo só pelo envio de arquivo (ou link https). Teste com valores fora do limite.
+
+254. ⬜ **"Sair da lista de espera" não tira quem já recebeu um aviso de vaga** (back: `leaveWaitlist`, `passExpiredWaitlistOffers`, `backToWaiting`):
+     - O link "sair da lista" só cancela a entrada que está `WAITING`. Quem já recebeu um aviso (`NOTIFIED`) e clica em sair recebe a confirmação ("você saiu da lista"), mas a entrada fica como estava.
+     - Quando o prazo do aviso vence (ou o horário oferecido passa), `backToWaiting` e a limpeza do fim de `passExpiredWaitlistOffers` devolvem a entrada para `WAITING`, e a pessoa volta a receber avisos de vaga (e-mail e WhatsApp) depois de ter pedido para sair.
+     
+     **Fazer:** `leaveWaitlist` cancela a entrada `WAITING` ou `NOTIFIED` (e, se havia vaga oferecida, passa para o próximo da fila na hora). Teste: avisar, sair pelo link, vencer o prazo e conferir que a entrada continua cancelada.
