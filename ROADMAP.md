@@ -2685,3 +2685,14 @@ Foram lidos o aluguel da cadeira com a unidade suspensa, a regra de comissão, a
      - Por esse caminho também não roda a conferência entre unidades da escala (item 241) nem o aviso da lista de espera.
      
      **Fazer:** `businessHours` sai de `updateBarbershop` (fica só na tela de horário) e o cadastro passa pela mesma conferência de `setBusinessHours`; `parseBusinessHours` descarta o dia com horário fora de HH:MM ou com início depois do fim. Teste com horário invertido pela edição da unidade.
+
+### Nonagésima terceira rodada (2026-10-20): cadastro da unidade
+
+Foram lidos o cadastro da unidade (no cadastro do dono e ao abrir outra unidade), o limite de unidades do plano e a entrada do dono na equipe.
+
+264. ⬜ **O cadastro da unidade grava endereço da página, fuso e moeda sem conferir** (back: `createBarbershop`, `CreateBarbershopInput`, `BarbershopSignupData`):
+     - `CreateBarbershopInput` não tem nenhuma validação, e `createBarbershop` só confere se o `slug` já existe. O endereço da página (`/u/:slug`) aceita espaço, barra, `?`, `#`, maiúsculas e acentos: o link da página, o sitemap, o SEO e os links dos e-mails quebram ou apontam para outra rota, e `Barbearia-X` e `barbearia-x` viram duas unidades diferentes.
+     - O fuso e a moeda vêm do formulário sem conferência (`timezone ?? 'America/Sao_Paulo'`, `currency ?? network.currency`): na edição da unidade os dois passam por `shopBaseUpdate` (fuso IANA, moeda ISO), mas no cadastro um fuso inexistente cai no padrão só em parte do código (`safeTimeZone`) e uma moeda inventada vai para as vendas e o Stripe.
+     - O horário de funcionamento do cadastro é o mesmo caminho sem conferência do item 263. Nome, e-mail e telefone da unidade também não têm tamanho nem formato conferidos.
+     
+     **Fazer:** o cadastro passa pelas mesmas regras da edição: `slug` só com minúsculas, números e hífen (de 3 a 60, como o subdomínio), fuso e moeda por `shopBaseUpdate` (ou sugeridos pelo país), horário por `setBusinessHours`, e tamanhos máximos nos textos. Teste com `slug` inválido e fuso inexistente.
