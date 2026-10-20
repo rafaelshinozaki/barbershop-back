@@ -59,9 +59,12 @@ describe('sininho: idioma, preferência e aviso na hora', () => {
         },
       },
     };
-    const service = new NotificationsService(prisma as never, {
-      notifyUsers: (...args: unknown[]) => notified.push(args),
-    } as never);
+    const service = new NotificationsService(
+      prisma as never,
+      {
+        notifyUsers: (...args: unknown[]) => notified.push(args),
+      } as never,
+    );
     const localized = moderationNotice('photo', true, 'Loja');
     const result = await service.createNotificationsForUsers(
       [1, 2, 3, 4],
@@ -108,12 +111,9 @@ describe('ModerationService.notifyOwner', () => {
         }),
       },
     };
-    const moderation = new ModerationService(
-      prisma as never,
-      {} as never,
-      undefined,
-      { createNotificationsForUsers: create } as never,
-    );
+    const moderation = new ModerationService(prisma as never, {} as never, undefined, {
+      createNotificationsForUsers: create,
+    } as never);
     await moderation.notifyOwner('photo', 9, 'hide');
     expect(create).toHaveBeenCalledWith(
       [4],
