@@ -2696,3 +2696,14 @@ Foram lidos o cadastro da unidade (no cadastro do dono e ao abrir outra unidade)
      - O horário de funcionamento do cadastro é o mesmo caminho sem conferência do item 263. Nome, e-mail e telefone da unidade também não têm tamanho nem formato conferidos.
      
      **Fazer:** o cadastro passa pelas mesmas regras da edição: `slug` só com minúsculas, números e hífen (de 3 a 60, como o subdomínio), fuso e moeda por `shopBaseUpdate` (ou sugeridos pelo país), horário por `setBusinessHours`, e tamanhos máximos nos textos. Teste com `slug` inválido e fuso inexistente.
+
+### Nonagésima quarta rodada (2026-10-20): descadastro pela resposta no WhatsApp
+
+Foram lidos o código novo do descadastro de campanha pelo WhatsApp (webhook da Meta, texto da campanha com "Responda SAIR", leitura da resposta e busca das fichas pelo telefone).
+
+265. ⬜ **Responder SAIR no WhatsApp não descadastra boa parte dos celulares do Brasil** (back: `WhatsappOptOutService.optOutFromReply`, `whatsappSenderVariants`, `isMarketingOptOut`):
+     - A Meta manda no `from` o número da conta do WhatsApp (`wa_id`). Para muitos celulares brasileiros, ele vem sem o nono dígito (`55 11 8888-7777`, 12 dígitos), enquanto a ficha guarda o número com o 9 (`+55 11 98888-7777`). `whatsappSenderVariants` gera o número com e sem o DDI, mas nunca o com e sem o 9 depois do DDD: a busca não acha a ficha, nada é marcado, o webhook responde 200 e a pessoa continua recebendo as campanhas depois de pedir para sair.
+     - Só a mensagem que é exatamente a palavra (`SAIR`, `STOP`, `SALIR`, com ponto) conta. "Quero sair", "sair por favor" ou "PARAR" não descadastram, e a pessoa não recebe nenhuma resposta dizendo se funcionou ou como fazer.
+     - Cada resposta recebida percorre todas as fichas da plataforma com `regexp_replace(phone, ...)` (sem índice), o que pesa à medida que a base cresce.
+     
+     **Fazer:** para números do Brasil, as variantes incluem o celular com e sem o nono dígito (DDD + 8 ou 9 dígitos); aceitar a palavra de saída no começo ou sozinha na frase (e "PARAR"/"CANCELAR"); responder pelo WhatsApp confirmando o descadastro (dentro da janela de 24 h, sem modelo). Guardar o telefone da ficha só com os dígitos numa coluna indexada para essa busca. Teste com `from` sem o nono dígito.
