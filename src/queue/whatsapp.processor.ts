@@ -30,13 +30,13 @@ export class WhatsappProcessor extends WorkerHost {
     const data = job.data;
     switch (data.kind) {
       case 'appointment-reminder':
-        await this.whatsappService.sendAppointmentReminder(data.to, data.params);
+        await this.whatsappService.sendAppointmentReminder(data.to, data.params, data.lang);
         break;
       case 'waitlist-slot':
-        await this.whatsappService.sendWaitlistSlotAvailable(data.to, data.params);
+        await this.whatsappService.sendWaitlistSlotAvailable(data.to, data.params, data.lang);
         break;
       case 'marketing':
-        await this.whatsappService.sendMarketingBlast(data.to, data.message);
+        await this.whatsappService.sendMarketingBlast(data.to, data.message, data.lang);
         if (data.campaignId) {
           await this.prisma.marketingCampaign.update({
             where: { id: data.campaignId },

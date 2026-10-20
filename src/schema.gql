@@ -2342,6 +2342,7 @@ type Mutation {
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
+  retrySocialPost(barbershopId: Int!, id: Int!, scheduledFor: String!): SocialPostType!
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
   runBackupNow: Boolean!
   savePushSubscription(input: PushSubscriptionInput!): Boolean!

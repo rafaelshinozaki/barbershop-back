@@ -89,7 +89,7 @@ import {
 import { PLANO_STATUS } from '../common/contants';
 import { S3Service } from '../aws/s3.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { normalizePhoneToE164, phoneDigitVariants } from '../common/phone.util';
+import { normalizePhoneToE164, phoneDigitVariants, phoneForWhatsapp } from '../common/phone.util';
 import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { JobOpeningService } from './job-opening.service';
@@ -5780,13 +5780,14 @@ export class BarbershopService {
       }
 
       const phone = this.whatsappService.isConfigured()
-        ? normalizePhoneToE164(match.customer.phone)
+        ? phoneForWhatsapp(match.customer.phone, match.barbershop.country)
         : null;
       if (phone) {
         await this.notificationQueue.whatsapp(
           {
             kind: 'waitlist-slot',
             to: phone,
+            lang,
             params: {
               customerName: match.customer.name,
               barbershopName: match.barbershop.name,
@@ -5815,6 +5816,7 @@ export class BarbershopService {
     segment: string,
     inactiveDays?: number,
     networkWide = false,
+    country = 'BR',
   ) {
     // Quem saiu das campanhas em qualquer ficha da rede: o mesmo e-mail ou o
     // mesmo telefone em outra ficha também não recebe (item 191)
@@ -5862,6 +5864,7 @@ export class BarbershopService {
       return this.uniqueRecipients(
         optedOut,
         await this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } }),
+        country,
       );
     }
 
@@ -5882,6 +5885,7 @@ export class BarbershopService {
       return this.uniqueRecipients(
         optedOut,
         customers.filter((c) => c.birthDate && c.birthDate.getUTCMonth() === currentMonth),
+        country,
       );
     }
 
@@ -5889,6 +5893,7 @@ export class BarbershopService {
     return this.uniqueRecipients(
       optedOut,
       await this.prisma.customer.findMany({ where: baseWhere }),
+      country,
     );
   }
 
@@ -5901,10 +5906,11 @@ export class BarbershopService {
   private uniqueRecipients<T extends { email: string | null; phone: string | null }>(
     optedOut: { email: string | null; phone: string | null }[],
     customers: T[],
+    country = 'BR',
   ): T[] {
     const emailOf = (c: { email: string | null }) => c.email?.trim().toLowerCase() || null;
     const phoneOf = (c: { phone: string | null }) =>
-      c.phone ? normalizePhoneToE164(c.phone) ?? null : null;
+      c.phone ? phoneForWhatsapp(c.phone, country) : null;
     const outEmails = new Set(optedOut.map(emailOf).filter((e): e is string => !!e));
     const outPhones = new Set(optedOut.map(phoneOf).filter((p): p is string => !!p));
     // Agrupa as fichas ligadas por e-mail ou telefone (A e B pelo e-mail, B e
@@ -5963,6 +5969,7 @@ export class BarbershopService {
       segment,
       inactiveDays,
       barbershop.accessLevel === 'owner',
+      barbershop.country,
     );
     return { recipientCount: customers.length };
   }
@@ -6007,6 +6014,7 @@ export class BarbershopService {
       data.segment,
       data.inactiveDays,
       barbershop.accessLevel === 'owner',
+      barbershop.country,
     );
 
     // Cria a campanha primeiro e enfileira um envio por cliente — antes o
@@ -6016,10 +6024,11 @@ export class BarbershopService {
     const emailRecipients = data.sendEmail
       ? customers.filter((c): c is typeof c & { email: string } => !!c.email)
       : [];
+    const lang = langForCountry(barbershop.country);
     const whatsappPhones =
       data.sendWhatsapp && this.whatsappService.isConfigured()
         ? customers
-            .map((c) => normalizePhoneToE164(c.phone))
+            .map((c) => phoneForWhatsapp(c.phone, barbershop.country))
             .filter((phone): phone is string => !!phone)
             .filter((phone, i, all) => all.indexOf(phone) === i)
         : [];
@@ -6072,7 +6081,7 @@ export class BarbershopService {
           headers: unsubscribe.headers,
           subject: data.subject ?? barbershop.name,
           // Texto da campanha é do dono; o rodapé do template sai na língua do país da unidade
-          lang: langForCountry(barbershop.country),
+          lang,
           meta: 'marketing-blast',
           to: customer.email,
           campaignId: campaign.id,
@@ -6085,6 +6094,7 @@ export class BarbershopService {
         to: phone,
         message: data.message,
         campaignId: campaign.id,
+        lang,
       })),
     );
 

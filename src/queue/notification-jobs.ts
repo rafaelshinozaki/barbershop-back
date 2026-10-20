@@ -43,6 +43,11 @@ export interface EmailAttachment {
 export type EmailJob = UserEmailJob | CustomerEmailJob;
 
 export type WhatsappJob =
-  | { kind: 'appointment-reminder'; to: string; params: AppointmentReminderParams }
-  | { kind: 'waitlist-slot'; to: string; params: WaitlistSlotAvailableParams }
-  | { kind: 'marketing'; to: string; message: string; campaignId?: number };
+  | {
+      kind: 'appointment-reminder';
+      to: string;
+      params: AppointmentReminderParams;
+      lang?: string;
+    }
+  | { kind: 'waitlist-slot'; to: string; params: WaitlistSlotAvailableParams; lang?: string }
+  | { kind: 'marketing'; to: string; message: string; campaignId?: number; lang?: string };

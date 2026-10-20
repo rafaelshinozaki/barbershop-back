@@ -422,6 +422,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'IDENTITY_VERIFICATION_HOME_SERVICE_PROFESSIONALS',
   'Sua identidade já está verificada.': 'IDENTITY_ALREADY_VERIFIED',
   'Muitas tentativas hoje. Tente de novo amanhã.': 'TOO_MANY_ATTEMPTS_TODAY',
+  'Muitas mensagens neste pedido. Tente novamente daqui a uma hora.':
+    'TOO_MANY_REPLIES_ON_TICKET',
   'Sessão não encontrada': 'SESSION_NOT_FOUND',
   'Resultado inválido': 'INVALID_RESULT',
   'O título vai de 3 a 80 caracteres': 'TITLE_MUST_3_80_CHARACTERS',
@@ -596,6 +598,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Data de agendamento inválida.': 'INVALID_SCHEDULING_DATE',
   'Post não encontrado': 'POST_NOT_FOUND',
   'Só é possível excluir posts ainda não publicados.': 'ONLY_POSTS_NOT_PUBLISHED_CAN',
+  'Só é possível tentar de novo um post que falhou.': 'RETRY_ONLY_FAILED_POST',
+  'A legenda do Instagram pode ter no máximo 2.200 caracteres.': 'INSTAGRAM_CAPTION_TOO_LONG',
+  'A legenda do Instagram pode ter no máximo 30 hashtags.': 'INSTAGRAM_HASHTAG_LIMIT',
   'E-mail inválido': 'INVALID_EMAIL',
   'Assunto inválido': 'INVALID_SUBJECT',
   'Pedido não encontrado': 'REQUEST_NOT_FOUND',

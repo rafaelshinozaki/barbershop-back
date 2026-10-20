@@ -30,6 +30,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Pedidos anônimos para o mesmo e-mail: o formulário não vira disparo em massa */
 const PUBLIC_TICKETS_PER_EMAIL = 3;
 const PUBLIC_TICKET_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Respostas pelo link do pedido: não vira disparo no sininho da equipe */
+const REPLIES_PER_TICKET_HOUR = 10;
+const REPLY_WINDOW_MS = 60 * 60 * 1000;
 const QUEUE_SIZE = 200;
 
 const ADMIN_TEXT = {
@@ -77,15 +80,15 @@ export class SupportService {
     requester: SupportRequester = {},
   ) {
     const name = this.text(input.name, 120, 'Nome');
-    const email = this.text(input.email, 254, 'E-mail').toLowerCase();
-    if (!EMAIL_RE.test(email)) throw new BadRequestException('E-mail inválido');
+    const email = await this.requesterEmail(input.email, requester);
     if (!SUPPORT_CATEGORIES.includes(input.category as SupportCategory)) {
       throw new BadRequestException('Assunto inválido');
     }
     const subject = this.text(input.subject, MAX_SUBJECT, 'Título');
     const body = this.text(input.message, MAX_BODY, 'Mensagem');
-    // Sem conta da equipe: captcha (se configurado) e teto por destinatário
-    if (!requester.userId) {
+    // Sem conta: captcha (se configurado) e teto por destinatário. Logado, o
+    // e-mail é o da conta — o digitado no formulário não vale.
+    if (!requester.userId && !requester.clientAccountId) {
       await assertCaptcha(input.captchaToken);
       await this.assertPublicRecipientLimit(email);
     }
@@ -104,6 +107,29 @@ export class SupportService {
     await this.sendRequesterEmail(ticket, 'support_received', null);
     await this.notifyAdmins();
     return { id: ticket.id };
+  }
+
+  /** Logado: o e-mail da conta. Sem conta: o que foi digitado. */
+  private async requesterEmail(typed: string, requester: SupportRequester) {
+    if (requester.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: requester.userId },
+        select: { email: true, isActive: true, deleted_at: true },
+      });
+      if (!user?.isActive || user.deleted_at) throw new BadRequestException('Conta não encontrada');
+      return user.email.trim().toLowerCase();
+    }
+    if (requester.clientAccountId) {
+      const client = await this.prisma.clientAccount.findUnique({
+        where: { id: requester.clientAccountId },
+        select: { email: true, deletedAt: true },
+      });
+      if (!client || client.deletedAt) throw new BadRequestException('Conta não encontrada');
+      return client.email.trim().toLowerCase();
+    }
+    const email = this.text(typed, 254, 'E-mail').toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new BadRequestException('E-mail inválido');
+    return email;
   }
 
   /** Mesmo endereço não recebe vários e-mails de confirmação no mesmo dia */
@@ -154,7 +180,18 @@ export class SupportService {
   async requesterReply(token: string, body: string) {
     const t = await this.byToken(token);
     const text = this.text(body, MAX_BODY, 'Mensagem');
+    const since = Date.now() - REPLY_WINDOW_MS;
+    const recent = t.messages.filter(
+      (m) => m.side === 'requester' && m.createdAt.getTime() >= since,
+    ).length;
+    if (recent >= REPLIES_PER_TICKET_HOUR) {
+      throw new HttpException(
+        'Muitas mensagens neste pedido. Tente novamente daqui a uma hora.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     const now = new Date();
+    const alreadyWaiting = t.status === 'open';
     // Responder reabre o pedido fechado
     await this.prisma.supportTicket.update({
       where: { id: t.id },
@@ -165,7 +202,8 @@ export class SupportService {
         messages: { create: { side: 'requester', body: text } },
       },
     });
-    await this.notifyAdmins();
+    // Enquanto o pedido segue sem resposta, um aviso só (não um por mensagem)
+    if (!alreadyWaiting) await this.notifyAdmins();
     return true;
   }
 

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { normalizeLang, type Lang } from '../email/language';
 
 export interface AppointmentReminderParams {
   customerName: string;
@@ -14,6 +15,20 @@ export interface WaitlistSlotAvailableParams {
   barbershopName: string;
   date: string;
   time: string;
+}
+
+/** O mesmo nome de modelo existe em cada idioma aprovado na Meta. */
+const TEMPLATE_LANG: Record<Lang, string> = { pt: 'pt_BR', en: 'en_US', es: 'es_ES' };
+
+function templateLang(lang?: string | null): string {
+  return TEMPLATE_LANG[normalizeLang(lang)];
+}
+
+/** O log não guarda o telefone inteiro do cliente. */
+function maskPhone(to: string): string {
+  const digits = to.replace(/\D/g, '');
+  if (digits.length <= 4) return '****';
+  return `+${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
 }
 
 // Integração com a WhatsApp Cloud API (Meta), direto — sem Twilio no meio.
@@ -39,11 +54,14 @@ export class WhatsappService {
     );
   }
 
-  async sendAppointmentReminder(to: string, params: AppointmentReminderParams): Promise<void> {
+  async sendAppointmentReminder(
+    to: string,
+    params: AppointmentReminderParams,
+    lang?: string | null,
+  ): Promise<void> {
     const templateName =
       this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_NAME') || 'appointment_reminder';
-    const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
-    await this.sendTemplateMessage(to, templateName, languageCode, [
+    await this.sendTemplateMessage(to, templateName, templateLang(lang), [
       params.customerName,
       params.serviceNames,
       params.barbershopName,
@@ -52,11 +70,14 @@ export class WhatsappService {
     ]);
   }
 
-  async sendWaitlistSlotAvailable(to: string, params: WaitlistSlotAvailableParams): Promise<void> {
+  async sendWaitlistSlotAvailable(
+    to: string,
+    params: WaitlistSlotAvailableParams,
+    lang?: string | null,
+  ): Promise<void> {
     const templateName =
       this.config.get<string>('WHATSAPP_WAITLIST_TEMPLATE_NAME') || 'waitlist_slot_available';
-    const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
-    await this.sendTemplateMessage(to, templateName, languageCode, [
+    await this.sendTemplateMessage(to, templateName, templateLang(lang), [
       params.customerName,
       params.barbershopName,
       params.date,
@@ -68,11 +89,10 @@ export class WhatsappService {
   // vira o único parâmetro do corpo de um template genérico pré-aprovado
   // (a Cloud API não aceita texto livre puro pra mensagem de negócio fora
   // da janela de atendimento, só templates).
-  async sendMarketingBlast(to: string, message: string): Promise<void> {
+  async sendMarketingBlast(to: string, message: string, lang?: string | null): Promise<void> {
     const templateName =
       this.config.get<string>('WHATSAPP_MARKETING_TEMPLATE_NAME') || 'marketing_blast';
-    const languageCode = this.config.get<string>('WHATSAPP_REMINDER_TEMPLATE_LANG') || 'pt_BR';
-    await this.sendTemplateMessage(to, templateName, languageCode, [message]);
+    await this.sendTemplateMessage(to, templateName, templateLang(lang), [message]);
   }
 
   private async sendTemplateMessage(
@@ -120,6 +140,6 @@ export class WhatsappService {
       const errorBody = await response.text();
       throw new Error(`WhatsApp API respondeu ${response.status}: ${errorBody}`);
     }
-    this.logger.log(`Mensagem de WhatsApp (${templateName}) enviada para ${to}`);
+    this.logger.log(`Mensagem de WhatsApp (${templateName}) enviada para ${maskPhone(to)}`);
   }
 }

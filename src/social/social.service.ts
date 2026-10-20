@@ -15,6 +15,12 @@ interface OAuthStatePayload {
 type FbPage = { id: string; name: string; access_token: string };
 
 const PAGE_CHOICE_MS = 15 * 60 * 1000;
+const INSTAGRAM_CAPTION_MAX = 2200;
+const INSTAGRAM_HASHTAG_MAX = 30;
+
+function instagramHashtagCount(caption: string): number {
+  return caption.match(/#[\p{L}\p{N}_]+/gu)?.length ?? 0;
+}
 
 // Publica posts agendados no Instagram/Facebook via Graph API — chamadas
 // diretas com fetch, sem SDK, mesmo padrão do WhatsappService. Diferente do
@@ -223,7 +229,14 @@ export class SocialService {
       }
 
       const token = randomBytes(24).toString('base64url');
-      await this.prisma.socialPageChoice.deleteMany({ where: { barbershopId, userId } });
+      // A da mesma pessoa sai sempre; as vencidas da unidade também, senão o
+      // token de quem fechou a tela fica guardado até a guarda diária
+      await this.prisma.socialPageChoice.deleteMany({
+        where: {
+          barbershopId,
+          OR: [{ userId }, { expiresAt: { lt: new Date() } }],
+        },
+      });
       await this.prisma.socialPageChoice.create({
         data: {
           token,
@@ -386,10 +399,8 @@ export class SocialService {
     if (data.postToInstagram && !connection.instagramBusinessAccountId) {
       throw new BadRequestException('Nenhuma conta do Instagram vinculada à Página conectada.');
     }
-    const scheduledFor = new Date(data.scheduledFor);
-    if (Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() < Date.now()) {
-      throw new BadRequestException('Data de agendamento inválida.');
-    }
+    this.assertInstagramCaption(data.caption, data.postToInstagram);
+    const scheduledFor = this.parseFutureDate(data.scheduledFor);
     return this.prisma.socialPost.create({
       data: {
         barbershopId,
@@ -424,11 +435,63 @@ export class SocialService {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const post = await this.prisma.socialPost.findFirst({ where: { id, barbershopId } });
     if (!post) throw new NotFoundException('Post não encontrado');
-    if (post.status !== 'SCHEDULED') {
+    if (post.status !== 'SCHEDULED' && post.status !== 'FAILED' && post.status !== 'CANCELLED') {
       throw new BadRequestException('Só é possível excluir posts ainda não publicados.');
     }
     await this.prisma.socialPost.delete({ where: { id } });
+    const stillUsed = await this.prisma.socialPost.count({ where: { imageKey: post.imageKey } });
+    if (stillUsed === 0 && post.imageKey) {
+      await this.s3Service.deleteObject(post.imageKey).catch((err) => {
+        this.logger.warn(`Não foi possível apagar a imagem do post #${id}`, err);
+      });
+    }
     return true;
+  }
+
+  async retryPost(userId: number, barbershopId: number, id: number, scheduledForRaw: string) {
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const post = await this.prisma.socialPost.findFirst({ where: { id, barbershopId } });
+    if (!post) throw new NotFoundException('Post não encontrado');
+    if (post.status !== 'FAILED') {
+      throw new BadRequestException('Só é possível tentar de novo um post que falhou.');
+    }
+    this.assertInstagramCaption(post.caption, post.postToInstagram);
+    if (post.postToInstagram) {
+      const connection = await this.prisma.socialConnection.findUnique({ where: { barbershopId } });
+      if (!connection?.instagramBusinessAccountId) {
+        throw new BadRequestException('Nenhuma conta do Instagram vinculada à Página conectada.');
+      }
+    }
+    const scheduledFor = this.parseFutureDate(scheduledForRaw);
+    return this.prisma.socialPost.update({
+      where: { id },
+      data: {
+        status: 'SCHEDULED',
+        scheduledFor,
+        errorMessage: null,
+        publishedAt: null,
+        facebookPostId: null,
+        instagramMediaId: null,
+      },
+    });
+  }
+
+  private assertInstagramCaption(caption: string, postToInstagram: boolean) {
+    if (!postToInstagram) return;
+    if (caption.length > INSTAGRAM_CAPTION_MAX) {
+      throw new BadRequestException('A legenda do Instagram pode ter no máximo 2.200 caracteres.');
+    }
+    if (instagramHashtagCount(caption) > INSTAGRAM_HASHTAG_MAX) {
+      throw new BadRequestException('A legenda do Instagram pode ter no máximo 30 hashtags.');
+    }
+  }
+
+  private parseFutureDate(value: string): Date {
+    const scheduledFor = new Date(value);
+    if (Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() < Date.now()) {
+      throw new BadRequestException('Data de agendamento inválida.');
+    }
+    return scheduledFor;
   }
 
   // ============ PUBLICAÇÃO (chamado pelo cron) ============
@@ -514,58 +577,65 @@ export class SocialService {
       }
     }
 
-    if (post.postToInstagram && connection.instagramBusinessAccountId) {
-      try {
-        const containerRes = await fetch(
-          this.graphUrl(`/${connection.instagramBusinessAccountId}/media`),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              image_url: imageUrl,
-              caption: post.caption,
-              access_token: accessToken,
-            }),
-          },
-        );
-        const containerJson = await containerRes.json();
-        if (!containerJson.id)
-          throw new Error(containerJson.error?.message || 'Falha ao preparar mídia do Instagram.');
+    if (post.postToInstagram) {
+      if (!connection.instagramBusinessAccountId) {
+        errors.push('Instagram: Nenhuma conta do Instagram vinculada à Página conectada.');
+      } else {
+        try {
+          const containerRes = await fetch(
+            this.graphUrl(`/${connection.instagramBusinessAccountId}/media`),
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                image_url: imageUrl,
+                caption: post.caption,
+                access_token: accessToken,
+              }),
+            },
+          );
+          const containerJson = await containerRes.json();
+          if (!containerJson.id)
+            throw new Error(
+              containerJson.error?.message || 'Falha ao preparar mídia do Instagram.',
+            );
 
-        const publishRes = await fetch(
-          this.graphUrl(`/${connection.instagramBusinessAccountId}/media_publish`),
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              creation_id: containerJson.id,
-              access_token: accessToken,
-            }),
-          },
-        );
-        const publishJson = await publishRes.json();
-        if (!publishJson.id)
-          throw new Error(publishJson.error?.message || 'Falha ao publicar no Instagram.');
-        instagramMediaId = publishJson.id;
-      } catch (err) {
-        errors.push(`Instagram: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
+          const publishRes = await fetch(
+            this.graphUrl(`/${connection.instagramBusinessAccountId}/media_publish`),
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                creation_id: containerJson.id,
+                access_token: accessToken,
+              }),
+            },
+          );
+          const publishJson = await publishRes.json();
+          if (!publishJson.id)
+            throw new Error(publishJson.error?.message || 'Falha ao publicar no Instagram.');
+          instagramMediaId = publishJson.id;
+        } catch (err) {
+          errors.push(`Instagram: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
+        }
       }
     }
 
-    const requestedBoth = post.postToFacebook && post.postToInstagram;
-    const failed = requestedBoth ? errors.length === 2 : errors.length > 0;
+    // Só vira publicado o que saiu em ao menos uma rede. Falha numa das duas
+    // fica no aviso, sem marcar as duas como enviadas.
+    const publishedAny = !!(facebookPostId || instagramMediaId);
 
     await this.prisma.socialPost.update({
       where: { id: postId },
-      data: failed
-        ? { status: 'FAILED', errorMessage: errors.join(' | ') }
-        : {
+      data: publishedAny
+        ? {
             status: 'PUBLISHED',
             publishedAt: new Date(),
             facebookPostId,
             instagramMediaId,
             errorMessage: errors.length > 0 ? errors.join(' | ') : null,
-          },
+          }
+        : { status: 'FAILED', errorMessage: errors.join(' | ') },
     });
   }
 }

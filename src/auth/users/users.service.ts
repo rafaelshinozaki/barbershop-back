@@ -40,6 +40,7 @@ import {
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { appUrl, supportEmail } from '../../common/app-urls';
 import { dropPushSubscriptions } from '../../push/push.service';
+import { dropCalendarFeeds } from '../../calendar/calendar-feeds';
 
 // Link de redefinição: no banco fica só o hash (quem lê o banco não consegue
 // usar o link), como já é no fluxo do cliente final
@@ -1116,6 +1117,9 @@ export class UserService {
       { userId, clientAccountIds: linked.map((c) => c.id) },
       keepSessionToken ? keepPushEndpoint : null,
     );
+    // O link da agenda assinável não usa sessão: troca de senha (que tira os
+    // outros aparelhos) e "derrubar sessões" apagam esses links
+    await dropCalendarFeeds(this.prisma, userId);
   }
 
   /**
@@ -2120,6 +2124,7 @@ export class UserService {
     if (!active) {
       await this.prisma.activeSession.deleteMany({ where: { userId } });
       await this.prisma.pushSubscription.deleteMany({ where: { userId } });
+      await dropCalendarFeeds(this.prisma, userId);
     }
   }
 
@@ -2144,6 +2149,7 @@ export class UserService {
     if (!active) {
       await this.prisma.activeSession.deleteMany({ where: { userId: { in: userIds } } });
       await this.prisma.pushSubscription.deleteMany({ where: { userId: { in: userIds } } });
+      await dropCalendarFeeds(this.prisma, userIds);
     }
 
     this.logger.log(`Updated ${result.count} users to active status: ${active}`);

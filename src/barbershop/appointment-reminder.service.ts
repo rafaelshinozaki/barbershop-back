@@ -5,7 +5,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { normalizePhoneToE164 } from '../common/phone.util';
+import { phoneForWhatsapp } from '../common/phone.util';
 import { APPOINTMENT_REMINDERS_QUEUE } from '../queue/queue.constants';
 import { registerSchedulers } from '../queue/register-schedulers';
 import { appointmentManageUrl } from './appointment-link';
@@ -142,13 +142,14 @@ export class AppointmentReminderService {
         }
 
         const phone = this.whatsappService.isConfigured()
-          ? normalizePhoneToE164(appt.customer.phone)
+          ? phoneForWhatsapp(appt.customer.phone, appt.barbershop.country)
           : null;
         if (phone) {
           await this.notificationQueue.whatsapp(
             {
               kind: 'appointment-reminder',
               to: phone,
+              lang,
               params: {
                 customerName: appt.customer.name,
                 serviceNames,

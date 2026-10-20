@@ -103,6 +103,13 @@ export class RetentionService {
       BATCH,
     );
 
+    // Escolha de Página do Facebook: o token da pessoa vale cerca de 60 dias
+    // na Meta, mas a escolha só serve por 15 minutos. Quem fecha a tela sem
+    // escolher deixa o registro para trás.
+    const socialPageChoices = (
+      await this.prisma.socialPageChoice.deleteMany({ where: { expiresAt: { lt: now } } })
+    ).count;
+
     // Nota de conduta do cliente: sai quando a relação acaba (2 anos sem
     // atendimento novo daquela ficha)
     const clientConductNotes = await deleteInBatches(
@@ -224,6 +231,7 @@ export class RetentionService {
       notifications,
       verificationCodes,
       passwordResetTokens,
+      socialPageChoices,
       clientConductNotes,
     };
     this.logger.log(`Guarda cumprida: ${JSON.stringify(result)}`);

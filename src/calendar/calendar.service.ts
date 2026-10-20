@@ -57,7 +57,18 @@ export class CalendarService {
 
   private async ensureCanUse(userId: number, barbershopId: number, scope: FeedScope) {
     if (!FEED_SCOPES.includes(scope)) throw new BadRequestException('Tipo de agenda inválido');
+    const account = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true, deleted_at: true },
+    });
+    // Conta desativada ou apagada: o link secreto não entrega a agenda
+    if (!account?.isActive || account.deleted_at) {
+      throw new NotFoundException('Agenda não encontrada');
+    }
     const shop = await this.barbershopService.ensureAccess(userId, barbershopId, 'basic');
+    if (shop.platformSuspendedAt || shop.network?.platformSuspendedAt) {
+      throw new NotFoundException('Agenda não encontrada');
+    }
     const level = (shop as unknown as { accessLevel: AccessLevel }).accessLevel;
     if (scope === 'ALL') {
       if (!SEES_WHOLE_SCHEDULE.includes(level)) {

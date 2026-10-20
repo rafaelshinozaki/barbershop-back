@@ -131,7 +131,9 @@ describe('Suporte e suspensão de conta de cliente (integração)', () => {
 
     const { id } = await support.create(input('a'), { clientAccountId: accountId });
     ticketIds.push(id);
-    const to = `sup-a-${RUN}@test.local`;
+    // Logado: o e-mail é o da conta, não o digitado no formulário
+    const to = `sup-cliente-${RUN}@test.local`;
+    expect(sent.some((m) => m.to === `sup-a-${RUN}@test.local`)).toBe(false);
     const mail = sent.find((m) => m.to === to && m.template === 'support_received');
     expect(mail?.context.TicketId).toBe(id);
     expect(mail?.context.Subject).toBeUndefined();

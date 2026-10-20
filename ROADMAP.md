@@ -2370,49 +2370,61 @@ Foram lidos a série de horários (criar e pular datas), o expediente do dia com
 
 Foram lidos a publicação dos posts no Facebook/Instagram (conectar a Página, agendar, publicar, excluir), a agenda assinável da equipe (link secreto do iCal), a guarda dos dados (LGPD), o backup, os preços da plataforma e o "Fale com a gente".
 
-230. ⬜ **Post só para o Instagram vira "publicado" sem ter sido publicado** (back: `SocialService.publishPost`):
+230. ✅ **Post só para o Instagram vira "publicado" sem ter sido publicado** (back: `SocialService.publishPost`):
      - A publicação no Instagram só é tentada se a conexão ainda tem `instagramBusinessAccountId`. Se a unidade reconectou a Página e ela não tem mais Instagram vinculado (ou trocou de Página), o post agendado só para o Instagram não tenta nada, `errors` fica vazio e o post é gravado como `PUBLISHED`, com `publishedAt` e sem `instagramMediaId`.
      - Como está "publicado", ele entra na galeria da página pública da unidade (os posts publicados completam o portfólio) e a tela mostra como enviado. A unidade não fica sabendo que nada saiu.
      - O mesmo vale para o post para as duas redes: sem Instagram vinculado, o Facebook publica, o Instagram é pulado sem erro e o post aparece como publicado nas duas.
      
      **Fazer:** rede pedida e sem conta vinculada na hora de publicar conta como erro ("Nenhuma conta do Instagram vinculada à Página conectada"); só vira `PUBLISHED` o que de fato saiu em ao menos uma rede, e o aviso parcial fica no `errorMessage`. Teste com a conexão sem Instagram.
+     
+     **Feito:** rede pedida sem conta do Instagram na hora de publicar entra como erro (`Instagram: Nenhuma conta do Instagram vinculada à Página conectada.`). O post só fica `PUBLISHED` se saiu em ao menos uma rede; quando o Facebook publica e o Instagram não, o aviso parcial fica no `errorMessage`. Teste em `social.service.spec.ts`.
 
-231. ⬜ **Post que falhou ou foi cancelado não sai da lista e não tem como tentar de novo** (back: `SocialService.deletePost`, `createPost`; front: tela de posts):
+231. ✅ **Post que falhou ou foi cancelado não sai da lista e não tem como tentar de novo** (back: `SocialService.deletePost`, `createPost`; front: tela de posts):
      - `deletePost` só aceita `SCHEDULED` ("Só é possível excluir posts ainda não publicados"). Post `FAILED` (token vencido, Página desconectada, legenda recusada) e `CANCELLED` (unidade encerrada) ficam para sempre na lista da unidade, com a imagem guardada no S3, e não existe "tentar de novo": a unidade precisa criar outro post e enviar a imagem outra vez.
      - A legenda não tem limite no agendamento. O Instagram recusa legenda acima de 2.200 caracteres (e mais de 30 hashtags), e isso só aparece como falha na hora de publicar, dias depois do agendamento.
      
      **Fazer:** excluir também o que falhou ou foi cancelado (apagando a imagem do S3 quando nenhum outro post usa a chave) e uma ação "tentar de novo" que volta o post com falha para `SCHEDULED` com novo horário. Conferir a legenda no agendamento (até 2.200 caracteres e 30 hashtags quando o Instagram está marcado). Front com os dois botões e o limite no campo.
+     
+     **Feito:** excluir vale para agendado, falhou e cancelado, e a imagem sai do S3 quando nenhum outro post usa a chave. "Tentar de novo" (`retrySocialPost`) volta o post que falhou para `SCHEDULED` com horário novo. No agendamento (e na nova tentativa), legenda de Instagram acima de 2.200 caracteres ou com mais de 30 hashtags é recusada. A tela mostra o limite, o botão de tentar de novo (com horário) e excluir nos posts que falharam ou foram cancelados. Teste em `social.service.spec.ts`.
 
-232. ⬜ **Agenda assinável continua entregando a agenda (com nome e telefone dos clientes) para a conta desativada** (back: `CalendarService.feedIcs`, `ensureCanUse`; `UsersService.setUserActive`):
+232. ✅ **Agenda assinável continua entregando a agenda (com nome e telefone dos clientes) para a conta desativada** (back: `CalendarService.feedIcs`, `ensureCanUse`; `UsersService.setUserActive`):
      - O link do iCal não usa login: a cada leitura o acesso é conferido por `ensureAccess`, que olha o vínculo com a unidade (dono, rede ou funcionário no período), mas não a conta. Desativar a conta pela plataforma (`setUserActive(false)`, um a um ou em lote) derruba as sessões e as notificações do celular, mas o Google Agenda/Apple/Outlook continua buscando o feed a cada hora.
      - Para o dono, a gerência e a recepção o feed é o da unidade inteira, com nome e telefone de cada cliente dos próximos 180 dias. A pessoa desativada continua recebendo isso enquanto o vínculo existir.
      - Unidade suspensa pela plataforma (`platformSuspendedAt`) também continua servindo o feed.
      
      **Fazer:** o feed confere a conta (`isActive` e `deleted_at`) e responde 404 para conta desativada ou apagada; desativar a conta apaga os links de agenda dela (como as notificações do celular), e a troca de senha com "sair de todos os aparelhos" também. Unidade suspensa pela plataforma não serve feed. Teste: desativar a conta e ler o feed.
+     
+     **Feito:** o feed responde 404 se a conta está inativa ou apagada, ou se a unidade ou a rede está suspensa. Desativar a conta (uma ou em lote) apaga os links (`dropCalendarFeeds`), e o mesmo acontece ao derrubar as sessões na troca ou redefinição de senha e no "derrubar sessões". Teste em `calendar.service.spec.ts` e `calendar.int.spec.ts`.
 
-233. ⬜ **"Fale com a gente" logado manda o e-mail do pedido para qualquer endereço, sem o limite do formulário público** (back: `SupportService.create`, `staffContactSupport`):
+233. ✅ **"Fale com a gente" logado manda o e-mail do pedido para qualquer endereço, sem o limite do formulário público** (back: `SupportService.create`, `staffContactSupport`):
      - Para quem é da equipe (logado), o pedido usa o e-mail digitado no formulário. O teto de 3 pedidos por destinatário por dia e o captcha valem só para quem não tem conta da equipe (`!requester.userId`), então qualquer conta cadastrada manda o e-mail "Recebemos seu pedido" da plataforma para 10 endereços por hora a cada origem (o limite do `ThrottleEmail`), cada um com o link do pedido, que mostra o título e a mensagem que ela escreveu.
      - O inverso também acontece: com um erro de digitação no e-mail, a resposta da equipe da plataforma sobre a conta (que pode trazer dados dela) vai para um estranho, e quem pediu nunca recebe.
      - `requesterReply` (responder pelo link) não tem limite: cada resposta reabre o pedido e manda aviso no sininho e no celular de toda a equipe de suporte.
      
      **Fazer:** pedido de quem está logado na equipe usa o e-mail da conta (o campo vem preenchido e travado); cliente logado também usa o da conta. Responder pelo link com limite (por exemplo, 10 mensagens por hora por pedido) e o aviso para a equipe agrupado (um por pedido enquanto não for respondido).
+     
+     **Feito:** equipe e cliente logados gravam o e-mail da conta, e o campo na tela vem preenchido e travado. Pelo link, no máximo 10 mensagens por hora no mesmo pedido. Enquanto o pedido segue aberto, a equipe recebe um aviso só; o próximo sai quando alguém responde e o cliente escreve de novo. Teste em `support.service.spec.ts`.
 
-234. ⬜ **Escolha de Página do Facebook vencida fica guardada com o token da pessoa** (back: `SocialService.handleOAuthCallback`, `loadPageChoice`; `RetentionService`):
+234. ✅ **Escolha de Página do Facebook vencida fica guardada com o token da pessoa** (back: `SocialService.handleOAuthCallback`, `loadPageChoice`; `RetentionService`):
      - Com várias Páginas, a volta do Facebook guarda o token de longa duração da pessoa (cifrado) em `SocialPageChoice` por 15 minutos para a tela escolher. O registro só é apagado quando alguém tenta usar o código depois de vencido ou quando a mesma pessoa conecta de novo. Quem fecha a tela sem escolher deixa o token (válido por cerca de 60 dias no Facebook) guardado para sempre.
      - A guarda diária (`RetentionService`) apaga códigos de verificação e de senha vencidos, mas não essas escolhas.
      
      **Fazer:** a guarda diária apaga `SocialPageChoice` vencida (e o conectar apaga as vencidas da unidade antes de criar outra). Teste na guarda.
+     
+     **Feito:** a guarda diária apaga `SocialPageChoice` com `expiresAt` no passado. Ao conectar de novo, antes de gravar a escolha, saem as da mesma pessoa e as já vencidas da unidade. Teste em `retention.service.spec.ts` e `social.service.spec.ts`.
 
 ### Septuagésima quinta rodada (2026-10-20): WhatsApp e avisos da equipe
 
 Foram lidos o envio por WhatsApp (lembrete, aviso da lista de espera e campanha), os avisos em tempo real (sininho e agenda), os avisos de atividade para a equipe (e-mail e sininho), o sitemap e a saúde do servidor.
 
-235. ⬜ **WhatsApp manda para número do Brasil e em português, qualquer que seja o país da unidade** (back: `normalizePhoneToE164`, `AppointmentReminderService`, `checkWaitlistOnCancellation`, `sendMarketingBlast`; `WhatsappService`):
+235. ✅ **WhatsApp manda para número do Brasil e em português, qualquer que seja o país da unidade** (back: `normalizePhoneToE164`, `AppointmentReminderService`, `checkWaitlistOnCancellation`, `sendMarketingBlast`; `WhatsappService`):
      - Todo telefone de cliente passa por `normalizePhoneToE164` com o DDI padrão `55`. Numa unidade dos Estados Unidos, o telefone "415 555 1234" (10 dígitos) vira `+554155551234`, um número de Curitiba: o lembrete, o aviso de vaga e a campanha (com o nome do cliente, da unidade, o serviço e o horário) vão para um estranho no Brasil.
      - O idioma do modelo é um só para todas as mensagens (`WHATSAPP_REMINDER_TEMPLATE_LANG`, padrão `pt_BR`), e a data e a hora vão no formato do Brasil. Cliente de unidade em inglês ou espanhol recebe o lembrete em português.
      - O log de envio grava o telefone inteiro do cliente (`Mensagem de WhatsApp (...) enviada para +55...`).
      
      **Fazer:** o DDI padrão vem do país da unidade (`Barbershop.country`); telefone que não dá para resolver com segurança não recebe WhatsApp. Modelo por idioma (pt, en, es) escolhido pela língua do país da unidade, como o e-mail, e data/hora no formato e no fuso dela. Log com o telefone mascarado. Teste com unidade dos EUA.
+     
+     **Feito:** o DDI vem do país da unidade. Número local dos EUA sai com +1; número que não fecha com esse país (ou país desconhecido) não recebe WhatsApp. Quem está nos EUA e escreve o 1 na frente ("1 415 555 1234" ou "+1…") recebe mesmo numa unidade do Brasil. Dez dígitos sem DDI numa unidade do Brasil não saem: é o mesmo formato de um fixo daqui, e o WhatsApp não chuta o país. O modelo segue a língua da unidade (`pt_BR`, `en_US`, `es_ES`), e a data e a hora vão no formato e no fuso dela. O log guarda só os 4 últimos dígitos. Teste em `phone.util.spec.ts`, `appointment-reminder.service.spec.ts` e `whatsapp.service.spec.ts`.
 
 236. ⬜ **Campanha por WhatsApp com quebra de linha falha para todos, e o cliente não tem como sair dela** (back: `sendMarketingBlast`, `WhatsappService.sendMarketingBlast`; front: tela de campanhas):
      - O texto da campanha vai como parâmetro do modelo aprovado. A Meta recusa parâmetro com quebra de linha, tabulação ou mais de 4 espaços seguidos, e com mais de 1.024 caracteres. Uma campanha escrita em parágrafos falha em todos os envios (cada um tentado de novo pela fila), e o texto não tem limite nem conferência na hora de disparar.

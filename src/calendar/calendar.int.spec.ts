@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from '../barbershop/barbershop.service';
 import { createAppointmentToken } from '../barbershop/appointment-link';
 import { CalendarService } from './calendar.service';
+import { UserService } from '../auth/users/users.service';
 import { appointmentCalendarLinks, appointmentInvite } from './calendar-links';
 import { buildCalendar } from './ics';
 
@@ -58,6 +59,7 @@ describe('Calendário (integração)', () => {
           gender: 'male',
           birthdate: new Date('1990-01-01'),
           readTerms: true,
+          isActive: true,
           roleId,
         },
       })
@@ -295,5 +297,64 @@ describe('Calendário (integração)', () => {
       NotFoundException,
     );
     await expect(calendar.feedIcs('qualquer-coisa')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('conta desativada, apagada ou unidade suspensa não entrega a agenda', async () => {
+    const { path } = await calendar.createFeed(ownerId, shopId, 'ALL');
+    const token = path.match(/feed\/(.+)\.ics$/)![1];
+    expect(unfold(await calendar.feedIcs(token))).toContain('Telefone: 11987654321');
+
+    await prisma.user.update({ where: { id: ownerId }, data: { isActive: false } });
+    await expect(calendar.feedIcs(token)).rejects.toBeInstanceOf(NotFoundException);
+
+    await prisma.user.update({
+      where: { id: ownerId },
+      data: { isActive: true, deleted_at: new Date() },
+    });
+    await expect(calendar.feedIcs(token)).rejects.toBeInstanceOf(NotFoundException);
+    await prisma.user.update({ where: { id: ownerId }, data: { deleted_at: null } });
+
+    await prisma.barbershop.update({
+      where: { id: shopId },
+      data: { platformSuspendedAt: new Date() },
+    });
+    await expect(calendar.feedIcs(token)).rejects.toBeInstanceOf(NotFoundException);
+    await prisma.barbershop.update({ where: { id: shopId }, data: { platformSuspendedAt: null } });
+
+    await prisma.network.update({
+      where: { id: networkId },
+      data: { platformSuspendedAt: new Date() },
+    });
+    await expect(calendar.feedIcs(token)).rejects.toBeInstanceOf(NotFoundException);
+    await prisma.network.update({ where: { id: networkId }, data: { platformSuspendedAt: null } });
+
+    expect(unfold(await calendar.feedIcs(token))).toContain('Telefone: 11987654321');
+
+    const users = new UserService(
+      prisma,
+      {} as never,
+      {} as never,
+      { get: () => undefined } as never,
+      {} as never,
+    );
+    await users.setUserActive(ownerId, false);
+    expect(await prisma.calendarFeed.count({ where: { userId: ownerId } })).toBe(0);
+    await expect(calendar.feedIcs(token)).rejects.toBeInstanceOf(NotFoundException);
+
+    await users.setUserActive(ownerId, true);
+    const again = await calendar.createFeed(ownerId, shopId, 'ALL');
+    await users.setMultipleUsersActive([ownerId], false);
+    expect(await prisma.calendarFeed.count({ where: { userId: ownerId } })).toBe(0);
+    await expect(calendar.feedIcs(again.path.match(/feed\/(.+)\.ics$/)![1])).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+
+    await users.setUserActive(ownerId, true);
+    const afterPassword = await calendar.createFeed(ownerId, shopId, 'ALL');
+    await users.revokeAllSessions(ownerId);
+    expect(await prisma.calendarFeed.count({ where: { userId: ownerId } })).toBe(0);
+    await expect(
+      calendar.feedIcs(afterPassword.path.match(/feed\/(.+)\.ics$/)![1]),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

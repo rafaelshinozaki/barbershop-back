@@ -20,7 +20,7 @@ describe('SocialService.handleOAuthCallback', () => {
       {} as never,
       { ensureAccess } as never,
     );
-    return { service, upsert, createChoice };
+    return { service, upsert, createChoice, deleteChoice: prisma.socialPageChoice.deleteMany };
   }
 
   afterEach(() => jest.restoreAllMocks());
@@ -50,11 +50,17 @@ describe('SocialService.handleOAuthCallback', () => {
         ],
       }) as never;
     });
-    const { service, upsert, createChoice } = build(async () => ({}));
+    const { service, upsert, createChoice, deleteChoice } = build(async () => ({}));
     const result = await service.handleOAuthCallback('code', 'state');
     expect(result.pick).toEqual(expect.any(String));
     expect(result.error).toBeUndefined();
     expect(upsert).not.toHaveBeenCalled();
+    expect(deleteChoice).toHaveBeenCalledWith({
+      where: {
+        barbershopId: 4,
+        OR: [{ userId: 9 }, { expiresAt: { lt: expect.any(Date) } }],
+      },
+    });
     const stored = createChoice.mock.calls[0][0].data.userToken;
     expect(stored.startsWith('enc:v1:')).toBe(true);
     expect(stored).not.toContain('long');
@@ -203,5 +209,201 @@ describe('SocialService: chave do token da Página', () => {
         errorMessage: expect.stringContaining('de novo'),
       }),
     });
+  });
+});
+
+/**
+ * A Página pode ser reconectada sem Instagram depois do agendamento. Rede
+ * pedida e sem conta na hora de publicar é erro; publicado só o que saiu.
+ */
+describe('SocialService.publishPost: Instagram desvinculado', () => {
+  const IG_MISSING = 'Nenhuma conta do Instagram vinculada à Página conectada';
+
+  function build(flags: { postToFacebook: boolean; postToInstagram: boolean }) {
+    const updatePost = jest.fn(async () => undefined);
+    const prisma = {
+      socialPost: {
+        findUnique: async () => ({
+          id: 1,
+          status: 'SCHEDULED',
+          barbershopId: 4,
+          imageKey: 'social-posts/4/x.jpg',
+          caption: 'oi',
+          postToFacebook: flags.postToFacebook,
+          postToInstagram: flags.postToInstagram,
+        }),
+        update: updatePost,
+      },
+      barbershop: { findUnique: async () => ({ closedAt: null }) },
+      socialConnection: {
+        findUnique: async () => ({
+          id: 7,
+          facebookPageId: 'p1',
+          facebookAccessToken: 'plain-token',
+          instagramBusinessAccountId: null,
+        }),
+        update: async () => undefined,
+      },
+    };
+    const service = new SocialService(
+      prisma as never,
+      { get: (key: string) => (key === 'JWT_SECRET' ? 'jwt' : undefined) } as never,
+      {} as never,
+      { getDownloadUrl: async () => 'https://img' } as never,
+      { ensureAccess: async () => ({}) } as never,
+    );
+    return { service, updatePost };
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('post só para o Instagram sem conta vinculada falha e não chama a rede', async () => {
+    const { service, updatePost } = build({ postToFacebook: false, postToInstagram: true });
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await (service as any).publishPost(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(updatePost).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: {
+        status: 'FAILED',
+        errorMessage: expect.stringContaining(IG_MISSING),
+      },
+    });
+  });
+
+  it('nas duas redes o Facebook sai e o Instagram fica no aviso', async () => {
+    const { service, updatePost } = build({ postToFacebook: true, postToInstagram: true });
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      json: async () => ({ id: 'fb-1', post_id: 'fb-post' }),
+    } as never);
+    await (service as any).publishPost(1);
+    expect(updatePost).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: expect.objectContaining({
+        status: 'PUBLISHED',
+        facebookPostId: 'fb-post',
+        instagramMediaId: undefined,
+        errorMessage: expect.stringContaining(IG_MISSING),
+      }),
+    });
+  });
+});
+
+describe('SocialService: legenda, exclusão e nova tentativa', () => {
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+  const basePost = {
+    id: 3,
+    barbershopId: 7,
+    caption: 'Oi',
+    imageKey: 'social-posts/7/foto.jpg',
+    postToFacebook: true,
+    postToInstagram: false,
+    status: 'FAILED',
+    errorMessage: 'Facebook: token',
+  };
+
+  function build(opts?: {
+    post?: Partial<typeof basePost>;
+    othersWithKey?: number;
+    instagram?: string | null;
+  }) {
+    const post = { ...basePost, ...opts?.post };
+    const deleted: number[] = [];
+    const updates: unknown[] = [];
+    const deleteObject = jest.fn(async () => undefined);
+    const service = new SocialService(
+      {
+        socialConnection: {
+          findUnique: async () => ({
+            instagramBusinessAccountId: opts?.instagram === undefined ? 'ig' : opts.instagram,
+          }),
+        },
+        socialPost: {
+          create: async ({ data }: { data: unknown }) => data,
+          findFirst: async () => post,
+          delete: async ({ where }: { where: { id: number } }) => {
+            deleted.push(where.id);
+          },
+          count: async () => opts?.othersWithKey ?? 0,
+          update: async ({ data }: { data: unknown }) => {
+            updates.push(data);
+            return { ...post, ...((data as object) ?? {}) };
+          },
+        },
+      } as never,
+      { get: () => undefined } as never,
+      {} as never,
+      { deleteObject } as never,
+      { ensureAccess: async () => ({}) } as never,
+    );
+    return { service, deleted, updates, deleteObject };
+  }
+
+  const schedule = (
+    service: SocialService,
+    caption: string,
+    flags: { postToFacebook: boolean; postToInstagram: boolean },
+  ) =>
+    service.createPost(1, 7, {
+      caption,
+      imageKey: 'social-posts/7/123-abc.jpg',
+      scheduledFor: future,
+      ...flags,
+    });
+
+  it('recusa legenda longa ou com hashtags demais só no Instagram', async () => {
+    const { service } = build();
+    await expect(
+      schedule(service, 'a'.repeat(2201), { postToFacebook: false, postToInstagram: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const tags = Array.from({ length: 31 }, (_, i) => `#t${i}`).join(' ');
+    await expect(
+      schedule(service, tags, { postToFacebook: true, postToInstagram: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      schedule(service, 'a'.repeat(2201), { postToFacebook: true, postToInstagram: false }),
+    ).resolves.toMatchObject({ caption: 'a'.repeat(2201) });
+  });
+
+  it('exclui o que falhou e apaga a imagem quando ninguém mais usa', async () => {
+    const { service, deleted, deleteObject } = build();
+    await expect(service.deletePost(1, 7, 3)).resolves.toBe(true);
+    expect(deleted).toEqual([3]);
+    expect(deleteObject).toHaveBeenCalledWith('social-posts/7/foto.jpg');
+  });
+
+  it('exclui o cancelado e guarda a imagem se outro post usa a mesma chave', async () => {
+    const { service, deleteObject } = build({
+      post: { status: 'CANCELLED' },
+      othersWithKey: 1,
+    });
+    await expect(service.deletePost(1, 7, 3)).resolves.toBe(true);
+    expect(deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('não exclui o que já foi publicado', async () => {
+    const { service, deleted } = build({ post: { status: 'PUBLISHED' } });
+    await expect(service.deletePost(1, 7, 3)).rejects.toBeInstanceOf(BadRequestException);
+    expect(deleted).toHaveLength(0);
+  });
+
+  it('tentar de novo volta o post que falhou para agendado', async () => {
+    const { service, updates } = build();
+    await expect(service.retryPost(1, 7, 3, future)).resolves.toMatchObject({
+      status: 'SCHEDULED',
+    });
+    expect(updates[0]).toMatchObject({
+      status: 'SCHEDULED',
+      errorMessage: null,
+      publishedAt: null,
+      facebookPostId: null,
+      instagramMediaId: null,
+    });
+  });
+
+  it('não tenta de novo um post cancelado', async () => {
+    const { service, updates } = build({ post: { status: 'CANCELLED' } });
+    await expect(service.retryPost(1, 7, 3, future)).rejects.toBeInstanceOf(BadRequestException);
+    expect(updates).toHaveLength(0);
   });
 });

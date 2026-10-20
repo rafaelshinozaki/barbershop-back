@@ -91,4 +91,22 @@ export class SocialResolver {
   ) {
     return this.socialService.deletePost(user.id, barbershopId, id);
   }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => SocialPostType)
+  async retrySocialPost(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('id', { type: () => Int }) id: number,
+    @Args('scheduledFor') scheduledFor: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    const post = await this.socialService.retryPost(user.id, barbershopId, id, scheduledFor);
+    return {
+      ...post,
+      scheduledFor: post.scheduledFor.toISOString(),
+      publishedAt: post.publishedAt?.toISOString(),
+      createdAt: post.createdAt.toISOString(),
+      imageUrl: '',
+    };
+  }
 }
