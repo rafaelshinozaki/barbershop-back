@@ -2626,3 +2626,13 @@ Foram lidos o login com código (dois passos), os e-mails com HTML (aviso de sal
      - O backoffice já tem a versão de admin (`processAllRecurringPaymentsAdmin`), e a renovação roda sozinha pelo agendador.
      
      **Fazer:** tirar `processAllRecurringPayments` do resolver público (fica só a do backoffice, com a área Financeiro). `processRecurringPayment` (de um pagamento do próprio dono) com limite de chamadas. Respostas sem a mensagem interna. Teste: conta comum chamando a mutation recebe "sem permissão".
+
+### Octogésima oitava rodada (2026-10-20): plano removido do catálogo
+
+Foram lidos a compra do plano pelo dono (intenção de pagamento, confirmação, cupom, cartão salvo, remover cartão), a troca de plano pelo dono e o catálogo de planos (listar, buscar por id, remover).
+
+259. ⬜ **Plano removido do catálogo ainda pode ser comprado e escolhido na troca** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`, `changePlan`; `PlanResolver.getPlanById`):
+     - Remover um plano (`PlanService.remove`) só marca `deleted_at`, e a lista de planos (`getAllPlans`) passa a escondê-lo. Mas a compra (`createPaymentIntentForCheckout`), a ativação depois do pagamento e a troca de plano (`changePlan`) buscam o plano só pelo id, sem olhar `deleted_at`.
+     - Quem tem o id de um plano antigo (o front manda o id; `getPlanById` também devolve plano removido) compra ou troca para ele: um plano descontinuado mais barato, com os módulos e as vagas dele, volta a ser vendido sem ninguém da plataforma saber. O mesmo vale para o plano "Premium" que a importação por planilha cria sozinha (item 256).
+     
+     **Fazer:** compra, ativação e troca só aceitam plano com `deleted_at` nulo (o dono que já está num plano removido continua nele até trocar); `getPlanById` não devolve plano removido para quem não é da plataforma. Teste: remover um plano e tentar comprar e trocar para ele.
