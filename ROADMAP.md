@@ -2744,3 +2744,21 @@ Foram lidos a criação dos avisos em lote (`createNotificationsForUsers`), o te
      - Não há como o servidor fechar os sockets de uma pessoa quando a sessão dela acaba.
      
      **Fazer:** guardar o id da sessão no contexto da assinatura e, no filtro (com o cache curto que já existe), conferir se a sessão ainda existe, se a conta está ativa e se o token não venceu. Se não estiver tudo certo, encerrar a assinatura. Ao derrubar sessões, publicar um evento que fecha os sockets daquela pessoa. Teste com logout durante uma assinatura aberta.
+
+### Nonagésima sétima rodada (2026-10-20): login social da equipe
+
+Foram lidos o login com Google, Facebook e Apple da equipe e do cliente (`completeSocialLogin`, `findOrCreateSocialUser`, `findOrCreateSocialAccount`, as estratégias e o `state` do OAuth), o login por senha (`verifyUser`), o `GraphQLJwtAuthGuard`, o caixa, as vagas e os preços da plataforma.
+
+270. ⬜ **Conta da equipe desativada volta a entrar pelo Google, Facebook ou Apple** (back: `AuthController.completeSocialLogin`, `UserService.findOrCreateSocialUser`, `AuthService.login`, `GraphQLJwtAuthGuard`):
+     - O login por senha (`verifyUser`) recusa a conta com `isActive = false`. O login social não confere: `findOrCreateSocialUser` acha a conta pelo e-mail (ou pelo vínculo), `socialLoginAllowed` só olha se é conta do sistema e `AuthService.login` cria uma `ActiveSession` nova.
+     - O `GraphQLJwtAuthGuard` só confere se a sessão existe, e não se a conta está ativa. Por isso a pessoa desativada pela plataforma (fraude, pedido do titular) ou pelo próprio fluxo de desativação, que teve as sessões derrubadas, entra de novo com "Entrar com Google" e usa o painel normalmente: agenda, clientes, vendas e caixa das unidades.
+     
+     **Fazer:** recusar o login social de conta com `isActive = false` ou `deleted_at`, com a mesma resposta do login por senha. No guard, recusar a sessão de conta inativa (já busca o usuário, é só conferir). Teste: conta desativada tenta entrar pelo Google e uma sessão antiga de conta desativada é recusada.
+     
+271. ⬜ **Conta da equipe criada com o e-mail de outra pessoa fica com o acesso quando a dona entra pelo Google** (back: `UserService.findOrCreateSocialUser`, cadastro da equipe, estratégias Google/Facebook):
+     - O cadastro da equipe não confirma o e-mail: dá para criar uma conta com o e-mail de outra pessoa e uma senha escolhida (`emailVerifiedAt` só é gravado na redefinição de senha e no convite).
+     - Quando a dona do e-mail entra depois com "Entrar com Google", `findOrCreateSocialUser` acha essa conta pelo e-mail, liga o Google a ela e faz o login. A senha de quem criou a conta continua valendo. A dona cadastra a unidade, os clientes e o recebimento pelo app, e quem criou a conta entra por senha e vê ou muda tudo.
+     - O login social do cliente já trata esse caso: apaga a senha da conta não confirmada e derruba as sessões. O da equipe não faz isso.
+     - Nos dois fluxos, o e-mail do Google é aceito sem olhar `emails[0].verified` (`email_verified`), e a conta é identificada só pelo e-mail, sem o id do provedor.
+     
+     **Fazer:** no login social da equipe, se a conta achada pelo e-mail nunca teve o e-mail confirmado, apagar a senha, derrubar as sessões e as inscrições de push (como no cliente) e gravar `emailVerifiedAt`. Recusar e-mail do Google com `verified = false`. Guardar o id do provedor (`sub`/`id`) no vínculo e usar ele, não o e-mail, para achar a conta nos próximos logins. Teste com conta criada por senha e login pelo Google com o mesmo e-mail.
