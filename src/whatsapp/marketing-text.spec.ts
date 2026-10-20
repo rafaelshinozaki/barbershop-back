@@ -17,7 +17,10 @@ describe('texto da campanha no WhatsApp', () => {
   });
 
   it('passa de 1.024 caracteres não vai para a fila', () => {
-    expect(whatsappMarketingBody('a'.repeat(1025), 'pt')).toEqual({ ok: false, reason: 'too_long' });
+    expect(whatsappMarketingBody('a'.repeat(1025), 'pt')).toEqual({
+      ok: false,
+      reason: 'too_long',
+    });
     expect(whatsappMarketingBody('   \n\t  ', 'pt')).toEqual({ ok: false, reason: 'empty' });
   });
 });
@@ -39,7 +42,11 @@ describe('resposta SAIR', () => {
               value: {
                 messages: [
                   { from: '5511999990000', type: 'text', text: { body: 'SAIR' } },
-                  { from: '14155551234', type: 'button', button: { payload: 'STOP', text: 'Stop' } },
+                  {
+                    from: '14155551234',
+                    type: 'button',
+                    button: { payload: 'STOP', text: 'Stop' },
+                  },
                 ],
               },
             },

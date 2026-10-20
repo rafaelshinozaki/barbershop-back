@@ -2899,10 +2899,7 @@ export class BarbershopService {
     // também saem das campanhas.
     const phone = customer.phone?.trim();
     if (data.marketingOptOut === true && phone) {
-      const variants = phoneDigitVariants(
-        phone,
-        callingCodeForCountry(barbershop.country) ?? '55',
-      );
+      const variants = phoneDigitVariants(phone, callingCodeForCountry(barbershop.country) ?? '55');
       if (variants.length) {
         await this.prisma.$executeRaw`
           UPDATE "Customer"

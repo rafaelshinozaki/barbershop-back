@@ -47,8 +47,7 @@ export class WhatsappController {
     @Headers('x-hub-signature-256') signature: string | undefined,
   ) {
     const secret =
-      this.config.get<string>('WHATSAPP_APP_SECRET') ||
-      this.config.get<string>('META_APP_SECRET');
+      this.config.get<string>('WHATSAPP_APP_SECRET') || this.config.get<string>('META_APP_SECRET');
     if (!secret || !this.signatureOk(req.rawBody, signature, secret)) {
       throw new ForbiddenException('Assinatura do WhatsApp inválida');
     }

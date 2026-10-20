@@ -43,11 +43,17 @@ export function isMarketingOptOut(text: string): boolean {
   return OPT_OUT_WORDS.has(word);
 }
 
-type Inbound = { from?: string; type?: string; text?: { body?: string }; button?: { text?: string; payload?: string } };
+type Inbound = {
+  from?: string;
+  type?: string;
+  text?: { body?: string };
+  button?: { text?: string; payload?: string };
+};
 
 /** Telefone e texto das mensagens recebidas no webhook da Meta. */
 export function inboundWhatsappTexts(body: unknown): { from: string; text: string }[] {
-  const entries = (body as { entry?: { changes?: { value?: { messages?: Inbound[] } }[] }[] })?.entry;
+  const entries = (body as { entry?: { changes?: { value?: { messages?: Inbound[] } }[] }[] })
+    ?.entry;
   if (!Array.isArray(entries)) return [];
   const out: { from: string; text: string }[] = [];
   for (const entry of entries) {

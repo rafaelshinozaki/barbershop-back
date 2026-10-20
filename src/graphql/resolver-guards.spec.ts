@@ -121,6 +121,8 @@ const PUBLIC_ROUTES: Record<string, string> = {
   'seo/sitemap.controller.ts#shopImage': 'SEO da página pública',
   'social/social.controller.ts#callback': 'retorno do OAuth (state assinado)',
   'stripe/stripe.controller.ts#handleWebhook': 'webhook (assinatura do Stripe)',
+  'whatsapp/whatsapp.controller.ts#verify': 'webhook do WhatsApp (token de verificação da Meta)',
+  'whatsapp/whatsapp.controller.ts#receive': 'webhook do WhatsApp (assinatura da Meta)',
   'stripe/stripe.controller.ts#checkHealth': 'health check',
   'stripe/stripe.controller.ts#getStripePlans': 'preços públicos dos planos',
 };
