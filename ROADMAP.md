@@ -2789,3 +2789,31 @@ Foram lidos a sessão da área do cliente (`issueCookie`, `GraphQLClientJwtAuthG
      - Não existe "Lembrar de mim" nem lista de sessões abertas na área do cliente.
      
      **Fazer:** prazo próprio da sessão do cliente (ex.: 30 dias), com renovação enquanto a pessoa usa (como `renewIfStale`). No "Sair", revogar só aquela sessão: id da sessão no token com uma tabela de sessões do cliente (como `ActiveSession`), ou no mínimo `sessionVersion + 1` com aviso de que sai de todos os aparelhos. Teste com o token de uma sessão encerrada.
+
+### Nonagésima nona rodada (2026-10-21): histórico de atendimentos e painel da rede
+
+Foram lidos o painel da rede (`getNetworkDashboardStats`, `staffDashboard`, `networkMoney`), o histórico de atendimentos da ficha (`getCustomerServiceHistory`), o público "inativos" das campanhas (`resolveMarketingSegment`) e a fidelidade.
+
+273. ⬜ **O histórico de atendimentos nunca é gravado: a ficha fica vazia, o painel mostra zero e a campanha para inativos não acha ninguém** (back: `ServiceHistory`, `getCustomerServiceHistory`, `getNetworkDashboardStats`, `resolveMarketingSegment`):
+     - Nenhum fluxo do app cria `ServiceHistory`: concluir o horário, fechar a conta e atender na fila não gravam nada. Só o `seed-demo.ts` cria essas linhas, por isso a demonstração parece certa.
+     - Em produção, a aba "Histórico de atendimentos" da ficha do cliente (`customerServiceHistory`) mostra sempre "nenhum atendimento", e "Serviços realizados" no painel da rede (`totalServicesDone`) fica em 0.
+     - O público "inativos há N dias" das campanhas usa `ServiceHistory` para saber quem já foi atendido e quem voltou. Sem linhas, ninguém é inativo: a campanha para trazer de volta quem sumiu sai para 0 pessoas, sem aviso.
+     
+     **Fazer:** ler o histórico do que já existe: horários `COMPLETED` (com os serviços do horário) e atendimentos da fila concluídos, no lugar de `ServiceHistory` (ou gravar a linha ao concluir, com migração preenchendo o passado). O público "inativos" passa a ser quem tem atendimento concluído na unidade e nenhum nos últimos N dias. Teste: concluir um horário aparece na ficha, conta no painel e tira o cliente dos inativos.
+     
+274. ⬜ **O painel da rede soma produtos de vendas não pagas e conta profissionais com vínculo vencido** (back: `getNetworkDashboardStats`):
+     - "Produtos vendidos" soma a quantidade de todos os itens de produto, sem olhar a situação da venda: venda pendente, cancelada ou estornada conta como vendida (o faturamento ao lado só soma as pagas, então os dois números não batem).
+     - "Profissionais" conta todo `Barber` com `isActive`, inclusive o freelancer cujo período já acabou ou ainda não começou (`currentEngagement` não é usado aqui, mas é usado no resto do painel).
+     
+     **Fazer:** produtos só de vendas pagas (e não estornadas); profissionais com `currentEngagement()`. Teste com venda pendente e vínculo vencido.
+
+### Centésima rodada (2026-10-21): descadastro das campanhas
+
+Foram lidos o descadastro pelo WhatsApp (`WhatsappOptOutService`), o link de descadastro do e-mail, a edição da ficha (`updateCustomer`), os pedidos de avaliação e as campanhas.
+
+275. ⬜ **Responder SAIR a uma barbearia tira a pessoa de tudo, em todas, e não há como voltar** (back: `WhatsappOptOutService.optOutFromReply`, `Customer.marketingOptOut`, `updateCustomer`, `ReviewRequestService`):
+     - `optOutFromReply` marca `marketingOptOut` em todas as fichas da plataforma com aquele telefone, de qualquer rede. Quem responde SAIR à campanha de uma barbearia deixa de receber campanhas de todas as outras onde é cliente.
+     - É o mesmo campo das campanhas por e-mail e dos pedidos de avaliação (`review-request.service`, `review-management.service` pulam quem tem `marketingOptOut`). Sair do WhatsApp também corta o e-mail e o pedido de avaliação, que a pessoa não pediu para parar.
+     - Não existe caminho de volta: a equipe é recusada ("só pode voltar a receber por conta própria"), mas não há link, tela ou palavra no WhatsApp para a pessoa voltar. O link de descadastro do e-mail também só marca.
+     
+     **Fazer:** separar o descadastro por canal (e-mail e WhatsApp) e por rede no e-mail. No WhatsApp, como o número é um só da plataforma, guardar o descadastro pelo telefone (tabela própria), sem mexer no e-mail. Pedido de avaliação fora do descadastro de marketing (ou com opção própria). Página do link e resposta no WhatsApp (ex.: "VOLTAR") para voltar a receber, e a área do cliente com as opções. Teste: SAIR numa rede não tira o e-mail nem as outras redes, e a pessoa consegue voltar.
