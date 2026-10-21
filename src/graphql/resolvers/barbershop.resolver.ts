@@ -58,6 +58,7 @@ import {
   MarketingSegmentPreviewType,
   MarketingCampaignType,
   ClientSubscriptionPlanType,
+  ServiceDeactivationPreviewType,
   ClientSubscriptionType,
   SubscriptionRevenueReportType,
 } from '../types/barbershop.type';
@@ -604,13 +605,24 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => ServiceDeactivationPreviewType)
+  async serviceDeactivationPreview(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('serviceId', { type: () => Int }) serviceId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.serviceDeactivationPreview(user.id, barbershopId, serviceId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async deleteBarbershopService(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('id', { type: () => Int }) id: number,
+    @Args('confirm', { type: () => Boolean, nullable: true }) confirm: boolean | null,
     @CurrentUser() user: UserDTO,
   ) {
-    await this.barbershopService.deleteService(user.id, barbershopId, id);
+    await this.barbershopService.deleteService(user.id, barbershopId, id, !!confirm);
     return true;
   }
 

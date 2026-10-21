@@ -40,6 +40,7 @@ describe('Pedido de avaliação (integração)', () => {
     { email: async (job: any) => void sent.push(job) } as never,
     { reviewPosted: async (...args: unknown[]) => void posted.push(args) } as never,
     barbershops,
+    { isConfigured: () => false } as never,
   );
 
   let ownerId: number;
@@ -50,21 +51,31 @@ describe('Pedido de avaliação (integração)', () => {
   let n = 0;
 
   const customer = async (
-    data: Partial<{ email: string | null; marketingOptOut: boolean; clientAccountId: number }> = {},
+    data: Partial<{
+      email: string | null;
+      marketingOptOut: boolean;
+      clientAccountId: number;
+      phone: string;
+    }> = {},
   ) =>
     prisma.customer.create({
       data: {
         networkId,
         name: 'Carlos Cliente Souza',
-        phone: `9${RUN.slice(-9)}${++n}`,
+        phone: data.phone ?? `9${RUN.slice(-9)}${++n}`,
         email: data.email === undefined ? `cli-${n}-${RUN}@test.local` : data.email,
         marketingOptOut: data.marketingOptOut ?? false,
         clientAccountId: data.clientAccountId,
       },
     });
   // Atendimento que terminou `hoursAgo` horas atrás
-  const appointment = async (customerId: number, hoursAgo: number, status = 'COMPLETED') =>
-    prisma.appointment.create({
+  const appointment = async (
+    customerId: number,
+    hoursAgo: number,
+    status = 'COMPLETED',
+    paid = true,
+  ) => {
+    const appt = await prisma.appointment.create({
       data: {
         barbershopId: shopId,
         customerId,
@@ -75,6 +86,23 @@ describe('Pedido de avaliação (integração)', () => {
         services: { create: [{ serviceId, unitPrice: new Decimal(50) }] },
       },
     });
+    if (paid && status === 'COMPLETED') {
+      await prisma.sale.create({
+        data: {
+          barbershopId: shopId,
+          customerId,
+          barberId,
+          appointmentId: appt.id,
+          saleType: 'SERVICE',
+          subtotal: new Decimal(50),
+          total: new Decimal(50),
+          paymentStatus: 'PAID',
+          paidAt: appt.endAt,
+        },
+      });
+    }
+    return appt;
+  };
   const sentTo = (email: string | null) => sent.filter((s) => s.to === email);
   // O banco pode ter atendimentos de outros testes: só conta os deste
   const ours = () => sent.filter((s) => s.to.includes(RUN));
@@ -140,6 +168,7 @@ describe('Pedido de avaliação (integração)', () => {
   afterAll(async () => {
     await prisma.review.deleteMany({ where: { barbershopId: shopId } });
     await prisma.professionalReview.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.sale.deleteMany({ where: { barbershopId: shopId } });
     await prisma.appointmentService.deleteMany({
       where: { appointment: { barbershopId: shopId } },
     });
@@ -251,12 +280,27 @@ describe('Pedido de avaliação (integração)', () => {
     expect(listed.find((r) => r.id === reviews[0].id)?.reviewerName).toBe('Carlos S.');
   });
 
-  it('equipe pega o link de um atendimento concluído pra mandar ao cliente (quem é de fora não)', async () => {
-    const c = await customer({ email: null });
+  it('a equipe não vê o link: o sistema manda pro e-mail do cliente', async () => {
+    const c = await customer();
     const done = await appointment(c.id, 3);
+    await expect(reviewRequests.staffReviewLink(ownerId, shopId, done.id)).resolves.toBe(true);
+    const mine = sentTo(c.email!);
+    expect(mine).toHaveLength(1);
+    expect(decodeURIComponent(mine[0].context.ReviewURL)).toContain(`.${ownerId}.`);
+    await expect(
+      reviewRequests.staffReviewLink(ownerId, shopId, (await appointment(c.id, 3, 'COMPLETED', false)).id),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      reviewRequests.staffReviewLink(
+        ownerId,
+        shopId,
+        (await appointment((await customer({ email: null, phone: '0' })).id, 3)).id,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      reviewRequests.staffReviewLink(ownerId, shopId, (await appointment(c.id, 24 * 40)).id),
+    ).rejects.toBeInstanceOf(BadRequestException);
     const pending = await appointment(c.id, 30, 'CONFIRMED');
-    const link = await reviewRequests.staffReviewLink(ownerId, shopId, done.id);
-    expect(link).toContain(`/review?t=${encodeURIComponent(createReviewToken(done.id))}`);
     await expect(
       reviewRequests.staffReviewLink(ownerId, shopId, pending.id),
     ).rejects.toBeInstanceOf(BadRequestException);

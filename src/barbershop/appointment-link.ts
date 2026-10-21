@@ -37,6 +37,42 @@ function safeEqual(expected: string, given: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function staffMark(appointmentId: number, version: number, userId: number) {
+  return createHmac('sha256', secret())
+    .update(`appointment-review-staff:${appointmentId}:${version}:${userId}`)
+    .digest('base64url')
+    .slice(0, 32);
+}
+
+/**
+ * O link que a equipe pede leva quem pediu, assinado. Sem esse sufixo é o
+ * e-mail automático. Assinatura errada invalida o link inteiro.
+ */
+function stripStaffReview(
+  raw: string,
+): { token: string; requestedByUserId: number | null } | null {
+  const staff = /^(\d+)\.(\d+)\.([A-Za-z0-9_-]{32})\.(\d+)\.([A-Za-z0-9_-]{32})$/.exec(raw);
+  if (!staff) return { token: raw, requestedByUserId: null };
+  const id = Number(staff[1]);
+  const version = Number(staff[2]);
+  const userId = Number(staff[4]);
+  if (
+    !Number.isSafeInteger(id) ||
+    !Number.isSafeInteger(version) ||
+    !Number.isSafeInteger(userId) ||
+    userId < 1 ||
+    !safeEqual(staffMark(id, version, userId), staff[5])
+  ) {
+    return null;
+  }
+  return { token: `${id}.${version}.${staff[3]}`, requestedByUserId: userId };
+}
+
+/** Quem da equipe pediu este link; null no e-mail automático. */
+export function reviewLinkRequester(token: string | undefined | null): number | null {
+  return stripStaffReview((token ?? '').trim())?.requestedByUserId ?? null;
+}
+
 export type AppointmentLink = { id: number; version: number };
 
 /**
@@ -49,14 +85,20 @@ export function readAppointmentLink(
   purpose: 'appointment-manage' | 'appointment-review',
 ): AppointmentLink | null {
   const raw = (token ?? '').trim();
-  const current = /^(\d+)\.(\d+)\.([A-Za-z0-9_-]{32})$/.exec(raw);
+  let body = raw;
+  if (purpose === 'appointment-review') {
+    const peeled = stripStaffReview(raw);
+    if (!peeled) return null;
+    body = peeled.token;
+  }
+  const current = /^(\d+)\.(\d+)\.([A-Za-z0-9_-]{32})$/.exec(body);
   if (current) {
     const id = Number(current[1]);
     const version = Number(current[2]);
     if (!Number.isSafeInteger(id) || !Number.isSafeInteger(version)) return null;
     return safeEqual(sign(id, purpose, version), current[3]) ? { id, version } : null;
   }
-  const legacy = /^(\d+)\.([A-Za-z0-9_-]{32})$/.exec(raw);
+  const legacy = /^(\d+)\.([A-Za-z0-9_-]{32})$/.exec(body);
   if (!legacy) return null;
   const id = Number(legacy[1]);
   if (!Number.isSafeInteger(id)) return null;
@@ -124,6 +166,26 @@ export function verifyReviewToken(token: string | undefined | null): number | nu
 export function appointmentReviewUrl(appointmentId: number, rating?: number, version = 0): string {
   const front = process.env.FRONTEND_URL || 'http://localhost:5173';
   const t = encodeURIComponent(createReviewToken(appointmentId, version));
+  return `${front}/review?t=${t}${rating ? `&r=${rating}` : ''}`;
+}
+
+/** O mesmo link, marcado com quem da equipe pediu. Não volta pra tela. */
+export function createStaffReviewToken(
+  appointmentId: number,
+  userId: number,
+  version = 0,
+): string {
+  return `${createReviewToken(appointmentId, version)}.${userId}.${staffMark(appointmentId, version, userId)}`;
+}
+
+export function appointmentStaffReviewUrl(
+  appointmentId: number,
+  userId: number,
+  rating?: number,
+  version = 0,
+): string {
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const t = encodeURIComponent(createStaffReviewToken(appointmentId, userId, version));
   return `${front}/review?t=${t}${rating ? `&r=${rating}` : ''}`;
 }
 

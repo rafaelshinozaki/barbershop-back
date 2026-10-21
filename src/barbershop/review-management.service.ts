@@ -44,14 +44,37 @@ export class ReviewManagementService {
     return review;
   }
 
-  async listForShop(userId: number, barbershopId: number) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    const reviews = await this.prisma.review.findMany({
-      where: { barbershopId },
-      include: this.include,
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
+  private async withOrigin<
+    T extends {
+      id: number;
+      rating: number;
+      comment: string | null;
+      createdAt: Date;
+      reply: string | null;
+      replyStale: boolean;
+      repliedAt: Date | null;
+      reportedAt: Date | null;
+      reportReason: string | null;
+      hiddenAt: Date | null;
+      reviewSource: string | null;
+      requestedByUserId: number | null;
+      clientAccount: { name: string } | null;
+      customer: { name: string } | null;
+      barbershop?: { name: string; slug: string };
+    },
+  >(reviews: T[]) {
+    const ids = [
+      ...new Set(
+        reviews.map((r) => r.requestedByUserId).filter((id): id is number => id != null),
+      ),
+    ];
+    const users = ids.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+    const names = new Map(users.map((u) => [u.id, u.fullName]));
     return reviews.map((r) => ({
       id: r.id,
       rating: r.rating,
@@ -64,7 +87,23 @@ export class ReviewManagementService {
       reportedAt: r.reportedAt,
       reportReason: r.reportReason,
       hidden: r.hiddenAt != null,
+      reviewSource: r.reviewSource,
+      requestedByName: r.requestedByUserId ? (names.get(r.requestedByUserId) ?? null) : null,
+      ...(r.barbershop
+        ? { barbershopName: r.barbershop.name, barbershopSlug: r.barbershop.slug }
+        : {}),
     }));
+  }
+
+  async listForShop(userId: number, barbershopId: number) {
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const reviews = await this.prisma.review.findMany({
+      where: { barbershopId },
+      include: this.include,
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    return this.withOrigin(reviews);
   }
 
   /** Responde (ou edita a resposta); vazio apaga a resposta. */
@@ -191,21 +230,7 @@ export class ReviewManagementService {
       orderBy: [{ reportedAt: { sort: 'desc', nulls: 'last' } }],
       take: 200,
     });
-    return reviews.map((r) => ({
-      id: r.id,
-      rating: r.rating,
-      comment: r.comment,
-      createdAt: r.createdAt,
-      reviewerName: reviewerName(r),
-      reply: r.reply,
-      replyStale: r.replyStale,
-      repliedAt: r.repliedAt,
-      reportedAt: r.reportedAt,
-      reportReason: r.reportReason,
-      hidden: r.hiddenAt != null,
-      barbershopName: r.barbershop.name,
-      barbershopSlug: r.barbershop.slug,
-    }));
+    return this.withOrigin(reviews);
   }
 
   /**

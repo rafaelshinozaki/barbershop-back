@@ -2492,39 +2492,47 @@ Foram lidos o pagamento do atendimento pelo app antes do horário (pagar, confir
      
      **Feito:** na falta ou no cancelamento pelo cliente com taxa, `retainFeeFromPrepayment` fica com a taxa (até o que foi pago) e devolve o resto pelo estorno parcial (`refundPrepayment(id, valor)`); o cancelamento não devolve mais tudo nesse caso. A taxa registrada desconta o que o pago antes já cobriu: coberta inteira, nada fica devido; pago menos que a taxa, só a diferença fica pendente. Sem taxa (desligada, fora do prazo ou cancelamento pela unidade) vale a regra de antes: cancelamento devolve tudo, falta fica com a unidade (com estorno manual). O cálculo da taxa virou `noShowFeeFor`, usado pelos dois. Teste em `no-show-fee.int.spec.ts`.
 
-243. ⬜ **Excluir um horário apaga as avaliações, as caixinhas, a taxa de falta e a conversa dele** (back: `deleteAppointment`; `prisma/schema.prisma`):
+243. ✅ **Excluir um horário apaga as avaliações, as caixinhas, a taxa de falta e a conversa dele** (back: `deleteAppointment`; `prisma/schema.prisma`):
      - `deleteAppointment` (gerente e dono) só recusa o horário com sinal pago online. Qualquer outro horário, inclusive concluído, é apagado de vez, e o banco apaga em cascata: a avaliação do profissional (`ProfessionalReview`), a nota do cliente (`CustomerRating`), a caixinha (`AppointmentTip`, inclusive a paga pelo app no Stripe), a taxa de falta (`NoShowFee`, inclusive a já cobrada) e a conversa do chat (`ChatThread`, inclusive a denunciada e segurada para a moderação).
      - Na prática, o gerente apaga uma avaliação ruim do profissional (que sai da página e da nota) excluindo o horário, sem passar pela moderação. A caixinha paga pelo app e o pagamento do atendimento pelo app (`prepaidAt`, que fica no próprio horário) somem da lista de pagamentos pelo app e do repasse, com o dinheiro já na conta do Stripe.
      
      **Fazer:** excluir só horário que não aconteceu e não tem nada ligado: concluído, com venda, avaliação, caixinha, taxa de falta, pagamento pelo app ou conversa denunciada é recusado com a mensagem para cancelar (ou marcar falta) em vez de excluir. As relações com dinheiro e moderação passam de `Cascade` para `Restrict`. Teste: excluir horário com avaliação e com caixinha.
+     
+     **Feito:** excluir recusa horário concluído, em andamento ou com falta, e também o que tem venda, avaliação, nota, caixinha, taxa de falta, pagamento pelo app ou conversa denunciada. A mensagem pede para cancelar ou marcar falta. Avaliação, nota, caixinha, taxa e conversa passam de `Cascade` para `Restrict`. Conversa comum de um horário que pode sair é apagada antes. Teste em `delete-appointment.spec.ts`.
 
 ### Septuagésima oitava rodada (2026-10-20): ficha de saúde e o que some ao apagar
 
 Foram lidos a ficha de anamnese e consentimento, a exclusão de serviço, produto, categoria, profissional, despesa e plano do clube, e o histórico de alterações (o que cada cargo vê e o que fica mascarado).
 
-244. ⬜ **Qualquer barbeiro e a recepção leem a ficha de saúde de todos os clientes da unidade** (back: `getConsentForms`, `createConsentForm`, `signConsentForm`, `deleteConsentForm`):
+244. ✅ **Qualquer barbeiro e a recepção leem a ficha de saúde de todos os clientes da unidade** (back: `getConsentForms`, `createConsentForm`, `signConsentForm`, `deleteConsentForm`):
      - A ficha de anamnese e o teste de alergia guardam dado de saúde (dado sensível na LGPD). `getConsentForms` usa o acesso padrão (`barber`), então o barbeiro e a recepção leem as respostas de qualquer cliente pelo id, mesmo de quem nunca atenderam. Para comparar: o telefone e o e-mail do cliente ficam escondidos do barbeiro (item 24), e o motivo "doente" da folga de um colega aparece como "Outro" para quem não é gerente.
      - "Assinar" é a equipe digitar um nome (`signatureName`) e pode ser feito de novo numa ficha já assinada, trocando a data da assinatura. Ficha com o consentimento revogado também pode ser "assinada".
      - O gerente apaga de vez uma ficha assinada (teste de alergia, autorização de foto), sem ficar registro de que ela existiu.
      
      **Fazer:** ficha de saúde só para gerente e dono e para o profissional que tem horário com o cliente (passado recente ou futuro); a recepção vê só se existe e se está assinada, sem as respostas. Assinar só a ficha pendente e não revogada, uma vez. Ficha assinada não é apagada: é arquivada (sai da lista, fica o registro). Teste com o barbeiro lendo a ficha de um cliente que não é dele.
+     
+     **Feito:** gerente, dono e o profissional com horário nos últimos 90 dias ou no futuro veem as respostas. A recepção vê a ficha e se está assinada, sem as respostas; quem não atende o cliente não vê a ficha de saúde. Assinar só a pendente, uma vez, e não a que teve o consentimento revogado. Ficha assinada sai da lista e fica arquivada. Teste em `health-form-access.spec.ts`.
 
-245. ⬜ **Serviço desativado continua à venda no clube e no pacote** (back: `deleteService`, `getPublicBarbershopByslug`; clube e pacotes):
+245. ✅ **Serviço desativado continua à venda no clube e no pacote** (back: `deleteService`, `getPublicBarbershopByslug`; clube e pacotes):
      - Excluir um serviço só o desativa (`isActive: false`): ele sai do agendamento. Mas o plano do clube que dá direito a esse serviço continua ativo e aparece na página pública para assinar (a lista de planos só olha `plan.isActive`), e quem já assina continua pagando todo mês por um serviço que não consegue mais agendar pelo link.
      - O mesmo vale para o pacote de sessões desse serviço, e ninguém é avisado de que há plano, pacote ou horários futuros ligados ao serviço desativado.
      
      **Fazer:** ao desativar, mostrar o que está ligado ao serviço (planos do clube com assinantes, pacotes à venda e com saldo, horários futuros) e pedir a decisão. Plano com serviço desativado sai da página pública e não aceita assinatura nova; os assinantes continuam podendo usar no balcão até a unidade cancelar o plano.
 
+     **Feito:** ao desativar, a tela mostra planos do clube com a quantidade de assinantes, pacotes à venda, pacotes com saldo e horários futuros, e só desativa depois da confirmação. Sem nada ligado, desativa direto. Plano de serviço desativado sai da página pública e não aceita assinatura nova; pacote desse serviço não é vendido. Quem já assina e quem tem saldo continua usando no balcão. Teste em `delete-service.spec.ts`.
+
 ### Septuagésima nona rodada (2026-10-20): quem consegue escrever avaliação
 
 Foram lidos o pedido de avaliação depois do atendimento (e-mail, link pela equipe, página do link), a avaliação feita pela conta do cliente (criar, editar, apagar) e a venda de pacote.
 
-246. ⬜ **A equipe consegue avaliar no lugar do cliente** (back: `ReviewRequestService.staffReviewLink`, `submitReview`):
+246. ✅ **A equipe consegue avaliar no lugar do cliente** (back: `ReviewRequestService.staffReviewLink`, `submitReview`):
      - A recepção (e acima) pede o link de avaliação de qualquer atendimento concluído para "mandar pelo WhatsApp". O link não pede login nem código: quem abre avalia o profissional e a unidade. A própria equipe abre o link e deixa 5 estrelas; com uma ficha inventada e um atendimento marcado como concluído, dá para criar quantas avaliações quiser, que entram na nota da página e na busca.
      - O link não vence: o e-mail automático só sai até 3 dias depois do atendimento, mas o link gerado pela equipe vale para atendimentos de anos atrás, e o link do e-mail continua aceitando avaliação (e troca de nota) para sempre.
      - Nada marca a avaliação feita pelo link que a equipe pediu, então a moderação não tem como distinguir.
      
      **Fazer:** o link que a equipe pede vai para o contato do cliente (e-mail ou WhatsApp do próprio cliente, enviado pelo sistema), em vez de aparecer na tela; a avaliação guarda a origem (e-mail automático ou pedido da equipe) e quem pediu. O link vale por 30 dias depois do atendimento. Atendimento sem pagamento registrado (venda) e cliente sem contato não geram link. A fila do backoffice mostra a origem.
+
+     **Feito:** o pedido da equipe vai pro e-mail do cliente, ou pro WhatsApp dele quando não há e-mail. O endereço não volta pra tela. A avaliação grava se veio do e-mail automático ou do pedido da equipe, e quem pediu. O link deixa de valer 30 dias depois do atendimento. Sem pagamento registrado ou sem contato, não sai pedido. A fila do backoffice mostra a origem. Teste em `review-request-staff.spec.ts`.
 
 247. ⬜ **Avaliação da unidade ocultada pela moderação volta apagando e escrevendo de novo** (back: `deleteReview`, `createOrUpdateReview`, `ReviewRequestService.submitReview`):
      - O cliente logado apaga a própria avaliação (`deleteReview` apaga a linha) e escreve outra: a nova nasce sem `hiddenAt`, e o texto que a moderação tirou do ar volta à página e à nota. O mesmo acontece pelo link do e-mail depois de apagar pela conta (sem avaliação existente, o link cria outra).

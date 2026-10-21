@@ -158,6 +158,7 @@ describe('Moderação de conteúdo público (integração)', () => {
         ],
       },
     });
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.delete({ where: { id: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });

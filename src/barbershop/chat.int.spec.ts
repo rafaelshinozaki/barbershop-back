@@ -189,6 +189,7 @@ describe('Chat do atendimento (integração)', () => {
       where: { targetType: 'chat_thread', targetId: { in: reportedThreads } },
     });
     await prisma.userNotification.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.chatThread.deleteMany({ where: { barbershopId: { in: shopIds } } });
     await prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.clientAccount.deleteMany({ where: { id: { in: [accountId, otherAccountId] } } });

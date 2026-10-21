@@ -232,6 +232,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Motivo inválido': 'INVALID_REASON',
   'Afastamento não encontrado': 'TIME_OFF_NOT_FOUND',
   'Serviço não encontrado': 'SERVICE_NOT_FOUND',
+  'Este serviço tem plano, pacote ou horário marcado. Confirme a desativação.':
+    'SERVICE_DEACTIVATION_CONFIRM',
+  'Este plano não aceita assinatura nova porque o serviço foi desativado.':
+    'PLAN_SERVICE_INACTIVE',
+  'Este pacote não está mais à venda porque o serviço foi desativado.':
+    'PACKAGE_SERVICE_INACTIVE',
   'Produto não encontrado': 'PRODUCT_NOT_FOUND',
   'Recurso já reservado nesse horário': 'RESOURCE_ALREADY_BOOKED_TIME',
   'Este profissional já tem escala nesse horário em outra unidade':
@@ -242,6 +248,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Situação do agendamento inválida': 'INVALID_APPOINTMENT_STATUS',
   'Este horário tem sinal pago online. Cancele (o sinal é estornado) em vez de excluir.':
     'APPOINTMENT_ONLINE_DEPOSIT',
+  'Este horário já aconteceu ou tem registro ligado. Cancele (ou marque falta) em vez de excluir.':
+    'APPOINTMENT_HAS_RECORD',
   'Este horário não foi pago pelo app': 'APPOINTMENT_PAID_THROUGH_APP',
   'Este horário não tem sinal pago online': 'APPOINTMENT_NO_ONLINE_DEPOSIT',
   'Sinal pago online: use "Estornar sinal" pra devolver ao cliente.': 'ONLINE_DEPOSIT',
@@ -352,6 +360,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Para registrar dados de saúde (alergias, condições), confirme que o cliente autorizou':
     'RECORD_HEALTH_DATA_ALLERGIES_CONDITIONS',
   'Ficha não encontrada': 'RECORD_NOT_FOUND',
+  'Você não pode ver os dados de saúde deste cliente.': 'HEALTH_FORM_FORBIDDEN',
+  'Só dá para assinar uma ficha que ainda está pendente e sem o consentimento revogado.':
+    'CONSENT_FORM_NOT_SIGNABLE',
   'A comissão tem que ser de 0% a 100%': 'COMMISSION_MUST_BETWEEN_0_AND',
   'Regra de comissão não encontrada': 'COMMISSION_RULE_NOT_FOUND',
   'A sua comissão é definida pelo dono': 'COMMISSION_SET_BY_OWNER',
@@ -479,6 +490,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Conte o motivo da denúncia': 'TELL_US_WHY_REPORTING',
   'Esta avaliação já foi ocultada': 'REVIEW_ALREADY_BEEN_HIDDEN',
   'Só dá pra pedir avaliação de atendimento concluído': 'CAN_ONLY_ASK_REVIEW_COMPLETED',
+  'Este atendimento já passou do prazo de 30 dias pra avaliar.': 'REVIEW_LINK_EXPIRED',
+  'Este atendimento não tem pagamento registrado.': 'REVIEW_NEEDS_PAYMENT',
+  'Este cliente pediu para não receber mensagens.': 'REVIEW_CONTACT_OPTED_OUT',
+  'Este cliente não tem e-mail nem WhatsApp pra receber o pedido.': 'REVIEW_NO_CONTACT',
+  'Não dá para enviar o WhatsApp agora e o cliente não tem e-mail.': 'REVIEW_WHATSAPP_UNAVAILABLE',
+  'Não foi possível enviar o pedido de avaliação. Tente de novo.': 'REVIEW_REQUEST_SEND_FAILED',
   'Link inválido ou atendimento não encontrado': 'INVALID_LINK_OR_APPOINTMENT_NOT',
   'Dê uma nota de 1 a 5.': 'GIVE_RATING_FROM_1_5',
   'Dia da semana inválido': 'INVALID_WEEKDAY',

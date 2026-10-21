@@ -153,6 +153,9 @@ describe('Caixinha do atendimento (integração)', () => {
         createdByUserId: { in: Object.values(users) },
       },
     });
+    await prisma.appointmentTip.deleteMany({
+      where: { barbershopId: { in: [shopId, soloShopId] } },
+    });
     await prisma.professional.deleteMany({ where: { userId: users.pro } });
     await prisma.barberPayEntry.deleteMany({
       where: { barbershopId: { in: [shopId, soloShopId] } },

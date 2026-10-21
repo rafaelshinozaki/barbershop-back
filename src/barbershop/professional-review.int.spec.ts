@@ -118,6 +118,8 @@ describe('Avaliação do profissional (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } });
     await prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.delete({ where: { id: networkId } });

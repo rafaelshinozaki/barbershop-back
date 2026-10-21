@@ -39,6 +39,7 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
     { email: async () => undefined } as never,
     { reviewPosted: async () => undefined } as never,
     shops,
+    { isConfigured: () => false } as never,
   );
   const chat = new ChatService(
     prisma,

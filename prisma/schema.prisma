@@ -766,7 +766,7 @@ model NoShowFee {
   collectedAt   DateTime?
   // Venda lançada no caixa quando a taxa foi recebida
   saleId        Int?      @unique
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
   barbershop    Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
@@ -875,6 +875,10 @@ model Review {
   // Comentário que a moderação decidiu manter: a unidade não denuncia de
   // novo o mesmo texto
   reportDismissedComment String?
+  // EMAIL = e-mail automático depois do atendimento. STAFF = a equipe pediu
+  // e o sistema mandou pro contato do cliente. Quem pediu fica no segundo caso.
+  reviewSource       String?
+  requestedByUserId  Int?
 
   @@unique([barbershopId, clientAccountId])
   @@unique([barbershopId, customerId])
@@ -896,12 +900,15 @@ model ProfessionalReview {
   customerId     Int?
   rating         Int // 1 a 5
   comment        String?
+  // EMAIL ou STAFF, como na avaliação da unidade
+  reviewSource       String?
+  requestedByUserId  Int?
   // Resposta pública do profissional
   reply          String?
   repliedAt      DateTime?
   // Ocultada pela moderação (fora da página e da nota)
   hiddenAt       DateTime?
-  appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   barber         Barber        @relation(fields: [barberId], references: [id], onDelete: Cascade)
   barbershop     Barbershop    @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   professional   Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
@@ -928,7 +935,7 @@ model CustomerRating {
   raterUserId   Int
   punctuality   Int
   treatment     Int
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   barbershop    Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -968,7 +975,7 @@ model AppointmentTip {
   // Dinheiro que entrou na gaveta (da unidade, ou do profissional deixado no
   // balcão): o caixa aberto na hora, que soma ela no fechamento
   cashSessionId   Int?
-  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   barbershop      Barbershop  @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
   barber          Barber?     @relation(fields: [barberId], references: [id], onDelete: SetNull)
 
@@ -1926,7 +1933,7 @@ model ConsentForm {
   signatureName String?
   signedAt      DateTime?
   expiresAt     DateTime? // ex.: teste de alergia válido por 48h antes do serviço
-  status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED
+  status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED, ARCHIVED
   // Dado de saúde (anamnese, teste de alergia) é sensível na LGPD: as
   // respostas só entram com o consentimento do cliente, registrado aqui
   // (quando e quem da equipe registrou). Revogar apaga as respostas.
@@ -2243,7 +2250,7 @@ model ChatThread {
   retainUntil      DateTime?
   // Encerrada pela moderação (denúncia): continua visível, não recebe mensagem
   closedAt         DateTime?
-  appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   messages         ChatMessage[]
 
   @@unique([appointmentId, kind])

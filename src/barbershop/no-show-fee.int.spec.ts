@@ -124,6 +124,7 @@ describe('Taxa de falta (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.noShowFee.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.deleteMany({ where: { id: networkId } });

@@ -323,6 +323,8 @@ function waitlistBookUrl(
 
 // Fichas com dado de saúde (sensível na LGPD): só com consentimento do cliente
 const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
+/** O profissional vê a ficha de quem atendeu ou vai atender neste prazo */
+const HEALTH_FORM_LOOKBACK_DAYS = 90;
 
 // Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
 const SEARCH_CANDIDATE_LIMIT = 5000;
@@ -3470,6 +3472,9 @@ export class BarbershopService {
       where: { id: serviceId, barbershopId },
     });
     if (!current) throw new NotFoundException('Serviço não encontrado');
+    if (data.isActive === false && current.isActive) {
+      await this.assertServiceDeactivationConfirmed(barbershopId, serviceId, false);
+    }
     // O sinal é conferido com o preço que vai ficar (o novo ou o atual)
     checkServiceValues(
       {
@@ -3493,16 +3498,104 @@ export class BarbershopService {
     });
   }
 
-  async deleteService(userId: number, barbershopId: number, serviceId: number) {
+  async deleteService(
+    userId: number,
+    barbershopId: number,
+    serviceId: number,
+    confirm = false,
+  ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const current = await this.prisma.barbershopService.findFirst({
       where: { id: serviceId, barbershopId },
     });
     if (!current) throw new NotFoundException('Serviço não encontrado');
+    await this.assertServiceDeactivationConfirmed(barbershopId, serviceId, confirm);
     await this.prisma.barbershopService.update({
       where: { id: serviceId },
       data: { isActive: false },
     });
+  }
+
+  /** O que continua ligado ao serviço: a tela mostra e a pessoa confirma. */
+  async serviceDeactivationPreview(userId: number, barbershopId: number, serviceId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const current = await this.prisma.barbershopService.findFirst({
+      where: { id: serviceId, barbershopId },
+      select: { id: true },
+    });
+    if (!current) throw new NotFoundException('Serviço não encontrado');
+    return this.serviceDeactivationLinks(barbershopId, serviceId);
+  }
+
+  private async serviceDeactivationLinks(barbershopId: number, serviceId: number) {
+    const [plans, packagesForSale, balanceRows, futureAppointments] = await Promise.all([
+      this.prisma.clientSubscriptionPlan.findMany({
+        where: { barbershopId, serviceId, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          _count: {
+            select: {
+              subscriptions: {
+                where: { status: { in: ['ACTIVE', 'PAST_DUE', 'INCOMPLETE'] } },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.servicePackage.findMany({
+        where: { barbershopId, serviceId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.$queryRaw<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count
+        FROM "ClientPackage" cp
+        JOIN "ServicePackage" sp ON sp.id = cp."servicePackageId"
+        WHERE cp."barbershopId" = ${barbershopId}
+          AND sp."serviceId" = ${serviceId}
+          AND cp.status = 'ACTIVE'
+          AND cp."remainderRefundedAt" IS NULL
+          AND cp."usedSessions" < cp."totalSessions"
+      `,
+      this.prisma.appointment.count({
+        where: {
+          barbershopId,
+          startAt: { gte: new Date() },
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT', 'IN_PROGRESS'] },
+          services: { some: { serviceId } },
+        },
+      }),
+    ]);
+    return {
+      plans: plans.map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        subscribers: plan._count.subscriptions,
+      })),
+      packagesForSale,
+      packagesWithBalance: Number(balanceRows[0]?.count ?? 0),
+      futureAppointments,
+    };
+  }
+
+  private async assertServiceDeactivationConfirmed(
+    barbershopId: number,
+    serviceId: number,
+    confirm: boolean,
+  ) {
+    const links = await this.serviceDeactivationLinks(barbershopId, serviceId);
+    const linked =
+      links.plans.length > 0 ||
+      links.packagesForSale.length > 0 ||
+      links.packagesWithBalance > 0 ||
+      links.futureAppointments > 0;
+    if (linked && !confirm) {
+      throw new BadRequestException(
+        'Este serviço tem plano, pacote ou horário marcado. Confirme a desativação.',
+      );
+    }
   }
 
   // ============ PRODUCT CATEGORIES ============
@@ -4980,11 +5073,40 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
+      include: {
+        sale: { select: { id: true } },
+        professionalReview: { select: { id: true } },
+        customerRatings: { select: { id: true }, take: 1 },
+        tips: { select: { id: true }, take: 1 },
+        noShowFee: { select: { id: true } },
+        chatThreads: { select: { id: true, retainUntil: true, closedAt: true } },
+      },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
     if (appointment.depositPaid && appointment.depositPaidAt) {
       throw new BadRequestException(
         'Este horário tem sinal pago online. Cancele (o sinal é estornado) em vez de excluir.',
+      );
+    }
+    const happened =
+      appointment.status === 'COMPLETED' ||
+      appointment.status === 'IN_PROGRESS' ||
+      appointment.status === 'NO_SHOW';
+    const reportedChat = appointment.chatThreads.some(
+      (thread) => thread.retainUntil || thread.closedAt,
+    );
+    if (
+      happened ||
+      appointment.sale ||
+      appointment.professionalReview ||
+      appointment.customerRatings.length > 0 ||
+      appointment.tips.length > 0 ||
+      appointment.noShowFee ||
+      appointment.prepaidAt ||
+      reportedChat
+    ) {
+      throw new BadRequestException(
+        'Este horário já aconteceu ou tem registro ligado. Cancele (ou marque falta) em vez de excluir.',
       );
     }
     // Horário futuro que o cliente já tinha recebido (e posto na agenda pelo
@@ -5006,7 +5128,14 @@ export class BarbershopService {
       where: { appointmentId },
       select: { serviceId: true },
     });
-    await this.prisma.appointment.delete({ where: { id: appointmentId } });
+    const threadIds = appointment.chatThreads.map((thread) => thread.id);
+    await this.prisma.$transaction(async (tx) => {
+      if (threadIds.length) {
+        await tx.chatMessage.deleteMany({ where: { threadId: { in: threadIds } } });
+        await tx.chatThread.deleteMany({ where: { id: { in: threadIds } } });
+      }
+      await tx.appointment.delete({ where: { id: appointmentId } });
+    });
     // Excluir também libera a vaga (cancelar já avisava a lista de espera)
     if (appointment.status === 'CONFIRMED' || appointment.status === 'PENDING_PAYMENT') {
       this.checkWaitlistOnCancellation(barbershopId, { ...appointment, services }).catch((err) =>
@@ -6380,7 +6509,7 @@ export class BarbershopService {
     const canOfferSubscriptions = await this.canAccessModule(barbershop.id, 'subscriptions');
     const subscriptionPlans = canOfferSubscriptions
       ? await this.prisma.clientSubscriptionPlan.findMany({
-          where: { barbershopId: barbershop.id, isActive: true },
+          where: { barbershopId: barbershop.id, isActive: true, service: { isActive: true } },
           include: { service: true },
           orderBy: { name: 'asc' },
         })
@@ -9025,9 +9154,15 @@ export class BarbershopService {
     }
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id: planId, barbershopId, isActive: true },
+      include: { service: { select: { isActive: true } } },
     });
     const stripePriceId = plan?.stripePriceId;
     if (!plan || !stripePriceId) throw new NotFoundException('Plano não encontrado');
+    if (!plan.service.isActive) {
+      throw new BadRequestException(
+        'Este plano não aceita assinatura nova porque o serviço foi desativado.',
+      );
+    }
     const shopOpen = await this.prisma.barbershop.findFirst({
       where: { id: barbershopId, isActive: true, ...ownerAcceptsPublic },
       select: { id: true },
@@ -11081,8 +11216,14 @@ export class BarbershopService {
     await this.ensureModuleAccess(barbershopId, 'packages');
     const pkg = await this.prisma.servicePackage.findFirst({
       where: { id: data.servicePackageId, barbershopId, isActive: true },
+      include: { service: { select: { isActive: true } } },
     });
     if (!pkg) throw new NotFoundException('Pacote não encontrado');
+    if (!pkg.service.isActive) {
+      throw new BadRequestException(
+        'Este pacote não está mais à venda porque o serviço foi desativado.',
+      );
+    }
     const clientPackage = await this.prisma.$transaction(async (tx) => {
       const sale = await this.recordStandaloneSale(tx, barbershopId, {
         customerId: data.customerId,
@@ -11254,6 +11395,34 @@ export class BarbershopService {
 
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
+  /**
+   * Quem vê as respostas de saúde: gerência e dono, e o profissional que tem
+   * horário com o cliente (passado recente ou futuro). A recepção vê a ficha
+   * e se está assinada, sem as respostas. Os outros não veem a ficha de saúde.
+   */
+  private async healthFormView(
+    userId: number,
+    barbershop: { id: number; accessLevel: AccessLevel },
+    customerId: number,
+  ): Promise<'full' | 'status' | 'none'> {
+    if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.manager) return 'full';
+    if (barbershop.accessLevel === 'reception') return 'status';
+    const own = await this.ownBarberIdIfBarber(userId, barbershop);
+    if (own == null || own < 0) return 'none';
+    const since = new Date(Date.now() - HEALTH_FORM_LOOKBACK_DAYS * 86_400_000);
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        barbershopId: barbershop.id,
+        customerId,
+        barberId: own,
+        status: { not: 'CANCELLED' },
+        startAt: { gte: since },
+      },
+      select: { id: true },
+    });
+    return appointment ? 'full' : 'none';
+  }
+
   async createConsentForm(
     userId: number,
     barbershopId: number,
@@ -11266,8 +11435,14 @@ export class BarbershopService {
       healthConsent?: boolean;
     },
   ) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     await this.ensureModuleAccess(barbershopId, 'packages');
+    if (HEALTH_FORM_TYPES.includes(data.formType)) {
+      const view = await this.healthFormView(userId, shop, data.customerId);
+      if (view === 'none' || (view === 'status' && !!data.answers?.trim())) {
+        throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
+      }
+    }
     const customer = await this.prisma.customer.findFirst({
       where: { id: data.customerId, network: { barbershops: { some: { id: barbershopId } } } },
       select: { id: true },
@@ -11299,9 +11474,12 @@ export class BarbershopService {
    * Fica só o registro de que houve consentimento e de quando foi revogado.
    */
   async revokeHealthConsent(userId: number, barbershopId: number, id: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
     if (!form) throw new NotFoundException('Ficha não encontrada');
+    if ((await this.healthFormView(userId, shop, form.customerId)) !== 'full') {
+      throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
+    }
     if (!form.healthConsentAt || form.healthConsentRevokedAt) return form;
     return this.prisma.consentForm.update({
       where: { id },
@@ -11310,22 +11488,38 @@ export class BarbershopService {
   }
 
   async getConsentForms(userId: number, barbershopId: number, customerId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const view = await this.healthFormView(userId, shop, customerId);
     const forms = await this.prisma.consentForm.findMany({
-      where: { barbershopId, customerId },
+      where: { barbershopId, customerId, status: { not: 'ARCHIVED' } },
       orderBy: { createdAt: 'desc' },
     });
     const now = new Date();
-    return forms.map((f) => ({
-      ...f,
-      status: f.status === 'SIGNED' && f.expiresAt && f.expiresAt < now ? 'EXPIRED' : f.status,
-    }));
+    return forms
+      .filter((f) => view !== 'none' || !HEALTH_FORM_TYPES.includes(f.formType))
+      .map((f) => ({
+        ...f,
+        answers:
+          HEALTH_FORM_TYPES.includes(f.formType) && view !== 'full' ? null : f.answers,
+        status: f.status === 'SIGNED' && f.expiresAt && f.expiresAt < now ? 'EXPIRED' : f.status,
+      }));
   }
 
   async signConsentForm(userId: number, barbershopId: number, id: number, signatureName: string) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
     if (!form) throw new NotFoundException('Ficha não encontrada');
+    if (form.status !== 'PENDING' || form.signedAt || form.healthConsentRevokedAt) {
+      throw new BadRequestException(
+        'Só dá para assinar uma ficha que ainda está pendente e sem o consentimento revogado.',
+      );
+    }
+    if (
+      HEALTH_FORM_TYPES.includes(form.formType) &&
+      (await this.healthFormView(userId, shop, form.customerId)) === 'none'
+    ) {
+      throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
+    }
     return this.prisma.consentForm.update({
       where: { id },
       data: { signatureName, signedAt: new Date(), status: 'SIGNED' },
@@ -11336,6 +11530,15 @@ export class BarbershopService {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const form = await this.prisma.consentForm.findFirst({ where: { id, barbershopId } });
     if (!form) throw new NotFoundException('Ficha não encontrada');
+    if (form.status === 'ARCHIVED') return true;
+    // Assinada (ou vencida depois de assinada): sai da lista e o registro fica
+    if (form.status === 'SIGNED' || form.signedAt) {
+      await this.prisma.consentForm.update({
+        where: { id },
+        data: { status: 'ARCHIVED' },
+      });
+      return true;
+    }
     await this.prisma.consentForm.delete({ where: { id } });
     return true;
   }

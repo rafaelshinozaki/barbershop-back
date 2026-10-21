@@ -196,6 +196,17 @@ export class AccountDeletionService {
       // O negócio sai inteiro: sem uma linha de histórico por item apagado
       // em cascata (vale só nesta transação)
       this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
+      // Avaliação, caixinha, taxa, nota e conversa não saem em cascata do
+      // horário (o gerente não apaga isso excluindo um agendamento). Na
+      // exclusão da conta o negócio inteiro sai, então estas linhas saem antes.
+      this.prisma.chatMessage.deleteMany({
+        where: { thread: { barbershopId: { in: shopIds } } },
+      }),
+      this.prisma.chatThread.deleteMany({ where: { barbershopId: { in: shopIds } } }),
+      this.prisma.appointmentTip.deleteMany({ where: { barbershopId: { in: shopIds } } }),
+      this.prisma.noShowFee.deleteMany({ where: { barbershopId: { in: shopIds } } }),
+      this.prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } }),
+      this.prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } }),
       // Negócio do dono (cascade leva clientes, agenda, vendas, equipe…)
       this.prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } }),
       this.prisma.network.deleteMany({ where: { id: { in: networkIds } } }),

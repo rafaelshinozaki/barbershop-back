@@ -1363,6 +1363,42 @@ export class ServicePackageType {
 }
 
 @ObjectType()
+export class ServiceDeactivationPlanType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+
+  @Field(() => Int)
+  subscribers: number;
+}
+
+@ObjectType()
+export class ServiceDeactivationPackageType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  name: string;
+}
+
+@ObjectType()
+export class ServiceDeactivationPreviewType {
+  @Field(() => [ServiceDeactivationPlanType])
+  plans: ServiceDeactivationPlanType[];
+
+  @Field(() => [ServiceDeactivationPackageType])
+  packagesForSale: ServiceDeactivationPackageType[];
+
+  @Field(() => Int)
+  packagesWithBalance: number;
+
+  @Field(() => Int)
+  futureAppointments: number;
+}
+
+@ObjectType()
 export class ClientPackageType {
   @Field(() => Int)
   id: number;

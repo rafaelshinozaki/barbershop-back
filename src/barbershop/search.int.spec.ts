@@ -170,6 +170,9 @@ describe('Busca por localização (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.professionalReview.deleteMany({
+      where: { barbershopId: { in: Object.values(shops) } },
+    });
     await prisma.barbershop.deleteMany({ where: { id: { in: Object.values(shops) } } });
     await prisma.barbershop.deleteMany({ where: { slug: { startsWith: `busca-denso-${RUN}-` } } });
     await prisma.customer.deleteMany({ where: { networkId } });

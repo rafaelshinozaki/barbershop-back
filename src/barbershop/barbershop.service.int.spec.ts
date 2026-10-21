@@ -191,6 +191,11 @@ describe('BarbershopService (integração com o banco)', () => {
   afterAll(async () => {
     const shopIds = [A.shopId, B.shopId].filter(Boolean);
     const networkIds = [A.networkId, B.networkId].filter(Boolean);
+    await prisma.chatThread.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.appointmentTip.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.noShowFee.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } });
     const sales = await prisma.sale.findMany({
       where: { barbershopId: { in: shopIds } },
       select: { id: true },
@@ -226,10 +231,16 @@ describe('BarbershopService (integração com o banco)', () => {
       where: { barbershopId: { in: [A.shopId, B.shopId] } },
       select: { id: true },
     });
+    const ids = appts.map((a) => a.id);
+    await prisma.chatThread.deleteMany({ where: { appointmentId: { in: ids } } });
+    await prisma.appointmentTip.deleteMany({ where: { appointmentId: { in: ids } } });
+    await prisma.noShowFee.deleteMany({ where: { appointmentId: { in: ids } } });
+    await prisma.professionalReview.deleteMany({ where: { appointmentId: { in: ids } } });
+    await prisma.customerRating.deleteMany({ where: { appointmentId: { in: ids } } });
     await prisma.appointmentService.deleteMany({
-      where: { appointmentId: { in: appts.map((a) => a.id) } },
+      where: { appointmentId: { in: ids } },
     });
-    await prisma.appointment.deleteMany({ where: { id: { in: appts.map((a) => a.id) } } });
+    await prisma.appointment.deleteMany({ where: { id: { in: ids } } });
     await prisma.barberSchedule.deleteMany({ where: { barberId: A.barberId } });
   });
 

@@ -44,6 +44,12 @@ export class ManagedReviewType {
   @Field(() => String, { nullable: true })
   reportReason?: string | null;
 
+  @Field(() => String, { nullable: true, description: 'EMAIL ou STAFF' })
+  reviewSource?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Quem pediu o link, quando foi a equipe' })
+  requestedByName?: string | null;
+
   @Field({ description: 'Ocultada pela moderação (fora da página e da nota)' })
   hidden: boolean;
 
@@ -64,8 +70,8 @@ export class ReviewRequestResolver {
     private readonly reviews: ReviewManagementService,
   ) {}
 
-  /** Equipe: link "como foi?" de um atendimento pra mandar ao cliente */
-  @Query(() => String)
+  /** Equipe: o sistema manda o pedido de avaliação pro contato do cliente */
+  @Mutation(() => Boolean)
   async appointmentReviewLink(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('appointmentId', { type: () => Int }) appointmentId: number,

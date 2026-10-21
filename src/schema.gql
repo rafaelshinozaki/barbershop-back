@@ -2044,6 +2044,10 @@ type ManagedReviewType {
 
   """Denunciada (aguardando moderação)"""
   reportedAt: DateTime
+  requestedByName: String
+
+  """EMAIL ou STAFF"""
+  reviewSource: String
   reviewerName: String!
 }
 
@@ -2160,6 +2164,7 @@ type Mutation {
   adminDeleteUser(reason: String!, userId: Int!): ApprovalOutcomeType!
   adminRefundAppPayment(input: RefundAppPaymentInput!): ApprovalOutcomeType!
   answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
+  appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   applyToJobOpening(message: String, openingId: Int!): JobApplyResultType!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
@@ -2252,7 +2257,7 @@ type Mutation {
   deleteBarbershop(id: Int!): Boolean!
   deleteBarbershopClosure(barbershopId: Int!, date: String!): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
-  deleteBarbershopService(barbershopId: Int!, id: Int!): Boolean!
+  deleteBarbershopService(barbershopId: Int!, confirm: Boolean, id: Int!): Boolean!
   deleteCalendarFeed(barbershopId: Int!, scope: String!): Boolean!
   deleteCommissionRule(barbershopId: Int!, id: Int!): Boolean!
   deleteConsentForm(barbershopId: Int!, id: Int!): Boolean!
@@ -3373,7 +3378,6 @@ type Query {
   appointmentChats(appointmentId: Int!, barbershopId: Int!): [ChatThreadType!]!
   appointmentCustomerRating(appointmentId: Int!, barbershopId: Int!): AppointmentCustomerRatingType!
   appointmentPrepayment(token: String!): AppointmentPrepaymentType!
-  appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): String!
   appointmentSeriesPreview(barbershopId: Int!, input: AppointmentSeriesInput!): [SeriesSlotType!]!
   appointmentTips(appointmentId: Int!, barbershopId: Int!): [AppointmentTipType!]!
   backofficeApprovals(status: String): [BackofficeApprovalType!]!
@@ -3536,6 +3540,7 @@ type Query {
   searchBarbershops(input: SearchBarbershopsInput!): [PublicBarbershopSearchResultType!]!
   searchNetworks(query: String!): [Network!]!
   searchProfessionals(input: SearchProfessionalsInput!): [PublicProfessionalSearchResultType!]!
+  serviceDeactivationPreview(barbershopId: Int!, serviceId: Int!): ServiceDeactivationPreviewType!
   servicePackages(barbershopId: Int!): [ServicePackageType!]!
   sharedLocation(barbershopId: Int!): SharedLocationOverviewType!
   socialConnection(barbershopId: Int!): SocialConnectionType
@@ -3813,6 +3818,24 @@ type ServiceHistoryItemType {
 
   """Caixinha que foi pro profissional"""
   tip: Float
+}
+
+type ServiceDeactivationPackageType {
+  id: Int!
+  name: String!
+}
+
+type ServiceDeactivationPlanType {
+  id: Int!
+  name: String!
+  subscribers: Int!
+}
+
+type ServiceDeactivationPreviewType {
+  futureAppointments: Int!
+  packagesForSale: [ServiceDeactivationPackageType!]!
+  packagesWithBalance: Int!
+  plans: [ServiceDeactivationPlanType!]!
 }
 
 type ServicePackageType {

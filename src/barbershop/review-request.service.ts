@@ -4,12 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry, LOCALE } from '../email/language';
-import { appointmentLinkCovers, appointmentReviewUrl, verifyReviewToken } from './appointment-link';
+import { appointmentLinkCovers, appointmentReviewUrl, appointmentStaffReviewUrl, REVIEW_LINK_DAYS, reviewLinkRequester, verifyReviewToken } from './appointment-link';
 import { unsubscribeLinks } from './marketing-unsubscribe';
 import { BarbershopService } from './barbershop.service';
 import { linkBarberToProfessional } from './professional';
 import { reviewEditData } from './review-edit';
 import { appointmentContactEmail } from './appointment-contact';
+import { phoneForWhatsapp } from '../common/phone.util';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 // O e-mail sai algumas horas depois do fim do atendimento (a pessoa já foi
 // embora, mas ainda lembra de como foi) e só pra atendimentos recentes —
@@ -47,23 +49,79 @@ export class ReviewRequestService {
     private readonly notificationQueue: NotificationQueueService,
     private readonly activity: ActivityNotificationsService,
     private readonly barbershopService: BarbershopService,
+    private readonly whatsapp: WhatsappService,
   ) {}
 
   /**
-   * Link de avaliação de um atendimento concluído, pra equipe mandar ao
-   * cliente (WhatsApp, por exemplo) — inclusive pra quem não tem e-mail.
+   * A equipe pede a avaliação: o sistema manda o link pro e-mail ou pro
+   * WhatsApp do próprio cliente. O link não volta pra tela.
    */
   async staffReviewLink(userId: number, barbershopId: number, appointmentId: number) {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'reception');
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, barbershopId },
-      select: { id: true, status: true, linkVersion: true },
+      include: {
+        customer: true,
+        barbershop: true,
+        barber: { select: { name: true } },
+        services: { include: { service: { select: { name: true } } } },
+        sale: { select: { paymentStatus: true } },
+      },
     });
     if (!appt) throw new NotFoundException('Agendamento não encontrado');
     if (appt.status !== 'COMPLETED') {
       throw new BadRequestException('Só dá pra pedir avaliação de atendimento concluído');
     }
-    return appointmentReviewUrl(appt.id, undefined, appt.linkVersion);
+    if (Date.now() > appt.endAt.getTime() + REVIEW_LINK_DAYS * 86_400_000) {
+      throw new BadRequestException('Este atendimento já passou do prazo de 30 dias pra avaliar.');
+    }
+    const paid = appt.sale?.paymentStatus === 'PAID' || appt.sale?.paymentStatus === 'PARTIAL';
+    if (!paid) {
+      throw new BadRequestException('Este atendimento não tem pagamento registrado.');
+    }
+    if (appt.customer.marketingOptOut) {
+      throw new BadRequestException('Este cliente pediu para não receber mensagens.');
+    }
+    const email = appointmentContactEmail(appt);
+    const phone = phoneForWhatsapp(appt.customer.phone, appt.barbershop.country);
+    if (!email && !phone) {
+      throw new BadRequestException(
+        'Este cliente não tem e-mail nem WhatsApp pra receber o pedido.',
+      );
+    }
+    const url = (rating?: number) =>
+      appointmentStaffReviewUrl(appt.id, userId, rating, appt.linkVersion);
+    const now = new Date();
+    try {
+      if (email) {
+        await this.notificationQueue.email(
+          this.reviewEmailJob(appt, url, now, email),
+          `review-request-staff-${appt.id}-${now.getTime()}`,
+        );
+      } else if (phone) {
+        if (!this.whatsapp.isConfigured()) {
+          throw new BadRequestException(
+            'Não dá para enviar o WhatsApp agora e o cliente não tem e-mail.',
+          );
+        }
+        const lang = langForCountry(appt.barbershop.country);
+        const first = appt.customer.name.split(' ')[0];
+        const text = {
+          pt: `Oi, ${first}! Como foi com ${appt.barber.name} em ${appt.barbershop.name}? Avalie aqui: ${url()}`,
+          en: `Hi ${first}! How was your visit with ${appt.barber.name} at ${appt.barbershop.name}? Rate it here: ${url()}`,
+          es: `Hola, ${first}! ¿Qué tal con ${appt.barber.name} en ${appt.barbershop.name}? Evalúa aquí: ${url()}`,
+        }[lang];
+        await this.notificationQueue.whatsapp(
+          { kind: 'marketing', to: phone, message: text, lang },
+          `review-request-staff-wa-${appt.id}-${now.getTime()}`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Erro ao enviar pedido de avaliação #${appt.id}:`, err);
+      throw new BadRequestException('Não foi possível enviar o pedido de avaliação. Tente de novo.');
+    }
+    return true;
   }
 
   async enqueueDueRequests(now = new Date()) {
@@ -72,6 +130,7 @@ export class ReviewRequestService {
         status: 'COMPLETED',
         source: { notIn: ['HISTORY', 'IMPORT'] },
         reviewRequestSentAt: null,
+        sale: { is: { paymentStatus: { in: ['PAID', 'PARTIAL'] } } },
         endAt: {
           gte: new Date(now.getTime() - MAX_AGE_MS),
           lte: new Date(now.getTime() - SEND_AFTER_MS),
@@ -115,47 +174,14 @@ export class ReviewRequestService {
       });
       if (reviewed) continue;
 
-      const shop = appt.barbershop;
-      const lang = langForCountry(shop.country);
-      const unsubscribe = unsubscribeLinks(customer.id);
       try {
         await this.notificationQueue.email(
-          {
-            kind: 'customer',
-            loggedAgainstUserId: shop.ownerUserId ?? 0,
-            template: 'review_request',
-            context: {
-              CustomerName: customer.name.split(' ')[0],
-              BarbershopName: shop.name,
-              BarberName: appt.barber.name,
-              Solo: shop.practiceKind === 'solo',
-              ServiceNames:
-                appt.services
-                  .map((s) => s.service?.name)
-                  .filter(Boolean)
-                  .join(', ') || '-',
-              AppointmentDate: appt.startAt.toLocaleDateString(LOCALE[lang], {
-                timeZone: shop.timezone,
-              }),
-              // Uma estrela = um link: tocar já abre a página com a nota marcada
-              Stars: [1, 2, 3, 4, 5].map((n) => ({
-                N: n,
-                URL: appointmentReviewUrl(appt.id, n, appt.linkVersion),
-              })),
-              ReviewURL: appointmentReviewUrl(appt.id, undefined, appt.linkVersion),
-              UnsubscribeURL: unsubscribe.page,
-              Year: now.getFullYear(),
-            },
-            subject: {
-              pt: `Como foi com ${appt.barber.name} em ${shop.name}?`,
-              en: `How was your appointment with ${appt.barber.name} at ${shop.name}?`,
-              es: `¿Qué tal con ${appt.barber.name} en ${shop.name}?`,
-            },
-            lang,
-            meta: 'review-request',
+          this.reviewEmailJob(
+            appt,
+            (rating) => appointmentReviewUrl(appt.id, rating, appt.linkVersion),
+            now,
             to,
-            headers: unsubscribe.headers,
-          },
+          ),
           `review-request-${appt.id}`,
         );
         enqueued++;
@@ -169,6 +195,61 @@ export class ReviewRequestService {
     }
     if (enqueued) this.logger.log(`Pedidos de avaliação enfileirados: ${enqueued}`);
     return enqueued;
+  }
+
+  private reviewEmailJob(
+    appt: {
+      startAt: Date;
+      customer: { id: number; name: string };
+      barbershop: {
+        name: string;
+        country: string | null;
+        timezone: string;
+        ownerUserId: number | null;
+        practiceKind: string;
+      };
+      barber: { name: string };
+      services: { service: { name: string } | null }[];
+    },
+    reviewUrl: (rating?: number) => string,
+    now: Date,
+    to: string,
+  ) {
+    const shop = appt.barbershop;
+    const lang = langForCountry(shop.country);
+    const unsubscribe = unsubscribeLinks(appt.customer.id);
+    return {
+      kind: 'customer' as const,
+      loggedAgainstUserId: shop.ownerUserId ?? 0,
+      template: 'review_request',
+      context: {
+        CustomerName: appt.customer.name.split(' ')[0],
+        BarbershopName: shop.name,
+        BarberName: appt.barber.name,
+        Solo: shop.practiceKind === 'solo',
+        ServiceNames:
+          appt.services
+            .map((s) => s.service?.name)
+            .filter(Boolean)
+            .join(', ') || '-',
+        AppointmentDate: appt.startAt.toLocaleDateString(LOCALE[lang], {
+          timeZone: shop.timezone,
+        }),
+        Stars: [1, 2, 3, 4, 5].map((n) => ({ N: n, URL: reviewUrl(n) })),
+        ReviewURL: reviewUrl(),
+        UnsubscribeURL: unsubscribe.page,
+        Year: now.getFullYear(),
+      },
+      subject: {
+        pt: `Como foi com ${appt.barber.name} em ${shop.name}?`,
+        en: `How was your appointment with ${appt.barber.name} at ${shop.name}?`,
+        es: `¿Qué tal con ${appt.barber.name} en ${shop.name}?`,
+      },
+      lang,
+      meta: 'review-request',
+      to,
+      headers: unsubscribe.headers,
+    };
   }
 
   private async loadByToken(token: string) {
@@ -272,6 +353,11 @@ export class ReviewRequestService {
 
     const { barbershopId, customerId } = appt;
     const clientAccountId = appt.customer.clientAccountId;
+    const requestedByUserId = reviewLinkRequester(token);
+    const origin = {
+      reviewSource: requestedByUserId ? 'STAFF' : 'EMAIL',
+      requestedByUserId,
+    };
     if (pro) {
       // Profissional com conta: a avaliação vai pra identidade dele (soma nas
       // outras unidades e aparece em /p/:slug), criando o vínculo se faltar
@@ -290,8 +376,9 @@ export class ReviewRequestService {
           customerId,
           rating: pro.rating,
           comment: pro.comment,
+          ...origin,
         },
-        update: { rating: pro.rating, comment: pro.comment, professionalId },
+        update: { rating: pro.rating, comment: pro.comment, professionalId, ...origin },
       });
     }
     if (unit) {
@@ -299,7 +386,7 @@ export class ReviewRequestService {
       if (existing) {
         await this.prisma.review.update({
           where: { id: existing.id },
-          data: reviewEditData(existing, unit),
+          data: { ...reviewEditData(existing, unit), ...origin },
         });
       } else {
         // Dois envios ao mesmo tempo: o índice único (unidade + ficha) segura
@@ -312,8 +399,9 @@ export class ReviewRequestService {
             clientAccountId,
             rating: unit.rating,
             comment: unit.comment,
+            ...origin,
           },
-          update: reviewEditData(null, unit),
+          update: { ...reviewEditData(null, unit), ...origin },
         });
       }
       void this.activity.reviewPosted(

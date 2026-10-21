@@ -193,6 +193,7 @@ describe('Backoffice fase 2 (integração)', () => {
     await prisma.paymentDispute.deleteMany({ where: { stripeDisputeId: { contains: RUN } } });
     await prisma.supportTicket.deleteMany({ where: { userId: ownerId } });
     await prisma.activeSession.deleteMany({ where: { userId: ownerId } });
+    await prisma.appointmentTip.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.deleteMany({ where: { id: networkId } });

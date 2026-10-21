@@ -162,6 +162,9 @@ describe('Conta do cliente final (integração com o banco)', () => {
     await prisma.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId: { in: ids } } });
     await prisma.clientAccount.deleteMany({ where: { id: { in: ids } } });
     const shops = await prisma.barbershop.findMany({ where: { networkId }, select: { id: true } });
+    const shopIds = shops.map((s) => s.id);
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } });
     await prisma.sale.deleteMany({ where: { barbershopId: { in: shops.map((s) => s.id) } } });
     await prisma.clientSubscriptionPlan.deleteMany({
       where: { barbershopId: { in: shops.map((s) => s.id) } },

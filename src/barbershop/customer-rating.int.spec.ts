@@ -166,7 +166,11 @@ describe('Nota do cliente (integração)', () => {
   });
 
   afterAll(async () => {
-    await prisma.barbershop.deleteMany({ where: { id: { in: Object.values(shops) } } });
+    const shopIds = Object.values(shops);
+    await prisma.appointmentTip.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } });
+    await prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } });
     await prisma.customer.deleteMany({ where: { networkId: { in: networks } } });
     await prisma.clientAccount.deleteMany({ where: { id: accountId } });
     await prisma.network.deleteMany({ where: { id: { in: networks } } });
