@@ -3023,6 +3023,9 @@ type ProReferralType {
   code: String!
   invitedCount: Int!
   months: Int!
+
+  """Indicados que ainda não atenderam: o mês de quem indicou entra depois"""
+  pendingCount: Int!
   priceCents: Int!
   priceLabel: String!
   proActive: Boolean!

@@ -12,6 +12,7 @@ import {
   isProActive,
   proPriceLabel,
 } from './pro';
+import { releaseInviterMonths } from './pro-referral-release';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -27,8 +28,23 @@ export type ProReferralStatus = {
   proUntil: string | null;
   proActive: boolean;
   invitedCount: number;
+  /** Indicados que ainda não atenderam: o mês de quem indicou entra depois */
+  pendingCount: number;
   claimed: boolean;
 };
+
+/** Documento ou telefone iguais (sem pontuação). Vazio ou "SOCIAL" não conta. */
+export function sameIdentity(
+  a: { phone: string | null; idDocNumber: string | null },
+  b: { phone: string | null; idDocNumber: string | null },
+) {
+  const digits = (v: string | null) => (v ?? '').replace(/\D/g, '');
+  const doc = (v: string | null) => (v ?? '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  const docA = doc(a.idDocNumber);
+  if (docA.length >= 5 && docA !== 'SOCIAL' && docA === doc(b.idDocNumber)) return true;
+  const phoneA = digits(a.phone);
+  return phoneA.length >= 8 && phoneA === digits(b.phone);
+}
 
 @Injectable()
 export class ProReferralService {
@@ -37,18 +53,23 @@ export class ProReferralService {
   async status(userId: number): Promise<ProReferralStatus> {
     await ensureProfessional(this.prisma, userId);
     const code = await this.ensureCode(userId);
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: {
-        proUntil: true,
-        _count: { select: { proReferralsSent: true } },
-        proReferralReceived: { select: { id: true } },
-      },
-    });
+    await releaseInviterMonths(this.prisma, userId);
+    const [user, pendingCount] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          proUntil: true,
+          _count: { select: { proReferralsSent: true } },
+          proReferralReceived: { select: { id: true } },
+        },
+      }),
+      this.prisma.proReferral.count({ where: { inviterUserId: userId, inviterGrantedAt: null } }),
+    ]);
     return this.toStatus(
       code,
       user.proUntil,
       user._count.proReferralsSent,
+      pendingCount,
       user.proReferralReceived != null,
     );
   }
@@ -58,7 +79,12 @@ export class ProReferralService {
     if (!code) throw new BadRequestException('Informe o código de quem indicou.');
     const inviter = await this.prisma.user.findUnique({
       where: { proReferralCode: code },
-      select: { id: true, professional: { select: { id: true } } },
+      select: {
+        id: true,
+        phone: true,
+        idDocNumber: true,
+        professional: { select: { id: true } },
+      },
     });
     if (!inviter) throw new BadRequestException('Código de indicação não encontrado.');
     if (inviter.id === userId)
@@ -69,10 +95,14 @@ export class ProReferralService {
     const now = new Date();
     const claimant = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { createdAt: true },
+      select: { createdAt: true, phone: true, idDocNumber: true },
     });
     if (!claimant || !isNewProAccount(claimant.createdAt, now)) {
       throw new BadRequestException('Só uma conta nova pode usar um código de indicação.');
+    }
+    // Mesmo documento ou telefone de quem indicou: é a mesma pessoa
+    if (sameIdentity(claimant, inviter)) {
+      throw new BadRequestException('Você não pode usar o próprio código.');
     }
     await ensureProfessional(this.prisma, userId);
     try {
@@ -97,7 +127,8 @@ export class ProReferralService {
         await tx.proReferral.create({
           data: { inviterUserId: inviter.id, invitedUserId: userId, months: PRO_REFERRAL_MONTHS },
         });
-        await this.grant(tx, inviter.id, now);
+        // Quem indicou ganha o mês quando a conta nova atender de verdade
+        // (releaseInviterMonths); quem foi indicado ganha agora
         await this.grant(tx, userId, now);
       });
     } catch (error) {
@@ -113,6 +144,7 @@ export class ProReferralService {
     code: string,
     proUntil: Date | null,
     invitedCount: number,
+    pendingCount: number,
     claimed: boolean,
   ): ProReferralStatus {
     return {
@@ -123,6 +155,7 @@ export class ProReferralService {
       proUntil: proUntil?.toISOString() ?? null,
       proActive: isProActive(proUntil, new Date()),
       invitedCount,
+      pendingCount,
       claimed,
     };
   }

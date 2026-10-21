@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { monthRangeUtc, safeTimeZone, toZonedParts } from '../common/timezone.util';
 import { isProActive } from './pro';
+import { releaseInviterMonths } from './pro-referral-release';
 
 /** Atendimentos solo concluídos no mês, de graça, para sempre. */
 export const SOLO_SERVICE_LIMIT = 30;
@@ -172,6 +173,8 @@ export async function assertSoloProductSaleAllowed(
 }
 
 async function hasActivePro(db: Db, userId: number, when: Date) {
+  // Mês de indicação já merecido entra antes de conferir
+  await releaseInviterMonths(db, userId);
   const user = await db.user.findUnique({ where: { id: userId }, select: { proUntil: true } });
   return isProActive(user?.proUntil, when);
 }

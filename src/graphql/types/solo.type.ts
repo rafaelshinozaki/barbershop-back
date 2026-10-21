@@ -87,6 +87,11 @@ export class ProReferralType {
   @Field(() => Int)
   invitedCount: number;
 
+  @Field(() => Int, {
+    description: 'Indicados que ainda não atenderam: o mês de quem indicou entra depois',
+  })
+  pendingCount: number;
+
   @Field()
   claimed: boolean;
 }

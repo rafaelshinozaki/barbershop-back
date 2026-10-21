@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { linkBarberToProfessional } from './professional';
 import { SOLO_PRODUCT_LIMIT, SOLO_SERVICE_LIMIT, soloUsage } from './solo';
 import { isProActive, proPriceLabel } from './pro';
+import { releaseInviterMonths } from './pro-referral-release';
 import { currencyForCountry, timezoneForPlace } from '../common/place-locale';
 
 export type StartSoloInput = {
@@ -87,8 +88,9 @@ export class SoloService {
   constructor(private readonly prisma: PrismaService) {}
 
   async status(userId: number): Promise<SoloStatus> {
+    // A encerrada não conta: quem excluiu a agenda pode abrir outra
     const shop = await this.prisma.barbershop.findFirst({
-      where: { ownerUserId: userId, practiceKind: 'solo' },
+      where: { ownerUserId: userId, practiceKind: 'solo', closedAt: null },
       orderBy: { id: 'asc' },
     });
     if (!shop) return { ...empty(), ...(await this.proFields(userId)) };
@@ -112,19 +114,27 @@ export class SoloService {
     const postalCode = required(input.postalCode, 'CEP');
     const phone = required(input.phone, 'Telefone');
 
-    let network = await this.prisma.network.findFirst({ where: { ownerUserId: userId } });
-    if (!network) {
-      network = await this.prisma.network.create({
-        data: { ownerUserId: userId, city, currency: currencyForCountry(country) },
-      });
-    }
+    // Uma rede por conta (ownerUserId é único): dois cliques não criam duas
+    const network = await this.prisma.network.upsert({
+      where: { ownerUserId: userId },
+      create: { ownerUserId: userId, city, currency: currencyForCountry(country) },
+      update: {},
+    });
 
     const slug = await this.freeSlug(slugBase(name, userId));
     const networkId = network.id;
-    const currency = network.currency;
+    // Moeda do país da agenda, não a do estabelecimento que a pessoa já tem
+    const currency = currencyForCountry(country);
     const timezone = timezoneForPlace(country, state, input.timezone);
     const shop = await this.prisma
       .$transaction(async (tx) => {
+        // Dois cliques em "começar" ao mesmo tempo: só um cria
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`solo-start:${userId}`}))`;
+        const open = await tx.barbershop.findFirst({
+          where: { ownerUserId: userId, practiceKind: 'solo', closedAt: null },
+          select: { id: true },
+        });
+        if (open) return open;
         const created = await tx.barbershop.create({
           data: {
             name,
@@ -174,6 +184,7 @@ export class SoloService {
   }
 
   private async proFields(userId: number) {
+    await releaseInviterMonths(this.prisma, userId);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { proUntil: true },
