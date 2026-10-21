@@ -2762,3 +2762,14 @@ Foram lidos o login com Google, Facebook e Apple da equipe e do cliente (`comple
      - Nos dois fluxos, o e-mail do Google é aceito sem olhar `emails[0].verified` (`email_verified`), e a conta é identificada só pelo e-mail, sem o id do provedor.
      
      **Fazer:** no login social da equipe, se a conta achada pelo e-mail nunca teve o e-mail confirmado, apagar a senha, derrubar as sessões e as inscrições de push (como no cliente) e gravar `emailVerifiedAt`. Recusar e-mail do Google com `verified = false`. Guardar o id do provedor (`sub`/`id`) no vínculo e usar ele, não o e-mail, para achar a conta nos próximos logins. Teste com conta criada por senha e login pelo Google com o mesmo e-mail.
+
+### Nonagésima oitava rodada (2026-10-21): sessão do cliente final
+
+Foram lidos a sessão da área do cliente (`issueCookie`, `GraphQLClientJwtAuthGuard`, `clientLogout`), a ligação das contas de cliente e da equipe (`AccountLinkService`), os comandos do backoffice e os pedidos de confirmação.
+
+272. ⬜ **A sessão do cliente final cai depois de `JWT_EXPIRATION` mesmo em uso, e "Sair" não encerra o token** (back: `ClientAuthService.issueCookie`, `GraphQLClientJwtAuthGuard`, `clientLogout`):
+     - O cookie e o token do cliente valem `JWT_EXPIRATION` (3600 s no `.env.example`), e nada renova esse prazo. A equipe tem `renewIfStale` e prazos próprios (12 h, ou 30 dias com "Lembrar de mim"), mas o cliente não tem nada parecido: quem está agendando, conversando no chat ou pagando é deslogado uma hora depois de entrar e cai na tela de login no meio do caminho. O PWA com notificação no celular abre deslogado.
+     - Se alguém aumentar `JWT_EXPIRATION` para resolver, o problema muda de lado: `clientLogout` só apaga o cookie do navegador. O token continua valendo até vencer (não muda `sessionVersion` nem existe registro da sessão), então um cookie copiado de um computador compartilhado segue entrando depois do "Sair". O mesmo `JWT_EXPIRATION` também define o prazo do token assinado pelo módulo da equipe, então os dois não podem ser ajustados separadamente.
+     - Não existe "Lembrar de mim" nem lista de sessões abertas na área do cliente.
+     
+     **Fazer:** prazo próprio da sessão do cliente (ex.: 30 dias), com renovação enquanto a pessoa usa (como `renewIfStale`). No "Sair", revogar só aquela sessão: id da sessão no token com uma tabela de sessões do cliente (como `ActiveSession`), ou no mínimo `sessionVersion + 1` com aviso de que sai de todos os aparelhos. Teste com o token de uma sessão encerrada.
