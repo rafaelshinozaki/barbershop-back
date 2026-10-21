@@ -371,4 +371,87 @@ describe('Taxa de falta (integração)', () => {
       await prisma.barber.updateMany({ where: { userId: basicId }, data: { staffType: 'basic' } });
     }
   });
+  it('pago antes pelo app: a taxa sai do valor pago e o resto volta, sem taxa devida (item 242)', async () => {
+    const refunds: Array<{ intent: string; minor: number | undefined }> = [];
+    const withStripe = new BarbershopService(
+      prisma,
+      stub,
+      stub,
+      { isConfigured: () => false } as never,
+      {
+        createRefund: async (intent: string, minor?: number) => {
+          refunds.push({ intent, minor });
+          return { id: `re_${refunds.length}` };
+        },
+      } as never,
+      { email: async () => undefined, whatsapp: async () => undefined } as never,
+      { notify: () => undefined } as never,
+    );
+    const prepaid = async () => {
+      const id = await appointment();
+      await prisma.appointment.update({
+        where: { id },
+        data: {
+          prepaidAt: new Date(),
+          prepaidAmount: 80,
+          prepaidPaymentIntentId: `pi_pre_${RUN}_${id}`,
+        },
+      });
+      return id;
+    };
+
+    // Falta: taxa fixa de 30 fica com a unidade, 50 voltam, nada pendente
+    const noShow = await prepaid();
+    await withStripe.updateAppointment(ownerId, shopId, noShow, { status: 'NO_SHOW' });
+    expect(refunds).toEqual([{ intent: `pi_pre_${RUN}_${noShow}`, minor: 5000 }]);
+    let row = await prisma.appointment.findUniqueOrThrow({ where: { id: noShow } });
+    expect(Number(row.prepaidRefundedAmount)).toBe(50);
+    expect(row.prepaidRefundedAt).toBeNull();
+    expect(await waitFor(async () => !!(await feeOf(noShow)), 500)).toBe(false);
+
+    // Cancelamento tardio pelo cliente: mesma conta (antes devolvia tudo e
+    // ainda registrava a taxa)
+    refunds.length = 0;
+    const late = await prepaid();
+    await withStripe.updateAppointment(
+      ownerId,
+      shopId,
+      late,
+      { status: 'CANCELLED' },
+      { cancelledBy: 'client' },
+    );
+    expect(refunds.map((r) => r.minor)).toEqual([5000]);
+    expect(await waitFor(async () => !!(await feeOf(late)), 500)).toBe(false);
+
+    // Pago menos que a taxa (40 de 80, taxa de 60): fica tudo e 20 ficam devidos
+    await prisma.network.update({ where: { id: networkId }, data: { noShowFeeValue: 60 } });
+    try {
+      refunds.length = 0;
+      const small = await appointment();
+      await prisma.appointment.update({
+        where: { id: small },
+        data: { prepaidAt: new Date(), prepaidAmount: 40, prepaidPaymentIntentId: `pi_s_${RUN}` },
+      });
+      await withStripe.updateAppointment(ownerId, shopId, small, { status: 'NO_SHOW' });
+      expect(refunds).toEqual([]);
+      expect(await waitFor(async () => !!(await feeOf(small)))).toBe(true);
+      expect(Number((await feeOf(small))!.amount)).toBe(20);
+    } finally {
+      await prisma.network.update({ where: { id: networkId }, data: { noShowFeeValue: 30 } });
+    }
+
+    // A unidade cancelou: sem taxa, volta tudo
+    refunds.length = 0;
+    const byShop = await prepaid();
+    await withStripe.updateAppointment(
+      ownerId,
+      shopId,
+      byShop,
+      { status: 'CANCELLED' },
+      { cancelledBy: 'business' },
+    );
+    expect(refunds.map((r) => r.minor)).toEqual([8000]);
+    row = await prisma.appointment.findUniqueOrThrow({ where: { id: byShop } });
+    expect(row.prepaidRefundedAt).not.toBeNull();
+  });
 });

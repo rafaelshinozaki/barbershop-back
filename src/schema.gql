@@ -3387,6 +3387,7 @@ type Query {
   barberSchedules(barberId: Int!): [BarberScheduleType!]!
   barberTimeOffs(barberId: Int!, endAt: String, startAt: String): [BarberTimeOffType!]!
   barberWeeklySchedule(barberId: Int!): [WeeklyScheduleDayType!]!
+  barberWeeklyScheduleImpact(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [ClosureImpactType!]!
   barbershop(id: Int!): Barbershop
   barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
@@ -3412,6 +3413,7 @@ type Query {
   barbershopTimeOffs(barbershopId: Int!, endAt: String!, startAt: String!): [BarberTimeOffType!]!
   barbershopWalkIns(barbershopId: Int!, status: String): [WalkIn!]!
   businessHours(barbershopId: Int!): [BusinessDayType!]!
+  businessHoursImpact(barbershopId: Int!, days: [BusinessDayInput!]!): [ClosureImpactType!]!
   canReviewBarbershop(barbershopId: Int!): Boolean!
   cashSessions(barbershopId: Int!, limit: Int): [CashSessionType!]!
   chairRentPayments(barbershopId: Int!, id: Int!): [ChairRentPaymentType!]!

@@ -1,7 +1,9 @@
 import { must } from '../common/must';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, currentEngagement } from './barbershop.service';
+import { appointmentContactEmail } from './appointment-contact';
+import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 import {
   DEFAULT_WORKING_HOURS,
   parseBusinessHours,
@@ -30,6 +32,42 @@ export type ScheduleDayInput = {
 };
 
 const MODES: ScheduleMode[] = ['SHOP', 'CUSTOM', 'OFF'];
+
+/** Expediente de um dia (HH:MM), com o intervalo quando há; null = não trabalha */
+type DayWindow = {
+  start: string;
+  end: string;
+  breakStart?: string | null;
+  breakEnd?: string | null;
+} | null;
+
+/** Horário já marcado que fica fora do expediente novo */
+export type ScheduleImpact = {
+  id: number;
+  startAt: Date;
+  customerName: string;
+  barberName: string;
+  hasEmail: boolean;
+};
+
+const IMPACT_LIMIT = 500;
+
+const toMinutes = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+
+/** O horário (em minutos do dia) cabe no expediente e não pega o intervalo? */
+export function fitsWindow(window: DayWindow, start: number, end: number): boolean {
+  if (!window) return false;
+  if (start < toMinutes(window.start) || end > toMinutes(window.end)) return false;
+  if (window.breakStart && window.breakEnd) {
+    const bs = toMinutes(window.breakStart);
+    const be = toMinutes(window.breakEnd);
+    if (start < be && end > bs) return false;
+  }
+  return true;
+}
 
 function checkDays<T extends { dayOfWeek: number }>(days: T[]) {
   const seen = new Set<number>();
@@ -90,9 +128,7 @@ export class ScheduleService {
     }));
   }
 
-  /** Os 7 dias; dia fechado = open false. Gerente e dono. */
-  async setBusinessHours(userId: number, barbershopId: number, days: BusinessDayInput[]) {
-    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+  private parseBusinessDays(days: BusinessDayInput[]) {
     checkDays(days);
     if (days.length !== 7) throw new BadRequestException('Informe os 7 dias da semana');
     const json: Record<string, DayHours> = {};
@@ -100,6 +136,49 @@ export class ScheduleService {
       json[WEEKDAY_KEYS[d.dayOfWeek]] = d.open
         ? checkRange(d.start, d.end, WEEKDAY_KEYS[d.dayOfWeek])
         : null;
+    }
+    return json;
+  }
+
+  /**
+   * Antes de salvar o horário da unidade: os horários já marcados de quem
+   * segue esse horário que ficam fora dele (item 241).
+   */
+  async businessHoursImpact(userId: number, barbershopId: number, days: BusinessDayInput[]) {
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const json = this.parseBusinessDays(days);
+    const rows = await this.prisma.barberSchedule.findMany({
+      where: { barber: { barbershopId } },
+    });
+    return this.outside(barbershopId, null, (barberId, dayOfWeek) => {
+      const row = rows.find((r) => r.barberId === barberId && r.dayOfWeek === dayOfWeek);
+      if (row) return row.isActive ? this.rowWindow(row) : null;
+      return json[WEEKDAY_KEYS[dayOfWeek]] ?? null;
+    });
+  }
+
+  /** Os 7 dias; dia fechado = open false. Gerente e dono. */
+  async setBusinessHours(userId: number, barbershopId: number, days: BusinessDayInput[]) {
+    await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    const json = this.parseBusinessDays(days);
+    // Quem segue o horário da unidade e trabalha em outra: o expediente novo
+    // não pode cruzar o de lá (a escala do profissional já confere isso)
+    const team = await this.prisma.barber.findMany({
+      where: { barbershopId, isActive: true, ...currentEngagement() },
+      select: { id: true, schedules: { select: { dayOfWeek: true } } },
+    });
+    for (const barber of team) {
+      const own = new Set(barber.schedules.map((r) => r.dayOfWeek));
+      for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+        const hours = json[WEEKDAY_KEYS[dayOfWeek]];
+        if (!hours || own.has(dayOfWeek)) continue;
+        await this.barbershopService.ensureShiftFreeAcrossShops(
+          barber.id,
+          dayOfWeek,
+          hours.start,
+          hours.end,
+        );
+      }
     }
     // Horário ampliado pode abrir vaga para quem está na lista de espera
     await this.barbershopService.withWaitlistOpening(barbershopId, {}, () =>
@@ -154,17 +233,7 @@ export class ScheduleService {
     });
   }
 
-  /**
-   * Troca a semana do profissional de uma vez (só os dias enviados). Gerente
-   * e dono mexem em qualquer um; o profissional, na própria.
-   */
-  async setWeeklySchedule(userId: number, barberId: number, days: ScheduleDayInput[]) {
-    const barber = await this.barberOrThrow(barberId);
-    await this.barbershopService.ensureCanManageBarberSchedule(
-      userId,
-      barber.barbershopId,
-      barberId,
-    );
+  private checkWeeklyDays(days: ScheduleDayInput[]) {
     checkDays(days);
     for (const d of days) {
       if (!MODES.includes(d.mode)) throw new BadRequestException('Tipo de dia inválido');
@@ -181,6 +250,130 @@ export class ScheduleService {
         }
       }
     }
+  }
+
+  private rowWindow(row: {
+    startTime: string;
+    endTime: string;
+    breakStart: string | null;
+    breakEnd: string | null;
+  }): DayWindow {
+    return {
+      start: row.startTime,
+      end: row.endTime,
+      breakStart: row.breakStart,
+      breakEnd: row.breakEnd,
+    };
+  }
+
+  /**
+   * Antes de salvar a escala do profissional: os horários já marcados dele
+   * que ficam fora do expediente novo (item 241).
+   */
+  async weeklyScheduleImpact(userId: number, barberId: number, days: ScheduleDayInput[]) {
+    const barber = await this.barberOrThrow(barberId);
+    await this.barbershopService.ensureCanManageBarberSchedule(
+      userId,
+      barber.barbershopId,
+      barberId,
+    );
+    this.checkWeeklyDays(days);
+    const [rows, shop] = await Promise.all([
+      this.prisma.barberSchedule.findMany({ where: { barberId } }),
+      this.shopHours(barber.barbershopId),
+    ]);
+    return this.outside(barber.barbershopId, barberId, (_id, dayOfWeek) => {
+      const d = days.find((x) => x.dayOfWeek === dayOfWeek);
+      if (d) {
+        if (d.mode === 'OFF') return null;
+        if (d.mode === 'CUSTOM') {
+          return {
+            start: must(d.startTime, 'início'),
+            end: must(d.endTime, 'fim'),
+            breakStart: d.breakStart || null,
+            breakEnd: d.breakEnd || null,
+          };
+        }
+        return shop.days[dayOfWeek] ?? null;
+      }
+      const row = rows.find((r) => r.dayOfWeek === dayOfWeek);
+      if (row) return row.isActive ? this.rowWindow(row) : null;
+      return shop.days[dayOfWeek] ?? null;
+    });
+  }
+
+  /**
+   * Horários marcados daqui pra frente (confirmados ou esperando o sinal)
+   * que não cabem no expediente do dia. Dia com fechamento cadastrado fica de
+   * fora: lá vale o fechamento, que já mostra quem é afetado.
+   */
+  private async outside(
+    barbershopId: number,
+    barberId: number | null,
+    windowFor: (barberId: number, dayOfWeek: number) => DayWindow,
+  ): Promise<ScheduleImpact[]> {
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { timezone: true },
+    });
+    const timeZone = safeTimeZone(shop?.timezone);
+    const now = new Date();
+    const [appts, closures] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          barbershopId,
+          ...(barberId != null ? { barberId } : {}),
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+          startAt: { gte: now },
+        },
+        orderBy: { startAt: 'asc' },
+        take: IMPACT_LIMIT,
+        select: {
+          id: true,
+          startAt: true,
+          endAt: true,
+          barberId: true,
+          contactEmail: true,
+          customer: { select: { name: true, email: true } },
+          barber: { select: { name: true } },
+        },
+      }),
+      this.prisma.barbershopClosure.findMany({
+        where: { barbershopId, date: { gte: toZonedParts(now, timeZone).dateStr } },
+        select: { date: true },
+      }),
+    ]);
+    const closed = new Set(closures.map((c) => c.date));
+    return appts
+      .filter((a) => {
+        const start = toZonedParts(a.startAt, timeZone);
+        if (closed.has(start.dateStr)) return false;
+        const end = toZonedParts(a.endAt, timeZone);
+        // Atravessa a meia-noite: fim conta como 24:00 daquele dia
+        const endMinutes = end.dateStr === start.dateStr ? end.minutesOfDay : 24 * 60;
+        return !fitsWindow(windowFor(a.barberId, start.dayOfWeek), start.minutesOfDay, endMinutes);
+      })
+      .map((a) => ({
+        id: a.id,
+        startAt: a.startAt,
+        customerName: a.customer.name,
+        barberName: a.barber.name,
+        hasEmail: Boolean(appointmentContactEmail(a)),
+      }));
+  }
+
+  /**
+   * Troca a semana do profissional de uma vez (só os dias enviados). Gerente
+   * e dono mexem em qualquer um; o profissional, na própria.
+   */
+  async setWeeklySchedule(userId: number, barberId: number, days: ScheduleDayInput[]) {
+    const barber = await this.barberOrThrow(barberId);
+    await this.barbershopService.ensureCanManageBarberSchedule(
+      userId,
+      barber.barbershopId,
+      barberId,
+    );
+    this.checkWeeklyDays(days);
     // A mesma pessoa em outra unidade: o expediente efetivo do dia (o próprio
     // ou o da unidade) não pode cruzar o de lá
     for (const d of days) {
