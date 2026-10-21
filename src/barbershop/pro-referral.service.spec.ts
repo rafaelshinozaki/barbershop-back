@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { ProReferralService } from './pro-referral.service';
+import { ProReferralService, sameIdentity } from './pro-referral.service';
 import { PRO_REFERRAL_MAX_MONTHS } from './pro';
 
 describe('ProReferralService.claim', () => {
@@ -48,6 +48,11 @@ describe('ProReferralService.claim', () => {
       professional: {
         findUnique: jest.fn(async () => ({ id: 2, userId: 2 })),
       },
+      proReferral: {
+        findMany: jest.fn(async () => []),
+        count: jest.fn(async () => 1),
+      },
+      appointment: { findFirst: jest.fn(async () => null) },
       $transaction: jest.fn(async (fn: (db: typeof tx) => Promise<void>) => fn(tx)),
     };
     const referrals = new ProReferralService(prisma as never);
@@ -78,15 +83,30 @@ describe('ProReferralService.claim', () => {
     expect(tx.proReferral.create).not.toHaveBeenCalled();
   });
 
-  it('soma o mês em cima do Pro lido com a linha travada', async () => {
+  it('dá o mês só a quem foi indicado; o de quem indicou fica pendente (item 239)', async () => {
     const current = new Date('2026-12-01T00:00:00.000Z');
     const { referrals, tx, updates } = service({ proUntil: current });
-    await referrals.claim(2, ' abc ');
+    const status = await referrals.claim(2, ' abc ');
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(tx.proReferral.create).toHaveBeenCalledWith({
       data: { inviterUserId: 10, invitedUserId: 2, months: 1 },
     });
-    expect(updates.map((row) => row.id)).toEqual([10, 2]);
+    expect(updates.map((row) => row.id)).toEqual([2]);
     expect(updates[0].proUntil.toISOString()).toBe('2027-01-01T00:00:00.000Z');
+    expect(status.pendingCount).toBe(1);
+  });
+});
+
+describe('sameIdentity', () => {
+  it('mesmo documento ou telefone (sem pontuação) é a mesma pessoa', () => {
+    const a = { phone: '(11) 98888-7777', idDocNumber: '123.456.789-00' };
+    expect(sameIdentity(a, { phone: '', idDocNumber: '12345678900' })).toBe(true);
+    expect(sameIdentity(a, { phone: '11988887777', idDocNumber: null })).toBe(true);
+    expect(sameIdentity(a, { phone: '11977776666', idDocNumber: '99999999999' })).toBe(false);
+  });
+
+  it('vazio e "SOCIAL" não contam', () => {
+    const social = { phone: '', idDocNumber: 'SOCIAL' };
+    expect(sameIdentity(social, { phone: '', idDocNumber: 'SOCIAL' })).toBe(false);
   });
 });

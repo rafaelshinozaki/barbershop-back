@@ -2455,18 +2455,22 @@ Foram lidos o envio por WhatsApp (lembrete, aviso da lista de espera e campanha)
 
 Foram lidos a indicação do Pro entre profissionais, a agenda pessoal (modo solo), os feriados e fechamentos, a série de horários, a verificação de identidade e a escala semanal.
 
-239. ⬜ **Indicação do Pro dá meses de graça com contas descartáveis** (back: `ProReferralService.claim`):
+239. ✅ **Indicação do Pro dá meses de graça com contas descartáveis** (back: `ProReferralService.claim`):
      - Qualquer conta nova (até 30 dias) usa o código de outro profissional, e os dois ganham 1 mês de Pro, até 12 meses para quem indicou. A conta nova não precisa ter o e-mail confirmado, telefone, documento, agenda nem um atendimento: a conta da equipe é criada sem confirmar o e-mail.
      - Uma pessoa cria 12 contas com e-mails descartáveis, usa o próprio código em cada uma e tem um ano de Pro sem pagar.
      
      **Fazer:** o código só vale para conta com o e-mail confirmado, e o mês de quem indicou só é liberado quando a conta indicada fica ativa de verdade (por exemplo, o primeiro atendimento concluído na agenda dela, ou a primeira cobrança do Pro). Recusar o código quando o documento ou o telefone da conta nova é o de quem indicou.
+     
+     **Feito:** quem usa o código ganha o mês na hora; o mês de quem indicou fica pendente (`ProReferral.inviterGrantedAt`) até a conta indicada ter um atendimento de verdade: horário concluído, já terminado, com ela como profissional, de cliente que agendou pela página ou tem conta de cliente (`releaseInviterMonths`). A liberação acontece quando o Pro de quem indicou é conferido (tela de indicação, status da agenda pessoal e teto do mês), uma vez só por indicação, com a linha travada. Código recusado quando o documento ou o telefone da conta nova é o de quem indicou (`sameIdentity`). A tela recebe `pendingCount` (indicados que ainda não atenderam). As indicações já aceitas ficaram como liberadas (migração). Não exige e-mail confirmado porque a conta da equipe ainda não tem confirmação de e-mail (item 271): sem o mês na hora, a conta descartável não rende nada a quem indicou. Testes em `pro-referral.service.spec.ts` e `pro-referral-release.int.spec.ts`.
 
-240. ⬜ **Agenda pessoal encerrada não pode ser reaberta, e a nova agenda entra na rede do estabelecimento** (back: `SoloService.status`, `start`):
+240. ✅ **Agenda pessoal encerrada não pode ser reaberta, e a nova agenda entra na rede do estabelecimento** (back: `SoloService.status`, `start`):
      - `status` procura a agenda pessoal por dono e `practiceKind: 'solo'` sem olhar `closedAt`. Depois de "excluir" a agenda (que encerra a unidade), o status continua dizendo que o modo solo está ativo, com a agenda encerrada. `start` devolve esse status e não cria outra: a pessoa fica sem agenda e sem como abrir uma nova. A contagem do mês (`soloUsage`) também soma os atendimentos da agenda encerrada.
      - `start` usa a rede que a pessoa já tem como dona. Quem é dono de um estabelecimento e abre a agenda pessoal fica com ela na rede do estabelecimento: com a moeda, as cores e as regras de cancelamento e falta dele.
      - Dois cliques seguidos em "começar" criam duas agendas pessoais (a checagem não é atômica).
      
      **Fazer:** `status`, `start` e `soloUsage` só olham a agenda pessoal não encerrada. A agenda pessoal tem a rede própria (criada junto, com a moeda do país dela). Trava por dono no `start` (como o `lockProUntil`). Teste: encerrar e abrir de novo.
+     
+     **Feito:** `status` e `start` só olham a agenda pessoal não encerrada: quem excluiu a agenda abre outra. O `start` cria dentro de uma transação com trava por dono (`solo-start:<id>`) e confere de novo antes de criar (dois cliques, uma agenda), e a rede é achada ou criada com `upsert`. A agenda nova usa a moeda do país dela (`currencyForCountry`), não a do estabelecimento. A rede continua sendo a da conta, porque o modelo tem uma rede por pessoa (`Network.ownerUserId` é único); as regras dela são as da própria pessoa. `soloUsage` continua somando as agendas encerradas no mês: senão, encerrar e abrir de novo zeraria a cota. Teste em `solo-start.int.spec.ts`.
 
 241. ⬜ **Mudar a escala ou o horário da unidade não mostra nem avisa quem já está marcado fora dele** (back: `ScheduleService.setWeeklySchedule`, `setBusinessHours`; front: telas de escala e de horário):
      - O feriado/fechamento mostra antes quem é afetado e oferece cancelar avisando o cliente. Já a escala do profissional (pôr folga fixa na segunda, encurtar o expediente) e o horário da unidade (fechar o sábado) só gravam: os horários que já estavam marcados fora do novo expediente continuam lá, e ninguém fica sabendo até o cliente chegar.

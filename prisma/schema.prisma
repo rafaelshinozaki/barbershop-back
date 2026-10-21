@@ -403,15 +403,19 @@ model FriendInvite {
 }
 
 // Indicação entre profissionais. Uma pessoa só pode ser indicada uma vez.
-// Os meses de Pro são creditados na hora, nos dois lados.
+// Quem foi indicado ganha o mês na hora; quem indicou, só depois que a conta
+// indicada tem um atendimento de verdade (inviterGrantedAt).
 model ProReferral {
-  id             Int      @id @default(autoincrement())
-  createdAt      DateTime @default(now())
-  inviterUserId  Int
-  invitedUserId  Int      @unique
-  months         Int
-  inviter        User     @relation("ProReferralInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
-  invited        User     @relation("ProReferralInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  inviterUserId    Int
+  invitedUserId    Int       @unique
+  months           Int
+  /// Quando o mês de quem indicou entrou. Nulo até a conta indicada ter um
+  /// atendimento de verdade (item 239): conta descartável não rende mês.
+  inviterGrantedAt DateTime?
+  inviter          User      @relation("ProReferralInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  invited          User      @relation("ProReferralInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
 
   @@index([inviterUserId])
 }
