@@ -2781,3 +2781,20 @@ Foram lidos a sessão da área do cliente (`issueCookie`, `GraphQLClientJwtAuthG
      - Não existe "Lembrar de mim" nem lista de sessões abertas na área do cliente.
      
      **Fazer:** prazo próprio da sessão do cliente (ex.: 30 dias), com renovação enquanto a pessoa usa (como `renewIfStale`). No "Sair", revogar só aquela sessão: id da sessão no token com uma tabela de sessões do cliente (como `ActiveSession`), ou no mínimo `sessionVersion + 1` com aviso de que sai de todos os aparelhos. Teste com o token de uma sessão encerrada.
+
+### Nonagésima nona rodada (2026-10-21): histórico de atendimentos e painel da rede
+
+Foram lidos o painel da rede (`getNetworkDashboardStats`, `staffDashboard`, `networkMoney`), o histórico de atendimentos da ficha (`getCustomerServiceHistory`), o público "inativos" das campanhas (`resolveMarketingSegment`) e a fidelidade.
+
+273. ⬜ **O histórico de atendimentos nunca é gravado: a ficha fica vazia, o painel mostra zero e a campanha para inativos não acha ninguém** (back: `ServiceHistory`, `getCustomerServiceHistory`, `getNetworkDashboardStats`, `resolveMarketingSegment`):
+     - Nenhum fluxo do app cria `ServiceHistory`: concluir o horário, fechar a conta e atender na fila não gravam nada. Só o `seed-demo.ts` cria essas linhas, por isso a demonstração parece certa.
+     - Em produção, a aba "Histórico de atendimentos" da ficha do cliente (`customerServiceHistory`) mostra sempre "nenhum atendimento", e "Serviços realizados" no painel da rede (`totalServicesDone`) fica em 0.
+     - O público "inativos há N dias" das campanhas usa `ServiceHistory` para saber quem já foi atendido e quem voltou. Sem linhas, ninguém é inativo: a campanha para trazer de volta quem sumiu sai para 0 pessoas, sem aviso.
+     
+     **Fazer:** ler o histórico do que já existe: horários `COMPLETED` (com os serviços do horário) e atendimentos da fila concluídos, no lugar de `ServiceHistory` (ou gravar a linha ao concluir, com migração preenchendo o passado). O público "inativos" passa a ser quem tem atendimento concluído na unidade e nenhum nos últimos N dias. Teste: concluir um horário aparece na ficha, conta no painel e tira o cliente dos inativos.
+     
+274. ⬜ **O painel da rede soma produtos de vendas não pagas e conta profissionais com vínculo vencido** (back: `getNetworkDashboardStats`):
+     - "Produtos vendidos" soma a quantidade de todos os itens de produto, sem olhar a situação da venda: venda pendente, cancelada ou estornada conta como vendida (o faturamento ao lado só soma as pagas, então os dois números não batem).
+     - "Profissionais" conta todo `Barber` com `isActive`, inclusive o freelancer cujo período já acabou ou ainda não começou (`currentEngagement` não é usado aqui, mas é usado no resto do painel).
+     
+     **Fazer:** produtos só de vendas pagas (e não estornadas); profissionais com `currentEngagement()`. Teste com venda pendente e vínculo vencido.
