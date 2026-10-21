@@ -2798,3 +2798,14 @@ Foram lidos o painel da rede (`getNetworkDashboardStats`, `staffDashboard`, `net
      - "Profissionais" conta todo `Barber` com `isActive`, inclusive o freelancer cujo período já acabou ou ainda não começou (`currentEngagement` não é usado aqui, mas é usado no resto do painel).
      
      **Fazer:** produtos só de vendas pagas (e não estornadas); profissionais com `currentEngagement()`. Teste com venda pendente e vínculo vencido.
+
+### Centésima rodada (2026-10-21): descadastro das campanhas
+
+Foram lidos o descadastro pelo WhatsApp (`WhatsappOptOutService`), o link de descadastro do e-mail, a edição da ficha (`updateCustomer`), os pedidos de avaliação e as campanhas.
+
+275. ⬜ **Responder SAIR a uma barbearia tira a pessoa de tudo, em todas, e não há como voltar** (back: `WhatsappOptOutService.optOutFromReply`, `Customer.marketingOptOut`, `updateCustomer`, `ReviewRequestService`):
+     - `optOutFromReply` marca `marketingOptOut` em todas as fichas da plataforma com aquele telefone, de qualquer rede. Quem responde SAIR à campanha de uma barbearia deixa de receber campanhas de todas as outras onde é cliente.
+     - É o mesmo campo das campanhas por e-mail e dos pedidos de avaliação (`review-request.service`, `review-management.service` pulam quem tem `marketingOptOut`). Sair do WhatsApp também corta o e-mail e o pedido de avaliação, que a pessoa não pediu para parar.
+     - Não existe caminho de volta: a equipe é recusada ("só pode voltar a receber por conta própria"), mas não há link, tela ou palavra no WhatsApp para a pessoa voltar. O link de descadastro do e-mail também só marca.
+     
+     **Fazer:** separar o descadastro por canal (e-mail e WhatsApp) e por rede no e-mail. No WhatsApp, como o número é um só da plataforma, guardar o descadastro pelo telefone (tabela própria), sem mexer no e-mail. Pedido de avaliação fora do descadastro de marketing (ou com opção própria). Página do link e resposta no WhatsApp (ex.: "VOLTAR") para voltar a receber, e a área do cliente com as opções. Teste: SAIR numa rede não tira o e-mail nem as outras redes, e a pessoa consegue voltar.
