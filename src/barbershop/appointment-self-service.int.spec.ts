@@ -429,4 +429,15 @@ describe('Cliente gerencia o horário pelo link do e-mail (integração)', () =>
       }),
     ).rejects.toThrow('ainda não está aberto');
   });
+  it('o e-mail digitado na página fica só no horário, sem preencher a ficha sem e-mail (item 250)', async () => {
+    const phone = `117${RUN}`.slice(0, 13);
+    const ficha = await prisma.customer.create({
+      data: { networkId, name: 'Cliente do Balcão', phone },
+    });
+    const appt = await book('16:30', phone);
+    expect(appt.customerId).toBe(ficha.id);
+    const row = await prisma.appointment.findUniqueOrThrow({ where: { id: appt.id } });
+    expect(row.contactEmail).toBe(`cliente-${phone}@test.local`);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: ficha.id } })).email).toBeNull();
+  });
 });

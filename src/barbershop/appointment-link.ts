@@ -48,9 +48,7 @@ function staffMark(appointmentId: number, version: number, userId: number) {
  * O link que a equipe pede leva quem pediu, assinado. Sem esse sufixo é o
  * e-mail automático. Assinatura errada invalida o link inteiro.
  */
-function stripStaffReview(
-  raw: string,
-): { token: string; requestedByUserId: number | null } | null {
+function stripStaffReview(raw: string): { token: string; requestedByUserId: number | null } | null {
   const staff = /^(\d+)\.(\d+)\.([A-Za-z0-9_-]{32})\.(\d+)\.([A-Za-z0-9_-]{32})$/.exec(raw);
   if (!staff) return { token: raw, requestedByUserId: null };
   const id = Number(staff[1]);
@@ -170,12 +168,12 @@ export function appointmentReviewUrl(appointmentId: number, rating?: number, ver
 }
 
 /** O mesmo link, marcado com quem da equipe pediu. Não volta pra tela. */
-export function createStaffReviewToken(
-  appointmentId: number,
-  userId: number,
-  version = 0,
-): string {
-  return `${createReviewToken(appointmentId, version)}.${userId}.${staffMark(appointmentId, version, userId)}`;
+export function createStaffReviewToken(appointmentId: number, userId: number, version = 0): string {
+  return `${createReviewToken(appointmentId, version)}.${userId}.${staffMark(
+    appointmentId,
+    version,
+    userId,
+  )}`;
 }
 
 export function appointmentStaffReviewUrl(

@@ -288,13 +288,21 @@ describe('Pedido de avaliação (integração)', () => {
     expect(mine).toHaveLength(1);
     expect(decodeURIComponent(mine[0].context.ReviewURL)).toContain(`.${ownerId}.`);
     await expect(
-      reviewRequests.staffReviewLink(ownerId, shopId, (await appointment(c.id, 3, 'COMPLETED', false)).id),
+      reviewRequests.staffReviewLink(
+        ownerId,
+        shopId,
+        (
+          await appointment(c.id, 3, 'COMPLETED', false)
+        ).id,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       reviewRequests.staffReviewLink(
         ownerId,
         shopId,
-        (await appointment((await customer({ email: null, phone: '0' })).id, 3)).id,
+        (
+          await appointment((await customer({ email: null, phone: '0' })).id, 3)
+        ).id,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(

@@ -198,6 +198,27 @@ export function currentEngagement(now = new Date()): Prisma.BarberWhereInput {
     ],
   };
 }
+/** Nome sem acento, caixa e espaços repetidos */
+const personName = (value: string | null | undefined) =>
+  (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * A ficha achada pelo telefone digitado na página é da mesma pessoa? Com
+ * e-mail na ficha, ele tem de bater; sem e-mail, o nome inteiro (item 249).
+ */
+export function samePublicPerson(
+  customer: { name: string; email: string | null },
+  typed: { name: string; email: string },
+): boolean {
+  const saved = customer.email?.trim().toLowerCase();
+  if (saved) return saved === typed.email.trim().toLowerCase();
+  return personName(customer.name) !== '' && personName(customer.name) === personName(typed.name);
+}
 /** O atendimento cai dentro do período do vínculo? */
 function withinEngagement(
   barber: { accessStartsAt: Date | null; accessEndsAt: Date | null },
@@ -3498,12 +3519,7 @@ export class BarbershopService {
     });
   }
 
-  async deleteService(
-    userId: number,
-    barbershopId: number,
-    serviceId: number,
-    confirm = false,
-  ) {
+  async deleteService(userId: number, barbershopId: number, serviceId: number, confirm = false) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const current = await this.prisma.barbershopService.findFirst({
       where: { id: serviceId, barbershopId },
@@ -5530,11 +5546,17 @@ export class BarbershopService {
     });
 
     const networkId = barbershop.networkId;
-    const [existingId] = await this.customerIdsByPhone(networkId, phone);
-    let customer =
-      existingId != null
-        ? await this.prisma.customer.findUnique({ where: { id: existingId } })
-        : null;
+    // O telefone digitado não é confirmado: a ficha achada por ele só vale se
+    // for da mesma pessoa (mesmo e-mail, ou mesmo nome numa ficha sem
+    // e-mail). Senão, ficha à parte, e a equipe junta se for a mesma (item 249)
+    const sameIds = await this.customerIdsByPhone(networkId, phone);
+    const candidates = sameIds.length
+      ? await this.prisma.customer.findMany({
+          where: { id: { in: sameIds } },
+          orderBy: { id: 'asc' },
+        })
+      : [];
+    let customer = candidates.find((c) => samePublicPerson(c, { name, email })) ?? null;
     if (!customer) {
       customer = await this.prisma.customer.create({
         data: {
@@ -5562,9 +5584,11 @@ export class BarbershopService {
 
     // Sem lotar a fila de uma unidade com a mesma pessoa
     // Só os dias que ainda vêm (os que passaram não seguram vaga no limite)
+    // Conta todas as fichas com esse telefone: trocar o e-mail (outra ficha)
+    // não abre outra cota
     const waiting = await this.prisma.waitlistEntry.count({
       where: {
-        customerId: customer.id,
+        customerId: { in: [...new Set([...sameIds, customer.id])] },
         status: 'WAITING',
         source: 'online',
         date: { gte: new Date(`${today}T00:00:00Z`) },
@@ -6041,9 +6065,12 @@ export class BarbershopService {
         );
       }
 
-      const phone = this.whatsappService.isConfigured()
-        ? phoneForWhatsapp(match.customer.phone, match.barbershop.country)
-        : null;
+      // Quem entrou pela página recebe só no e-mail que informou: o telefone
+      // digitado não é confirmado e pode ser o de outra pessoa (item 249)
+      const phone =
+        this.whatsappService.isConfigured() && match.source !== 'online'
+          ? phoneForWhatsapp(match.customer.phone, match.barbershop.country)
+          : null;
       if (phone) {
         await this.notificationQueue.whatsapp(
           {
@@ -7317,15 +7344,9 @@ export class BarbershopService {
     // conta logada: o telefone não é confirmado, e ligar deixava qualquer um
     // ver o histórico de outra pessoa agendando com o telefone dela. A ficha
     // entra na conta quando o e-mail dela bate com o e-mail confirmado.
-    // O e-mail digitado agora fica neste horário. A ficha só é preenchida
-    // quando ainda não tinha (trocar o de quem já tem sequestraria a ficha).
-    if (typedEmail && !customer.email?.trim()) {
-      const filled = await this.prisma.customer.updateMany({
-        where: { id: customer.id, OR: [{ email: null }, { email: '' }] },
-        data: { email: typedEmail },
-      });
-      if (filled.count === 1) customer = { ...customer, email: typedEmail };
-    }
+    // O e-mail digitado fica só neste horário (contactEmail), sem preencher
+    // o da ficha: o telefone não é confirmado, e o e-mail na ficha a ligava à
+    // conta de quem digitou quando ela confirmasse esse e-mail (item 250).
 
     const bookingCustomerId = customer.id;
     // Recusa cedo (o "qualquer profissional" não tenta o próximo barbeiro
@@ -8309,21 +8330,35 @@ export class BarbershopService {
       where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
       select: { comment: true, reply: true },
     });
+    // A ocultada pela moderação (mesmo "apagada" pelo cliente) é editada no
+    // lugar: continua oculta, sem voltar ao ar por uma linha nova (item 247)
     return this.prisma.review.upsert({
       where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
       create: { barbershopId, clientAccountId, rating, comment: text },
-      update: reviewEditData(existing, { rating, comment: text }),
+      update: { ...reviewEditData(existing, { rating, comment: text }), withdrawnAt: null },
     });
   }
 
+  /**
+   * O cliente apaga a própria avaliação. A que a moderação ocultou não sai
+   * do banco: some para ele (withdrawnAt) e continua oculta, senão apagar e
+   * escrever de novo devolvia o texto ao ar (item 247).
+   */
   async deleteReview(clientAccountId: number, barbershopId: number) {
-    await this.prisma.review.deleteMany({ where: { barbershopId, clientAccountId } });
+    await this.prisma.review.updateMany({
+      where: { barbershopId, clientAccountId, hiddenAt: { not: null } },
+      data: { withdrawnAt: new Date() },
+    });
+    await this.prisma.review.deleteMany({
+      where: { barbershopId, clientAccountId, hiddenAt: null },
+    });
   }
 
   async getMyReview(clientAccountId: number, barbershopId: number) {
-    return this.prisma.review.findUnique({
+    const review = await this.prisma.review.findUnique({
       where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
     });
+    return review?.withdrawnAt ? null : review;
   }
 
   async canReviewBarbershop(clientAccountId: number, barbershopId: number): Promise<boolean> {
@@ -8440,9 +8475,17 @@ export class BarbershopService {
       paymentMethod?: string | null;
     },
   ) {
-    const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId)
-      throw new ForbiddenException('Sem acesso a esta rede');
+    // Dono da rede vende por qualquer unidade (ou sem unidade); da recepção
+    // para cima, só pela unidade onde trabalha (o valor entra no caixa dela)
+    const network = await this.prisma.network.findUnique({ where: { id: networkId } });
+    if (!network) throw new ForbiddenException('Sem acesso a esta rede');
+    if (network.ownerUserId !== userId) {
+      if (data.barbershopId == null) {
+        throw new ForbiddenException('Escolha a unidade que está vendendo o cartão-presente');
+      }
+      const shop = await this.ensureBarbershopAccess(userId, data.barbershopId, 'reception');
+      if (shop.networkId !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
+    }
     if (data.initialValue <= 0) {
       throw new BadRequestException('O valor do cartão-presente deve ser maior que zero');
     }
@@ -8499,10 +8542,35 @@ export class BarbershopService {
     });
   }
 
+  /**
+   * Dono da rede, ou alguém com o cargo pedido (ou acima) em alguma unidade
+   * dela. Cartão-presente vale na rede inteira (item 248).
+   */
+  private async ensureNetworkRole(userId: number, networkId: number, min: AccessLevel) {
+    const network = await this.prisma.network.findUnique({
+      where: { id: networkId },
+      select: { ownerUserId: true },
+    });
+    if (!network) throw new ForbiddenException('Sem acesso a esta rede');
+    if (network.ownerUserId === userId) return;
+    const shops = await this.prisma.barbershop.findMany({
+      where: { networkId, closedAt: null, barbers: { some: { userId, ...currentEngagement() } } },
+      select: {
+        id: true,
+        ownerUserId: true,
+        closedAt: true,
+        network: { select: { ownerUserId: true } },
+      },
+    });
+    for (const shop of shops) {
+      const level = await this.accessLevelOf(userId, shop);
+      if (level && ACCESS_RANK[level] >= ACCESS_RANK[min]) return;
+    }
+    throw new ForbiddenException('Sem acesso a esta rede');
+  }
+
   async getGiftCards(userId: number, networkId: number) {
-    const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId)
-      throw new ForbiddenException('Sem acesso a esta rede');
+    await this.ensureNetworkRole(userId, networkId, 'manager');
     return this.prisma.giftCard.findMany({ where: { networkId }, orderBy: { createdAt: 'desc' } });
   }
 
@@ -8512,9 +8580,7 @@ export class BarbershopService {
     giftCardId: number,
     isActive: boolean,
   ) {
-    const network = await this.getMyNetwork(userId);
-    if (!network || network.id !== networkId)
-      throw new ForbiddenException('Sem acesso a esta rede');
+    await this.ensureNetworkRole(userId, networkId, 'manager');
     const giftCard = await this.prisma.giftCard.findFirst({ where: { id: giftCardId, networkId } });
     if (!giftCard) throw new NotFoundException('Cartão-presente não encontrado');
     return this.prisma.giftCard.update({ where: { id: giftCardId }, data: { isActive } });
@@ -8549,9 +8615,23 @@ export class BarbershopService {
     return giftCard;
   }
 
+  /**
+   * Consulta pelo código na hora de cobrar. Quem compra e quem ganha (nome,
+   * telefone, e-mail, mensagem) só para gerente e dono: o caixa precisa só do
+   * saldo e da validade (item 248).
+   */
   async lookupGiftCard(userId: number, barbershopId: number, code: string) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.validateGiftCard(barbershopId, code);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
+    const card = await this.validateGiftCard(barbershopId, code);
+    if (ACCESS_RANK[shop.accessLevel] >= ACCESS_RANK.manager) return card;
+    return {
+      ...card,
+      purchaserName: null,
+      purchaserPhone: null,
+      purchaserEmail: null,
+      recipientName: null,
+      message: null,
+    };
   }
 
   // ============ FIDELIDADE ============
@@ -11499,8 +11579,7 @@ export class BarbershopService {
       .filter((f) => view !== 'none' || !HEALTH_FORM_TYPES.includes(f.formType))
       .map((f) => ({
         ...f,
-        answers:
-          HEALTH_FORM_TYPES.includes(f.formType) && view !== 'full' ? null : f.answers,
+        answers: HEALTH_FORM_TYPES.includes(f.formType) && view !== 'full' ? null : f.answers,
         status: f.status === 'SIGNED' && f.expiresAt && f.expiresAt < now ? 'EXPIRED' : f.status,
       }));
   }

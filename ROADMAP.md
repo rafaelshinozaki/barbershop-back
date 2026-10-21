@@ -2534,39 +2534,47 @@ Foram lidos o pedido de avaliação depois do atendimento (e-mail, link pela equ
 
      **Feito:** o pedido da equipe vai pro e-mail do cliente, ou pro WhatsApp dele quando não há e-mail. O endereço não volta pra tela. A avaliação grava se veio do e-mail automático ou do pedido da equipe, e quem pediu. O link deixa de valer 30 dias depois do atendimento. Sem pagamento registrado ou sem contato, não sai pedido. A fila do backoffice mostra a origem. Teste em `review-request-staff.spec.ts`.
 
-247. ⬜ **Avaliação da unidade ocultada pela moderação volta apagando e escrevendo de novo** (back: `deleteReview`, `createOrUpdateReview`, `ReviewRequestService.submitReview`):
+247. ✅ **Avaliação da unidade ocultada pela moderação volta apagando e escrevendo de novo** (back: `deleteReview`, `createOrUpdateReview`, `ReviewRequestService.submitReview`):
      - O cliente logado apaga a própria avaliação (`deleteReview` apaga a linha) e escreve outra: a nova nasce sem `hiddenAt`, e o texto que a moderação tirou do ar volta à página e à nota. O mesmo acontece pelo link do e-mail depois de apagar pela conta (sem avaliação existente, o link cria outra).
      - Apagar também leva a decisão da moderação (`reportDismissedComment`) e a resposta da unidade.
      
      **Fazer:** avaliação ocultada pela moderação não é apagada de verdade pelo cliente (some para ele, fica o registro oculto); a nova avaliação do mesmo cliente na mesma unidade nasce oculta e vai para a fila enquanto houver uma ocultada, ou o cliente só pode editar a que existe. Teste: ocultar, apagar, avaliar de novo.
+     
+     **Feito:** avaliação ocultada pela moderação não sai do banco quando o cliente apaga: ganha `Review.withdrawnAt`, some para ele (`getMyReview` e a página do link não mostram) e continua oculta. Escrever de novo, logado ou pelo link, atualiza a mesma linha e ela segue oculta (a moderação pode restaurar pela fila de ocultos, onde a denúncia continua). A avaliação não ocultada continua sendo apagada de verdade. Teste em `round-247-249.int.spec.ts`.
 
 ### Octogésima rodada (2026-10-20): cartão-presente e lista de espera pela página
 
 Foram lidos a área do cliente (perfil, favoritos, busca de redes, login social), o cartão-presente (vender, consultar, desativar), o cache da busca e a entrada na lista de espera pela página pública.
 
-248. ⬜ **Consultar o cartão-presente mostra ao barbeiro o telefone e o e-mail de quem comprou** (back: `lookupGiftCard`; `GiftCardType`):
+248. ✅ **Consultar o cartão-presente mostra ao barbeiro o telefone e o e-mail de quem comprou** (back: `lookupGiftCard`; `GiftCardType`):
      - Na hora de cobrar, qualquer pessoa da equipe com acesso de barbeiro digita o código e recebe o cartão inteiro: valor, saldo, validade, e também nome, telefone e e-mail de quem comprou, nome de quem ganhou e a mensagem. O barbeiro não vê o contato dos clientes em nenhum outro lugar (item 24).
      - Vender, listar e desativar cartão-presente é só do dono da rede (`getMyNetwork`): a recepção e o gerente, que fecham a conta no balcão, não conseguem vender um cartão para o cliente que está ali.
      
      **Fazer:** a consulta pelo código devolve só o que o caixa precisa (código, saldo, moeda, validade, ativo), e o contato de quem comprou fica para gerente e dono. Vender cartão-presente da recepção para cima, na unidade (o valor já entra na venda e no caixa dela); listar e desativar para gerente e dono.
+     
+     **Feito:** `lookupGiftCard` só devolve quem comprou e quem ganhou (nome, telefone, e-mail, mensagem) para gerente e dono; para recepção e barbeiro esses campos vêm vazios. Vender (`createGiftCard`) vale para o dono da rede ou, da recepção para cima, pela unidade onde a pessoa trabalha (o valor entra na venda e no caixa dela); listar e desativar para gerente e dono de alguma unidade da rede (`ensureNetworkRole`). A tela de cartões-presente continua na área da franquia (do dono): falta uma entrada na unidade para a recepção vender pela tela, o back já aceita. Teste em `round-247-249.int.spec.ts`.
 
-249. ⬜ **Entrar na lista de espera com o telefone de outra pessoa usa a ficha dela e manda o aviso para ela** (back: `joinPublicWaitlist`, aviso da vaga):
+249. ✅ **Entrar na lista de espera com o telefone de outra pessoa usa a ficha dela e manda o aviso para ela** (back: `joinPublicWaitlist`, aviso da vaga):
      - Pela página pública, a ficha do cliente é achada só pelo telefone (`customerIdsByPhone`). Quem digita o telefone de outra pessoa (com outro nome e o próprio e-mail) entra na lista de espera com a ficha dela: a equipe vê o pedido em nome dela, e quando abre a vaga o WhatsApp vai para o telefone dela (`match.customer.phone`) e o e-mail para quem digitou.
      - A pessoa recebe um aviso de vaga de um pedido que não fez, e quem digitou recebe pelo e-mail o link para agendar na ficha dela.
      
      **Fazer:** telefone que já tem ficha com outro nome ou outro e-mail não reaproveita a ficha pela página pública (cria uma ficha à parte, marcada para a equipe juntar se for a mesma pessoa), ou confirma o telefone por código. O aviso vai só pelo contato que a pessoa informou ao entrar na lista.
+     
+     **Feito:** pela página, a ficha achada pelo telefone só é usada se for da mesma pessoa (`samePublicPerson`: com e-mail na ficha, o mesmo e-mail; sem e-mail, o mesmo nome inteiro, sem acento e caixa). Senão, entra com uma ficha nova e a equipe junta se for a mesma pessoa; a ficha encontrada não ganha o e-mail digitado. O limite de dias na lista conta todas as fichas daquele telefone. O aviso de vaga de quem entrou pela página vai só para o e-mail informado (sem WhatsApp para o telefone, que não é confirmado). Testes em `round-247-249.int.spec.ts` e `waitlist-online.int.spec.ts`.
 
 ### Octogésima primeira rodada (2026-10-20): ficha alheia pela página de agendamento
 
 Foram lidos o agendamento pela página pública (achar a ficha, preencher o e-mail, indicação), a ligação da ficha com a conta do cliente e o histórico que o cliente vê na conta.
 
-250. ⬜ **Agendar pela página com o telefone de outra pessoa entrega a ficha dela para quem agendou** (back: `createPublicAppointment`, `ClientAuthService.linkVerifiedCustomers`):
+250. ✅ **Agendar pela página com o telefone de outra pessoa entrega a ficha dela para quem agendou** (back: `createPublicAppointment`, `ClientAuthService.linkVerifiedCustomers`):
      - A ficha é achada só pelo telefone digitado. Se a ficha da pessoa ainda não tem e-mail (o comum para quem só vai ao balcão), o e-mail digitado no agendamento passa a ser o e-mail da ficha (`customer.email`, "preenchido quando ainda não tinha").
      - Depois, quem digitou cria a conta de cliente com esse e-mail e o confirma: `linkVerifiedCustomers` liga à conta toda ficha sem conta com o mesmo e-mail. A ficha da outra pessoa entra na conta de quem agendou, que passa a ver o histórico dela (serviços, datas, profissionais, valores das vendas e caixinhas), os próximos horários (e pode cancelar e remarcar) e o que estiver ligado à conta.
      - A partir daí, os e-mails da ficha (confirmação, lembrete, campanhas) também vão para quem agendou.
      - O comentário do código já protege o caso da conta logada ("não é ligada à conta logada: o telefone não é confirmado"), mas o mesmo resultado sai pelo e-mail preenchido.
      
      **Fazer:** o e-mail digitado na página fica só no horário (`contactEmail`), sem preencher o da ficha; a ficha só ganha e-mail pela equipe ou quando o próprio cliente confirma por código. `linkVerifiedCustomers` não liga ficha cujo e-mail veio de um agendamento pela página (guardar a origem do e-mail na ficha). Teste: ficha sem e-mail, agendar com o telefone dela e outro e-mail, criar e confirmar a conta e conferir que a ficha não entra.
+     
+     **Feito:** o e-mail digitado no agendamento pela página fica só no horário (`contactEmail`) e não preenche mais o e-mail da ficha achada pelo telefone; sem isso a ficha não entra na conta de quem digitou ao confirmar o e-mail. Fichas que já tiveram o e-mail preenchido assim antes desta mudança não são desfeitas (não há como saber a origem). Teste em `appointment-self-service.int.spec.ts`.
 
 ### Octogésima segunda rodada (2026-10-20): e-mail da ficha e espaço compartilhado
 

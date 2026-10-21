@@ -234,10 +234,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Serviço não encontrado': 'SERVICE_NOT_FOUND',
   'Este serviço tem plano, pacote ou horário marcado. Confirme a desativação.':
     'SERVICE_DEACTIVATION_CONFIRM',
-  'Este plano não aceita assinatura nova porque o serviço foi desativado.':
-    'PLAN_SERVICE_INACTIVE',
-  'Este pacote não está mais à venda porque o serviço foi desativado.':
-    'PACKAGE_SERVICE_INACTIVE',
+  'Este plano não aceita assinatura nova porque o serviço foi desativado.': 'PLAN_SERVICE_INACTIVE',
+  'Este pacote não está mais à venda porque o serviço foi desativado.': 'PACKAGE_SERVICE_INACTIVE',
   'Produto não encontrado': 'PRODUCT_NOT_FOUND',
   'Recurso já reservado nesse horário': 'RESOURCE_ALREADY_BOOKED_TIME',
   'Este profissional já tem escala nesse horário em outra unidade':
