@@ -13,6 +13,7 @@ import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import { UserDTO } from '../../auth/users/dto/user.dto';
 import { GqlHttpExceptionFilter } from '../filters/gql-http-exception.filter';
+import { ClosureImpactType } from './closure.resolver';
 import { ScheduleService, ScheduleMode } from '../../barbershop/schedule.service';
 
 @ObjectType()
@@ -117,12 +118,36 @@ export class ScheduleResolver {
     return this.schedules.setBusinessHours(user.id, barbershopId, days);
   }
 
+  /** Antes de salvar: horários marcados que ficam fora do horário novo (item 241) */
+  @Query(() => [ClosureImpactType])
+  async businessHoursImpact(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('days', { type: () => [BusinessDayInput] }) days: BusinessDayInput[],
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.schedules.businessHoursImpact(user.id, barbershopId, days);
+  }
+
   @Query(() => [WeeklyScheduleDayType])
   async barberWeeklySchedule(
     @Args('barberId', { type: () => Int }) barberId: number,
     @CurrentUser() user: UserDTO,
   ) {
     return this.schedules.getWeeklySchedule(user.id, barberId);
+  }
+
+  /** Antes de salvar: horários marcados do profissional que ficam fora da escala nova */
+  @Query(() => [ClosureImpactType])
+  async barberWeeklyScheduleImpact(
+    @Args('barberId', { type: () => Int }) barberId: number,
+    @Args('days', { type: () => [WeeklyScheduleDayInput] }) days: WeeklyScheduleDayInput[],
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.schedules.weeklyScheduleImpact(
+      user.id,
+      barberId,
+      days.map((d) => ({ ...d, mode: d.mode as ScheduleMode })),
+    );
   }
 
   @Mutation(() => [WeeklyScheduleDayType])

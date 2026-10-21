@@ -119,6 +119,8 @@ describe('Horário de funcionamento e escala (integração)', () => {
   });
 
   afterAll(async () => {
+    await prisma.appointment.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.barber.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershopService.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
@@ -223,5 +225,110 @@ describe('Horário de funcionamento e escala (integração)', () => {
         week({ 3: { open: true, start: '20:00', end: '08:00' } }),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+  it('antes de salvar mostra os horários marcados que ficam fora (item 241)', async () => {
+    const customerId = (
+      await prisma.customer.create({
+        data: { networkId, name: 'Cliente Fora', phone: '11933333333' },
+      })
+    ).id;
+    const saturday = addDays(monday, 5);
+    const book = (barberId: number, date: string, start: string, end: string) =>
+      prisma.appointment.create({
+        data: {
+          barbershopId: shopId,
+          customerId,
+          barberId,
+          startAt: at(date, start),
+          endAt: at(date, end),
+          status: 'CONFIRMED',
+        },
+      });
+    const anaMonday = await book(ana, monday, '10:00', '10:30');
+    const anaSaturday = await book(ana, saturday, '10:00', '10:30');
+    const betoLate = await book(beto, monday, '17:30', '18:00');
+    await book(beto, monday, '11:00', '11:30');
+
+    // Unidade fecha o sábado e encerra a segunda às 17h
+    const shopImpact = await schedules.businessHoursImpact(
+      ownerId,
+      shopId,
+      week({ 1: { open: true, start: '09:00', end: '17:00' }, 6: { open: false } }),
+    );
+    expect(shopImpact.map((a) => a.id).sort()).toEqual([anaSaturday.id, betoLate.id].sort());
+    expect(shopImpact[0].customerName).toBe('Cliente Fora');
+
+    // Ana com escala própria no sábado não é afetada pelo horário da unidade
+    await schedules.setWeeklySchedule(ownerId, ana, [
+      { dayOfWeek: 6, mode: 'CUSTOM', startTime: '09:00', endTime: '13:00' },
+    ]);
+    const withOwn = await schedules.businessHoursImpact(
+      ownerId,
+      shopId,
+      week({ 6: { open: false } }),
+    );
+    expect(withOwn.map((a) => a.id)).not.toContain(anaSaturday.id);
+
+    // Folga fixa na segunda e intervalo em cima do horário de sábado
+    const anaImpact = await schedules.weeklyScheduleImpact(ownerId, ana, [
+      { dayOfWeek: 1, mode: 'OFF' },
+      {
+        dayOfWeek: 6,
+        mode: 'CUSTOM',
+        startTime: '09:00',
+        endTime: '13:00',
+        breakStart: '10:00',
+        breakEnd: '11:00',
+      },
+    ]);
+    expect(anaImpact.map((a) => a.id).sort()).toEqual([anaMonday.id, anaSaturday.id].sort());
+    // Só olha a própria agenda: o Beto não entra
+    expect(anaImpact.map((a) => a.id)).not.toContain(betoLate.id);
+    // Nada fora: lista vazia
+    expect(await schedules.weeklyScheduleImpact(ownerId, beto, [])).toEqual([]);
+  });
+
+  it('o horário da unidade não cruza o expediente de quem trabalha em outra unidade', async () => {
+    const otherShop = (
+      await prisma.barbershop.create({
+        data: {
+          name: 'Outra unidade',
+          slug: `sch-outra-${RUN}`,
+          address: 'Rua B, 2',
+          city: 'SP',
+          state: 'SP',
+          country: 'BR',
+          postalCode: '01000000',
+          phone: '11999999998',
+          email: `sch-outra-${RUN}@test.local`,
+          networkId,
+          ownerUserId: ownerId,
+        },
+      })
+    ).id;
+    try {
+      const anaThere = await prisma.barber.create({
+        data: { barbershopId: otherShop, name: 'Ana', phone: '11911111111', userId: anaUserId },
+      });
+      await prisma.barberSchedule.create({
+        data: { barberId: anaThere.id, dayOfWeek: 2, startTime: '14:00', endTime: '20:00' },
+      });
+      // Ana segue o horário daqui na terça: 09–18 cruza o 14–20 de lá
+      await expect(schedules.setBusinessHours(ownerId, shopId, week({}))).rejects.toThrow(
+        'Este profissional já tem escala nesse horário em outra unidade',
+      );
+      // Terça só de manhã aqui: não cruza
+      await expect(
+        schedules.setBusinessHours(
+          ownerId,
+          shopId,
+          week({ 2: { open: true, start: '08:00', end: '13:00' } }),
+        ),
+      ).resolves.toBeTruthy();
+    } finally {
+      await prisma.barberSchedule.deleteMany({ where: { barber: { barbershopId: otherShop } } });
+      await prisma.barber.deleteMany({ where: { barbershopId: otherShop } });
+      await prisma.barbershop.delete({ where: { id: otherShop } });
+    }
   });
 });

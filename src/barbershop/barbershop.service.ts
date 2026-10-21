@@ -4723,6 +4723,34 @@ export class BarbershopService {
       );
     }
 
+    // Falta ou cancelamento do cliente com taxa: o atendimento pago antes
+    // pelo app cobre a taxa. A unidade retém só ela e devolve o resto, em vez
+    // de devolver tudo (cancelamento) ou ficar com tudo (falta) e ainda
+    // registrar a taxa como devida (item 242)
+    const feeStatusChange =
+      (data.status === 'NO_SHOW' ||
+        (data.status === 'CANCELLED' && opts.cancelledBy !== 'business')) &&
+      appointment.status !== data.status;
+    let prepaidRetained: number | null = null;
+    if (feeStatusChange && appointment.prepaidAt && !appointment.prepaidRefundedAt) {
+      try {
+        prepaidRetained = await this.retainFeeFromPrepayment(
+          barbershopId,
+          updated,
+          must(data.status, 'situação'),
+        );
+        if (prepaidRetained != null) {
+          const refreshed = await this.prisma.appointment.findUnique({
+            where: { id: appointmentId },
+            select: { prepaidRefundedAt: true, prepaidRefundedAmount: true },
+          });
+          if (refreshed) Object.assign(updated, refreshed);
+        }
+      } catch (err) {
+        this.logger.error(`Erro ao reter a taxa do pago antes #${appointmentId}:`, err);
+      }
+    }
+
     // A unidade cancelou: o sinal pago online volta pro cliente (a equipe
     // pode optar por reter, ex.: cliente avisou em cima da hora). Falta
     // (NO_SHOW) retém o sinal — é pra isso que ele existe.
@@ -4747,7 +4775,8 @@ export class BarbershopService {
     if (
       data.status === 'CANCELLED' &&
       appointment.status !== 'CANCELLED' &&
-      appointment.prepaidAt
+      appointment.prepaidAt &&
+      prepaidRetained == null
     ) {
       try {
         if (await this.refundPrepayment(appointmentId)) {
@@ -4764,12 +4793,13 @@ export class BarbershopService {
     // mutation nem falha o cancelamento em si.
     // Cancelamento pela unidade (profissional doente, imprevisto) não é culpa
     // do cliente: sem taxa
-    if (
-      (data.status === 'NO_SHOW' ||
-        (data.status === 'CANCELLED' && opts.cancelledBy !== 'business')) &&
-      appointment.status !== data.status
-    ) {
-      this.recordNoShowFee(barbershopId, updated, data.status).catch((err) =>
+    if (feeStatusChange) {
+      this.recordNoShowFee(
+        barbershopId,
+        updated,
+        must(data.status, 'situação'),
+        prepaidRetained ?? 0,
+      ).catch((err) =>
         this.logger.error(
           `Erro ao registrar taxa de no-show do agendamento #${appointmentId}:`,
           err,
@@ -4810,46 +4840,42 @@ export class BarbershopService {
     return this.hideAppointmentContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
-  private async recordNoShowFee(
+  /**
+   * Taxa de falta ou de cancelamento tardio deste horário, já descontado o
+   * sinal pago online que a unidade reteve. null = sem taxa (desligada, fora
+   * do prazo ou serviço sem valor).
+   */
+  private async noShowFeeFor(
     barbershopId: number,
     appointment: {
-      id: number;
       startAt: Date;
       services: Array<{ unitPrice: Decimal; quantity: number }>;
-      customer: { id: number };
       depositPaid?: boolean | null;
       depositPaidAt?: Date | null;
       depositAmount?: Decimal | null;
       depositRefundedAt?: Date | null;
     },
     newStatus: string,
-  ) {
+  ): Promise<{ amount: number; currency: string; reason: 'NO_SHOW' | 'LATE_CANCELLATION' } | null> {
     const barbershop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
       include: { network: true },
     });
-    if (!barbershop) return;
+    if (!barbershop) return null;
     const network = networkMoneyRules(barbershop, barbershop.network);
-    if (!network.noShowFeeEnabled) return;
+    if (!network.noShowFeeEnabled) return null;
 
     const isNoShow = newStatus === 'NO_SHOW';
     const isLateCancellation =
       newStatus === 'CANCELLED' &&
       appointment.startAt.getTime() - Date.now() < network.lateCancellationWindowHours * 3600000;
-    if (!isNoShow && !isLateCancellation) return;
-
-    // appointmentId é único em NoShowFee — calcula uma vez só, mesmo que o
-    // status mude de novo depois.
-    const existing = await this.prisma.noShowFee.findUnique({
-      where: { appointmentId: appointment.id },
-    });
-    if (existing) return;
+    if (!isNoShow && !isLateCancellation) return null;
 
     const serviceTotal = appointment.services.reduce(
       (sum, s) => sum + Number(s.unitPrice) * s.quantity,
       0,
     );
-    if (serviceTotal <= 0) return;
+    if (serviceTotal <= 0) return null;
 
     let feeAmount = 0;
     if (network.noShowFeeType === 'PERCENT' && network.noShowFeeValue) {
@@ -4867,16 +4893,85 @@ export class BarbershopService {
       roundMoney(feeAmount, barbershop.currency) - retained,
       barbershop.currency,
     );
-    if (feeAmount <= 0) return;
+    if (feeAmount <= 0) return null;
+    return {
+      amount: feeAmount,
+      currency: barbershop.currency,
+      reason: isNoShow ? 'NO_SHOW' : 'LATE_CANCELLATION',
+    };
+  }
+
+  /**
+   * Horário pago antes pelo app que vira falta ou cancelamento tardio: a
+   * unidade fica com a taxa (até o que foi pago) e devolve o resto. Devolve
+   * quanto ficou retido, ou null quando não há taxa (aí vale a regra de
+   * sempre: cancelamento devolve tudo, falta fica com a unidade).
+   */
+  private async retainFeeFromPrepayment(
+    barbershopId: number,
+    appointment: {
+      id: number;
+      startAt: Date;
+      services: Array<{ unitPrice: Decimal; quantity: number }>;
+      prepaidAmount?: Decimal | null;
+      prepaidRefundedAmount?: Decimal | null;
+      depositPaid?: boolean | null;
+      depositPaidAt?: Date | null;
+      depositAmount?: Decimal | null;
+      depositRefundedAt?: Date | null;
+    },
+    newStatus: string,
+  ): Promise<number | null> {
+    const fee = await this.noShowFeeFor(barbershopId, appointment, newStatus);
+    if (!fee) return null;
+    const paid = Number(appointment.prepaidAmount ?? 0);
+    const remaining = roundMoney(
+      paid - Number(appointment.prepaidRefundedAmount ?? 0),
+      fee.currency,
+    );
+    if (remaining <= 0) return null;
+    const retained = Math.min(fee.amount, remaining);
+    const back = roundMoney(remaining - retained, fee.currency);
+    if (back > 0) await this.refundPrepayment(appointment.id, back);
+    return retained;
+  }
+
+  private async recordNoShowFee(
+    barbershopId: number,
+    appointment: {
+      id: number;
+      startAt: Date;
+      services: Array<{ unitPrice: Decimal; quantity: number }>;
+      customer: { id: number };
+      depositPaid?: boolean | null;
+      depositPaidAt?: Date | null;
+      depositAmount?: Decimal | null;
+      depositRefundedAt?: Date | null;
+    },
+    newStatus: string,
+    /** Parte da taxa que já ficou com a unidade, do pago antes pelo app */
+    prepaidRetained = 0,
+  ) {
+    // appointmentId é único em NoShowFee — calcula uma vez só, mesmo que o
+    // status mude de novo depois.
+    const existing = await this.prisma.noShowFee.findUnique({
+      where: { appointmentId: appointment.id },
+    });
+    if (existing) return;
+    const fee = await this.noShowFeeFor(barbershopId, appointment, newStatus);
+    if (!fee) return;
+    // O que o pago antes já cobriu não fica devido de novo
+    const due = roundMoney(fee.amount - prepaidRetained, fee.currency);
+    if (due <= 0) return;
 
     await this.prisma.noShowFee.create({
       data: {
         appointmentId: appointment.id,
         customerId: appointment.customer.id,
         barbershopId,
-        amount: new Decimal(feeAmount),
-        currency: barbershop.currency,
-        reason: isNoShow ? 'NO_SHOW' : 'LATE_CANCELLATION',
+        amount: new Decimal(due),
+        currency: fee.currency,
+        reason: fee.reason,
       },
     });
   }
