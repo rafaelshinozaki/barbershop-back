@@ -875,6 +875,10 @@ model Review {
   // Comentário que a moderação decidiu manter: a unidade não denuncia de
   // novo o mesmo texto
   reportDismissedComment String?
+  // O cliente apagou a avaliação que a moderação tinha ocultado: some para
+  // ele, mas a linha fica (oculta), para a avaliação não voltar ao ar sendo
+  // apagada e escrita de novo (item 247)
+  withdrawnAt        DateTime?
   // EMAIL = e-mail automático depois do atendimento. STAFF = a equipe pediu
   // e o sistema mandou pro contato do cliente. Quem pediu fica no segundo caso.
   reviewSource       String?

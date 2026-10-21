@@ -143,6 +143,14 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
   });
 
   afterAll(async () => {
+    // Conversa, caixinha, avaliações e taxa não saem mais em cascata do
+    // horário (item 243): saem antes da unidade
+    await prisma.chatMessage.deleteMany({ where: { thread: { barbershopId: shopId } } });
+    await prisma.chatThread.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.appointmentTip.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.noShowFee.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.professionalReview.deleteMany({ where: { barbershopId: shopId } });
+    await prisma.customerRating.deleteMany({ where: { barbershopId: shopId } });
     await prisma.barbershop.deleteMany({ where: { id: shopId } });
     await prisma.customer.deleteMany({ where: { networkId } });
     await prisma.network.deleteMany({ where: { id: networkId } });

@@ -4,7 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry, LOCALE } from '../email/language';
-import { appointmentLinkCovers, appointmentReviewUrl, appointmentStaffReviewUrl, REVIEW_LINK_DAYS, reviewLinkRequester, verifyReviewToken } from './appointment-link';
+import {
+  appointmentLinkCovers,
+  appointmentReviewUrl,
+  appointmentStaffReviewUrl,
+  REVIEW_LINK_DAYS,
+  reviewLinkRequester,
+  verifyReviewToken,
+} from './appointment-link';
 import { unsubscribeLinks } from './marketing-unsubscribe';
 import { BarbershopService } from './barbershop.service';
 import { linkBarberToProfessional } from './professional';
@@ -107,9 +114,15 @@ export class ReviewRequestService {
         const lang = langForCountry(appt.barbershop.country);
         const first = appt.customer.name.split(' ')[0];
         const text = {
-          pt: `Oi, ${first}! Como foi com ${appt.barber.name} em ${appt.barbershop.name}? Avalie aqui: ${url()}`,
-          en: `Hi ${first}! How was your visit with ${appt.barber.name} at ${appt.barbershop.name}? Rate it here: ${url()}`,
-          es: `Hola, ${first}! ¿Qué tal con ${appt.barber.name} en ${appt.barbershop.name}? Evalúa aquí: ${url()}`,
+          pt: `Oi, ${first}! Como foi com ${appt.barber.name} em ${
+            appt.barbershop.name
+          }? Avalie aqui: ${url()}`,
+          en: `Hi ${first}! How was your visit with ${appt.barber.name} at ${
+            appt.barbershop.name
+          }? Rate it here: ${url()}`,
+          es: `Hola, ${first}! ¿Qué tal con ${appt.barber.name} en ${
+            appt.barbershop.name
+          }? Evalúa aquí: ${url()}`,
         }[lang];
         await this.notificationQueue.whatsapp(
           { kind: 'marketing', to: phone, message: text, lang },
@@ -119,7 +132,9 @@ export class ReviewRequestService {
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       this.logger.error(`Erro ao enviar pedido de avaliação #${appt.id}:`, err);
-      throw new BadRequestException('Não foi possível enviar o pedido de avaliação. Tente de novo.');
+      throw new BadRequestException(
+        'Não foi possível enviar o pedido de avaliação. Tente de novo.',
+      );
     }
     return true;
   }
@@ -311,8 +326,9 @@ export class ReviewRequestService {
       startAt: appt.startAt.toISOString(),
       timezone: appt.barbershop.timezone,
       solo: appt.barbershop.practiceKind === 'solo',
-      rating: existing?.rating ?? null,
-      comment: existing?.comment ?? null,
+      // A que o cliente apagou (oculta pela moderação) não aparece de novo
+      rating: existing && !existing.withdrawnAt ? existing.rating : null,
+      comment: existing && !existing.withdrawnAt ? existing.comment : null,
       professionalRating: appt.professionalReview?.rating ?? null,
       professionalComment: appt.professionalReview?.comment ?? null,
     };
@@ -384,9 +400,10 @@ export class ReviewRequestService {
     if (unit) {
       const existing = await this.findExisting(barbershopId, customerId, clientAccountId);
       if (existing) {
+        // Ocultada pela moderação: atualiza no lugar e continua oculta (item 247)
         await this.prisma.review.update({
           where: { id: existing.id },
-          data: { ...reviewEditData(existing, unit), ...origin },
+          data: { ...reviewEditData(existing, unit), ...origin, withdrawnAt: null },
         });
       } else {
         // Dois envios ao mesmo tempo: o índice único (unidade + ficha) segura

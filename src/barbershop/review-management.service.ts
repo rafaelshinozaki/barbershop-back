@@ -64,9 +64,7 @@ export class ReviewManagementService {
     },
   >(reviews: T[]) {
     const ids = [
-      ...new Set(
-        reviews.map((r) => r.requestedByUserId).filter((id): id is number => id != null),
-      ),
+      ...new Set(reviews.map((r) => r.requestedByUserId).filter((id): id is number => id != null)),
     ];
     const users = ids.length
       ? await this.prisma.user.findMany({
@@ -88,7 +86,7 @@ export class ReviewManagementService {
       reportReason: r.reportReason,
       hidden: r.hiddenAt != null,
       reviewSource: r.reviewSource,
-      requestedByName: r.requestedByUserId ? (names.get(r.requestedByUserId) ?? null) : null,
+      requestedByName: r.requestedByUserId ? names.get(r.requestedByUserId) ?? null : null,
       ...(r.barbershop
         ? { barbershopName: r.barbershop.name, barbershopSlug: r.barbershop.slug }
         : {}),

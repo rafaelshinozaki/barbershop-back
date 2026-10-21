@@ -62,13 +62,17 @@ describe('deleteAppointment', () => {
       status: 'COMPLETED',
       professionalReview: { id: 1 },
     });
-    await expect(service.deleteAppointment(1, 3, 9)).rejects.toThrow(new BadRequestException(REFUSE));
+    await expect(service.deleteAppointment(1, 3, 9)).rejects.toThrow(
+      new BadRequestException(REFUSE),
+    );
     expect(deleted).toEqual([]);
   });
 
   it('não exclui horário com caixinha', async () => {
     const { service, deleted } = build({ ...open, tips: [{ id: 2 }] });
-    await expect(service.deleteAppointment(1, 3, 9)).rejects.toThrow(new BadRequestException(REFUSE));
+    await expect(service.deleteAppointment(1, 3, 9)).rejects.toThrow(
+      new BadRequestException(REFUSE),
+    );
     expect(deleted).toEqual([]);
   });
 

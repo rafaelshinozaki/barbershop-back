@@ -1,12 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 
-const CONFIRM =
-  'Este serviço tem plano, pacote ou horário marcado. Confirme a desativação.';
-const PLAN_INACTIVE =
-  'Este plano não aceita assinatura nova porque o serviço foi desativado.';
-const PACKAGE_INACTIVE =
-  'Este pacote não está mais à venda porque o serviço foi desativado.';
+const CONFIRM = 'Este serviço tem plano, pacote ou horário marcado. Confirme a desativação.';
+const PLAN_INACTIVE = 'Este plano não aceita assinatura nova porque o serviço foi desativado.';
+const PACKAGE_INACTIVE = 'Este pacote não está mais à venda porque o serviço foi desativado.';
 
 function emptyLinks() {
   return {
@@ -23,7 +20,13 @@ describe('desativar serviço', () => {
     const prisma = {
       barbershopService: {
         findFirst: async () => ({ id: 4, isActive: true, depositAmount: null }),
-        update: async ({ where, data }: { where: { id: number }; data: { isActive?: boolean } }) => {
+        update: async ({
+          where,
+          data,
+        }: {
+          where: { id: number };
+          data: { isActive?: boolean };
+        }) => {
           updated.push({ id: where.id, isActive: data.isActive ?? true });
           return { id: where.id };
         },
@@ -94,9 +97,9 @@ describe('desativar serviço', () => {
       ...emptyLinks(),
       future: 1,
     });
-    await expect(
-      service.updateService(1, 3, 4, { isActive: false }),
-    ).rejects.toThrow(new BadRequestException(CONFIRM));
+    await expect(service.updateService(1, 3, 4, { isActive: false })).rejects.toThrow(
+      new BadRequestException(CONFIRM),
+    );
     expect(updated).toEqual([]);
   });
 });
