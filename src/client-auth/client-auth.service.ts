@@ -22,6 +22,7 @@ import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
 import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
+import { phoneDigitVariants } from '../common/phone.util';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -113,14 +114,35 @@ export class ClientAuthService {
   // o e-mail CONFIRMADO: antes ligava pelo e-mail/telefone digitado no
   // cadastro, e bastava cadastrar o e-mail de outra pessoa pra ver onde, quando
   // e quanto ela gastou. Telefone não liga nada (não há como confirmar).
+  /**
+   * Liga à conta as fichas com o mesmo e-mail confirmado. O e-mail da ficha
+   * foi digitado pela equipe (ou veio da página) sem confirmação: um erro de
+   * digitação entregava a ficha de outra pessoa a quem tem o endereço. Por
+   * isso o telefone da conta também tem de ser o da ficha (item 251).
+   */
   private async linkVerifiedCustomers(account: {
     id: number;
     email: string;
     emailVerifiedAt: Date | null;
+    phone?: string | null;
   }) {
     if (!account.emailVerifiedAt) return;
+    const accountPhones = new Set(phoneDigitVariants(account.phone));
+    if (!accountPhones.size) return;
+    const candidates = await this.prisma.customer.findMany({
+      where: {
+        clientAccountId: null,
+        deletedAt: null,
+        email: { equals: account.email, mode: 'insensitive' },
+      },
+      select: { id: true, phone: true },
+    });
+    const ids = candidates
+      .filter((c) => phoneDigitVariants(c.phone).some((v) => v.length >= 8 && accountPhones.has(v)))
+      .map((c) => c.id);
+    if (!ids.length) return;
     await this.prisma.customer.updateMany({
-      where: { clientAccountId: null, email: { equals: account.email, mode: 'insensitive' } },
+      where: { id: { in: ids }, clientAccountId: null },
       data: { clientAccountId: account.id },
     });
   }
@@ -721,6 +743,10 @@ export class ClientAuthService {
       where: { id: clientAccountId },
       data: { name: name.trim(), phone: phone?.trim() || null },
     });
+    // Telefone novo pode ser o que faltava para ligar as fichas (item 251)
+    if ((updated.phone ?? '') !== (account.phone ?? '')) {
+      await this.linkVerifiedCustomers(updated);
+    }
     return toDTO(updated);
   }
 
