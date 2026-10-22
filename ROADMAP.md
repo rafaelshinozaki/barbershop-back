@@ -2827,3 +2827,19 @@ Foram lidos o descadastro pelo WhatsApp (`WhatsappOptOutService`), o link de des
      - Não existe caminho de volta: a equipe é recusada ("só pode voltar a receber por conta própria"), mas não há link, tela ou palavra no WhatsApp para a pessoa voltar. O link de descadastro do e-mail também só marca.
      
      **Fazer:** separar o descadastro por canal (e-mail e WhatsApp) e por rede no e-mail. No WhatsApp, como o número é um só da plataforma, guardar o descadastro pelo telefone (tabela própria), sem mexer no e-mail. Pedido de avaliação fora do descadastro de marketing (ou com opção própria). Página do link e resposta no WhatsApp (ex.: "VOLTAR") para voltar a receber, e a área do cliente com as opções. Teste: SAIR numa rede não tira o e-mail nem as outras redes, e a pessoa consegue voltar.
+
+### Centésima primeira rodada (2026-10-22): ficha de saúde e pedido de avaliação pela equipe
+
+Foram lidas as mudanças dos itens 243 a 246: exclusão de horário, desativação de serviço, quem vê a ficha de saúde (`healthFormView`) e o pedido de avaliação enviado pela equipe (`staffReviewLink`).
+
+276. ⬜ **O profissional vê a ficha de saúde de qualquer cliente marcando um horário com ele** (back: `healthFormView`, `createAppointment`):
+     - A regra nova libera as respostas de saúde para o profissional que tem um horário com o cliente nos últimos 90 dias ou no futuro, em qualquer situação menos cancelado. O próprio profissional (barbeiro e barbeiro básico) pode criar horário na sua agenda para qualquer cliente da rede (`createAppointment` só confere que o cliente é da rede).
+     - Basta marcar um horário qualquer, mesmo para daqui a meses, para ler a anamnese e o teste de alergia daquele cliente. Depois o horário pode ficar parado ou virar falta (falta também conta). A trava do item 244 não segura quem quer olhar.
+     
+     **Fazer:** contar só o horário que o cliente marcou ou que a recepção/gerência marcou (não o criado pelo próprio profissional), ou só atendimento concluído ou em andamento, e o futuro só nos próximos dias (ex.: 7). Registrar quem abriu a ficha de saúde (como no histórico de alterações) para a gerência ver. Teste: profissional marca horário para cliente alheio e não vê a ficha.
+
+277. ⬜ **O pedido de avaliação pela equipe pode ser mandado sem limite, e o WhatsApp vai sem o rodapé de saída** (back: `ReviewRequestService.staffReviewLink`):
+     - Cada clique da recepção para cima manda de novo o e-mail (ou o WhatsApp) para o cliente; a chave de envio leva o horário do clique, então a fila nunca descarta o repetido. Não há limite por atendimento nem intervalo mínimo: dá para mandar dezenas de pedidos para o mesmo cliente.
+     - Sem e-mail, o pedido vai pelo WhatsApp no modelo de campanha (`kind: 'marketing'`), mas sem passar por `whatsappMarketingBody`: sai sem "Responda SAIR" e sem a limpeza de quebra de linha que o modelo exige, e não conta no limite de campanhas da unidade.
+     
+     **Fazer:** um pedido da equipe por atendimento (ou um a cada 7 dias), além do e-mail automático, gravando quando foi enviado; repetir avisa que já foi pedido. No WhatsApp, passar pelo mesmo `whatsappMarketingBody` (ou um modelo próprio de pedido de avaliação). Teste com dois pedidos seguidos.
