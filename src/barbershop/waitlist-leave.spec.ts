@@ -32,9 +32,7 @@ function match(value: unknown, expected: unknown): boolean {
 }
 
 function matches(row: Row, where: Record<string, unknown>) {
-  return Object.entries(where).every(([key, expected]) =>
-    match(row[key as keyof Row], expected),
-  );
+  return Object.entries(where).every(([key, expected]) => match(row[key as keyof Row], expected));
 }
 
 function build(slotTaken = false) {
