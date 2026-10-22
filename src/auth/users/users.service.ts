@@ -53,6 +53,12 @@ const DUMMY_PASSWORD_HASH = '$2a$10$PeSKuJ0PbHqOusQLVmt5vum0Bz05aiX1hAxEcm16nhEu
 /** Cargos que o cadastro pode criar (o resto só o admin atribui) */
 const SIGNUP_ROLES: string[] = [Role.BARBERSHOP_OWNER, Role.BARBERSHOP_EMPLOYEE];
 
+/** Link de criar a senha da conta importada pela planilha */
+const IMPORT_PASSWORD_LINK_HOURS = 7 * 24;
+
+export const TERMS_REQUIRED_MESSAGE =
+  'Aceite os termos de uso e a política de privacidade para criar a conta.';
+
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -217,7 +223,7 @@ export class UserService {
 
   async createUser(userData: NewUserSchema) {
     const email = normalizeEmail(userData.email);
-    this.logger.log(`Creating user with email: ${email}`);
+    this.logger.log('Creating user');
 
     try {
       // Verificar se o usuário já existe (maiúsculas não criam outra conta)
@@ -246,6 +252,17 @@ export class UserService {
         throw new HttpException('Registration data already in use', 400);
       }
 
+      // Aceite dos termos e da política de privacidade é obrigatório (LGPD), e
+      // a senha segue a mesma regra da troca e da recuperação. O cadastro
+      // social não tem senha digitada (item 257)
+      if (userData.readTerms !== true) {
+        throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
+      }
+      const socialSignup =
+        !!(userData as { provider?: string }).provider &&
+        (userData as { provider?: string }).provider !== 'local';
+      if (!socialSignup) this.validatePassword(userData.password ?? '');
+
       // Hash da senha
       const hashedPassword = await bcrypt.hash(userData.password, 10);
 
@@ -273,7 +290,8 @@ export class UserService {
           gender: userData.gender,
           // "1990-01-01" (só a data) passa na validação mas o Prisma quer data e hora
           birthdate: userData.birthdate ? new Date(userData.birthdate) : userData.birthdate,
-          readTerms: userData.readTerms,
+          readTerms: true,
+          termsAcceptedAt: new Date(),
           membership: MEMBERSHIP_STATUS.FREE,
           isActive: true,
           roleId: defaultRole.id,
@@ -385,16 +403,15 @@ export class UserService {
           newUser.email,
         );
 
-        this.logger.log(`Welcome email sent successfully to ${newUser.email}`);
+        this.logger.log(`Welcome email sent to user ${newUser.id}`);
       } catch (error) {
-        this.logger.warn(`Failed to send welcome email to ${newUser.email}`, error);
+        this.logger.warn(`Failed to send welcome email to user ${newUser.id}`, error);
       }
 
       await this.linkClientAccountOnSignup(newUser, userData.password);
 
       this.logger.log(`User created successfully: ${result.id}`);
       this.logger.log(`User ID: ${result.id}`);
-      this.logger.log(`User email: ${result.email}`);
       this.logger.log(`User isActive: ${result.isActive}`);
 
       return result;
@@ -869,9 +886,9 @@ export class UserService {
           user.email,
         );
 
-        this.logger.log(`Welcome email sent successfully to social user ${user.email}`);
+        this.logger.log(`Welcome email sent to social user ${user.id}`);
       } catch (error) {
-        this.logger.warn(`Failed to send welcome email to social user ${user.email}`, error);
+        this.logger.warn(`Failed to send welcome email to social user ${user.id}`, error);
       }
     }
     const sub = await this.prisma.subscription.findFirst({
@@ -1039,6 +1056,7 @@ export class UserService {
   private async sendPasswordResetEmail(
     user: { id: number; email: string; fullName: string },
     token: string,
+    expirationHours = 2,
   ) {
     try {
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
@@ -1050,7 +1068,7 @@ export class UserService {
         FullName: user.fullName,
         AppName: 'Barbershop',
         ResetURL: resetURL,
-        ExpirationHours: 2,
+        ExpirationHours: expirationHours,
         SupportEmail: supportEmail(),
         Year: new Date().getFullYear(),
       };
@@ -1206,7 +1224,7 @@ export class UserService {
       data: { password: hashedPassword, emailVerifiedAt: user.emailVerifiedAt ?? new Date() },
     });
 
-    this.logger.log(`Password for user with email: ${email} has been updated`);
+    this.logger.log(`Password for user ${user.id} has been updated`);
 
     // Marcar o token usado e invalidar todos os outros tokens pendentes deste usuário
     await this.prisma.passwordResetToken.updateMany({
@@ -1293,7 +1311,6 @@ export class UserService {
 
   async verifyUser(email: string, password: string) {
     email = normalizeEmail(email);
-    this.logger.log(`Verifying user with email: ${email}`);
     if (await this.isLoginBlocked(email)) {
       throw new UnauthorizedException('Too many login attempts. Please try again later.');
     }
@@ -1590,7 +1607,7 @@ export class UserService {
       throw new NotFoundException(`User with ID ${userId} not found`);
     }
 
-    this.logger.log(`Found user: ${user.email}, current config:`, user.userSystemConfig);
+    this.logger.log(`Found user ${user.id}, current config:`, user.userSystemConfig);
 
     try {
       // Filtrar apenas os campos que foram fornecidos
@@ -1673,7 +1690,7 @@ export class UserService {
       // Só em desenvolvimento — em produção quem lesse o log trocaria a
       // senha de qualquer usuário
       if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(`DEVELOPMENT: change-password code for ${email} is ${code}`);
+        this.logger.warn(`DEVELOPMENT: change-password code is ${code}`);
       }
     }
 
@@ -1827,7 +1844,7 @@ export class UserService {
     } catch (error) {
       this.logger.error(`Failed to send email for two-factor code: ${error.message}`);
       if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(`DEVELOPMENT: two-factor enable code for ${user.email} is ${code}`);
+        this.logger.warn(`DEVELOPMENT: two-factor enable code for user ${user.id} is ${code}`);
       }
     }
 
@@ -1866,7 +1883,7 @@ export class UserService {
   }
 
   async sendLoginCode(user: UserDTO, loginId: string) {
-    this.logger.log(`Sending login code - loginId: ${loginId}, user: ${user.email}`);
+    this.logger.log(`Sending login code - loginId: ${loginId}, user: ${user.id}`);
 
     // Invalidar código anterior do mesmo usuário
     await this.withRedis(async () => {
@@ -1905,7 +1922,7 @@ export class UserService {
       // (ex: uma instabilidade no provedor de email vira um jeito de
       // qualquer um com acesso ao log completar o 2FA de qualquer usuário)
       if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(`DEVELOPMENT: login code for ${user.email} is ${code}`);
+        this.logger.warn(`DEVELOPMENT: login code for user ${user.id} is ${code}`);
       }
     }
 
@@ -2260,6 +2277,15 @@ export class UserService {
     return downloadUrl;
   }
 
+  /** Aceite dos termos e da política de privacidade pela própria pessoa (item 256) */
+  async acceptTerms(userId: number) {
+    await this.prisma.user.updateMany({
+      where: { id: userId, readTerms: false },
+      data: { readTerms: true, termsAcceptedAt: new Date() },
+    });
+    return true;
+  }
+
   async importUsersFromCsv(usersData: any[]): Promise<{
     totalProcessed: number;
     successCount: number;
@@ -2267,7 +2293,6 @@ export class UserService {
     errors: Array<{ row: number; email: string; error: string }>;
     success: Array<{ email: string; fullName: string }>;
   }> {
-    this.logger.log(`Starting import of ${usersData.length} users`);
     this.logger.log(`Bulk user import: ${usersData.length} rows`);
 
     const result = {
@@ -2312,20 +2337,9 @@ export class UserService {
           continue;
         }
 
-        // Validar senha
-        try {
-          this.validatePassword(userData.password);
-        } catch (error) {
-          result.errors.push({
-            row: rowNumber,
-            email: userData.email,
-            error: 'Senha não atende aos requisitos de complexidade',
-          });
-          result.errorCount++;
-          continue;
-        }
-
-        // Converter isActive para boolean
+        // A senha, o aceite dos termos e o plano da planilha não valem: a
+        // pessoa cria a própria senha pelo link e aceita os termos no
+        // primeiro acesso; plano pago só pela cobrança (item 256)
         let isActive = false;
         if (userData.isActive !== undefined && userData.isActive !== null) {
           if (typeof userData.isActive === 'string') {
@@ -2334,42 +2348,6 @@ export class UserService {
             isActive = Boolean(userData.isActive);
           }
         }
-
-        // Validar membership
-        let membership = MEMBERSHIP_STATUS.FREE;
-        if (userData.membership) {
-          const membershipUpper = userData.membership.toUpperCase();
-          if (Object.values(MEMBERSHIP_STATUS).includes(membershipUpper as MEMBERSHIP_STATUS)) {
-            membership = membershipUpper as MEMBERSHIP_STATUS;
-          } else {
-            result.errors.push({
-              row: rowNumber,
-              email: userData.email,
-              error: `Valor inválido para membership: ${
-                userData.membership
-              }. Valores válidos: ${Object.values(MEMBERSHIP_STATUS).join(', ')}`,
-            });
-            result.errorCount++;
-            continue;
-          }
-        }
-
-        // Debug logging
-        this.logger.log(
-          `Processing user ${userData.email}: isActive=${
-            userData.isActive
-          } (type: ${typeof userData.isActive}) -> converted: ${isActive}, membership=${
-            userData.membership
-          } -> converted: ${membership}`,
-        );
-
-        // Log the final data being sent to Prisma
-        this.logger.log(`Final data for ${userData.email}:`, {
-          isActive: isActive,
-          membership: membership,
-          isActiveType: typeof isActive,
-          membershipType: typeof membership,
-        });
 
         // Mesmo documento com ou sem máscara: mesma regra do cadastro
         const documentNumber = canonicalIdDoc(userData.idDocNumber, userData.address?.country);
@@ -2392,13 +2370,14 @@ export class UserService {
             provider: 'local',
             email,
             roleId: userRole.id,
-            password: await bcrypt.hash(userData.password, 10),
+            // Ninguém sabe essa senha: a pessoa cria a dela pelo link do e-mail
+            password: await bcrypt.hash(randomUUID() + randomUUID(), 10),
             fullName: userData.fullName,
             gender: userData.gender,
             phone: userData.phone,
             idDocNumber: documentNumber,
             birthdate: new Date(userData.birthdate),
-            readTerms: userData.readTerms,
+            readTerms: false,
             membership: MEMBERSHIP_STATUS.FREE,
             isActive: isActive,
             address: {
@@ -2429,86 +2408,38 @@ export class UserService {
           },
         });
 
-        // Enviar email de boas-vindas (opcional)
-        try {
-          const context = {
-            FullName: newUser.fullName,
-            AppName: 'Barbershop',
-            LoginURL: appUrl('/login'),
-            SupportEmail: supportEmail(),
-            Year: new Date().getFullYear(),
-          };
+        // Link para a pessoa criar a própria senha (vale 7 dias)
+        const token = randomUUID();
+        await this.prisma.passwordResetToken.create({
+          data: {
+            token: hashResetToken(token),
+            userId: newUser.id,
+            expiresAt: new Date(Date.now() + IMPORT_PASSWORD_LINK_HOURS * 3_600_000),
+          },
+        });
+        await this.sendPasswordResetEmail(newUser, token, IMPORT_PASSWORD_LINK_HOURS);
 
-          await this.emailService.sendTemplateEmail(
-            newUser.id,
-            'welcome_email',
-            context,
-            {
-              pt: 'Bem-vindo ao Barbershop',
-              en: 'Welcome to Barbershop',
-              es: 'Bienvenido a Barbershop',
-            },
-            'welcome-email',
-            newUser.email,
-          );
-        } catch (error) {
-          this.logger.warn(`Failed to send welcome email to ${newUser.email}`, error);
-        }
-
-        // Vincular ao plano gratuito se não especificado
-        if (!userData.membership || userData.membership === MEMBERSHIP_STATUS.FREE) {
-          let freePlan = await this.prisma.plan.findFirst({ where: { name: 'Free' } });
-
-          if (!freePlan) {
-            freePlan = await this.prisma.plan.create({
-              data: {
-                name: 'Free',
-                description: 'Plano gratuito',
-                price: new Prisma.Decimal(0),
-                billingCycle: 'MONTHLY',
-                features: 'Funcionalidades básicas',
-              },
-            });
-          }
-
-          await this.prisma.subscription.create({
+        // Plano gratuito, como no cadastro (o pago é contratado pela cobrança)
+        let freePlan = await this.prisma.plan.findFirst({ where: { name: 'Free' } });
+        if (!freePlan) {
+          freePlan = await this.prisma.plan.create({
             data: {
-              userId: newUser.id,
-              planId: freePlan.id,
-              startSubDate: new Date(),
-              status: 'active',
-            },
-          });
-        } else if (membership === MEMBERSHIP_STATUS.PAID) {
-          // Para usuários PAID, buscar um plano pago ou criar um padrão
-          let paidPlan = await this.prisma.plan.findFirst({
-            where: {
-              name: { not: 'Free' },
-              price: { gt: new Prisma.Decimal(0) },
-            },
-          });
-
-          if (!paidPlan) {
-            paidPlan = await this.prisma.plan.create({
-              data: {
-                name: 'Premium',
-                description: 'Plano premium',
-                price: new Prisma.Decimal(29.9),
-                billingCycle: 'MONTHLY',
-                features: 'Funcionalidades premium',
-              },
-            });
-          }
-
-          await this.prisma.subscription.create({
-            data: {
-              userId: newUser.id,
-              planId: paidPlan.id,
-              startSubDate: new Date(),
-              status: 'active',
+              name: 'Free',
+              description: 'Plano gratuito',
+              price: new Prisma.Decimal(0),
+              billingCycle: 'MONTHLY',
+              features: 'Funcionalidades básicas',
             },
           });
         }
+        await this.prisma.subscription.create({
+          data: {
+            userId: newUser.id,
+            planId: freePlan.id,
+            startSubDate: new Date(),
+            status: PLANO_STATUS.ACTIVE,
+          },
+        });
 
         result.success.push({
           email: newUser.email,
@@ -2516,7 +2447,7 @@ export class UserService {
         });
         result.successCount++;
 
-        this.logger.log(`Successfully imported user: ${newUser.email}`);
+        this.logger.log(`Imported user ${newUser.id} (row ${rowNumber})`);
       } catch (error) {
         this.logger.error(`Error importing user at row ${rowNumber}:`, error);
         result.errors.push({
@@ -2606,7 +2537,7 @@ export class UserService {
             userData.email,
           );
         } catch (error) {
-          this.logger.error(`Failed to send trial ended email to ${userData.email}`, error);
+          this.logger.error(`Failed to send trial ended email to user ${userId}`, error);
         }
       }
 

@@ -104,7 +104,6 @@ describe('guards das operações GraphQL', () => {
  */
 const PUBLIC_ROUTES: Record<string, string> = {
   'auth/auth.controller.ts#verifyLogin': 'login em duas etapas',
-  'auth/users/users.controller.ts#createUser': 'cadastro',
   'barbershop/employee-invite.controller.ts#validateInvite': 'convite (token)',
   'barbershop/employee-invite.controller.ts#acceptInvite': 'convite (token)',
   'barbershop/employee-invite.controller.ts#resendInviteEmail':

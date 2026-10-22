@@ -56,12 +56,12 @@ describe('regras da rede', () => {
     await service.updateNetwork(1, { noShowFeeType: 'PERCENT', noShowFeeValue: 30 });
     expect(updates[0]).toMatchObject({ noShowFeeType: 'PERCENT', noShowFeeValue: 30 });
 
-    await expect(
-      rejected({ noShowFeeType: 'FIXED', noShowFeeValue: -5 }),
-    ).rejects.toThrow(NETWORK_FEE_FIXED_MESSAGE);
-    await expect(
-      rejected({ noShowFeeType: 'FIXED', noShowFeeValue: 2_000_000 }),
-    ).rejects.toThrow(NETWORK_FEE_FIXED_MESSAGE);
+    await expect(rejected({ noShowFeeType: 'FIXED', noShowFeeValue: -5 })).rejects.toThrow(
+      NETWORK_FEE_FIXED_MESSAGE,
+    );
+    await expect(rejected({ noShowFeeType: 'FIXED', noShowFeeValue: 2_000_000 })).rejects.toThrow(
+      NETWORK_FEE_FIXED_MESSAGE,
+    );
   });
 
   it('a janela de cancelamento é um inteiro de 0 a 72 horas', async () => {
@@ -86,7 +86,9 @@ describe('regras da rede', () => {
     );
     await expect(rejected({ loyaltyPointValue: -1 })).rejects.toThrow(NETWORK_POINT_VALUE_MESSAGE);
     await expect(rejected({ loyaltyPointValue: 101 })).rejects.toThrow(NETWORK_POINT_VALUE_MESSAGE);
-    await expect(rejected({ referralBonusPoints: 1_000_000 })).rejects.toThrow(NETWORK_BONUS_MESSAGE);
+    await expect(rejected({ referralBonusPoints: 1_000_000 })).rejects.toThrow(
+      NETWORK_BONUS_MESSAGE,
+    );
     await expect(rejected({ foundationYear: 9999 })).rejects.toThrow(NETWORK_YEAR_MESSAGE);
     await expect(rejected({ foundationYear: 20.5 })).rejects.toThrow(NETWORK_YEAR_MESSAGE);
   });
@@ -104,7 +106,9 @@ describe('regras da rede', () => {
     await expect(rejected({ logoUrl: 'http://cdn.example/logo.png' })).rejects.toThrow(
       NETWORK_LOGO_MESSAGE,
     );
-    await expect(rejected({ logoUrl: 'javascript:alert(1)' })).rejects.toThrow(NETWORK_LOGO_MESSAGE);
+    await expect(rejected({ logoUrl: 'javascript:alert(1)' })).rejects.toThrow(
+      NETWORK_LOGO_MESSAGE,
+    );
     await expect(rejected({ name: 'n'.repeat(121) })).rejects.toThrow(NETWORK_NAME_MESSAGE);
     await expect(rejected({ city: 'c'.repeat(81) })).rejects.toThrow(NETWORK_CITY_MESSAGE);
     await expect(rejected({ description: 'd'.repeat(1001) })).rejects.toThrow(

@@ -89,7 +89,7 @@ export class AuthResolver {
   @ThrottleLogin()
   async login(@Args('input') loginInput: LoginInput, @Context() context: any): Promise<any> {
     const { req, res } = context;
-    this.logger.log('Login attempt for email', loginInput.email);
+    this.logger.log('Login attempt');
 
     const dbUser = await this.userService.verifyUser(loginInput.email, loginInput.password);
 

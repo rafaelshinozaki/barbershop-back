@@ -1472,11 +1472,7 @@ export class BarbershopService {
     }
     if (data.loyaltyPointValue !== undefined) {
       const pointValue = Number(data.loyaltyPointValue);
-      if (
-        !Number.isFinite(pointValue) ||
-        pointValue < 0 ||
-        pointValue > moneyCap(100, currency)
-      ) {
+      if (!Number.isFinite(pointValue) || pointValue < 0 || pointValue > moneyCap(100, currency)) {
         throw new BadRequestException(NETWORK_POINT_VALUE_MESSAGE);
       }
     }
@@ -3293,9 +3289,7 @@ export class BarbershopService {
     });
     if (subs.length === 0) return;
     const shopIds = [...new Set(subs.map((sub) => sub.barbershopId))];
-    const refunds = refundUnused
-      ? await this.unusedClubCycles(shopIds, new Date(), accountId)
-      : [];
+    const refunds = refundUnused ? await this.unusedClubCycles(shopIds, new Date(), accountId) : [];
     const refundBySub = new Map(refunds.map((refund) => [refund.subscriptionId, refund]));
     for (const sub of subs) {
       try {

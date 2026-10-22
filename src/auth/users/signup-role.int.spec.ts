@@ -20,7 +20,7 @@ describe('Cadastro: cargo (integração)', () => {
   );
   let n = 0;
 
-  const signup = (roleName?: string) => {
+  const signup = (roleName?: string, over: Record<string, unknown> = {}) => {
     n++;
     return service.createUser({
       email: `role-${n}-${RUN}@test.local`,
@@ -42,6 +42,7 @@ describe('Cadastro: cargo (integração)', () => {
       },
       userSystemConfig: { language: 'pt' },
       ...(roleName ? { roleName } : {}),
+      ...over,
     } as never);
   };
   const roleOf = async (email: string) =>
@@ -66,6 +67,7 @@ describe('Cadastro: cargo (integração)', () => {
     await prisma.address.deleteMany({ where });
     await prisma.notificationPreference.deleteMany({ where });
     await prisma.payment.deleteMany({ where: { subscription: where } });
+    await prisma.passwordResetToken.deleteMany({ where });
     await prisma.subscription.deleteMany({ where });
     await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`%-${RUN}@test.local`}`;
     await prisma.$disconnect();
@@ -83,5 +85,63 @@ describe('Cadastro: cargo (integração)', () => {
     expect(await roleOf(`role-${n}-${RUN}@test.local`)).toBe(Role.BARBERSHOP_EMPLOYEE);
     await signup();
     expect(await roleOf(`role-${n}-${RUN}@test.local`)).toBe(Role.BARBERSHOP_OWNER);
+  });
+
+  it('senha fraca e cadastro sem aceitar os termos são recusados; o aceite fica com a data (item 257)', async () => {
+    await expect(signup(undefined, { password: '1' })).rejects.toThrow(
+      'Password does not meet the complexity requirements.',
+    );
+    await expect(signup(undefined, { readTerms: false })).rejects.toThrow(
+      'Aceite os termos de uso',
+    );
+    const created = await signup();
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: created.id } });
+    expect(row.readTerms).toBe(true);
+    expect(row.termsAcceptedAt).not.toBeNull();
+  });
+
+  it('importação pela planilha: sem a senha, o aceite e o plano pago da planilha (item 256)', async () => {
+    const email = `import-${RUN}@test.local`;
+    const result = await service.importUsersFromCsv([
+      {
+        email,
+        password: 'qualquer',
+        fullName: 'Importada',
+        gender: 'female',
+        phone: `+5513${RUN}`.slice(0, 20),
+        idDocNumber: `imp${RUN}`.slice(-20),
+        birthdate: '1990-01-01',
+        readTerms: true,
+        membership: 'PAID',
+        isActive: 'true',
+        address: {
+          zipcode: '12200000',
+          street: 'Rua A',
+          city: 'SJC',
+          neighborhood: 'Centro',
+          state: 'SP',
+          country: 'BR',
+        },
+        userSystemConfig: { language: 'pt' },
+      },
+    ]);
+    expect(result.successCount).toBe(1);
+    const user = await prisma.user.findFirstOrThrow({
+      where: { email },
+      include: { subscriptions: { include: { plan: true } } },
+    });
+    expect(user.readTerms).toBe(false);
+    expect(user.membership).toBe('FREE');
+    expect(user.subscriptions).toHaveLength(1);
+    expect(user.subscriptions[0].status).toBe('ACTIVE');
+    expect(Number(user.subscriptions[0].plan.price)).toBe(0);
+    // A senha da planilha não entra; a pessoa recebe o link para criar a dela
+    await expect(service.verifyUser(email, 'qualquer')).rejects.toThrow();
+    expect(await prisma.passwordResetToken.count({ where: { userId: user.id } })).toBe(1);
+
+    await service.acceptTerms(user.id);
+    const accepted = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(accepted.readTerms).toBe(true);
+    expect(accepted.termsAcceptedAt).not.toBeNull();
   });
 });

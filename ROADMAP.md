@@ -2636,7 +2636,7 @@ Foram lidos o cadastro de serviço, pacote e plano do clube (valores, Stripe, mu
 
 Foram lidos o cadastro de profissional pela equipe, o perfil público do profissional, as rotas REST de administração que o backoffice ainda usa (lista, ativar, plano, pagamento) e a importação de contas por planilha (`/user/admin/import-csv`, permissão `users.import` no backoffice).
 
-256. ⬜ **Importar contas pela planilha cria plano pago de graça, aceita os termos pela pessoa e grava e-mails no log** (back: `UsersService.importUsersFromCsv`):
+256. ✅ **Importar contas pela planilha cria plano pago de graça, aceita os termos pela pessoa e grava e-mails no log** (back: `UsersService.importUsersFromCsv`):
      - Linha com `membership = PAID`: a conta é criada com `membership: FREE`, e uma assinatura `active` sem fim, sem Stripe e sem cobrança é ligada ao primeiro plano pago que o banco achar (`findFirst` sem ordem: pode ser qualquer um). Se não houver plano pago, a importação cria um plano "Premium" de R$ 29,90 no catálogo de planos. O campo `membership` fica `FREE`.
      - A assinatura criada pela importação (grátis ou paga) é gravada com `status: 'active'` em minúsculas, e o resto do sistema procura `PLANO_STATUS.ACTIVE` (`'ACTIVE'`): para os limites e módulos do plano (`getPlanLimitsForOwner`, `getBarbershopPlan`), para as rotas de pagamento (`SubscriptionGuard`) e para a troca de plano pelo backoffice ("Subscription not found"), a conta importada não tem plano nenhum. O plano que a planilha pediu não vale, e a assinatura fica parada no banco.
      - `readTerms` vem da planilha: a equipe da plataforma marca, em nome da pessoa, que ela leu e aceitou os termos (consentimento da LGPD). A senha também vem da planilha (a equipe sabe a senha da conta), o e-mail não é confirmado e o e-mail de boas-vindas não traz link para a pessoa criar a própria senha.
@@ -2644,17 +2644,21 @@ Foram lidos o cadastro de profissional pela equipe, o perfil público do profiss
      
      **Fazer:** a importação cria a conta sem senha e sem aceite: a pessoa recebe o link para criar a senha, confirma o e-mail e aceita os termos no primeiro acesso. Plano pago só pelo fluxo de cobrança (ou como cortesia registrada, com prazo e quem concedeu, como o Destaque cortesia); nunca criar plano no catálogo pela importação. A assinatura usa `PLANO_STATUS.ACTIVE`, e uma migração corrige as que já foram gravadas como `'active'`. Log só com a contagem e o número da linha.
 
+     **Feito:** a importação ignora a senha, o `readTerms` e o `membership` da planilha. A conta nasce com uma senha aleatória que ninguém sabe e `readTerms: false`; a pessoa recebe o e-mail para criar a própria senha (link válido por 7 dias), o que também prova que o e-mail é dela. A assinatura é sempre a do plano Free, com `PLANO_STATUS.ACTIVE` (a importação não cria mais plano no catálogo). A migração `20261227100000_user_terms_accepted` passa as assinaturas do plano Free gravadas como `'active'` para `ACTIVE`. As de plano pago dadas pela importação ficam `INACTIVE` (com a data de cancelamento), e a conta recebe o Free. O log só traz a contagem, o id e o número da linha. A nova mutation `acceptTerms` grava o aceite no primeiro acesso, mas a tela do front que pede esse aceite ainda falta. Teste em `signup-role.int.spec.ts`.
+
 ### Octogésima sexta rodada (2026-10-20): cadastro da equipe e o que vai para o log
 
 Foram lidos o cadastro de conta da equipe (dono e profissional) pelo GraphQL e pela rota REST pública, a troca de plano pelo backoffice (com a sincronização do preço no Stripe) e os logs do serviço de usuários.
 
-257. ⬜ **O cadastro da equipe aceita qualquer senha e conta sem aceitar os termos; o log ainda grava e-mails** (back: `UsersService.createUser`, `CreateUserInput`, `POST /user/create`; logs do `UsersService` e do `UserResolver.me`):
+257. ✅ **O cadastro da equipe aceita qualquer senha e conta sem aceitar os termos; o log ainda grava e-mails** (back: `UsersService.createUser`, `CreateUserInput`, `POST /user/create`; logs do `UsersService` e do `UserResolver.me`):
      - A regra de senha forte (`validatePassword`: 8 caracteres, maiúscula, minúscula, número e símbolo) vale na troca e na recuperação de senha, mas não no cadastro: `CreateUserInput.password` só tem `@IsString()` e `createUser` não confere. Uma conta de dono (que vê os clientes e o caixa) pode ser criada com a senha `1`.
      - `readTerms` só precisa ser booleano: o cadastro com `readTerms: false` cria a conta normalmente, sem o aceite dos termos e da política de privacidade.
      - A rota REST `POST /user/create` (pública) continua aceitando o mesmo cadastro por fora do GraphQL.
      - Os logs ainda gravam o e-mail das pessoas em vários pontos: a cada chamada da query `me` (duas vezes), no cadastro, no envio do código de login, na verificação, na troca de senha, na configuração do usuário, nos e-mails de boas-vindas, de fim do teste grátis e de fatura (o item 6 tirou isso dos outros serviços).
      
      **Fazer:** `createUser` passa por `validatePassword` (com a mesma mensagem da tela) e recusa `readTerms` diferente de `true`, guardando quando aceitou. A rota REST de cadastro sai (o front usa o GraphQL) ou passa pelas mesmas regras. Logs com o id da conta no lugar do e-mail.
+
+     **Feito:** `createUser` passa por `validatePassword`, com a mesma mensagem da troca de senha (o cadastro pelo Google ou pela Apple não tem senha digitada e fica de fora). Também recusa `readTerms` diferente de `true` (motivo `TERMS_REQUIRED`) e grava `termsAcceptedAt`. A rota REST pública `POST /user/create` saiu. Os logs do `UsersService`, da query `me` e do login usam o id da conta no lugar do e-mail. Teste em `signup-role.int.spec.ts`.
 
 ### Octogésima sétima rodada (2026-10-20): quem dispara a cobrança dos planos
 

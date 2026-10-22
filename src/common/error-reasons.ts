@@ -160,6 +160,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'User has no role assigned. Contact administrator.': 'USER_NO_ROLE_ASSIGNED',
   'Sessão não fornecida': 'SESSION_NOT_PROVIDED',
   'Password does not meet the complexity requirements.': 'PASSWORD_TOO_WEAK',
+  'Aceite os termos de uso e a política de privacidade para criar a conta.': 'TERMS_REQUIRED',
   'Conta não encontrada': 'ACCOUNT_NOT_FOUND',
   'Invalid or expired token': 'INVALID_OR_EXPIRED_LINK',
   'New password must be different from the current password': 'NEW_PASSWORD_MUST_DIFFERENT_FROM',
