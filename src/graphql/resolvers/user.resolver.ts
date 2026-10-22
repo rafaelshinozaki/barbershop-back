@@ -78,7 +78,7 @@ export class UserResolver {
   @UseGuards(GraphQLJwtAuthGuard)
   @Query(() => User)
   async me(@CurrentUser() user: UserDTO) {
-    this.logger.log(`ME query called for user ${user.id} (${user.email})`);
+    this.logger.log(`ME query called for user ${user.id}`);
 
     const userData = await this.prisma.user.findUnique({
       where: { id: user.id },
@@ -127,7 +127,7 @@ export class UserResolver {
     };
 
     this.logger.logEssential('ME query result', result, ['id', 'email', 'fullName', 'role']);
-    this.logger.log(`ME query completed for user ${user.id} (${user.email})`);
+    this.logger.log(`ME query completed for user ${user.id}`);
 
     // Log adicional para verificar consistência
     if (result.id !== user.id) {
@@ -371,6 +371,15 @@ export class UserResolver {
   @Query(() => [User])
   async getAllUsers() {
     return this.userService.getAllUsers();
+  }
+
+  /** Conta criada sem o aceite (importada pela planilha): aceita no primeiro acesso */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean, {
+    description: 'Conta criada sem o aceite (importada pela planilha): aceita no primeiro acesso',
+  })
+  async acceptTerms(@CurrentUser() user: UserDTO) {
+    return this.userService.acceptTerms(user.id);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

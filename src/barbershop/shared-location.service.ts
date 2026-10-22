@@ -171,7 +171,12 @@ export class SharedLocationService {
    * O profissional bloqueia (ou volta a aceitar) convites daquele espaço.
    * Convite pendente bloqueado também fica recusado.
    */
-  async setInviteBlock(userId: number, linkId: number, memberBarbershopId: number, blocked: boolean) {
+  async setInviteBlock(
+    userId: number,
+    linkId: number,
+    memberBarbershopId: number,
+    blocked: boolean,
+  ) {
     const link = await this.prisma.sharedLocationMember.findUnique({
       where: { id: linkId },
       include: { member: { select: { name: true } } },
@@ -216,10 +221,10 @@ export class SharedLocationService {
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.sharedLocationMember.findMany({
-        where: { memberBarbershopId: barbershopId, OR: [
-          { status: { in: ['PENDING', 'ACTIVE'] } },
-          { invitesBlockedAt: { not: null } },
-        ] },
+        where: {
+          memberBarbershopId: barbershopId,
+          OR: [{ status: { in: ['PENDING', 'ACTIVE'] } }, { invitesBlockedAt: { not: null } }],
+        },
         include: { host: { select: SHOP_SUMMARY } },
         orderBy: { createdAt: 'desc' },
       }),

@@ -14,14 +14,12 @@ import { UserService } from './users.service';
 import { UserDTO } from './dto/user.dto';
 import { ApiTags, ApiCookieAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
-import { PublicRoute, MEMBERSHIP_STATUS } from '@/common';
-import { NewUserSchema } from './models/new-user.schema';
+import { MEMBERSHIP_STATUS } from '@/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../current-user.decorator';
 import { Roles } from '../roles.decorator';
 import { Role } from '../interfaces/roles';
 import { RolesGuard } from '../guards/roles.guard';
-import { ThrottleAuth } from '@/common/decorators/throttle.decorator';
 import { BackofficeArea, RequireArea } from '../backoffice-areas';
 
 @ApiTags('user')
@@ -68,15 +66,8 @@ export class UserController {
   // Buscar usuário por ID (admin/manager) foi migrado para a query GraphQL
   // `user(id)` — operação interna do app, sem consumidor externo do REST.
 
-  @PublicRoute()
-  @ThrottleAuth()
-  @ApiOperation({ summary: 'Create a new user' })
-  @ApiResponse({ status: 201, description: 'User created' })
-  @Post('create')
-  async createUser(@Body() userData: NewUserSchema) {
-    const user = await this.userService.createUser(userData);
-    return { success: true, data: user };
-  }
+  // POST /user/create (cadastro público por fora do GraphQL) saiu: o front
+  // cadastra pela mutation createUser, com as mesmas regras (item 257).
 
   // PUT /user/update existia aqui recebendo o UserDTO inteiro (incluindo o
   // id) direto do corpo da requisição, sem comparar com @CurrentUser() —

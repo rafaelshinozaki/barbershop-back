@@ -2174,6 +2174,9 @@ type MonthlyRevenueItem {
 
 type Mutation {
   acceptJobApplication(applicationId: Int!, barbershopId: Int!): JobOpeningType!
+
+  """Conta criada sem o aceite (importada pela planilha): aceita no primeiro acesso"""
+  acceptTerms: Boolean!
   addAppointmentTip(amount: Float!, appointmentId: Int!, barbershopId: Int!, destination: String!, method: String!, receivedByUnit: Boolean): AppointmentTipType!
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
   addBarbershopPhoto(barbershopId: Int!, caption: String, key: String!): BarbershopPhotoType!

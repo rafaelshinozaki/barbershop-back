@@ -28,6 +28,8 @@ model User {
   gender              String
   birthdate           DateTime
   readTerms           Boolean
+  // Quando aceitou os termos e a política de privacidade no cadastro (item 257)
+  termsAcceptedAt     DateTime?
   membership          String             @default("FREE")
   // Plano Pro da agenda solo. Enquanto esta data está no futuro, a cota de 30 não trava.
   proUntil            DateTime?

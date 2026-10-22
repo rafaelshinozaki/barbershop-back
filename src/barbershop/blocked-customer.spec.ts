@@ -78,9 +78,9 @@ describe('cliente bloqueado no clube e no link', () => {
         },
       },
     });
-    await expect(service.rescheduleManagedAppointment('token', '2026-11-01T15:00:00')).rejects.toThrow(
-      new ForbiddenException(BLOCKED),
-    );
+    await expect(
+      service.rescheduleManagedAppointment('token', '2026-11-01T15:00:00'),
+    ).rejects.toThrow(new ForbiddenException(BLOCKED));
     expect(updates).toEqual([]);
     await service.cancelManagedAppointment('token');
     expect(updates).toEqual(['cancel']);
