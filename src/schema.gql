@@ -1555,6 +1555,25 @@ type CreatedSeriesType {
   skipped: [SeriesSlotType!]!
 }
 
+type CustomerBlockPackageType {
+  barbershopName: String!
+  name: String!
+  remaining: Int!
+}
+
+type CustomerBlockPreviewType {
+  packages: [CustomerBlockPackageType!]!
+  subscriptions: [CustomerBlockSubscriptionType!]!
+}
+
+type CustomerBlockSubscriptionType {
+  barbershopName: String!
+  currency: String!
+  id: Int!
+  planName: String!
+  refundAmount: Float!
+}
+
 type CustomerConductType {
   """Comparecimento em % (concluídos / marcados)"""
   attendanceRate: Int
@@ -2368,11 +2387,12 @@ type Mutation {
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
 
   """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
-  setCustomerBlocked(barbershopId: Int!, blocked: Boolean!, customerId: Int!, reason: String): BarbershopCustomer!
+  setCustomerBlocked(barbershopId: Int!, blocked: Boolean!, cancelSubscriptions: Boolean, customerId: Int!, reason: String, refundUnused: Boolean): BarbershopCustomer!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
+  setSharedLocationInviteBlock(barbershopId: Int!, blocked: Boolean!, id: Int!): Boolean!
   setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -3440,6 +3460,7 @@ type Query {
   currentCashSession(barbershopId: Int!): CashSessionType
   currentUser: User
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
+  customerBlockPreview(barbershopId: Int!, customerId: Int!): CustomerBlockPreviewType!
   customerConduct(barbershopId: Int!, customerId: Int!): CustomerConductType!
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
@@ -3879,6 +3900,7 @@ type SetupIntent {
 type SharedLocationLinkType {
   createdAt: DateTime!
   id: Int!
+  invitesBlocked: Boolean!
   rent: ChairRentType!
   shop: SharedLocationShopType!
   status: String!

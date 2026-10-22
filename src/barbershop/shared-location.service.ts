@@ -3,8 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { BarbershopService } from './barbershop.service';
 import { ChairRentService } from './chair-rent.service';
+import { ownerAcceptsPublic } from './public-shop';
 
 export type SharedLocationStatus = 'PENDING' | 'ACTIVE' | 'DECLINED' | 'REMOVED';
+
+const REINVITE_AFTER_MS = 30 * 86_400_000;
+
+/** O que a página pública mostra: ativa, com dono, e fora da moderação. */
+const PUBLIC_SHOP = { isActive: true, searchHiddenAt: null, ...ownerAcceptsPublic };
 
 const SHOP_SUMMARY = {
   id: true,
@@ -63,6 +69,17 @@ export class SharedLocationService {
           ? 'Esse profissional já atende no seu espaço'
           : 'Já existe um convite pendente para esse profissional',
       );
+    }
+    if (existing?.invitesBlockedAt) {
+      throw new BadRequestException('Este profissional bloqueou convites deste espaço.');
+    }
+    if (existing && (existing.status === 'DECLINED' || existing.status === 'REMOVED')) {
+      const answeredAt = existing.respondedAt ?? existing.updatedAt;
+      if (Date.now() < answeredAt.getTime() + REINVITE_AFTER_MS) {
+        throw new BadRequestException(
+          'Só dá para convidar de novo 30 dias depois de recusar ou encerrar.',
+        );
+      }
     }
     const link = existing
       ? await this.prisma.sharedLocationMember.update({
@@ -151,6 +168,42 @@ export class SharedLocationService {
   }
 
   /**
+   * O profissional bloqueia (ou volta a aceitar) convites daquele espaço.
+   * Convite pendente bloqueado também fica recusado.
+   */
+  async setInviteBlock(userId: number, linkId: number, memberBarbershopId: number, blocked: boolean) {
+    const link = await this.prisma.sharedLocationMember.findUnique({
+      where: { id: linkId },
+      include: { member: { select: { name: true } } },
+    });
+    if (!link || link.memberBarbershopId !== memberBarbershopId) {
+      throw new NotFoundException('Vínculo não encontrado');
+    }
+    await this.barbershopService.ensureAccess(userId, memberBarbershopId, 'manager');
+    if (blocked && link.status === 'ACTIVE') {
+      throw new BadRequestException('Saia do espaço antes de bloquear novos convites.');
+    }
+    const declining = blocked && link.status === 'PENDING';
+    await this.prisma.sharedLocationMember.update({
+      where: { id: link.id },
+      data: {
+        invitesBlockedAt: blocked ? new Date() : null,
+        ...(declining ? { status: 'DECLINED', respondedAt: new Date() } : {}),
+      },
+    });
+    if (declining) {
+      void this.activity.sharedLocationEvent(
+        link.hostBarbershopId,
+        'declined',
+        link.member.name,
+        userId,
+        `shared:${link.id}:declined:${Date.now()}`,
+      );
+    }
+    return true;
+  }
+
+  /**
    * Os vínculos da unidade dos dois lados: profissionais que atendem no espaço
    * dela (asHost) e espaços onde ela atende (asMember), com convites pendentes.
    */
@@ -163,7 +216,10 @@ export class SharedLocationService {
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.sharedLocationMember.findMany({
-        where: { memberBarbershopId: barbershopId, status: { in: ['PENDING', 'ACTIVE'] } },
+        where: { memberBarbershopId: barbershopId, OR: [
+          { status: { in: ['PENDING', 'ACTIVE'] } },
+          { invitesBlockedAt: { not: null } },
+        ] },
         include: { host: { select: SHOP_SUMMARY } },
         orderBy: { createdAt: 'desc' },
       }),
@@ -173,6 +229,7 @@ export class SharedLocationService {
         asHost.map(async (l) => ({
           id: l.id,
           status: l.status,
+          invitesBlocked: l.invitesBlockedAt != null,
           createdAt: l.createdAt,
           shop: l.member,
           rent: await this.chairRent.view(l.id, barbershopId),
@@ -182,6 +239,7 @@ export class SharedLocationService {
         asMember.map(async (l) => ({
           id: l.id,
           status: l.status,
+          invitesBlocked: l.invitesBlockedAt != null,
           createdAt: l.createdAt,
           shop: l.host,
           rent: await this.chairRent.view(l.id, barbershopId),
@@ -194,12 +252,12 @@ export class SharedLocationService {
   async publicLinks(barbershopId: number) {
     const [members, hosts] = await Promise.all([
       this.prisma.sharedLocationMember.findMany({
-        where: { hostBarbershopId: barbershopId, status: 'ACTIVE', member: { isActive: true } },
+        where: { hostBarbershopId: barbershopId, status: 'ACTIVE', member: PUBLIC_SHOP },
         include: { member: { select: SHOP_SUMMARY } },
         orderBy: { createdAt: 'asc' },
       }),
       this.prisma.sharedLocationMember.findMany({
-        where: { memberBarbershopId: barbershopId, status: 'ACTIVE', host: { isActive: true } },
+        where: { memberBarbershopId: barbershopId, status: 'ACTIVE', host: PUBLIC_SHOP },
         include: { host: { select: SHOP_SUMMARY } },
         orderBy: { createdAt: 'asc' },
       }),
@@ -218,6 +276,7 @@ export class SharedLocationService {
     return {
       id: l.id,
       status: l.status,
+      invitesBlocked: l.invitesBlockedAt != null,
       createdAt: l.createdAt,
       shop: viewerBarbershopId === l.hostBarbershopId ? l.member : l.host,
       rent: await this.chairRent.view(l.id, viewerBarbershopId),

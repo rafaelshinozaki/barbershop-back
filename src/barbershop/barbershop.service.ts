@@ -599,6 +599,23 @@ export const SHOP_CURRENCY_INVALID_MESSAGE = 'Moeda inválida (use o código de 
 export const SHOP_CURRENCY_OWNER_ONLY_MESSAGE = 'Só o dono troca a moeda da unidade.';
 export const SHOP_CURRENCY_LOCKED_MESSAGE =
   'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.';
+export const NETWORK_FEE_TYPE_MESSAGE = 'Tipo da taxa de falta inválido. Use PERCENT ou FIXED.';
+export const NETWORK_FEE_PERCENT_MESSAGE = 'A taxa de falta percentual vai de 0 a 100.';
+export const NETWORK_FEE_FIXED_MESSAGE = 'Taxa de falta inválido';
+export const NETWORK_WINDOW_MESSAGE = 'A janela de cancelamento vai de 0 a 72 horas.';
+export const NETWORK_POINTS_MESSAGE = 'Pontos por unidade de moeda vão de 0 a 100.';
+export const NETWORK_POINT_VALUE_MESSAGE = 'Valor do ponto inválido';
+export const NETWORK_BONUS_MESSAGE = 'O bônus de indicação vai de 0 a 100.000 pontos.';
+export const NETWORK_YEAR_MESSAGE = 'Ano de fundação inválido.';
+export const NETWORK_NAME_MESSAGE = 'O nome da rede pode ter no máximo 120 caracteres.';
+export const NETWORK_CITY_MESSAGE = 'A cidade pode ter no máximo 80 caracteres.';
+export const NETWORK_DESCRIPTION_MESSAGE = 'A descrição pode ter no máximo 1.000 caracteres.';
+export const NETWORK_MISSION_MESSAGE = 'A missão pode ter no máximo 1.000 caracteres.';
+export const NETWORK_LOGO_MESSAGE = 'O logo precisa ser um link https.';
+export const NETWORK_CURRENCY_LOCKED_MESSAGE =
+  'A rede já tem venda registrada nesta moeda. Para trocar, fale com o suporte.';
+export const CLUB_CANCEL_FAILED_MESSAGE =
+  'Não foi possível cancelar a assinatura do clube. Tente de novo.';
 export const REFUND_SALE_LOCKED_MESSAGE = 'Estorno não pode ser alterado nem apagado.';
 
 export const CLOSED_CASH_SALE_MESSAGE =
@@ -1326,7 +1343,7 @@ export class BarbershopService {
     const network = await this.getMyNetwork(userId);
     if (!network) throw new NotFoundException('Franquia não encontrada');
     const updateData: Record<string, unknown> = { ...data };
-    if (data.logoUrl !== undefined) updateData.logoKey = null;
+    await this.applyNetworkLimits(network, updateData);
     if (data.accentColor !== undefined) {
       updateData.accentColor = this.normalizeThemeColor(
         data.accentColor,
@@ -1345,6 +1362,130 @@ export class BarbershopService {
       where: { id: network.id },
       data: updateData,
     });
+  }
+
+  /** Regras da rede: nada fora do limite vira política, moeda ou logo público. */
+  private async applyNetworkLimits(
+    network: { id: number; currency: string; noShowFeeType: string | null },
+    data: Record<string, unknown>,
+  ) {
+    const text = (key: string, max: number, message: string) => {
+      if (data[key] === undefined) return;
+      const value = String(data[key] ?? '').trim();
+      if (!value) {
+        data[key] = null;
+        return;
+      }
+      if (value.length > max) throw new BadRequestException(message);
+      data[key] = value;
+    };
+    text('name', 120, NETWORK_NAME_MESSAGE);
+    text('city', 80, NETWORK_CITY_MESSAGE);
+    text('description', 1000, NETWORK_DESCRIPTION_MESSAGE);
+    text('mission', 1000, NETWORK_MISSION_MESSAGE);
+
+    if (data.foundationYear !== undefined) {
+      const year = Number(data.foundationYear);
+      const maxYear = new Date().getFullYear();
+      if (!Number.isInteger(year) || year < 1800 || year > maxYear) {
+        throw new BadRequestException(NETWORK_YEAR_MESSAGE);
+      }
+    }
+
+    if (data.logoUrl !== undefined) {
+      const raw = String(data.logoUrl ?? '').trim();
+      if (!raw) {
+        data.logoUrl = null;
+      } else {
+        let url: URL;
+        try {
+          url = new URL(raw);
+        } catch {
+          throw new BadRequestException(NETWORK_LOGO_MESSAGE);
+        }
+        if (url.protocol !== 'https:' || raw.length > 2000) {
+          throw new BadRequestException(NETWORK_LOGO_MESSAGE);
+        }
+        data.logoUrl = raw;
+      }
+      data.logoKey = null;
+    }
+
+    let currency = network.currency.trim().toUpperCase();
+    if (data.currency !== undefined) {
+      currency = String(data.currency).trim().toUpperCase();
+      if (!SUPPORTED_CURRENCIES.has(currency)) {
+        throw new BadRequestException(SHOP_CURRENCY_INVALID_MESSAGE);
+      }
+      if (currency !== network.currency.trim().toUpperCase()) {
+        const sales = await this.prisma.sale.count({
+          where: { paymentStatus: 'PAID', barbershop: { networkId: network.id } },
+          take: 1,
+        });
+        if (sales > 0) throw new BadRequestException(NETWORK_CURRENCY_LOCKED_MESSAGE);
+      }
+      data.currency = currency;
+    }
+
+    const feeType =
+      data.noShowFeeType !== undefined
+        ? String(data.noShowFeeType).trim().toUpperCase()
+        : network.noShowFeeType;
+    if (data.noShowFeeType !== undefined) {
+      if (feeType !== 'PERCENT' && feeType !== 'FIXED') {
+        throw new BadRequestException(NETWORK_FEE_TYPE_MESSAGE);
+      }
+      data.noShowFeeType = feeType;
+    }
+    if (data.noShowFeeValue !== undefined) {
+      const value = Number(data.noShowFeeValue);
+      if (feeType === 'PERCENT') {
+        if (!Number.isFinite(value) || value < 0 || value > 100) {
+          throw new BadRequestException(NETWORK_FEE_PERCENT_MESSAGE);
+        }
+      } else if (feeType === 'FIXED') {
+        try {
+          checkMoney('Taxa de falta', value, currency);
+        } catch (err) {
+          if (err instanceof BadRequestException) {
+            throw new BadRequestException(NETWORK_FEE_FIXED_MESSAGE);
+          }
+          throw err;
+        }
+      } else {
+        throw new BadRequestException(NETWORK_FEE_TYPE_MESSAGE);
+      }
+      data.noShowFeeValue = value;
+    }
+
+    if (data.lateCancellationWindowHours !== undefined) {
+      const hours = Number(data.lateCancellationWindowHours);
+      if (!Number.isInteger(hours) || hours < 0 || hours > 72) {
+        throw new BadRequestException(NETWORK_WINDOW_MESSAGE);
+      }
+    }
+    if (data.loyaltyPointsPerCurrencyUnit !== undefined) {
+      const points = Number(data.loyaltyPointsPerCurrencyUnit);
+      if (!Number.isFinite(points) || points < 0 || points > 100) {
+        throw new BadRequestException(NETWORK_POINTS_MESSAGE);
+      }
+    }
+    if (data.loyaltyPointValue !== undefined) {
+      const pointValue = Number(data.loyaltyPointValue);
+      if (
+        !Number.isFinite(pointValue) ||
+        pointValue < 0 ||
+        pointValue > moneyCap(100, currency)
+      ) {
+        throw new BadRequestException(NETWORK_POINT_VALUE_MESSAGE);
+      }
+    }
+    if (data.referralBonusPoints !== undefined) {
+      const bonus = Number(data.referralBonusPoints);
+      if (!Number.isInteger(bonus) || bonus < 0 || bonus > 100_000) {
+        throw new BadRequestException(NETWORK_BONUS_MESSAGE);
+      }
+    }
   }
 
   private emptyDashboard(currency = 'BRL') {
@@ -2615,11 +2756,16 @@ export class BarbershopService {
    * sobraram (o menor dos dois, pra não devolver o que ele já usou). Tira o
    * que já foi estornado antes.
    */
-  async unusedClubCycles(barbershopIds: number[], now = new Date()) {
+  async unusedClubCycles(barbershopIds: number[], now = new Date(), clientAccountId?: number) {
     if (barbershopIds.length === 0) return [];
     const subs = await this.prisma.clientSubscription.findMany({
-      where: { barbershopId: { in: barbershopIds }, status: 'ACTIVE' },
+      where: {
+        barbershopId: { in: barbershopIds },
+        status: 'ACTIVE',
+        ...(clientAccountId != null ? { clientAccountId } : {}),
+      },
       select: {
+        id: true,
         connectAccountId: true,
         usedThisCycle: true,
         sessionsPerCycle: true,
@@ -2640,6 +2786,7 @@ export class BarbershopService {
       },
     });
     const result: Array<{
+      subscriptionId: number;
       payment: (typeof subs)[number]['payments'][number];
       connected: boolean;
       currency: string;
@@ -2660,6 +2807,7 @@ export class BarbershopService {
       const amount = round2(Math.min(left, paid * share));
       if (amount <= 0) continue;
       result.push({
+        subscriptionId: sub.id,
         payment,
         connected: sub.connectAccountId != null,
         currency: sub.barbershop.currency,
@@ -3024,12 +3172,20 @@ export class BarbershopService {
     customerId: number,
     blocked: boolean,
     reason?: string | null,
+    options?: { cancelSubscriptions?: boolean; refundUnused?: boolean },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId: barbershop.networkId },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (blocked && options?.cancelSubscriptions) {
+      await this.cancelCustomerClub(
+        barbershop.networkId,
+        customerId,
+        options.refundUnused === true,
+      );
+    }
     const trimmed = reason?.trim().slice(0, 500) || null;
     const updated = await this.prisma.customer.update({
       where: { id: customerId },
@@ -3042,6 +3198,133 @@ export class BarbershopService {
         : { blockedAt: null, blockedReason: null, blockedByUserId: null },
     });
     return this.hideContact(await this.contactVisibility(userId, barbershop), updated);
+  }
+
+  /**
+   * O que o bloqueio não desliga sozinho: assinatura do clube (ainda cobra)
+   * e pacote com sessão sobrando. A tela mostra os dois e pode cancelar o clube.
+   */
+  async customerBlockPreview(userId: number, barbershopId: number, customerId: number) {
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, networkId: shop.networkId, deletedAt: null },
+      select: { id: true, phone: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    const accountId = await this.clientAccountIdForCustomer(shop.networkId, customerId);
+    const phoneIds = await this.customerIdsByPhone(shop.networkId, customer.phone);
+    const linked = accountId
+      ? await this.prisma.customer.findMany({
+          where: { networkId: shop.networkId, clientAccountId: accountId, deletedAt: null },
+          select: { id: true },
+        })
+      : [];
+    const customerIds = [...new Set([customer.id, ...phoneIds, ...linked.map((row) => row.id)])];
+    const subs = accountId
+      ? await this.prisma.clientSubscription.findMany({
+          where: {
+            clientAccountId: accountId,
+            status: { in: ['ACTIVE', 'PAST_DUE', 'INCOMPLETE'] },
+            barbershop: { networkId: shop.networkId },
+          },
+          select: {
+            id: true,
+            plan: { select: { name: true } },
+            barbershop: { select: { id: true, name: true, currency: true } },
+          },
+        })
+      : [];
+    const shopIds = [...new Set(subs.map((sub) => sub.barbershop.id))];
+    const refunds =
+      accountId && shopIds.length
+        ? await this.unusedClubCycles(shopIds, new Date(), accountId)
+        : [];
+    const refundBySub = new Map(refunds.map((refund) => [refund.subscriptionId, refund.amount]));
+    const packages = await this.prisma.clientPackage.findMany({
+      where: {
+        customerId: { in: customerIds },
+        status: 'ACTIVE',
+        remainderRefundedAt: null,
+        barbershop: { networkId: shop.networkId },
+      },
+      select: {
+        totalSessions: true,
+        usedSessions: true,
+        expiresAt: true,
+        servicePackage: { select: { name: true } },
+        barbershop: { select: { name: true } },
+      },
+    });
+    const now = Date.now();
+    return {
+      subscriptions: subs.map((sub) => ({
+        id: sub.id,
+        planName: sub.plan.name,
+        barbershopName: sub.barbershop.name,
+        currency: sub.barbershop.currency,
+        refundAmount: refundBySub.get(sub.id) ?? 0,
+      })),
+      packages: packages.flatMap((pkg) => {
+        const remaining = pkg.totalSessions - pkg.usedSessions;
+        if (remaining <= 0) return [];
+        if (pkg.expiresAt && pkg.expiresAt.getTime() <= now) return [];
+        return [
+          {
+            name: pkg.servicePackage.name,
+            remaining,
+            barbershopName: pkg.barbershop.name,
+          },
+        ];
+      }),
+    };
+  }
+
+  /** Para a cobrança do clube desta ficha na rede. O estorno do ciclo é opcional. */
+  private async cancelCustomerClub(networkId: number, customerId: number, refundUnused: boolean) {
+    const accountId = await this.clientAccountIdForCustomer(networkId, customerId);
+    if (accountId == null) return;
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: {
+        clientAccountId: accountId,
+        status: { in: ['ACTIVE', 'PAST_DUE', 'INCOMPLETE'] },
+        barbershop: { networkId },
+      },
+      select: { id: true, status: true, stripeSubscriptionId: true, barbershopId: true },
+    });
+    if (subs.length === 0) return;
+    const shopIds = [...new Set(subs.map((sub) => sub.barbershopId))];
+    const refunds = refundUnused
+      ? await this.unusedClubCycles(shopIds, new Date(), accountId)
+      : [];
+    const refundBySub = new Map(refunds.map((refund) => [refund.subscriptionId, refund]));
+    for (const sub of subs) {
+      try {
+        if (sub.status === 'ACTIVE' && !refundUnused) {
+          await this.stripeService.updateSubscription(sub.stripeSubscriptionId, {
+            cancel_at_period_end: true,
+          });
+          await this.prisma.clientSubscription.update({
+            where: { id: sub.id },
+            data: { cancelAtPeriodEnd: true },
+          });
+        } else {
+          try {
+            await this.stripeService.cancelSubscription(sub.stripeSubscriptionId);
+          } catch (error: any) {
+            if (error?.code !== 'resource_missing') throw error;
+          }
+          await this.prisma.clientSubscription.update({
+            where: { id: sub.id },
+            data: { status: 'CANCELED', canceledAt: new Date(), cancelAtPeriodEnd: false },
+          });
+        }
+      } catch (err) {
+        this.logger.error(`Erro ao cancelar a assinatura do clube #${sub.id}:`, err);
+        throw new BadRequestException(CLUB_CANCEL_FAILED_MESSAGE);
+      }
+      const refund = refundBySub.get(sub.id);
+      if (refund) await this.refundUnusedClubCycle(refund);
+    }
   }
 
   /** Ficha da rede com este telefone, escrito de qualquer jeito (só os dígitos contam) */
@@ -3059,20 +3342,32 @@ export class BarbershopService {
     return rows.map((r) => r.id);
   }
 
-  /** Agendamento online: recusa cliente bloqueado (pelo telefone, e-mail ou conta) */
+  /** Recusa cliente bloqueado (pelo telefone, e-mail ou conta) no que é online */
   private async ensureNotBlocked(
     networkId: number,
-    input: { customerPhone: string; customerEmail?: string; clientAccountId?: number },
+    input: {
+      customerPhone?: string | null;
+      customerPhones?: Array<string | null | undefined>;
+      customerEmail?: string | null;
+      customerEmails?: Array<string | null | undefined>;
+      clientAccountId?: number | null;
+    },
   ) {
-    // Telefone com outra formatação também é o mesmo cliente bloqueado
-    const blockedByPhone = await this.customerIdsByPhone(networkId, input.customerPhone, true);
-    const or: Prisma.CustomerWhereInput[] = [
-      { phone: input.customerPhone },
-      ...(blockedByPhone.length ? [{ id: { in: blockedByPhone } }] : []),
-    ];
-    const email = input.customerEmail?.trim();
-    if (email) or.push({ email: { equals: email, mode: 'insensitive' } });
+    const phones = [input.customerPhone, ...(input.customerPhones ?? [])]
+      .map((phone) => phone?.trim())
+      .filter((phone): phone is string => !!phone);
+    const blockedIds: number[] = [];
+    for (const phone of phones) {
+      blockedIds.push(...(await this.customerIdsByPhone(networkId, phone, true)));
+    }
+    const or: Prisma.CustomerWhereInput[] = phones.map((phone) => ({ phone }));
+    if (blockedIds.length) or.push({ id: { in: [...new Set(blockedIds)] } });
+    const emails = [input.customerEmail, ...(input.customerEmails ?? [])]
+      .map((email) => email?.trim())
+      .filter((email): email is string => !!email);
+    for (const email of emails) or.push({ email: { equals: email, mode: 'insensitive' } });
     if (input.clientAccountId) or.push({ clientAccountId: input.clientAccountId });
+    if (or.length === 0) return;
     const blocked = await this.prisma.customer.findFirst({
       where: { networkId, blockedAt: { not: null }, OR: or },
       select: { id: true },
@@ -5682,12 +5977,48 @@ export class BarbershopService {
     if (!id) throw new BadRequestException('Link inválido');
     const entry = await this.prisma.waitlistEntry.findUnique({
       where: { id },
-      include: { barbershop: { select: { name: true } } },
+      include: { barbershop: { select: { name: true, timezone: true } } },
     });
     if (!entry) throw new NotFoundException('Você não está mais na lista de espera');
-    if (entry.status === 'WAITING') {
-      await this.prisma.waitlistEntry.update({ where: { id }, data: { status: 'CANCELLED' } });
-      this.realtime.notify(entry.barbershopId, 'WAITLIST', 'UPDATED');
+    if (entry.status === 'WAITING' || entry.status === 'NOTIFIED') {
+      const now = new Date();
+      const offer =
+        entry.status === 'NOTIFIED' && entry.offeredStartAt && entry.offeredStartAt > now
+          ? entry.offeredStartAt
+          : null;
+      // A vaga só passa se este clique ainda é dono dela. O job do prazo
+      // pode ter pegado o mesmo horário no meio do caminho.
+      const claimed = await this.prisma.waitlistEntry.updateMany({
+        where: {
+          id,
+          status: { in: ['WAITING', 'NOTIFIED'] },
+          ...(offer ? { offeredStartAt: offer } : {}),
+        },
+        data: { status: 'CANCELLED', offeredStartAt: null, notifiedAt: null },
+      });
+      const cancelled =
+        claimed.count === 1
+          ? claimed
+          : await this.prisma.waitlistEntry.updateMany({
+              where: { id, status: { in: ['WAITING', 'NOTIFIED'] } },
+              data: { status: 'CANCELLED', offeredStartAt: null, notifiedAt: null },
+            });
+      if (cancelled.count === 1) {
+        this.realtime.notify(entry.barbershopId, 'WAITLIST', 'UPDATED');
+      }
+      if (claimed.count === 1 && offer) {
+        try {
+          await this.passWaitlistOffer({
+            barbershopId: entry.barbershopId,
+            offeredStartAt: offer,
+            offeredBarberId: entry.offeredBarberId,
+            offeredServiceIds: entry.offeredServiceIds,
+            barbershop: entry.barbershop,
+          });
+        } catch (err) {
+          this.logger.error(`Erro ao passar a vaga da lista de espera #${entry.id}:`, err);
+        }
+      }
     }
     return entry.barbershop.name;
   }
@@ -5854,34 +6185,10 @@ export class BarbershopService {
       });
       if (claimed.count === 0) continue;
       try {
-        if (e.offeredBarberId != null) {
-          const taken = await this.prisma.appointment.findFirst({
-            where: {
-              barberId: e.offeredBarberId,
-              status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
-              startAt: { lte: startAt },
-              endAt: { gt: startAt },
-            },
-            select: { id: true },
-          });
-          if (taken) {
-            await this.backToWaiting(e.id);
-            continue;
-          }
-          await this.checkWaitlistOnCancellation(e.barbershopId, {
-            startAt,
-            barberId: e.offeredBarberId,
-            services: e.offeredServiceIds.map((serviceId) => ({ serviceId })),
-          });
-        } else {
-          // Horário que abriu na escala: só ele conta como novo (os outros
-          // livres do dia já estavam livres e não avisam ninguém)
-          const day = toZonedParts(startAt, safeTimeZone(e.barbershop.timezone)).dateStr;
-          const scope = { from: day, to: day };
-          const before = await this.waitlistOpeningSnapshot(e.barbershopId, scope);
-          const offered = startAt.toISOString();
-          for (const slots of before.values()) slots.delete(offered);
-          await this.checkWaitlistOnOpening(e.barbershopId, scope, before);
+        const result = await this.passWaitlistOffer(e);
+        if (result === 'taken') {
+          await this.backToWaiting(e.id);
+          continue;
         }
         passed++;
       } catch (err) {
@@ -5898,6 +6205,48 @@ export class BarbershopService {
       data: { status: 'WAITING', offeredStartAt: null, notifiedAt: null },
     });
     return passed;
+  }
+
+  /**
+   * A vaga oferecida continua livre: avisa o próximo da fila. Quem chamou
+   * já tirou o horário desta entrada. 'taken' = alguém já marcou esse horário.
+   */
+  private async passWaitlistOffer(e: {
+    barbershopId: number;
+    offeredStartAt: Date | null;
+    offeredBarberId: number | null;
+    offeredServiceIds: number[];
+    barbershop: { timezone: string | null };
+  }): Promise<'taken' | 'passed'> {
+    const startAt = e.offeredStartAt;
+    if (!startAt) return 'passed';
+    if (e.offeredBarberId != null) {
+      const taken = await this.prisma.appointment.findFirst({
+        where: {
+          barberId: e.offeredBarberId,
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+          startAt: { lte: startAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      });
+      if (taken) return 'taken';
+      await this.checkWaitlistOnCancellation(e.barbershopId, {
+        startAt,
+        barberId: e.offeredBarberId,
+        services: e.offeredServiceIds.map((serviceId) => ({ serviceId })),
+      });
+      return 'passed';
+    }
+    // Horário que abriu na escala: só ele conta como novo (os outros
+    // livres do dia já estavam livres e não avisam ninguém)
+    const day = toZonedParts(startAt, safeTimeZone(e.barbershop.timezone)).dateStr;
+    const scope = { from: day, to: day };
+    const before = await this.waitlistOpeningSnapshot(e.barbershopId, scope);
+    const offered = startAt.toISOString();
+    for (const slots of before.values()) slots.delete(offered);
+    await this.checkWaitlistOnOpening(e.barbershopId, scope, before);
+    return 'passed';
   }
 
   /** Entrada avisada que não pegou a vaga volta a esperar (pela ordem de entrada) */
@@ -7748,8 +8097,8 @@ export class BarbershopService {
     const loaded = await this.loadManagedAppointment(token);
     this.ensureChangeable(loaded);
     const { appt } = loaded;
-    // Condicional no status: dois cliques (ou a unidade mudando ao mesmo
-    // tempo) não cancelam duas vezes nem passam por cima de outro status
+    // Cancelar pelo link continua liberado mesmo com o cliente bloqueado.
+    // Condicional no status: dois cliques não cancelam duas vezes.
     const updated = await this.prisma.appointment.updateMany({
       where: { id: appt.id, status: 'CONFIRMED' },
       data: { status: 'CANCELLED' },
@@ -7767,6 +8116,11 @@ export class BarbershopService {
     const loaded = await this.loadManagedAppointment(token);
     this.ensureChangeable(loaded);
     const { appt } = loaded;
+    await this.ensureNotBlocked(appt.barbershop.networkId, {
+      customerPhone: appt.customer?.phone,
+      customerEmail: appt.customer?.email,
+      clientAccountId: appt.customer?.clientAccountId,
+    });
     const service = appt.services[0]?.service;
     if (!service)
       throw new BadRequestException('Este agendamento não pode ser remarcado pelo link');
@@ -9258,9 +9612,20 @@ export class BarbershopService {
     }
     const shopOpen = await this.prisma.barbershop.findFirst({
       where: { id: barbershopId, isActive: true, ...ownerAcceptsPublic },
-      select: { id: true },
+      select: { id: true, networkId: true },
     });
     if (!shopOpen) throw new NotFoundException('Unidade não encontrada');
+    const linked = await this.prisma.customer.findMany({
+      where: { networkId: shopOpen.networkId, clientAccountId, deletedAt: null },
+      select: { phone: true, email: true },
+    });
+    await this.ensureNotBlocked(shopOpen.networkId, {
+      customerPhone: clientAccount?.phone,
+      customerPhones: linked.map((row) => row.phone),
+      customerEmail: clientAccount?.email,
+      customerEmails: linked.map((row) => row.email),
+      clientAccountId,
+    });
 
     // Dois cliques (ou duas abas) juntos passavam os dois pela checagem e
     // criavam DUAS assinaturas no Stripe — cobrança em dobro todo mês. Agora

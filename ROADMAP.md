@@ -2589,17 +2589,19 @@ Foram lidos o cadastro e a edição da ficha do cliente pela equipe (e-mail, tel
      
      **Feito:** `linkVerifiedCustomers` só liga à conta (com o e-mail confirmado) a ficha que tem o mesmo e-mail **e** o mesmo telefone da conta (com ou sem DDI, por `phoneDigitVariants`). Quem tem o endereço digitado errado não sabe o telefone da cliente, então a ficha dela não entra na conta. Conta sem telefone não liga nada; ao pôr ou trocar o telefone no perfil, a ligação é feita de novo. A equipe trocar o e-mail de uma ficha ligada a uma conta com outro e-mail desfaz a ligação. Ficou de fora o envio de código para o e-mail da ficha: com o endereço errado, quem confirmaria é justamente a pessoa errada. Teste em `customer-link.int.spec.ts`.
 
-252. ⬜ **A vitrine do espaço compartilhado mostra unidade suspensa, fora da busca ou sem dono, e o convite pode ser repetido sem fim** (back: `SharedLocationService.publicLinks`, `invite`):
+252. ✅ **A vitrine do espaço compartilhado mostra unidade suspensa, fora da busca ou sem dono, e o convite pode ser repetido sem fim** (back: `SharedLocationService.publicLinks`, `invite`):
      - Na página pública, a lista de quem atende no espaço (e de onde o profissional atende) filtra só `isActive`. Unidade suspensa pela plataforma, tirada da vitrine pela moderação (`searchHiddenAt`) ou de dono com a conta apagada ou desativada continua aparecendo com link, nome e endereço na página da outra unidade (a busca e o sitemap já tiram essas unidades com `ownerAcceptsPublic` e `searchHiddenAt`).
      - Depois de recusado (ou de encerrado), o mesmo espaço convida de novo na hora, e cada convite avisa o dono e o gerente do negócio convidado (sininho e e-mail). Não há limite nem bloqueio.
      
      **Fazer:** `publicLinks` usa o mesmo filtro da página pública (`ownerAcceptsPublic` e `searchHiddenAt: null`). Convite recusado só pode ser refeito depois de 30 dias, e o convidado pode bloquear convites daquele espaço.
 
+     **Feito:** a vitrine do espaço e a do profissional usam o mesmo filtro da busca: unidade ativa, dono ativo, sem suspensão e fora da moderação. Convite recusado ou encerrado só volta depois de 30 dias. O profissional bloqueia novos convites daquele espaço, no convite pendente ou ao sair. Teste em `shared-location-public.spec.ts`.
+
 ### Octogésima terceira rodada (2026-10-20): regras da rede e sair da lista de espera
 
 Foram lidos as configurações da rede (fidelidade, indicação, taxa de falta, janela de cancelamento, moeda, logo), a política de cancelamento pelo link do cliente e a lista de espera pela equipe e pelo link "sair da lista".
 
-253. ⬜ **As regras da rede (taxa de falta, janela de cancelamento, fidelidade) aceitam qualquer valor** (back: `updateNetwork`; `UpdateNetworkInput`):
+253. ✅ **As regras da rede (taxa de falta, janela de cancelamento, fidelidade) aceitam qualquer valor** (back: `updateNetwork`; `UpdateNetworkInput`):
      - `updateNetwork` grava o que vier, sem conferência nenhuma (o DTO não tem validação): taxa de falta de 500% do serviço ou negativa, `noShowFeeType` com qualquer texto, janela de cancelamento negativa ou de 10.000 horas, valor do ponto de fidelidade negativo ou enorme, pontos por real e bônus de indicação sem limite, `foundationYear` qualquer, descrição e missão sem tamanho máximo.
      - A janela de cancelamento decide até quando o cliente cancela e remarca pelo link (`loadManagedAppointment`): com uma janela enorme, o cliente nunca mais consegue cancelar pelo link (só nos minutos logo depois de agendar), e qualquer cancelamento dele vira "tardio" e gera taxa. Esses números aparecem na política de cancelamento da página pública e nos e-mails.
      - A moeda da rede aceita qualquer texto (`"XYZ"`), e é a moeda das unidades novas e do cartão-presente vendido sem unidade; com o Stripe, a cobrança nessa moeda falha.
@@ -2607,22 +2609,28 @@ Foram lidos as configurações da rede (fidelidade, indicação, taxa de falta, 
      
      **Fazer:** conferir cada campo como os preços da plataforma (`PRICING_LIMITS`): taxa percentual de 0 a 100, fixa pelo `checkMoney` da moeda, tipo `PERCENT`/`FIXED`, janela de 0 a 72 horas, ponto e bônus com teto, moeda da lista suportada (e sem trocar depois de ter venda), textos com tamanho máximo e logo só pelo envio de arquivo (ou link https). Teste com valores fora do limite.
 
-254. ⬜ **"Sair da lista de espera" não tira quem já recebeu um aviso de vaga** (back: `leaveWaitlist`, `passExpiredWaitlistOffers`, `backToWaiting`):
+     **Feito:** `updateNetwork` recusa taxa percentual fora de 0 a 100, taxa fixa fora do teto da moeda (`checkMoney`), tipo que não seja `PERCENT` ou `FIXED`, janela que não seja um inteiro de 0 a 72 horas, pontos por unidade acima de 100, valor do ponto acima do teto da moeda, bônus acima de 100.000, ano de fundação fora de 1800 até o ano atual e textos acima do tamanho (nome 120, cidade 80, descrição e missão 1.000). A moeda tem de ser um código que o sistema conhece e não muda depois de uma venda paga. O logo por link só entra se for `https`; o envio de arquivo continua o caminho de sempre. Fora do limite, nada é gravado. Teste em `update-network.spec.ts`.
+
+254. ✅ **"Sair da lista de espera" não tira quem já recebeu um aviso de vaga** (back: `leaveWaitlist`, `passExpiredWaitlistOffers`, `backToWaiting`):
      - O link "sair da lista" só cancela a entrada que está `WAITING`. Quem já recebeu um aviso (`NOTIFIED`) e clica em sair recebe a confirmação ("você saiu da lista"), mas a entrada fica como estava.
      - Quando o prazo do aviso vence (ou o horário oferecido passa), `backToWaiting` e a limpeza do fim de `passExpiredWaitlistOffers` devolvem a entrada para `WAITING`, e a pessoa volta a receber avisos de vaga (e-mail e WhatsApp) depois de ter pedido para sair.
      
      **Fazer:** `leaveWaitlist` cancela a entrada `WAITING` ou `NOTIFIED` (e, se havia vaga oferecida, passa para o próximo da fila na hora). Teste: avisar, sair pelo link, vencer o prazo e conferir que a entrada continua cancelada.
 
+     **Feito:** o link cancela quem está aguardando e quem já foi avisado. Se a vaga oferecida ainda está no futuro, ela passa na hora para o próximo da fila; se o horário já foi marcado, ninguém mais é avisado. Quem saiu fica `CANCELLED`, então o prazo do aviso e a limpeza de `passExpiredWaitlistOffers` não devolvem a entrada para a fila. Teste em `waitlist-leave.spec.ts`.
+
 ### Octogésima quarta rodada (2026-10-20): cliente bloqueado e o clube
 
 Foram lidos o cadastro de serviço, pacote e plano do clube (valores, Stripe, mudança de preço), a assinatura do clube pelo cliente e onde o bloqueio de cliente é conferido.
 
-255. ⬜ **Cliente bloqueado pela unidade assina o clube e remarca pelo link** (back: `subscribeToPlan`, `rescheduleManagedAppointment`; `ensureNotBlocked`):
+255. ✅ **Cliente bloqueado pela unidade assina o clube e remarca pelo link** (back: `subscribeToPlan`, `rescheduleManagedAppointment`; `ensureNotBlocked`):
      - O bloqueio (`setCustomerBlocked`, "não agenda online em nenhuma unidade da rede") só é conferido no agendamento pela página e na entrada da lista de espera. A assinatura do clube pela conta do cliente não confere: o cliente bloqueado assina, é cobrado todo mês no cartão e não consegue agendar online o serviço que está pagando.
      - Pelo link do e-mail, o cliente bloqueado depois de marcar continua remarcando o horário que já tinha (`rescheduleManagedAppointment` só olha o prazo e a agenda), quantas vezes quiser dentro da janela.
      - Bloquear não diz nada sobre a assinatura que o cliente já tem no clube: ela continua cobrando.
      
      **Fazer:** `ensureNotBlocked` (pela conta, pelo e-mail e pelo telefone da ficha ligada) também na assinatura do clube e na remarcação pelo link (cancelar pelo link continua liberado). Ao bloquear, a tela mostra se o cliente tem assinatura ativa no clube ou pacote com saldo e oferece cancelar a assinatura (com o estorno proporcional, se a unidade quiser).
+
+     **Feito:** a assinatura do clube e a remarcação pelo link recusam o cliente bloqueado (conta, e-mail ou telefone da ficha). Cancelar pelo link continua liberado. Ao bloquear, a tela mostra a assinatura ativa do clube e o pacote com sessão sobrando, e a unidade pode cancelar o clube na hora. Sem estorno, a cobrança para no fim do ciclo; com estorno, cancela agora e devolve o que falta do ciclo. Teste em `blocked-customer.spec.ts`.
 
 ### Octogésima quinta rodada (2026-10-20): importar contas pela planilha do backoffice
 

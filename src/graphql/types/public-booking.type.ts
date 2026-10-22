@@ -223,6 +223,9 @@ export class SharedLocationLinkType {
   @Field()
   status: string;
 
+  @Field({ description: 'O profissional bloqueou novos convites deste espaço' })
+  invitesBlocked: boolean;
+
   @Field()
   createdAt: Date;
 

@@ -45,6 +45,21 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Só o dono troca a moeda da unidade.': 'SHOP_CURRENCY_OWNER_ONLY',
   'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.':
     'SHOP_CURRENCY_LOCKED',
+  'Tipo da taxa de falta inválido. Use PERCENT ou FIXED.': 'NETWORK_FEE_TYPE_INVALID',
+  'A taxa de falta percentual vai de 0 a 100.': 'NETWORK_FEE_PERCENT_INVALID',
+  'Taxa de falta inválido': 'NETWORK_FEE_FIXED_INVALID',
+  'A janela de cancelamento vai de 0 a 72 horas.': 'NETWORK_WINDOW_INVALID',
+  'Pontos por unidade de moeda vão de 0 a 100.': 'NETWORK_POINTS_INVALID',
+  'Valor do ponto inválido': 'NETWORK_POINT_VALUE_INVALID',
+  'O bônus de indicação vai de 0 a 100.000 pontos.': 'NETWORK_BONUS_INVALID',
+  'Ano de fundação inválido.': 'NETWORK_YEAR_INVALID',
+  'O nome da rede pode ter no máximo 120 caracteres.': 'NETWORK_NAME_TOO_LONG',
+  'A cidade pode ter no máximo 80 caracteres.': 'NETWORK_CITY_TOO_LONG',
+  'A descrição pode ter no máximo 1.000 caracteres.': 'NETWORK_DESCRIPTION_TOO_LONG',
+  'A missão pode ter no máximo 1.000 caracteres.': 'NETWORK_MISSION_TOO_LONG',
+  'O logo precisa ser um link https.': 'NETWORK_LOGO_INVALID',
+  'A rede já tem venda registrada nesta moeda. Para trocar, fale com o suporte.':
+    'NETWORK_CURRENCY_LOCKED',
   'Escolha um dia entre hoje e os próximos 60 dias': 'WAITLIST_DAY_OUT_OF_RANGE',
   'Seu cargo só permite pôr clientes na sua própria fila.': 'WALK_IN_OWN_QUEUE_ONLY',
   'Este cartão-presente foi vendido em outra moeda e não vale nesta unidade.':
@@ -216,6 +231,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'CLIENT_UPCOMING_APPOINTMENTS',
   'Não é possível agendar online nesta unidade. Fale diretamente com a unidade.':
     'ONLINE_BOOKING_NOT_AVAILABLE_LOCATION',
+  'Não foi possível cancelar a assinatura do clube. Tente de novo.': 'CLUB_CANCEL_FAILED',
   'Já existe um funcionário com este telefone nesta unidade': 'ALREADY_TEAM_MEMBER_WITH_PHONE',
   'Já existe um funcionário com este email nesta unidade': 'ALREADY_TEAM_MEMBER_WITH_EMAIL',
   'Profissional não encontrado': 'PROFESSIONAL_NOT_FOUND',
@@ -501,6 +517,10 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Informe os 7 dias da semana': 'ENTER_ALL_7_DAYS_WEEK',
   'Tipo de dia inválido': 'INVALID_DAY_TYPE',
   'Não achamos essa unidade. Confira o link da página dela.': 'COULDNT_FIND_LOCATION',
+  'Este profissional bloqueou convites deste espaço.': 'SHARED_LOCATION_INVITES_BLOCKED',
+  'Só dá para convidar de novo 30 dias depois de recusar ou encerrar.':
+    'SHARED_LOCATION_INVITE_COOLDOWN',
+  'Saia do espaço antes de bloquear novos convites.': 'SHARED_LOCATION_BLOCK_WHILE_ACTIVE',
   'Esse é o seu próprio espaço': 'THATS_OWN_SPACE',
   'Essa unidade é da sua própria rede. Para trabalhar nas duas, adicione a pessoa à equipe.':
     'LOCATION_OWN_NETWORK',

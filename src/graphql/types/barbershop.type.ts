@@ -1399,6 +1399,45 @@ export class ServiceDeactivationPreviewType {
 }
 
 @ObjectType()
+export class CustomerBlockSubscriptionType {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  planName: string;
+
+  @Field()
+  barbershopName: string;
+
+  @Field()
+  currency: string;
+
+  @Field(() => Float)
+  refundAmount: number;
+}
+
+@ObjectType()
+export class CustomerBlockPackageType {
+  @Field()
+  name: string;
+
+  @Field(() => Int)
+  remaining: number;
+
+  @Field()
+  barbershopName: string;
+}
+
+@ObjectType()
+export class CustomerBlockPreviewType {
+  @Field(() => [CustomerBlockSubscriptionType])
+  subscriptions: CustomerBlockSubscriptionType[];
+
+  @Field(() => [CustomerBlockPackageType])
+  packages: CustomerBlockPackageType[];
+}
+
+@ObjectType()
 export class ClientPackageType {
   @Field(() => Int)
   id: number;

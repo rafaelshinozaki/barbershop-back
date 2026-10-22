@@ -51,6 +51,7 @@ describe('Espaço compartilhado (integração)', () => {
         gender: 'male',
         birthdate: new Date('1990-01-01'),
         readTerms: true,
+        isActive: true,
         roleId,
       },
     });
@@ -164,7 +165,7 @@ describe('Espaço compartilhado (integração)', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('qualquer lado encerra; depois dá pra convidar de novo, e recusar também avisa', async () => {
+  it('qualquer lado encerra; convite novo espera 30 dias, e recusar também avisa', async () => {
     const [link] = (await service.list(shops.member.ownerId, shops.member.shopId)).asMember;
     // O profissional sai do espaço
     await expect(
@@ -175,7 +176,13 @@ describe('Espaço compartilhado (integração)', () => {
     expect((await service.publicLinks(shops.host.shopId)).sharedLocationMembers).toEqual([]);
     expect((await service.list(shops.host.ownerId, shops.host.shopId)).asHost).toEqual([]);
 
-    // Convite de novo, e o profissional recusa
+    await expect(
+      service.invite(shops.host.ownerId, shops.host.shopId, `sl-member-${RUN}`),
+    ).rejects.toThrow(/30 dias/);
+    await prisma.sharedLocationMember.update({
+      where: { id: link.id },
+      data: { respondedAt: new Date(Date.now() - 31 * 86_400_000) },
+    });
     const again = await service.invite(shops.host.ownerId, shops.host.shopId, `sl-member-${RUN}`);
     expect(again.id).toBe(link.id);
     await service.respond(shops.member.ownerId, again.id, false);

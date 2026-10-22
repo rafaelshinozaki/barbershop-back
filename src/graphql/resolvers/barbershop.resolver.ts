@@ -59,6 +59,7 @@ import {
   MarketingCampaignType,
   ClientSubscriptionPlanType,
   ServiceDeactivationPreviewType,
+  CustomerBlockPreviewType,
   ClientSubscriptionType,
   SubscriptionRevenueReportType,
 } from '../types/barbershop.type';
@@ -455,6 +456,16 @@ export class BarbershopResolver {
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CustomerBlockPreviewType)
+  async customerBlockPreview(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.customerBlockPreview(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Customer, {
     description: 'Bloqueia ou desbloqueia o cliente (gerente para cima)',
   })
@@ -464,6 +475,8 @@ export class BarbershopResolver {
     @Args('blocked') blocked: boolean,
     @CurrentUser() user: UserDTO,
     @Args('reason', { nullable: true }) reason?: string,
+    @Args('cancelSubscriptions', { nullable: true }) cancelSubscriptions?: boolean,
+    @Args('refundUnused', { nullable: true }) refundUnused?: boolean,
   ) {
     const result = await this.barbershopService.setCustomerBlocked(
       user.id,
@@ -471,6 +484,7 @@ export class BarbershopResolver {
       customerId,
       blocked,
       reason,
+      { cancelSubscriptions, refundUnused },
     );
     this.realtime.notify(barbershopId, 'CUSTOMER', 'UPDATED');
     return result;

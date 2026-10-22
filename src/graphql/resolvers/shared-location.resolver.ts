@@ -62,6 +62,17 @@ export class SharedLocationResolver {
     return this.sharedLocationService.end(user.id, id, barbershopId);
   }
 
+  /** O profissional bloqueia, ou volta a aceitar, convites daquele espaço */
+  @Mutation(() => Boolean)
+  async setSharedLocationInviteBlock(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('blocked') blocked: boolean,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.sharedLocationService.setInviteBlock(user.id, id, barbershopId, blocked);
+  }
+
   // ---- Aluguel da cadeira ----
 
   /** O espaço define ou muda o aluguel mensal; sem valor (ou 0) encerra a cobrança */

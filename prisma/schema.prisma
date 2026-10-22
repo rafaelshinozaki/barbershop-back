@@ -2071,6 +2071,8 @@ model SharedLocationMember {
   status             String     @default("PENDING") // PENDING | ACTIVE | DECLINED | REMOVED
   invitedByUserId    Int?
   respondedAt        DateTime?
+  // O profissional bloqueou novos convites deste espaço
+  invitesBlockedAt   DateTime?
   // Aluguel da cadeira: o espaço define o valor mensal e o profissional
   // autoriza o cartão; o Stripe cobra todo mês (conta da plataforma, como a
   // assinatura do cliente — o repasse ao espaço é reconciliação manual).

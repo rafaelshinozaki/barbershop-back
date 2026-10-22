@@ -449,6 +449,60 @@ describe('Lista de espera online (integração)', () => {
     expect((await get(e2)).status).toBe('WAITING');
   });
 
+  it('quem já foi avisado sai pelo link, a vaga passa na hora e o prazo não devolve a entrada', async () => {
+    const day = addDays(monday, 35);
+    const date = new Date(`${day}T00:00:00Z`);
+    const person = async (label: string, n: number) =>
+      (
+        await prisma.customer.create({
+          data: {
+            networkId,
+            name: `Sai ${label}`,
+            phone: `6${RUN.slice(-9)}${n}`,
+            email: `sai-${label}-${RUN}@test.local`,
+          },
+        })
+      ).id;
+    const [firstId, secondId] = [await person('um', 1), await person('dois', 2)];
+    const entry = async (customer: number) =>
+      (
+        await barbershops.createWaitlistEntry(ownerId, shopId, {
+          customerId: customer,
+          barberId: ana,
+          date,
+        })
+      ).id;
+    const first = await entry(firstId);
+    const second = await entry(secondId);
+    const get = (id: number) => prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
+
+    const appt = await barbershops.createAppointment(ownerId, shopId, {
+      customerId,
+      barberId: ana,
+      startAt: at(day, '14:00'),
+      endAt: at(day, '14:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await barbershops.updateAppointment(ownerId, shopId, appt!.id, { status: 'CANCELLED' });
+    expect(await waitFor(async () => (await get(first)).status === 'NOTIFIED')).toBe(true);
+    const offered = (await get(first)).offeredStartAt;
+
+    expect(await barbershops.leaveWaitlist(createWaitlistLeaveToken(first))).toBe(
+      'Barbearia Espera',
+    );
+    expect((await get(first)).status).toBe('CANCELLED');
+    expect(await waitFor(async () => (await get(second)).status === 'NOTIFIED')).toBe(true);
+    expect((await get(second)).offeredStartAt).toEqual(offered);
+
+    await prisma.waitlistEntry.update({
+      where: { id: second },
+      data: { notifiedAt: new Date(Date.now() - (WAITLIST_OFFER_MINUTES + 1) * 60_000) },
+    });
+    await barbershops.passExpiredWaitlistOffers();
+    expect((await get(first)).status).toBe('CANCELLED');
+    expect((await get(second)).status).toBe('WAITING');
+  });
+
   it('fecha o que ficou para trás: dia passado, quem já agendou, unidade pausada (item 185)', async () => {
     const get = (id: number) => prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
     const person = async (label: string, n: number) =>
