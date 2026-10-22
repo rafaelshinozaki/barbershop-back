@@ -2660,12 +2660,14 @@ Foram lidos o cadastro de conta da equipe (dono e profissional) pelo GraphQL e p
 
 Foram lidos o login com código (dois passos), os e-mails com HTML (aviso de saldo, avisos de atividade, e-mail do backoffice), o arquivo de calendário (.ics) e as mutations sem guarda própria, com foco nas de pagamento.
 
-258. ⬜ **Qualquer conta logada dispara a cobrança dos planos de todos os donos** (back: `PaymentResolver.processAllRecurringPayments`, `processRecurringPayment`):
+258. ✅ **Qualquer conta logada dispara a cobrança dos planos de todos os donos** (back: `PaymentResolver.processAllRecurringPayments`, `processRecurringPayment`):
      - `processAllRecurringPayments` só pede login (a guarda do resolver é `GraphQLJwtAuthGuard`) e roda `PaymentsService.processRecurringPayments()`, a renovação da plataforma inteira: busca todos os planos vencidos sem assinatura no Stripe e tenta cobrar cada um. Um barbeiro ou um profissional recém-cadastrado chama quantas vezes quiser.
      - A trava de uma tentativa por dia e a chave da renovação seguram a cobrança em dobro, mas cada chamada percorre todos os planos vencidos e chama o Stripe para cada um (limite de requisições da conta da plataforma), e, no primeiro dia de atraso, a tentativa é feita na hora em que alguém chamar, não no horário do agendador. A resposta devolve a mensagem de erro interna (`error.message`).
      - O backoffice já tem a versão de admin (`processAllRecurringPaymentsAdmin`), e a renovação roda sozinha pelo agendador.
      
      **Fazer:** tirar `processAllRecurringPayments` do resolver público (fica só a do backoffice, com a área Financeiro). `processRecurringPayment` (de um pagamento do próprio dono) com limite de chamadas. Respostas sem a mensagem interna. Teste: conta comum chamando a mutation recebe "sem permissão".
+
+     **Feito:** a mutation saiu do resolver da conta. Só `processAllRecurringPaymentsAdmin` (área Financeiro) e o agendador renovam os planos de todos. `processRecurringPayment` aceita 5 chamadas por hora e, como as do backoffice, não devolve a mensagem interna. Teste em `recurring-payment-permission.spec.ts`.
 
 ### Octogésima oitava rodada (2026-10-20): plano removido do catálogo
 

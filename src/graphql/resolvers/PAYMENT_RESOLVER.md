@@ -386,31 +386,8 @@ mutation ProcessRecurringPayment($paymentId: Int!) {
 
 ---
 
-#### 5. `processAllRecurringPayments`
-**Descrição**: Processa todos os pagamentos recorrentes pendentes
-```graphql
-mutation ProcessAllRecurringPayments {
-  processAllRecurringPayments {
-    success
-    message
-    processedAt
-    processedCount
-  }
-}
-```
-
-**Autenticação**: Requer `@UseGuards(GraphQLJwtAuthGuard)`
-
-**Retorno**: `ProcessAllRecurringPaymentsResponse`
-
-**Fluxo de Negócio**:
-1. Executa job de processamento recorrente
-2. Processa todos os pagamentos elegíveis
-3. Retorna estatísticas
-
-**Integração**: `PaymentsService.processRecurringPayments()`
-
-**⚠️ Nota**: Processa para todos os usuários, não apenas o autenticado
+#### 5. `processAllRecurringPayments` (removida)
+A cobrança de todos os planos não fica neste resolver. Só `processAllRecurringPaymentsAdmin` no backoffice, com a área Financeiro. A renovação também roda no agendador.
 
 ---
 
@@ -471,7 +448,7 @@ daysOverdue: Math.floor((now - paymentDate) / (1000 * 60 * 60 * 24))
 
 ### Pagamento Recorrente
 1. Job automático identifica pagamentos devidos
-2. `processAllRecurringPayments()` ou manual por ID
+2. Agendador, ou `processAllRecurringPaymentsAdmin` no backoffice; o dono só cobra o próprio pagamento (`processRecurringPayment`, 5 chamadas por hora)
 3. Sistema cobra via Stripe
 4. Atualiza status e próxima data
 

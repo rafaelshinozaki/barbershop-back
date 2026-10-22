@@ -5,6 +5,7 @@ import {
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { DEFAULT_TIMEZONE, monthRangeUtc, toZonedParts } from '../../common/timezone.util';
 import { ForbiddenException, UseGuards } from '@nestjs/common';
+import { clientErrorMessage } from '../../common/client-error';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { UserService } from '../../auth/users/users.service';
 import {
@@ -573,7 +574,7 @@ export class BackofficeResolver {
       this.logger.error('Error processing all recurring payments for admin:', error);
       return {
         success: false,
-        message: error.message,
+        message: clientErrorMessage(error, 'Não foi possível processar as cobranças'),
         processedAt: new Date().toISOString(),
         processedCount: 0,
       };
@@ -598,7 +599,7 @@ export class BackofficeResolver {
       this.logger.error(`Error processing recurring payment ${paymentId} for admin:`, error);
       return {
         success: false,
-        message: error.message,
+        message: clientErrorMessage(error, 'Não foi possível processar a cobrança'),
         processedAt: new Date().toISOString(),
       };
     }

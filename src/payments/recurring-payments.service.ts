@@ -60,7 +60,7 @@ export class RecurringPaymentsService {
       return { success: true, message: 'Processamento manual concluído com sucesso' };
     } catch (error) {
       this.logger.error('❌ Erro no processamento manual:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: 'Não foi possível processar as cobranças' };
     }
   }
 

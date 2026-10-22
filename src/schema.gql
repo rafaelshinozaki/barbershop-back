@@ -2321,7 +2321,6 @@ type Mutation {
   openCashSession(barbershopId: Int!, input: OpenCashSessionInput!): CashSessionType!
   openClientArea: Boolean!
   payBarber(barbershopId: Int!, input: PayBarberInput!): BarberPayoutType!
-  processAllRecurringPayments: ProcessAllRecurringPaymentsResponse!
   processAllRecurringPaymentsAdmin: AdminProcessAllRecurringPaymentsResponse!
   processRecurringPayment(paymentId: Int!): ProcessRecurringPaymentResponse!
   processRecurringPaymentAdmin(paymentId: Int!): AdminProcessRecurringPaymentResponse!
@@ -3055,13 +3054,6 @@ type ProReferralType {
   priceLabel: String!
   proActive: Boolean!
   proUntil: String
-}
-
-type ProcessAllRecurringPaymentsResponse {
-  message: String!
-  processedAt: String!
-  processedCount: Int!
-  success: Boolean!
 }
 
 type ProcessRecurringPaymentResponse {

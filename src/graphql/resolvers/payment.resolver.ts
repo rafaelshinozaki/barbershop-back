@@ -4,6 +4,8 @@ import {
 } from '../../payments/payments.service';
 import { Resolver, Query, Mutation, Context, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { clientErrorMessage } from '../../common/client-error';
+import { ThrottlePlanCharge } from '../../common/decorators/throttle.decorator';
 import {
   Payment,
   PaymentMethod,
@@ -24,7 +26,6 @@ import { PAGAMENTO_STATUS } from '../../common/contants';
 import {
   UserRecurringPaymentsStats,
   ProcessRecurringPaymentResponse,
-  ProcessAllRecurringPaymentsResponse,
 } from '../types/recurring-payments.type';
 
 @Resolver()
@@ -579,6 +580,9 @@ export class PaymentResolver {
     }
   }
 
+  // Só o pagamento do próprio dono. A renovação de todos os planos fica no
+  // backoffice (processAllRecurringPaymentsAdmin, área Financeiro) e no agendador.
+  @ThrottlePlanCharge()
   @Mutation(() => ProcessRecurringPaymentResponse)
   async processRecurringPayment(
     @Args('paymentId', { type: () => Int }) paymentId: number,
@@ -601,34 +605,8 @@ export class PaymentResolver {
       );
       return {
         success: false,
-        message: error.message,
+        message: clientErrorMessage(error, 'Não foi possível processar a cobrança'),
         processedAt: new Date().toISOString(),
-      };
-    }
-  }
-
-  @Mutation(() => ProcessAllRecurringPaymentsResponse)
-  async processAllRecurringPayments(
-    @Context() context: any,
-  ): Promise<ProcessAllRecurringPaymentsResponse> {
-    const userId = context.req.user.id;
-    this.logger.log(`Processing all recurring payments for user ${userId}`);
-
-    try {
-      await this.paymentsService.processRecurringPayments();
-      return {
-        success: true,
-        message: 'Todos os pagamentos recorrentes foram processados',
-        processedAt: new Date().toISOString(),
-        processedCount: 0, // Será calculado pelo serviço
-      };
-    } catch (error) {
-      this.logger.error(`Error processing all recurring payments for user ${userId}:`, error);
-      return {
-        success: false,
-        message: error.message,
-        processedAt: new Date().toISOString(),
-        processedCount: 0,
       };
     }
   }

@@ -22,3 +22,5 @@ export const ThrottleSlotSearch = () => NestThrottle({ default: { limit: 30, ttl
 export const ThrottleSlotList = () => NestThrottle({ default: { limit: 60, ttl: 60000 } }); // 60 por minuto
 // Denúncia de conteúdo público (sem login)
 export const ThrottleReport = () => NestThrottle({ default: { limit: 10, ttl: 3600000 } }); // 10 por hora
+// Cobrança manual do plano do próprio dono: cada chamada pode ir ao Stripe
+export const ThrottlePlanCharge = () => NestThrottle({ default: { limit: 5, ttl: 3600000 } }); // 5 por hora

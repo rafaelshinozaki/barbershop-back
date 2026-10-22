@@ -71,18 +71,3 @@ export class ProcessRecurringPaymentResponse {
   @Field()
   processedAt: string;
 }
-
-@ObjectType()
-export class ProcessAllRecurringPaymentsResponse {
-  @Field()
-  success: boolean;
-
-  @Field()
-  message: string;
-
-  @Field()
-  processedAt: string;
-
-  @Field(() => Int)
-  processedCount: number;
-}

@@ -248,21 +248,6 @@ class GraphQLClient {
     return this.mutation(mutation, { paymentId });
   }
 
-  async processAllRecurringPayments() {
-    const mutation = `
-      mutation ProcessAllRecurringPayments {
-        processAllRecurringPayments {
-          success
-          message
-          processedAt
-          processedCount
-        }
-      }
-    `;
-
-    return this.mutation(mutation);
-  }
-
   async getMyCoupons() {
     const query = `
       query GetMyCoupons {
