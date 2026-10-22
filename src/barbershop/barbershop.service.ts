@@ -2933,9 +2933,22 @@ export class BarbershopService {
         `;
       }
     }
+    // E-mail trocado numa ficha ligada a uma conta com o e-mail antigo: a
+    // ligação sai (a conta antiga não segue vendo a ficha) (item 251)
+    let unlink = {};
+    if (data.email !== undefined && customer.clientAccountId != null) {
+      const nextEmail = data.email?.trim().toLowerCase() || '';
+      const account = await this.prisma.clientAccount.findUnique({
+        where: { id: customer.clientAccountId },
+        select: { email: true },
+      });
+      if (!account || account.email.trim().toLowerCase() !== nextEmail) {
+        unlink = { clientAccountId: null };
+      }
+    }
     return this.prisma.customer.update({
       where: { id: customerId },
-      data,
+      data: { ...data, ...unlink },
     });
   }
 

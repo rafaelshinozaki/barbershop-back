@@ -2580,12 +2580,14 @@ Foram lidos o agendamento pela página pública (achar a ficha, preencher o e-ma
 
 Foram lidos o cadastro e a edição da ficha do cliente pela equipe (e-mail, telefone, bloqueio, campanhas) e o espaço compartilhado (convidar, aceitar, sair e a vitrine dos dois lados).
 
-251. ⬜ **E-mail digitado pela equipe na ficha liga a ficha à conta de quem tiver esse e-mail** (back: `createCustomer`, `updateCustomer`; `ClientAuthService.linkVerifiedCustomers`):
+251. ✅ **E-mail digitado pela equipe na ficha liga a ficha à conta de quem tiver esse e-mail** (back: `createCustomer`, `updateCustomer`; `ClientAuthService.linkVerifiedCustomers`):
      - A ficha ganha e-mail pela equipe sem confirmação: no cadastro (do barbeiro básico para cima) e na edição (da recepção para cima). Quando alguém confirma uma conta de cliente com esse e-mail (ou entra pelo Google com ele), `linkVerifiedCustomers` liga a ficha à conta.
      - Um erro de digitação (`maria.silva@gmail.com` no lugar de `mariasilva@gmail.com`) entrega o histórico, os próximos horários e os e-mails daquela cliente para o dono do outro endereço, sem a unidade nem a cliente saberem. Trocar o e-mail de uma ficha já ligada mantém a ligação com a conta antiga.
      - É o mesmo caminho do item 250 (lá o e-mail vem do agendamento pela página).
      
      **Fazer:** ligar ficha à conta só quando o e-mail da ficha foi confirmado pelo próprio cliente (código ou link enviado ao endereço, como o "verificar e-mail" da conta) ou quando a pessoa entra com um link que a unidade mandou para ela. Até lá, a conta vê só os horários que ela mesma marcou. Trocar o e-mail da ficha desfaz a ligação com a conta.
+     
+     **Feito:** `linkVerifiedCustomers` só liga à conta (com o e-mail confirmado) a ficha que tem o mesmo e-mail **e** o mesmo telefone da conta (com ou sem DDI, por `phoneDigitVariants`). Quem tem o endereço digitado errado não sabe o telefone da cliente, então a ficha dela não entra na conta. Conta sem telefone não liga nada; ao pôr ou trocar o telefone no perfil, a ligação é feita de novo. A equipe trocar o e-mail de uma ficha ligada a uma conta com outro e-mail desfaz a ligação. Ficou de fora o envio de código para o e-mail da ficha: com o endereço errado, quem confirmaria é justamente a pessoa errada. Teste em `customer-link.int.spec.ts`.
 
 252. ⬜ **A vitrine do espaço compartilhado mostra unidade suspensa, fora da busca ou sem dono, e o convite pode ser repetido sem fim** (back: `SharedLocationService.publicLinks`, `invite`):
      - Na página pública, a lista de quem atende no espaço (e de onde o profissional atende) filtra só `isActive`. Unidade suspensa pela plataforma, tirada da vitrine pela moderação (`searchHiddenAt`) ou de dono com a conta apagada ou desativada continua aparecendo com link, nome e endereço na página da outra unidade (a busca e o sitemap já tiram essas unidades com `ownerAcceptsPublic` e `searchHiddenAt`).
