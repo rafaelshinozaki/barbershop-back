@@ -2943,7 +2943,7 @@ Foram lidos os pontos de fidelidade (ganho, resgate, edição e exclusão da ven
 
 285. ⬜ **Trocar o cliente da venda que resgatou pontos passa os pontos de um cliente para outro** (back: `updateSale`, `deleteSale`):
      - `updateSale` aceita trocar o cliente da venda e move só os pontos **ganhos** (tira do antigo, dá ao novo). Os pontos **resgatados** (`loyaltyPointsRedeemed`) continuam descontados do cliente antigo, e o desconto fica na venda do cliente novo.
-     - Apagar a venda depois devolve os pontos resgatados para `existing.customerId`, que agora é o cliente novo. Assim, venda com 100 pontos resgatados de A, trocada para B e apagada: A perde 100 pontos e B ganha 100. Qualquer um da recepção para cima faz isso (venda é da recepção), sem o cliente saber.
+     - Apagar a venda depois devolve os pontos resgatados para `existing.customerId`, que agora é o cliente novo. Assim, venda com 100 pontos resgatados de A, trocada para B e apagada: A perde 100 pontos e B ganha 100. O gerente (editar e apagar venda é de gerente para cima) faz isso sem o cliente saber, e um erro de clique na ficha errada tira os pontos de quem não tem nada com a venda.
      - A retirada dos pontos ganhos (troca de cliente, venda que deixou de ser paga ou total menor) usa `decrement` sem piso: se o cliente já usou os pontos, o saldo fica negativo. O bônus de indicação já usa `GREATEST(0, …)`.
      
      **Fazer:** venda com pontos resgatados (ou cartão-presente aplicado) não troca de cliente; a mensagem orienta a apagar e lançar de novo. A retirada dos pontos ganhos não deixa o saldo negativo, como no bônus de indicação. Teste: venda com resgate, trocar o cliente é recusado; total menor depois de o cliente gastar os pontos não deixa o saldo negativo.
