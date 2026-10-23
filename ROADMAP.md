@@ -2936,3 +2936,20 @@ Foram lidos o histórico de alterações (gatilho do banco, quem vê o quê e re
      - A conta solo que chegou ao limite do mês (bloqueada, sem Pro) continua lançando atendimentos: basta importar uma planilha com os horários que já aconteceram hoje. Eles entram concluídos, aparecem na agenda, nos números e na ficha dos clientes, e a cota nunca sobe.
      
      **Fazer:** `HISTORY` (fora da cota) só para o que aconteceu antes de a agenda existir (`Barbershop.createdAt`). Linha passada depois disso entra como atendimento comum: conta na cota e passa por `assertSoloBookingAllowed`. Teste: agenda solo no limite, importar uma linha de hoje mais cedo é recusado; uma linha de antes da criação entra.
+
+### Centésima quinta rodada (2026-10-23): pontos de fidelidade na edição da venda e custo dos produtos
+
+Foram lidos os pontos de fidelidade (ganho, resgate, edição e exclusão da venda, bônus de indicação), as despesas e o fechamento do caixa, e o cadastro de produtos e o estoque.
+
+285. ⬜ **Trocar o cliente da venda que resgatou pontos passa os pontos de um cliente para outro** (back: `updateSale`, `deleteSale`):
+     - `updateSale` aceita trocar o cliente da venda e move só os pontos **ganhos** (tira do antigo, dá ao novo). Os pontos **resgatados** (`loyaltyPointsRedeemed`) continuam descontados do cliente antigo, e o desconto fica na venda do cliente novo.
+     - Apagar a venda depois devolve os pontos resgatados para `existing.customerId`, que agora é o cliente novo. Assim, venda com 100 pontos resgatados de A, trocada para B e apagada: A perde 100 pontos e B ganha 100. Qualquer um da recepção para cima faz isso (venda é da recepção), sem o cliente saber.
+     - A retirada dos pontos ganhos (troca de cliente, venda que deixou de ser paga ou total menor) usa `decrement` sem piso: se o cliente já usou os pontos, o saldo fica negativo. O bônus de indicação já usa `GREATEST(0, …)`.
+     
+     **Fazer:** venda com pontos resgatados (ou cartão-presente aplicado) não troca de cliente; a mensagem orienta a apagar e lançar de novo. A retirada dos pontos ganhos não deixa o saldo negativo, como no bônus de indicação. Teste: venda com resgate, trocar o cliente é recusado; total menor depois de o cliente gastar os pontos não deixa o saldo negativo.
+
+286. ⬜ **Barbeiro e recepção veem o preço de custo dos produtos** (back: `getProducts`, `getInventory`; `BarbershopProductType.costPrice`):
+     - `getProducts` e `getInventory` pedem só o acesso padrão (`barber`) e devolvem o produto inteiro, com `costPrice`. O barbeiro e a recepção veem quanto a unidade paga em cada produto e a margem de cada venda.
+     - O resto do financeiro (resumo, despesas, relatórios) é só de gerente para cima, e cadastrar e mudar o custo também.
+     
+     **Fazer:** `costPrice` só para gerente e dono (o campo volta nulo para os outros cargos, como os dados de contato no item 248). Teste: o barbeiro lista os produtos sem custo, e o gerente com.
