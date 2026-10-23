@@ -15,16 +15,19 @@ import { PaymentsService } from '../payments/payments.service';
 import { UserService } from '../auth/users/users.service';
 import { EmployeeInviteService } from '../barbershop/employee-invite.service';
 import { ClientAuthService } from '../client-auth/client-auth.service';
+import { ClubBillingPauseService } from '../barbershop/club-billing-pause.service';
 import {
   ADMIN_NOTIFICATION_EMAIL,
   APPROVAL_EXECUTE,
   CLIENT_SUSPENDED_EMAIL,
+  CLUB_BILLING_PAUSE,
   EMAIL_SEND,
   MODERATION_NOTIFY_OWNER,
   NOTIFICATIONS_CREATED,
   parseAdminNotificationEmail,
   parseApprovalExecute,
   parseClientSuspendedEmail,
+  parseClubBillingPause,
   parseEmailSend,
   parseModerationNotifyOwner,
   parseNotificationsCreated,
@@ -73,6 +76,7 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     private readonly users: UserService,
     private readonly invites: EmployeeInviteService,
     private readonly clients: ClientAuthService,
+    private readonly clubPause: ClubBillingPauseService,
   ) {
     super();
   }
@@ -85,7 +89,18 @@ export class BackofficeCommandsProcessor extends WorkerHost {
     }
     if (job.name === CLIENT_SUSPENDED_EMAIL) {
       const cmd = parseClientSuspendedEmail(job.data);
-      await this.suspension.emailSuspended(cmd.clientAccountId);
+      await this.suspension.handleExternalSuspension(cmd.clientAccountId, {
+        cancelSubscriptions: cmd.cancelSubscriptions,
+        refundUnused: cmd.refundUnused,
+      });
+      return;
+    }
+    if (job.name === CLUB_BILLING_PAUSE) {
+      const cmd = parseClubBillingPause(job.data);
+      if (cmd.reason === 'platform_shop') await this.clubPause.forShop(cmd.targetId, cmd.paused);
+      else if (cmd.reason === 'platform_network')
+        await this.clubPause.forNetwork(cmd.targetId, cmd.paused);
+      else await this.clubPause.forOwner(cmd.targetId, cmd.paused);
       return;
     }
     if (job.name === PRICING_RELOAD) {

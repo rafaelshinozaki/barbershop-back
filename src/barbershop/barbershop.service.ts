@@ -47,7 +47,12 @@ import {
 } from './solo';
 import { unitBadges } from './badges';
 import { DEFAULT_BUSINESS_TYPE, isBusinessType, type BusinessType } from './business-types';
-import { DEFAULT_WORKING_HOURS, parseBusinessHours, WEEKDAY_KEYS } from './working-hours';
+import {
+  DEFAULT_WORKING_HOURS,
+  normalizeBusinessHours,
+  parseBusinessHours,
+  WEEKDAY_KEYS,
+} from './working-hours';
 import {
   boundingBox,
   clampRadius,
@@ -600,6 +605,128 @@ export const SHOP_CURRENCY_INVALID_MESSAGE = 'Moeda inválida (use o código de 
 export const SHOP_CURRENCY_OWNER_ONLY_MESSAGE = 'Só o dono troca a moeda da unidade.';
 export const SHOP_CURRENCY_LOCKED_MESSAGE =
   'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.';
+/** Página pública /u/:slug. Minúsculas, sem hífen nas pontas, de 3 a 60. */
+export const SHOP_SLUG_INVALID_MESSAGE =
+  'Endereço da página inválido — use só letras minúsculas, números e hífen (sem começar ou terminar com hífen), de 3 a 60 caracteres.';
+
+const SHOP_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SHOP_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SHOP_TEXT_MAX = {
+  name: 120,
+  address: 200,
+  complement1: 120,
+  complement2: 120,
+  city: 80,
+  state: 80,
+  country: 80,
+  postalCode: 20,
+  email: 254,
+} as const;
+
+export function normalizeShopSlug(raw: string | null | undefined): string {
+  const slug = (raw ?? '').trim().toLowerCase();
+  if (slug.length < 3 || slug.length > 60 || !SHOP_SLUG.test(slug)) {
+    throw new BadRequestException(SHOP_SLUG_INVALID_MESSAGE);
+  }
+  return slug;
+}
+
+type ShopTextInput = {
+  name?: string | null;
+  address?: string | null;
+  complement1?: string | null;
+  complement2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+type ShopTexts = {
+  [K in keyof typeof SHOP_TEXT_MAX]?: string;
+} & { phone?: string };
+
+/** Textos do cadastro e da edição: tamanho, e-mail e telefone com DDD. */
+export function normalizeShopTexts(
+  data: ShopTextInput,
+  required: boolean,
+  countryFallback?: string | null,
+): ShopTexts {
+  const out: ShopTexts = {};
+  const take = (key: keyof typeof SHOP_TEXT_MAX, label: string, opts?: { email?: boolean }) => {
+    const optional = key === 'complement1' || key === 'complement2';
+    const value = data[key];
+    if (value == null) {
+      if (required && !optional) throw new BadRequestException(`${label} inválido`);
+      return;
+    }
+    const text = String(value).trim();
+    if (!text) {
+      if (optional) {
+        out[key] = '';
+        return;
+      }
+      throw new BadRequestException(`${label} inválido`);
+    }
+    if (text.length > SHOP_TEXT_MAX[key] || (key === 'name' && text.length < 2)) {
+      throw new BadRequestException(`${label} inválido`);
+    }
+    if (opts?.email && !SHOP_EMAIL.test(text)) {
+      throw new BadRequestException('E-mail da unidade inválido');
+    }
+    out[key] = key === 'email' ? text.toLowerCase() : text;
+  };
+  take('name', 'Nome da unidade');
+  take('address', 'Endereço');
+  take('complement1', 'Complemento');
+  take('complement2', 'Complemento');
+  take('city', 'Cidade');
+  take('state', 'Estado');
+  take('country', 'País');
+  take('postalCode', 'CEP');
+  take('email', 'E-mail da unidade', { email: true });
+  if (data.phone != null || required) {
+    const country = String(out.country ?? data.country ?? countryFallback ?? '');
+    const phone = normalizePhoneToE164(data.phone, callingCodeForCountry(country) ?? '55');
+    if (!phone) {
+      throw new BadRequestException('Telefone da unidade inválido (use o número com DDD)');
+    }
+    out.phone = phone;
+  }
+  return out;
+}
+
+/** Fuso e moeda do cadastro: o que veio é checado; o que faltou sai do país. */
+export function resolveShopLocale(input: {
+  timezone?: string | null;
+  currency?: string | null;
+  country: string;
+  state?: string | null;
+}): { timezone: string; currency: string } {
+  let timezone = input.timezone?.trim() || '';
+  if (timezone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    } catch {
+      throw new BadRequestException(SHOP_TIMEZONE_INVALID_MESSAGE);
+    }
+  } else {
+    timezone = timezoneForPlace(input.country, input.state ?? '');
+  }
+  let currency = input.currency?.trim().toUpperCase() || '';
+  if (currency) {
+    if (!SUPPORTED_CURRENCIES.has(currency)) {
+      throw new BadRequestException(SHOP_CURRENCY_INVALID_MESSAGE);
+    }
+  } else {
+    currency = currencyForCountry(input.country);
+    if (!SUPPORTED_CURRENCIES.has(currency)) currency = 'BRL';
+  }
+  return { timezone, currency };
+}
+
 export const NETWORK_FEE_TYPE_MESSAGE = 'Tipo da taxa de falta inválido. Use PERCENT ou FIXED.';
 export const NETWORK_FEE_PERCENT_MESSAGE = 'A taxa de falta percentual vai de 0 a 100.';
 export const NETWORK_FEE_FIXED_MESSAGE = 'Taxa de falta inválido';
@@ -617,6 +744,8 @@ export const NETWORK_CURRENCY_LOCKED_MESSAGE =
   'A rede já tem venda registrada nesta moeda. Para trocar, fale com o suporte.';
 export const CLUB_CANCEL_FAILED_MESSAGE =
   'Não foi possível cancelar a assinatura do clube. Tente de novo.';
+export const PLATFORM_SUSPENDED_BOOKING_MESSAGE =
+  'Não é possível agendar online com estes dados. Fale com o suporte da plataforma.';
 export const REFUND_SALE_LOCKED_MESSAGE = 'Estorno não pode ser alterado nem apagado.';
 
 export const CLOSED_CASH_SALE_MESSAGE =
@@ -2072,6 +2201,7 @@ export class BarbershopService {
       email: string;
       timezone?: string;
       currency?: string;
+      /** JSON dos 7 dias. Ausente: a unidade fica no horário padrão. */
       businessHours?: string;
       businessType?: string;
       /** false: o dono administra e não entra na agenda. Ausente: entra, como hoje. */
@@ -2079,8 +2209,21 @@ export class BarbershopService {
     },
   ) {
     const businessType = this.parseBusinessType(data.businessType) ?? DEFAULT_BUSINESS_TYPE;
+    // Mesma conferência da tela de horário. Vazio deixa o padrão.
+    const businessHours = data.businessHours?.trim()
+      ? normalizeBusinessHours(data.businessHours)
+      : undefined;
+    // Mesmas regras da edição: endereço da página, textos, fuso e moeda.
+    const slug = normalizeShopSlug(data.slug);
+    const texts = normalizeShopTexts(data, true);
+    const locale = resolveShopLocale({
+      timezone: data.timezone,
+      currency: data.currency,
+      country: String(texts.country),
+      state: texts.state,
+    });
     const existing = await this.prisma.barbershop.findUnique({
-      where: { slug: data.slug },
+      where: { slug },
     });
     if (existing) {
       throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
@@ -2095,18 +2238,47 @@ export class BarbershopService {
         `Seu plano permite no máximo ${limits.maxBarbershops} unidade(s). Faça upgrade para cadastrar mais.`,
       );
     }
+    // Quem já trabalha em outra unidade: o expediente novo não pode cruzar
+    // o de lá (a tela de horário faz a mesma conferência)
+    if (businessHours) {
+      const otherShop = await this.prisma.barber.findFirst({
+        where: { userId, ...currentEngagement() },
+        select: { id: true },
+      });
+      const days = otherShop ? parseBusinessHours(businessHours) : null;
+      if (otherShop && days) {
+        for (let day = 0; day < 7; day++) {
+          const hours = days[day];
+          if (!hours) continue;
+          await this.ensureShiftFreeAcrossShops(otherShop.id, day, hours.start, hours.end);
+        }
+      }
+    }
     // O check de slug lá em cima não é atômico: dois cadastros simultâneos
     // com o mesmo slug passam juntos por ele e um estoura a unique aqui.
     // ownerTakesAppointments é do cadastro do dono (vai pro Barber dele), não
     // é coluna da unidade
-    const { ownerTakesAppointments: _ownerTakesAppointments, ...shopData } = data;
+    const { ownerTakesAppointments: _ownerTakesAppointments, businessHours: _rawHours, ...shopData } =
+      data;
     const barbershop = await this.prisma.barbershop
       .create({
         data: {
           ...shopData,
+          name: texts.name ?? data.name,
+          address: texts.address ?? data.address,
+          complement1: texts.complement1 ?? data.complement1,
+          complement2: texts.complement2 ?? data.complement2,
+          city: texts.city ?? data.city,
+          state: texts.state ?? data.state,
+          country: texts.country ?? data.country,
+          postalCode: texts.postalCode ?? data.postalCode,
+          phone: texts.phone ?? data.phone,
+          email: texts.email ?? data.email,
+          slug,
+          ...(businessHours ? { businessHours } : {}),
           businessType,
-          timezone: data.timezone ?? 'America/Sao_Paulo',
-          currency: data.currency ?? network.currency,
+          timezone: locale.timezone,
+          currency: locale.currency,
           networkId: network.id,
           ownerUserId: userId,
         },
@@ -2127,7 +2299,7 @@ export class BarbershopService {
           barbershopId: barbershop.id,
           userId,
           name: owner.fullName,
-          phone: owner.phone ?? data.phone,
+          phone: owner.phone ?? texts.phone ?? data.phone,
           email: owner.email,
           staffType: 'barber',
           specialization: 'Proprietário',
@@ -2188,7 +2360,6 @@ export class BarbershopService {
       email: string;
       timezone: string;
       currency: string;
-      businessHours: string;
       description: string;
       whatsapp: string;
       instagramUrl: string;
@@ -2202,6 +2373,11 @@ export class BarbershopService {
     }>,
   ) {
     const current = await this.ensureBarbershopAccess(userId, id, 'manager');
+    // O horário fica só na tela de horário (conferência, escala e lista de espera)
+    if ('businessHours' in data) {
+      throw new BadRequestException('O horário de funcionamento se altera na tela de horário.');
+    }
+    data = { ...data, ...normalizeShopTexts(data, false, current.country) };
     // Pausar ou reativar tira a unidade do ar e mexe na cobrança do clube: só o dono
     const toggling = data.isActive !== undefined && data.isActive !== current.isActive;
     if (toggling && current.accessLevel !== 'owner') {
@@ -2342,21 +2518,26 @@ export class BarbershopService {
   /**
    * Unidade pausada não aceita horário: a cobrança do clube fica suspensa na
    * Stripe (pause_collection, a fatura do período nem é gerada) e volta ao
-   * reativar. Só voltam as que a pausa suspendeu (shopPausedAt).
+   * reativar. Só voltam as que a pausa suspendeu (shopPausedAt). Outro
+   * motivo (suspensão da plataforma ou dono desativado) segura a Stripe.
    */
   async setClubBillingPaused(barbershopId: number, paused: boolean) {
     const subs = await this.prisma.clientSubscription.findMany({
       where: paused
         ? { barbershopId, status: { in: ['ACTIVE', 'PAST_DUE'] }, shopPausedAt: null }
         : { barbershopId, shopPausedAt: { not: null } },
-      select: { id: true, stripeSubscriptionId: true },
+      select: { id: true, stripeSubscriptionId: true, billingPauseReasons: true },
     });
     for (const sub of subs) {
+      // Suspensão da plataforma ou dono desativado ainda segura a Stripe
+      const stillHeld = !paused && sub.billingPauseReasons.length > 0;
       try {
-        await this.stripeService.updateSubscription(sub.stripeSubscriptionId, {
-          // '' tira a pausa (é assim que a API da Stripe limpa o campo)
-          pause_collection: paused ? { behavior: 'void' } : ('' as never),
-        });
+        if (!stillHeld) {
+          await this.stripeService.updateSubscription(sub.stripeSubscriptionId, {
+            // '' tira a pausa (é assim que a API da Stripe limpa o campo)
+            pause_collection: paused ? { behavior: 'void' } : ('' as never),
+          });
+        }
         await this.prisma.clientSubscription.update({
           where: { id: sub.id },
           data: { shopPausedAt: paused ? new Date() : null },
@@ -3074,7 +3255,7 @@ export class BarbershopService {
              SET "marketingOptOut" = true
            WHERE "networkId" = ${customer.networkId}
              AND "deletedAt" IS NULL
-             AND regexp_replace(phone, '\\D', '', 'g') IN (${Prisma.join(variants)})
+             AND "phoneDigits" IN (${Prisma.join(variants)})
         `;
       }
     }
@@ -3276,6 +3457,49 @@ export class BarbershopService {
     };
   }
 
+  /**
+   * Assinaturas do clube ainda cobrando nesta conta, em qualquer unidade,
+   * com o estorno do ciclo se cancelar agora.
+   */
+  async accountClubPreview(clientAccountId: number) {
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: {
+        clientAccountId,
+        status: { in: ['ACTIVE', 'PAST_DUE', 'INCOMPLETE'] },
+      },
+      select: {
+        id: true,
+        barbershopId: true,
+        plan: { select: { name: true } },
+        barbershop: { select: { name: true, currency: true } },
+      },
+    });
+    const shopIds = [...new Set(subs.map((sub) => sub.barbershopId))];
+    const refunds = shopIds.length
+      ? await this.unusedClubCycles(shopIds, new Date(), clientAccountId)
+      : [];
+    const refundBySub = new Map(refunds.map((refund) => [refund.subscriptionId, refund.amount]));
+    return subs.map((sub) => ({
+      id: sub.id,
+      planName: sub.plan.name,
+      barbershopName: sub.barbershop.name,
+      currency: sub.barbershop.currency,
+      refundAmount: refundBySub.get(sub.id) ?? 0,
+    }));
+  }
+
+  /** Para a cobrança do clube desta conta em todas as unidades. */
+  async cancelAccountClub(clientAccountId: number, refundUnused: boolean) {
+    const subs = await this.prisma.clientSubscription.findMany({
+      where: {
+        clientAccountId,
+        status: { in: ['ACTIVE', 'PAST_DUE', 'INCOMPLETE'] },
+      },
+      select: { id: true, status: true, stripeSubscriptionId: true, barbershopId: true },
+    });
+    await this.cancelClubSubs(subs, clientAccountId, refundUnused);
+  }
+
   /** Para a cobrança do clube desta ficha na rede. O estorno do ciclo é opcional. */
   private async cancelCustomerClub(networkId: number, customerId: number, refundUnused: boolean) {
     const accountId = await this.clientAccountIdForCustomer(networkId, customerId);
@@ -3288,9 +3512,24 @@ export class BarbershopService {
       },
       select: { id: true, status: true, stripeSubscriptionId: true, barbershopId: true },
     });
+    await this.cancelClubSubs(subs, accountId, refundUnused);
+  }
+
+  private async cancelClubSubs(
+    subs: Array<{
+      id: number;
+      status: string;
+      stripeSubscriptionId: string;
+      barbershopId: number;
+    }>,
+    clientAccountId: number,
+    refundUnused: boolean,
+  ) {
     if (subs.length === 0) return;
     const shopIds = [...new Set(subs.map((sub) => sub.barbershopId))];
-    const refunds = refundUnused ? await this.unusedClubCycles(shopIds, new Date(), accountId) : [];
+    const refunds = refundUnused
+      ? await this.unusedClubCycles(shopIds, new Date(), clientAccountId)
+      : [];
     const refundBySub = new Map(refunds.map((refund) => [refund.subscriptionId, refund]));
     for (const sub of subs) {
       try {
@@ -3330,7 +3569,7 @@ export class BarbershopService {
       SELECT id FROM "Customer"
       WHERE "networkId" = ${networkId}
         AND "deletedAt" IS NULL
-        AND regexp_replace(phone, '\\D', '', 'g') IN (${Prisma.join(variants)})
+        AND "phoneDigits" IN (${Prisma.join(variants)})
         ${onlyBlocked ? Prisma.sql`AND "blockedAt" IS NOT NULL` : Prisma.empty}
       ORDER BY id ASC
     `;
@@ -3371,6 +3610,79 @@ export class BarbershopService {
       throw new ForbiddenException(
         'Não é possível agendar online nesta unidade. Fale diretamente com a unidade.',
       );
+    }
+  }
+
+  /**
+   * Conta suspensa pela plataforma não agenda pela página, nem sem login:
+   * vale o e-mail e o telefone da conta e os das fichas ligadas a ela.
+   * Cancelar um horário pelo link continua liberado.
+   */
+  private async ensureNotPlatformSuspended(input: {
+    customerPhone?: string | null;
+    customerPhones?: Array<string | null | undefined>;
+    customerEmail?: string | null;
+    customerEmails?: Array<string | null | undefined>;
+    clientAccountId?: number | null;
+  }) {
+    const deny = () => {
+      throw new ForbiddenException(PLATFORM_SUSPENDED_BOOKING_MESSAGE);
+    };
+    if (input.clientAccountId) {
+      const account = await this.prisma.clientAccount.findFirst({
+        where: { id: input.clientAccountId, deletedAt: null, suspendedAt: { not: null } },
+        select: { id: true },
+      });
+      if (account) deny();
+    }
+    const emails = [input.customerEmail, ...(input.customerEmails ?? [])]
+      .map((email) => email?.trim())
+      .filter((email): email is string => !!email);
+    if (emails.length) {
+      const byAccount = await this.prisma.clientAccount.findFirst({
+        where: {
+          deletedAt: null,
+          suspendedAt: { not: null },
+          OR: emails.map((email) => ({ email: { equals: email, mode: 'insensitive' as const } })),
+        },
+        select: { id: true },
+      });
+      if (byAccount) deny();
+      const byCustomer = await this.prisma.customer.findFirst({
+        where: {
+          deletedAt: null,
+          clientAccount: { deletedAt: null, suspendedAt: { not: null } },
+          OR: emails.map((email) => ({ email: { equals: email, mode: 'insensitive' as const } })),
+        },
+        select: { id: true },
+      });
+      if (byCustomer) deny();
+    }
+    const phones = [input.customerPhone, ...(input.customerPhones ?? [])]
+      .map((phone) => phone?.trim())
+      .filter((phone): phone is string => !!phone);
+    for (const phone of phones) {
+      const variants = phoneDigitVariants(phone);
+      if (!variants.length) continue;
+      const accounts = await this.prisma.$queryRaw<{ id: number }[]>`
+        SELECT id FROM "ClientAccount"
+        WHERE "deletedAt" IS NULL
+          AND "suspendedAt" IS NOT NULL
+          AND phone IS NOT NULL
+          AND regexp_replace(phone, '\\D', '', 'g') IN (${Prisma.join(variants)})
+        LIMIT 1
+      `;
+      if (accounts.length) deny();
+      const customers = await this.prisma.$queryRaw<{ id: number }[]>`
+        SELECT c.id FROM "Customer" c
+        JOIN "ClientAccount" a ON a.id = c."clientAccountId"
+        WHERE c."deletedAt" IS NULL
+          AND a."deletedAt" IS NULL
+          AND a."suspendedAt" IS NOT NULL
+          AND c."phoneDigits" IN (${Prisma.join(variants)})
+        LIMIT 1
+      `;
+      if (customers.length) deny();
     }
   }
 
@@ -5850,6 +6162,11 @@ export class BarbershopService {
       customerEmail: email,
       clientAccountId: input.clientAccountId,
     });
+    await this.ensureNotPlatformSuspended({
+      customerPhone: phone,
+      customerEmail: email,
+      clientAccountId: input.clientAccountId,
+    });
 
     const networkId = barbershop.networkId;
     // O telefone digitado não é confirmado: a ficha achada por ele só vale se
@@ -6993,18 +7310,8 @@ export class BarbershopService {
       where: { id: barbershopId },
       select: { businessHours: true },
     });
-    if (barbershop?.businessHours) {
-      try {
-        const parsed = JSON.parse(barbershop.businessHours) as Record<
-          string,
-          { start: string; end: string } | null
-        >;
-        const dayHours = parsed[this.WEEKDAY_KEYS[dayOfWeek]];
-        return dayHours ? { start: dayHours.start, end: dayHours.end } : null;
-      } catch {
-        // JSON inválido — cai para o horário padrão abaixo
-      }
-    }
+    const days = parseBusinessHours(barbershop?.businessHours);
+    if (days) return days[dayOfWeek];
 
     const fallback = this.DEFAULT_WORKING_HOURS[dayOfWeek];
     return fallback ? { ...fallback } : null;
@@ -7599,6 +7906,7 @@ export class BarbershopService {
     }
 
     await this.ensureNotBlocked(barbershop.networkId, input);
+    await this.ensureNotPlatformSuspended(input);
 
     const [returningId] = await this.customerIdsByPhone(barbershop.networkId, input.customerPhone);
     const returningCustomer = returningId != null ? { id: returningId } : null;
@@ -8115,6 +8423,11 @@ export class BarbershopService {
     this.ensureChangeable(loaded);
     const { appt } = loaded;
     await this.ensureNotBlocked(appt.barbershop.networkId, {
+      customerPhone: appt.customer?.phone,
+      customerEmail: appt.customer?.email,
+      clientAccountId: appt.customer?.clientAccountId,
+    });
+    await this.ensureNotPlatformSuspended({
       customerPhone: appt.customer?.phone,
       customerEmail: appt.customer?.email,
       clientAccountId: appt.customer?.clientAccountId,
@@ -9624,6 +9937,9 @@ export class BarbershopService {
       customerEmails: linked.map((row) => row.email),
       clientAccountId,
     });
+    if (clientAccount?.suspendedAt) {
+      throw new ForbiddenException(PLATFORM_SUSPENDED_BOOKING_MESSAGE);
+    }
 
     // Dois cliques (ou duas abas) juntos passavam os dois pela checagem e
     // criavam DUAS assinaturas no Stripe — cobrança em dobro todo mês. Agora

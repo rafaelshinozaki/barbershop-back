@@ -1,0 +1,41 @@
+{{!-- src/email/templates/en/club_billing_paused.hbs --}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{#if Paused}}Club billing paused{{else}}Club billing resumed{{/if}}</title>
+  <style>
+    body, p, h1, h2 { margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; line-height: 1.6; }
+    .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; }
+    .header { background-color: #000; color: #ffffff; padding: 20px; text-align: center; }
+    .header h1 { font-size: 22px; font-weight: normal; }
+    .content { padding: 30px 20px; }
+    .content h2 { font-size: 20px; margin-bottom: 20px; color: #000; }
+    .content p { font-size: 16px; margin-bottom: 16px; }
+    .footer { background-color: #f4f4f4; color: #777777; text-align: center; padding: 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>{{ShopName}}</h1></div>
+    <div class="content">
+      <h2>Hi, {{FullName}}!</h2>
+      {{#if Paused}}
+        {{#if OwnerInactive}}
+          <p>The account for {{ShopName}} was deactivated. The shop is not taking online bookings.</p>
+        {{else}}
+          <p>{{ShopName}} was suspended by the platform. It is not taking online bookings.</p>
+        {{/if}}
+        <p>Billing for the {{PlanName}} club is paused: the card is not charged while this lasts. When the shop is back, billing resumes.</p>
+      {{/if}}
+      {{#if Resumed}}
+        <p>{{ShopName}} is open again and billing for the {{PlanName}} club has resumed.</p>
+      {{/if}}
+      <p>Questions? Write to {{SupportEmail}}.</p>
+    </div>
+    <div class="footer"><p>&copy; {{Year}} {{AppName}}.</p></div>
+  </div>
+</body>
+</html>

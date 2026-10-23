@@ -3,6 +3,7 @@ import {
   parseAdminNotificationEmail,
   parseApprovalExecute,
   parseClientSuspendedEmail,
+  parseClubBillingPause,
   parseEmailSend,
   parseModerationNotifyOwner,
   parseNotificationsCreated,
@@ -113,6 +114,23 @@ describe('comando de aviso da moderação', () => {
   });
 });
 
+describe('pausa do clube pela API do backoffice', () => {
+  it('club.billing_pause: motivo, alvo e se pausa', () => {
+    expect(
+      parseClubBillingPause({ reason: 'platform_shop', targetId: 3, paused: true, extra: 1 }),
+    ).toEqual({ reason: 'platform_shop', targetId: 3, paused: true });
+    expect(() => parseClubBillingPause({ reason: 'dono', targetId: 3, paused: true })).toThrow(
+      /motivo/,
+    );
+    expect(() =>
+      parseClubBillingPause({ reason: 'owner_inactive', targetId: 0, paused: false }),
+    ).toThrow(/alvo/);
+    expect(() =>
+      parseClubBillingPause({ reason: 'platform_network', targetId: 1, paused: 'sim' }),
+    ).toThrow(/ação/);
+  });
+});
+
 describe('comando de execução de pedido confirmado', () => {
   it('plan.sync_stripe: só as pessoas', () => {
     expect(parsePlanSyncStripe({ userIds: [1, 2], extra: 1 })).toEqual({ userIds: [1, 2] });
@@ -131,7 +149,10 @@ describe('processador dos comandos', () => {
   const make = () => {
     const email = { sendCustomerEmail: jest.fn().mockResolvedValue(undefined) };
     const support = { emailReply: jest.fn().mockResolvedValue(undefined) };
-    const suspension = { emailSuspended: jest.fn().mockResolvedValue(undefined) };
+    const suspension = {
+      emailSuspended: jest.fn().mockResolvedValue(undefined),
+      handleExternalSuspension: jest.fn().mockResolvedValue(undefined),
+    };
     const searchCache = { bump: jest.fn().mockResolvedValue(undefined) };
     const pricing = { reload: jest.fn().mockResolvedValue(undefined) };
     const realtime = { notifyUsers: jest.fn() };
@@ -146,6 +167,11 @@ describe('processador dos comandos', () => {
     const users = { forgotPass: jest.fn().mockResolvedValue(true) };
     const invites = { resendByStaff: jest.fn().mockResolvedValue(undefined) };
     const clients = { resendVerificationEmail: jest.fn().mockResolvedValue(undefined) };
+    const clubPause = {
+      forShop: jest.fn().mockResolvedValue(undefined),
+      forNetwork: jest.fn().mockResolvedValue(undefined),
+      forOwner: jest.fn().mockResolvedValue(undefined),
+    };
     const processor = new BackofficeCommandsProcessor(
       email as never,
       support as never,
@@ -160,8 +186,10 @@ describe('processador dos comandos', () => {
       users as never,
       invites as never,
       clients as never,
+      clubPause as never,
     );
     return {
+      clubPause,
       processor,
       email,
       support,
@@ -189,6 +217,7 @@ describe('processador dos comandos', () => {
       moderation,
       approvals,
       payments,
+      clubPause,
     } = make();
     await processor.process({
       name: 'support.reply_email',
@@ -199,7 +228,15 @@ describe('processador dos comandos', () => {
       name: 'client.suspended_email',
       data: { clientAccountId: 9 },
     } as never);
-    expect(suspension.emailSuspended).toHaveBeenCalledWith(9);
+    expect(suspension.handleExternalSuspension).toHaveBeenCalledWith(9, {
+      cancelSubscriptions: undefined,
+      refundUnused: undefined,
+    });
+    await processor.process({
+      name: 'club.billing_pause',
+      data: { reason: 'platform_shop', targetId: 3, paused: true },
+    } as never);
+    expect(clubPause.forShop).toHaveBeenCalledWith(3, true);
     await processor.process({ name: 'search.cache_bump', data: {} } as never);
     expect(searchCache.bump).toHaveBeenCalledTimes(1);
     await processor.process({ name: 'pricing.reload', data: {} } as never);

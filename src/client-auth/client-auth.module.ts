@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { BarbershopModule } from '../barbershop/barbershop.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
@@ -23,6 +24,7 @@ import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
     PrismaModule,
     EmailModule,
     StripeModule,
+    forwardRef(() => BarbershopModule),
     ConfigModule,
     PassportModule,
     JwtModule.registerAsync({

@@ -67,6 +67,16 @@ function isBrazilMobile(national: string): boolean {
   return /^[1-9][1-9]9\d{8}$/.test(national);
 }
 
+/** Celular com o nono dígito: o dígito depois do 9 é 6–9. */
+function isBrazilMobileWithNinth(national: string): boolean {
+  return /^[1-9][1-9]9[6-9]\d{7}$/.test(national);
+}
+
+/** Celular antigo, sem o nono dígito: DDD + 8, o primeiro do assinante é 6–9. */
+function isBrazilMobileWithoutNinth(national: string): boolean {
+  return /^[1-9][1-9][6-9]\d{7}$/.test(national);
+}
+
 /** Número nacional dos EUA/Canadá: código de área e prefixo não começam em 0 ou 1. */
 function isNanpNational(national: string): boolean {
   return /^[2-9]\d{2}[2-9]\d{6}$/.test(national);
@@ -133,9 +143,23 @@ export function phoneDigitVariants(
   return [...out];
 }
 
+/** O mesmo celular do Brasil com e sem o 9 depois do DDD (a Meta manda sem). */
+function brazilNinthDigitVariants(digits: string): string[] {
+  if (!digits.startsWith('55')) return [];
+  const national = digits.slice(2);
+  let other = '';
+  if (isBrazilMobileWithNinth(national)) {
+    other = `${national.slice(0, 2)}${national.slice(3)}`;
+  } else if (isBrazilMobileWithoutNinth(national)) {
+    other = `${national.slice(0, 2)}9${national.slice(2)}`;
+  }
+  if (!other) return [];
+  return [`55${other}`, other];
+}
+
 /**
  * Formas do telefone que a Meta manda em "from" (DDI + número, sem "+").
- * Inclui o número nacional, para achar a ficha gravada só com o DDD.
+ * Inclui o número nacional e, no Brasil, o celular com e sem o nono dígito.
  */
 export function whatsappSenderVariants(from: string): string[] {
   const digits = from.replace(/\D/g, '');
@@ -143,5 +167,6 @@ export function whatsappSenderVariants(from: string): string[] {
   const out = new Set(phoneDigitVariants(`+${digits}`));
   if (digits.startsWith('55') && digits.length > 11) out.add(digits.slice(2));
   if (digits.startsWith('1') && digits.length === 11) out.add(digits.slice(1));
+  for (const extra of brazilNinthDigitVariants(digits)) out.add(extra);
   return [...out];
 }

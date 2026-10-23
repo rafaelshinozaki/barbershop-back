@@ -114,9 +114,6 @@ export class UpdateBarbershopInput {
   @Field({ nullable: true })
   currency?: string;
 
-  @Field({ nullable: true })
-  businessHours?: string;
-
   /** "Sobre nós" da página pública; vazio apaga */
   @Field({ nullable: true })
   description?: string;

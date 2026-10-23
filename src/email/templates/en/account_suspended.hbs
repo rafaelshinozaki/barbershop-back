@@ -84,6 +84,13 @@
       <h2>Hi, {{FullName}}!</h2>
       <p>Your {{AppName}} client account was suspended by the platform team. While it is suspended, you can't sign in.</p>
       {{#if Reason}}<p><strong>Reason:</strong> {{Reason}}</p>{{/if}}
+      {{#if ClubPeriodEnd}}<p>Your club subscriptions stop billing at the end of the period already paid. Any that were already past due are canceled now. Until the period ends, a club that is current still applies.</p>{{/if}}
+      {{#if ClubRefunded}}<p>Your club subscriptions were canceled now. The unused part of the paid cycle was refunded to the card.</p>{{/if}}
+      {{#if ClubKept}}<p>Your club subscriptions stay active and the card keeps being charged every month. To cancel, contact support.</p>{{/if}}
+      {{#if DeleteURL}}<p>To delete the account and your personal data, use the link below. It lasts 7 days, does not need a sign-in, and only deletes when you confirm on the page.</p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="{{DeleteURL}}" style="background:#fff;color:#000;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;border:1px solid #000;">Delete my account</a>
+      </p>{{/if}}
       <p>If you think this is a mistake, get in touch:</p>
       <p style="text-align:center;margin:28px 0;">
         <a href="{{SupportURL}}" style="background:#000;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Contact support</a>

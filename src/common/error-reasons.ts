@@ -232,6 +232,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'CLIENT_UPCOMING_APPOINTMENTS',
   'Não é possível agendar online nesta unidade. Fale diretamente com a unidade.':
     'ONLINE_BOOKING_NOT_AVAILABLE_LOCATION',
+  'Não é possível agendar online com estes dados. Fale com o suporte da plataforma.':
+    'ONLINE_BOOKING_NOT_AVAILABLE_SUSPENDED_ACCOUNT',
   'Não foi possível cancelar a assinatura do clube. Tente de novo.': 'CLUB_CANCEL_FAILED',
   'Já existe um funcionário com este telefone nesta unidade': 'ALREADY_TEAM_MEMBER_WITH_PHONE',
   'Já existe um funcionário com este email nesta unidade': 'ALREADY_TEAM_MEMBER_WITH_EMAIL',

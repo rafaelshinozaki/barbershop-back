@@ -6,9 +6,10 @@ import { EmailModule } from '@/email/email.module';
 import { PrismaService } from '@/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { AwsModule } from '@/aws/aws.module';
+import { ClubBillingPauseModule } from '@/barbershop/club-billing-pause.module';
 
 @Module({
-  imports: [EmailModule, AwsModule],
+  imports: [EmailModule, AwsModule, ClubBillingPauseModule],
   providers: [UserService, PrismaService, JwtService],
   controllers: [UserController],
   exports: [UserService, PrismaService],

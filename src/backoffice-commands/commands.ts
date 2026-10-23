@@ -70,9 +70,16 @@ export function parseEmailSend(data: unknown): EmailSendCommand {
 export const SUPPORT_REPLY_EMAIL = 'support.reply_email';
 export type SupportReplyEmailCommand = { ticketId: number; reply: string };
 
-/** Conta de cliente suspensa pela API do backoffice: o back avisa a pessoa */
+/**
+ * Conta de cliente suspensa pela API do backoffice: o back cancela o clube
+ * (se foi pedido) e avisa a pessoa. Sem os campos, cancela no fim do período.
+ */
 export const CLIENT_SUSPENDED_EMAIL = 'client.suspended_email';
-export type ClientSuspendedEmailCommand = { clientAccountId: number };
+export type ClientSuspendedEmailCommand = {
+  clientAccountId: number;
+  cancelSubscriptions?: boolean;
+  refundUnused?: boolean;
+};
 
 const MAX_REPLY = 5000;
 const positiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
@@ -85,10 +92,47 @@ export function parseSupportReplyEmail(data: unknown): SupportReplyEmailCommand 
   return { ticketId: d.ticketId, reply };
 }
 
+/**
+ * Unidade, rede ou dono saiu do ar pela API do backoffice (o banco já
+ * mudou). O back pausa a cobrança do clube na Stripe, marca o motivo e
+ * avisa quem assina. Tirar a suspensão retoma só esse motivo.
+ */
+export const CLUB_BILLING_PAUSE = 'club.billing_pause';
+export type ClubBillingPauseCommand = {
+  reason: 'platform_shop' | 'platform_network' | 'owner_inactive';
+  targetId: number;
+  paused: boolean;
+};
+
+const CLUB_PAUSE_REASONS: ClubBillingPauseCommand['reason'][] = [
+  'platform_shop',
+  'platform_network',
+  'owner_inactive',
+];
+
+export function parseClubBillingPause(data: unknown): ClubBillingPauseCommand {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (!CLUB_PAUSE_REASONS.includes(d.reason as ClubBillingPauseCommand['reason']))
+    throw new Error(`${CLUB_BILLING_PAUSE}: motivo inválido`);
+  if (!positiveInt(d.targetId)) throw new Error(`${CLUB_BILLING_PAUSE}: alvo inválido`);
+  if (typeof d.paused !== 'boolean') throw new Error(`${CLUB_BILLING_PAUSE}: ação inválida`);
+  return {
+    reason: d.reason as ClubBillingPauseCommand['reason'],
+    targetId: d.targetId,
+    paused: d.paused,
+  };
+}
+
 export function parseClientSuspendedEmail(data: unknown): ClientSuspendedEmailCommand {
   const d = (data ?? {}) as Record<string, unknown>;
   if (!positiveInt(d.clientAccountId)) throw new Error('client.suspended_email: conta inválida');
-  return { clientAccountId: d.clientAccountId };
+  return {
+    clientAccountId: d.clientAccountId,
+    ...(typeof d.cancelSubscriptions === 'boolean'
+      ? { cancelSubscriptions: d.cancelSubscriptions }
+      : {}),
+    ...(typeof d.refundUnused === 'boolean' ? { refundUnused: d.refundUnused } : {}),
+  };
 }
 
 /**

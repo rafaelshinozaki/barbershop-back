@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
   HttpException,
   ServiceUnavailableException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -41,6 +42,7 @@ import { createHash, randomInt, randomUUID } from 'crypto';
 import { appUrl, supportEmail } from '../../common/app-urls';
 import { dropPushSubscriptions } from '../../push/push.service';
 import { dropCalendarFeeds } from '../../calendar/calendar-feeds';
+import { ClubBillingPauseService } from '../../barbershop/club-billing-pause.service';
 
 // Link de redefinição: no banco fica só o hash (quem lê o banco não consegue
 // usar o link), como já é no fluxo do cliente final
@@ -112,6 +114,7 @@ export class UserService {
     private readonly s3Service: S3Service,
     private readonly configService: ConfigService,
     private readonly redis: RedisService,
+    @Optional() private readonly clubPause?: ClubBillingPauseService,
   ) {}
 
   private validatePassword(password: string) {
@@ -2143,6 +2146,8 @@ export class UserService {
       await this.prisma.pushSubscription.deleteMany({ where: { userId } });
       await dropCalendarFeeds(this.prisma, userId);
     }
+    // Unidade fora do ar: a cobrança do clube pausa e volta ao reativar
+    await this.clubPause?.forOwner(userId, !active);
   }
 
   async setMultipleUsersActive(userIds: number[], active: boolean) {
@@ -2167,6 +2172,14 @@ export class UserService {
       await this.prisma.activeSession.deleteMany({ where: { userId: { in: userIds } } });
       await this.prisma.pushSubscription.deleteMany({ where: { userId: { in: userIds } } });
       await dropCalendarFeeds(this.prisma, userIds);
+    }
+
+    if (this.clubPause) {
+      const changed = await this.prisma.user.findMany({
+        where: { id: { in: userIds }, deleted_at: null, isActive: active },
+        select: { id: true },
+      });
+      for (const user of changed) await this.clubPause.forOwner(user.id, !active);
     }
 
     this.logger.log(`Updated ${result.count} users to active status: ${active}`);

@@ -9,7 +9,23 @@ const OPT_OUT: Record<Lang, string> = {
   es: 'Responde SALIR para no recibir más.',
 };
 
-const OPT_OUT_WORDS = new Set(['SAIR', 'STOP', 'SALIR']);
+const OPT_OUT_WORDS = new Set(['SAIR', 'STOP', 'SALIR', 'PARAR', 'CANCELAR']);
+
+const OPT_OUT_DONE: Record<string, string> = {
+  SAIR: 'Você saiu das campanhas e não vai mais receber essas mensagens.',
+  PARAR: 'Você saiu das campanhas e não vai mais receber essas mensagens.',
+  CANCELAR: 'Você saiu das campanhas e não vai mais receber essas mensagens.',
+  STOP: 'You have opted out and will not receive these messages anymore.',
+  SALIR: 'Ya no vas a recibir estas campañas.',
+};
+
+/** Primeira palavra da resposta, se for um pedido de saída. */
+function optOutWord(text: string): string | null {
+  const match = text.trim().match(/^[^\p{L}\p{N}]*(\p{L}+)/u);
+  if (!match) return null;
+  const word = match[1].toUpperCase();
+  return OPT_OUT_WORDS.has(word) ? word : null;
+}
 
 /**
  * Texto que vai no parâmetro do modelo. Quebra de linha e tabulação viram
@@ -33,14 +49,15 @@ export function whatsappMarketingBody(
   return { ok: true, text };
 }
 
-/** A resposta inteira é a palavra de saída (com ponto final, se tiver). */
+/** A palavra de saída no começo da frase, ou a frase inteira (com ponto, se tiver). */
 export function isMarketingOptOut(text: string): boolean {
-  const word = text
-    .trim()
-    .replace(/[.!]+$/g, '')
-    .trim()
-    .toUpperCase();
-  return OPT_OUT_WORDS.has(word);
+  return optOutWord(text) != null;
+}
+
+/** Texto livre de confirmação, no idioma da palavra que a pessoa usou. */
+export function marketingOptOutReply(text: string): string | null {
+  const word = optOutWord(text);
+  return word ? OPT_OUT_DONE[word] : null;
 }
 
 type Inbound = {

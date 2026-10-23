@@ -95,6 +95,21 @@ export class WhatsappService {
     await this.sendTemplateMessage(to, templateName, templateLang(lang), [message]);
   }
 
+  /**
+   * Resposta dentro da janela de 24 h (a pessoa acabou de escrever).
+   * Texto livre, sem modelo. Sem credencial, não faz nada.
+   */
+  async sendSessionText(to: string, body: string): Promise<void> {
+    if (!this.isConfigured()) return;
+    await this.postMessage({
+      messaging_product: 'whatsapp',
+      to: to.replace(/^\+/, ''),
+      type: 'text',
+      text: { body, preview_url: false },
+    });
+    this.logger.log(`Resposta de WhatsApp enviada para ${maskPhone(to)}`);
+  }
+
   private async sendTemplateMessage(
     to: string,
     templateName: string,
@@ -106,40 +121,42 @@ export class WhatsappService {
         'WhatsApp não configurado (faltam WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID)',
       );
     }
+    await this.postMessage({
+      messaging_product: 'whatsapp',
+      // A Cloud API espera o número sem o "+" (só dígitos, com DDI) no
+      // campo "to", mesmo formatando com "+" em outros lugares como E.164.
+      to: to.replace(/^\+/, ''),
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components: [
+          {
+            type: 'body',
+            parameters: bodyParams.map((text) => ({ type: 'text', text })),
+          },
+        ],
+      },
+    });
+    this.logger.log(`Mensagem de WhatsApp (${templateName}) enviada para ${maskPhone(to)}`);
+  }
+
+  private async postMessage(payload: Record<string, unknown>): Promise<void> {
     const phoneNumberId = this.config.get<string>('WHATSAPP_PHONE_NUMBER_ID');
     const accessToken = this.config.get<string>('WHATSAPP_ACCESS_TOKEN');
     const apiVersion = this.config.get<string>('WHATSAPP_API_VERSION') || 'v21.0';
     const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
-
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        // A Cloud API espera o número sem o "+" (só dígitos, com DDI) no
-        // campo "to", mesmo formatando com "+" em outros lugares como E.164.
-        to: to.replace(/^\+/, ''),
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: languageCode },
-          components: [
-            {
-              type: 'body',
-              parameters: bodyParams.map((text) => ({ type: 'text', text })),
-            },
-          ],
-        },
-      }),
+      body: JSON.stringify(payload),
     });
-
     if (!response.ok) {
       const errorBody = await response.text();
       throw new Error(`WhatsApp API respondeu ${response.status}: ${errorBody}`);
     }
-    this.logger.log(`Mensagem de WhatsApp (${templateName}) enviada para ${maskPhone(to)}`);
   }
 }

@@ -27,12 +27,16 @@ import { phoneDigitVariants } from '../common/phone.util';
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
   RESET_PASSWORD: 'RESET_PASSWORD',
+  // Exclusão da conta pelo link do e-mail (a conta suspensa não entra)
+  DELETE_ACCOUNT: 'DELETE_ACCOUNT',
 } as const;
 type TokenPurpose = (typeof CLIENT_TOKEN_PURPOSE)[keyof typeof CLIENT_TOKEN_PURPOSE];
 
 const VERIFY_EMAIL_TTL_HOURS = 24;
 // Mesmo prazo do link de senha do dono (o texto do e-mail fala em "horas")
 const RESET_PASSWORD_TTL_HOURS = 2;
+// A conta suspensa não entra: o link do e-mail é o caminho da exclusão (LGPD)
+const DELETE_ACCOUNT_TTL_HOURS = 24 * 7;
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 // Hash de uma senha qualquer, pro login levar o mesmo tempo com e sem conta
@@ -544,29 +548,58 @@ export class ClientAuthService {
   }
 
   /**
-   * Exclusão da conta pelo próprio cliente (LGPD). Confirma com a senha (ou,
-   * em conta só de login social, digitando o e-mail). Cancela as assinaturas
-   * de serviço no Stripe na hora e apaga o cliente lá (cartões salvos);
-   * apaga avaliações, favoritos e logins sociais e desliga as fichas das
-   * barbearias. A linha da conta fica, anônima, só pra não levar junto os
-   * pagamentos que as barbearias receberam (registro fiscal delas).
+   * Link de uso único pra excluir a conta sem entrar. A suspensão derruba o
+   * login; o e-mail é a prova de que a pessoa é a dona.
    */
-  async deleteAccount(clientAccountId: number, confirm: { password?: string; email?: string }) {
+  async createAccountDeletionUrl(clientAccountId: number) {
+    const token = await this.createToken(
+      clientAccountId,
+      CLIENT_TOKEN_PURPOSE.DELETE_ACCOUNT,
+      DELETE_ACCOUNT_TTL_HOURS,
+    );
+    return `${this.frontendUrl()}/client/delete-account?token=${token}`;
+  }
+
+  /** Consome o link e apaga a conta. Abrir o e-mail não apaga: só este método. */
+  async deleteAccountByToken(token: string) {
+    const account = await this.consumeToken(token, CLIENT_TOKEN_PURPOSE.DELETE_ACCOUNT);
+    if (account.deletedAt) throw new BadRequestException('Link inválido ou vencido. Peça um novo.');
+    await this.deleteAccount(account.id, {}, { viaLink: true });
+  }
+
+  /**
+   * Exclusão da conta pelo próprio cliente (LGPD). No app, confirma com a
+   * senha (ou, em conta só de login social, digitando o e-mail). Pelo link
+   * do e-mail, o token já confirma. Cancela as assinaturas de serviço no
+   * Stripe na hora e apaga o cliente lá (cartões salvos); apaga avaliações,
+   * favoritos e logins sociais e desliga as fichas das barbearias. A linha
+   * da conta fica, anônima, só pra não levar junto os pagamentos que as
+   * barbearias receberam (registro fiscal delas).
+   */
+  async deleteAccount(
+    clientAccountId: number,
+    confirm: { password?: string; email?: string },
+    opts?: { viaLink?: boolean },
+  ) {
     const account = await this.prisma.clientAccount.findUnique({
       where: { id: clientAccountId },
       include: { subscriptions: { where: { status: { not: 'CANCELED' } } } },
     });
     if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
 
-    // Ligada à conta da equipe: confirma com a senha dela (a conta da equipe fica)
-    const staff = await this.accountLink.linkedStaff(account.userId);
-    const passwordHash = staff?.password ?? account.password;
-    if (passwordHash) {
-      const ok = !!confirm.password && (await bcrypt.compare(confirm.password, passwordHash));
-      // 400, não 401: o front trata 401 como sessão vencida e desloga
-      if (!ok) throw new BadRequestException('Senha incorreta.');
-    } else if ((confirm.email ?? '').trim().toLowerCase() !== account.email) {
-      throw new BadRequestException('Digite o e-mail da conta pra confirmar.');
+    // O link do e-mail já prova a posse. No app, confirma com a senha
+    // (ou, em conta só de login social, digitando o e-mail).
+    if (!opts?.viaLink) {
+      // Ligada à conta da equipe: confirma com a senha dela (a conta da equipe fica)
+      const staff = await this.accountLink.linkedStaff(account.userId);
+      const passwordHash = staff?.password ?? account.password;
+      if (passwordHash) {
+        const ok = !!confirm.password && (await bcrypt.compare(confirm.password, passwordHash));
+        // 400, não 401: o front trata 401 como sessão vencida e desloga
+        if (!ok) throw new BadRequestException('Senha incorreta.');
+      } else if ((confirm.email ?? '').trim().toLowerCase() !== account.email) {
+        throw new BadRequestException('Digite o e-mail da conta pra confirmar.');
+      }
     }
 
     // Stripe primeiro: se falhar, nada foi apagado e dá pra tentar de novo

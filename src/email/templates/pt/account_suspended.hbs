@@ -84,6 +84,13 @@
       <h2>Olá, {{FullName}}!</h2>
       <p>Sua conta de cliente no {{AppName}} foi suspensa pela equipe da plataforma. Enquanto estiver suspensa, não é possível entrar nela.</p>
       {{#if Reason}}<p><strong>Motivo:</strong> {{Reason}}</p>{{/if}}
+      {{#if ClubPeriodEnd}}<p>Suas assinaturas do clube deixam de ser cobradas no fim do período já pago. As que já estavam em atraso são canceladas agora. Até o fim do período, o clube em dia continua valendo.</p>{{/if}}
+      {{#if ClubRefunded}}<p>Suas assinaturas do clube foram canceladas agora. O que faltava do ciclo pago foi estornado no cartão.</p>{{/if}}
+      {{#if ClubKept}}<p>Suas assinaturas do clube continuam ativas e o cartão segue sendo cobrado todo mês. Para cancelar, fale com o suporte.</p>{{/if}}
+      {{#if DeleteURL}}<p>Para excluir a conta e os dados pessoais, use o link abaixo. Ele vale por 7 dias, não precisa de login e só apaga quando você confirmar na página.</p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="{{DeleteURL}}" style="background:#fff;color:#000;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;border:1px solid #000;">Excluir minha conta</a>
+      </p>{{/if}}
       <p>Se acha que foi um engano, fale com a gente:</p>
       <p style="text-align:center;margin:28px 0;">
         <a href="{{SupportURL}}" style="background:#000;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Falar com o suporte</a>

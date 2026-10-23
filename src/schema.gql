@@ -957,6 +957,14 @@ input ClientDeleteAccountInput {
   password: String
 }
 
+type ClientClubSubscriptionPreview {
+  barbershopName: String!
+  currency: String!
+  id: Int!
+  planName: String!
+  refundAmount: Float!
+}
+
 type ClientFavoriteBarberType {
   """Ainda dá pra agendar com ele nessa unidade"""
   available: Boolean!
@@ -1083,6 +1091,10 @@ type ClientSubscriptionType {
   status: String!
   usedThisCycle: Int!
   uses: [ClientPackageUseType!]
+}
+
+type ClientSuspensionPreview {
+  subscriptions: [ClientClubSubscriptionPreview!]!
 }
 
 input ClientUpdateProfileInput {
@@ -2207,6 +2219,7 @@ type Mutation {
   chooseSocialPage(pageId: String!, token: String!): SocialConnectionType!
   claimProReferral(code: String!): ProReferralType!
   clientDeleteAccount(input: ClientDeleteAccountInput!): Boolean!
+  clientDeleteAccountByLink(token: String!): Boolean!
   clientForgotPassword(input: ClientForgotPasswordInput!): Boolean!
   clientLinkStaffAccount(password: String!): Boolean!
   clientLogin(input: ClientLoginInput!): ClientAccountType!
@@ -2385,7 +2398,7 @@ type Mutation {
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
-  setClientAccountSuspended(clientAccountId: Int!, reason: String, suspended: Boolean!): Boolean!
+  setClientAccountSuspended(cancelSubscriptions: Boolean, clientAccountId: Int!, reason: String, refundUnused: Boolean, suspended: Boolean!): Boolean!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
 
   """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
@@ -3447,6 +3460,7 @@ type Query {
   clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   clientSession: ClientAccountType
+  clientSuspensionPreview(clientAccountId: Int!): ClientSuspensionPreview!
   closureImpact(barbershopId: Int!, input: ClosureInput!): [ClosureImpactType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
@@ -4250,7 +4264,6 @@ input UpdateBarberScheduleInput {
 
 input UpdateBarbershopInput {
   address: String
-  businessHours: String
 
   """
   Tipo de estabelecimento: barbershop, beauty_salon, nail_salon, aesthetics, brows_lashes, massage, makeup, independent, other

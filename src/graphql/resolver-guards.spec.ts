@@ -23,6 +23,7 @@ const PUBLIC: Record<string, string> = {
   'client-auth.resolver.ts#clientVerifyEmail': 'confirmar e-mail (token)',
   'client-auth.resolver.ts#clientForgotPassword': 'recuperar senha do cliente',
   'client-auth.resolver.ts#clientResetPassword': 'recuperar senha do cliente (token)',
+  'client-auth.resolver.ts#clientDeleteAccountByLink': 'excluir a conta suspensa (token do e-mail)',
   // Chat do cliente: cookie da conta ou token do link do agendamento
   'chat.resolver.ts#clientAppointmentChats': 'cookie do cliente ou token do link',
   'chat.resolver.ts#clientSendChatMessage': 'cookie do cliente ou token do link',

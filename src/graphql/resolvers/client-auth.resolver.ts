@@ -98,6 +98,17 @@ export class ClientAuthResolver {
     return true;
   }
 
+  /**
+   * Exclusão pelo link do e-mail de suspensão (LGPD). A conta suspensa não
+   * entra; o token do e-mail é a confirmação. Abrir o link não apaga.
+   */
+  @ThrottleAuth()
+  @Mutation(() => Boolean)
+  async clientDeleteAccountByLink(@Args('token') token: string) {
+    await this.clientAuthService.deleteAccountByToken(token);
+    return true;
+  }
+
   /** Exclusão da conta pelo titular (LGPD); encerra a sessão. */
   @UseGuards(GraphQLClientJwtAuthGuard)
   @ThrottleAuth()

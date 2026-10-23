@@ -7,6 +7,7 @@ import { SearchCacheService } from '../barbershop/search-cache.service';
 import { PricingModule } from '../pricing/pricing.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { BarbershopModule } from '../barbershop/barbershop.module';
+import { ClubBillingPauseModule } from '../barbershop/club-billing-pause.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { UserModule } from '../auth/users/users.module';
 import { BackofficeService } from '../backoffice/backoffice.service';
@@ -26,6 +27,7 @@ import { BackofficeCommandsProcessor } from './backoffice-commands.processor';
     PricingModule,
     RealtimeModule,
     BarbershopModule,
+    ClubBillingPauseModule,
     PaymentsModule,
     UserModule,
   ],

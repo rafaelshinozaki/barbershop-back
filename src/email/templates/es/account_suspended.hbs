@@ -84,6 +84,13 @@
       <h2>¡Hola, {{FullName}}!</h2>
       <p>Tu cuenta de cliente en {{AppName}} fue suspendida por el equipo de la plataforma. Mientras esté suspendida, no es posible iniciar sesión.</p>
       {{#if Reason}}<p><strong>Motivo:</strong> {{Reason}}</p>{{/if}}
+      {{#if ClubPeriodEnd}}<p>Tus suscripciones del club dejan de cobrarse al final del período ya pagado. Las que ya estaban atrasadas se cancelan ahora. Hasta el fin del período, el club al día sigue valiendo.</p>{{/if}}
+      {{#if ClubRefunded}}<p>Tus suscripciones del club se cancelaron ahora. Lo que faltaba del ciclo pagado se devolvió a la tarjeta.</p>{{/if}}
+      {{#if ClubKept}}<p>Tus suscripciones del club siguen activas y la tarjeta se sigue cobrando cada mes. Para cancelar, habla con soporte.</p>{{/if}}
+      {{#if DeleteURL}}<p>Para eliminar la cuenta y los datos personales, usa el enlace de abajo. Vale 7 días, no hace falta iniciar sesión y solo elimina cuando confirmas en la página.</p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="{{DeleteURL}}" style="background:#fff;color:#000;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;border:1px solid #000;">Eliminar mi cuenta</a>
+      </p>{{/if}}
       <p>Si crees que es un error, escríbenos:</p>
       <p style="text-align:center;margin:28px 0;">
         <a href="{{SupportURL}}" style="background:#000;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Hablar con soporte</a>

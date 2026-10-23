@@ -2,6 +2,7 @@ import {
   Args,
   Context,
   Field,
+  Float,
   InputType,
   Int,
   Mutation,
@@ -146,6 +147,30 @@ export class AdminClientAccountType {
   suspendedReason: string | null;
 }
 
+@ObjectType()
+export class ClientClubSubscriptionPreview {
+  @Field(() => Int)
+  id: number;
+
+  @Field()
+  planName: string;
+
+  @Field()
+  barbershopName: string;
+
+  @Field()
+  currency: string;
+
+  @Field(() => Float)
+  refundAmount: number;
+}
+
+@ObjectType()
+export class ClientSuspensionPreview {
+  @Field(() => [ClientClubSubscriptionPreview])
+  subscriptions: ClientClubSubscriptionPreview[];
+}
+
 /**
  * Suporte humano ("Fale com a gente" e a fila do backoffice) e a suspensão
  * de contas de cliente pelo admin da plataforma.
@@ -238,7 +263,19 @@ export class SupportResolver {
     return this.suspension.search(search);
   }
 
-  /** Suspender (fraude, abuso) ou reativar a conta de um cliente */
+  /** Clube ainda cobrando nesta conta, pra tela decidir o cancelamento */
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.SUPPORT)
+  @Query(() => ClientSuspensionPreview)
+  clientSuspensionPreview(@Args('clientAccountId', { type: () => Int }) clientAccountId: number) {
+    return this.suspension.preview(clientAccountId);
+  }
+
+  /**
+   * Suspender (fraude, abuso) ou reativar. Ao suspender, o padrão é cancelar
+   * o clube no fim do período; a equipe pode cancelar agora e estornar.
+   */
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @RequireArea(BackofficeArea.SUPPORT)
@@ -248,7 +285,12 @@ export class SupportResolver {
     @Args('suspended') suspended: boolean,
     @CurrentUser() user: UserDTO,
     @Args('reason', { nullable: true }) reason?: string,
+    @Args('cancelSubscriptions', { nullable: true }) cancelSubscriptions?: boolean,
+    @Args('refundUnused', { nullable: true }) refundUnused?: boolean,
   ) {
-    return this.suspension.setSuspended(user.id, clientAccountId, suspended, reason);
+    return this.suspension.setSuspended(user.id, clientAccountId, suspended, reason, {
+      cancelSubscriptions,
+      refundUnused,
+    });
   }
 }

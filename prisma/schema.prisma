@@ -687,6 +687,8 @@ model Customer {
                                    // negócio a uma conta que também compra em outros negócios
   name            String
   phone           String
+  // Só os dígitos de phone. O banco preenche; o descadastro do WhatsApp busca por aqui.
+  phoneDigits     String          @default(dbgenerated("regexp_replace(phone, '\\D', '', 'g')"))
   email           String?
   birthDate       DateTime?
   notes           String?
@@ -722,6 +724,7 @@ model Customer {
   @@index([networkId, phone])
   @@index([networkId, email])
   @@index([clientAccountId])
+  @@index([phoneDigits])
 }
 
 // Indicação entre clientes de uma mesma rede: um Customer (referrer) indica
@@ -1821,6 +1824,10 @@ model ClientSubscription {
   // A unidade foi pausada pelo dono: a cobrança na Stripe fica suspensa
   // (pause_collection) até reativar. Só as que a pausa suspendeu voltam.
   shopPausedAt         DateTime?
+  // Outros motivos da mesma pausa, além da do dono: platform_shop,
+  // platform_network e owner_inactive:<id da conta>. A Stripe só volta
+  // quando não sobra nenhum (item 262).
+  billingPauseReasons  String[]  @default([])
   // Conta Connect no momento da assinatura. Preenchido = o Stripe manda o
   // dinheiro pra unidade (menos a taxa gravada abaixo). Vazio = cai na
   // plataforma e o repasse é manual. Não muda depois: a renovação segue a

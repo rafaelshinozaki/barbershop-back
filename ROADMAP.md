@@ -2711,55 +2711,65 @@ Foram lidos a troca de plano pelo dono (subir na hora, descer na renovação), a
 
 Foram lidos a cobrança da conta do horário (quando dá para cobrar e o que muda no horário) e a suspensão da conta de cliente pela plataforma (o que para, o que continua e o e-mail de aviso).
 
-261. ⬜ **Cliente suspenso pela plataforma continua pagando o clube e não consegue cancelar** (back: `ClientSuspensionService.setSuspended`; `GraphQLClientJwtAuthGuard`; clube e exclusão da conta):
+261. ✅ **Cliente suspenso pela plataforma continua pagando o clube e não consegue cancelar** (back: `ClientSuspensionService.setSuspended`; `GraphQLClientJwtAuthGuard`; clube e exclusão da conta):
      - Suspender a conta do cliente derruba as sessões e as notificações do celular e manda o e-mail com o motivo. As assinaturas do clube dessa conta continuam ativas no Stripe e cobram o cartão todo mês.
      - Com a conta suspensa, a guarda do cliente recusa tudo: o cliente não entra para cancelar a assinatura, nem para pedir a exclusão da conta (LGPD), que também exige estar logado. O único caminho é o suporte, e o e-mail de suspensão não diz que a cobrança continua.
      - O mesmo cliente também segue agendando pela página pública sem login, com o mesmo telefone e e-mail (a suspensão vale só para a conta).
      
      **Fazer:** ao suspender, a tela do backoffice mostra as assinaturas ativas e o padrão é cancelá-las no Stripe (no fim do período ou na hora, com estorno proporcional decidido pela equipe); o e-mail de suspensão diz o que aconteceu com elas. A exclusão da conta pelo cliente funciona com a conta suspensa (pelo link enviado ao e-mail). Decidir se a suspensão também bloqueia o agendamento pela página (pelo e-mail e telefone da conta), como o bloqueio da unidade.
 
+     **Feito:** a tela do backoffice lista o clube e, por padrão, cancela no fim do período. A equipe pode cancelar agora e estornar o que falta, ou deixar cobrando. O e-mail diz qual foi o caso e traz um link de 7 dias para excluir a conta sem login; o link só apaga quando a pessoa confirma na página. Agendar pela página com o e-mail ou o telefone da conta suspensa (ou da ficha ligada) é recusado, com aviso para falar com o suporte da plataforma. Cancelar pelo link do horário continua. O backoffice grava a suspensão e o back cancela no Stripe pelo comando `client.suspended_email`. Testes em `client-suspension-club.spec.ts` e `platform-suspended-booking.spec.ts`.
+
 ### Nonagésima primeira rodada (2026-10-20): clube de unidade suspensa
 
 Foram lidos a pausa da cobrança do clube (`setClubBillingPaused`), o encerramento da unidade e a exclusão da conta do dono (que cancelam as assinaturas), e o que a suspensão pela plataforma e a desativação do dono fazem com o clube.
 
-262. ⬜ **O clube continua cobrando os clientes de unidade suspensa pela plataforma ou de dono desativado** (back: `setClubBillingPaused`, suspensão da unidade e da rede pelo backoffice, `UsersService.setUserActive`):
+262. ✅ **O clube continua cobrando os clientes de unidade suspensa pela plataforma ou de dono desativado** (back: `setClubBillingPaused`, suspensão da unidade e da rede pelo backoffice, `UsersService.setUserActive`):
      - Quando o dono pausa a unidade, a cobrança do clube fica suspensa no Stripe (`pause_collection`) e volta ao reativar. Encerrar a unidade ou apagar a conta cancela as assinaturas.
      - Já a suspensão pela plataforma (`platformSuspendedAt`, da unidade ou da rede) e a desativação da conta do dono (`isActive: false`) tiram a unidade do ar: a página pública, a busca e o agendamento online deixam de funcionar (`ownerAcceptsPublic`). Mas as assinaturas do clube continuam ativas, e o Stripe segue cobrando todo mês o cartão dos clientes, que não conseguem mais agendar online o serviço que estão pagando. O item 190 parou a caixinha, a avaliação, o chat, as postagens e as campanhas de unidade suspensa, mas não o clube.
      
      **Fazer:** suspender a unidade ou a rede, ou desativar o dono, pausa a cobrança do clube como a pausa da unidade (marcando o motivo, para voltar só as que essa suspensão pausou) e avisa os assinantes; tirar a suspensão retoma. Teste com a unidade suspensa pelo backoffice e com o dono desativado.
 
+     **Feito:** suspender a unidade, a rede ou desativar o dono pausa a cobrança do clube na Stripe (`pause_collection`) e avisa quem assina. Cada motivo fica na assinatura (`platform_shop`, `platform_network`, `owner_inactive:<conta>`), junto da pausa do dono (`shopPausedAt`). O dono da rede também segura as unidades dela. Tirar um motivo só retoma a Stripe quando não sobra nenhum. O backoffice grava a suspensão e o back pausa pelo comando `club.billing_pause`. Desativar o dono pela API principal faz o mesmo. Testes em `club-billing-pause.spec.ts`.
+
 ### Nonagésima segunda rodada (2026-10-20): horário de funcionamento por fora da tela de horário
 
 Foram lidos o aluguel da cadeira com a unidade suspensa, a regra de comissão, a edição dos dados da unidade (moeda, fuso, país, redes, subdomínio) e o caminho do horário de funcionamento até a agenda e a busca.
 
-263. ⬜ **O horário de funcionamento entra sem conferência pela edição e pelo cadastro da unidade** (back: `updateBarbershop`, `createBarbershop`/cadastro com `barbershopData.businessHours`; `parseBusinessHours`, `shopHoursOn`):
+263. ✅ **O horário de funcionamento entra sem conferência pela edição e pelo cadastro da unidade** (back: `updateBarbershop`, `createBarbershop`/cadastro com `barbershopData.businessHours`; `parseBusinessHours`, `shopHoursOn`):
      - A tela de horário (`ScheduleService.setBusinessHours`) confere cada dia (HH:MM, início antes do fim), avisa a lista de espera e é só da gerência. Mas `updateBarbershop` e o cadastro aceitam o mesmo campo `businessHours` como texto livre e gravam sem conferir.
      - Um JSON com `{"mon":{"start":"18:00","end":"09:00"}}`, `"9h"` ou dias faltando passa: `parseBusinessHours` aceita qualquer texto nos horários, e a agenda, a página pública, o "aberto agora" da busca e o próximo horário livre passam a calcular com horário invertido ou inválido (`NaN`). Um JSON quebrado volta para o horário padrão em alguns lugares (`shopHoursOn`) e fecha todos os dias em outros (`parseBusinessHours` devolve os 7 dias como fechados quando o texto é um objeto sem as chaves).
      - Por esse caminho também não roda a conferência entre unidades da escala (item 241) nem o aviso da lista de espera.
      
      **Fazer:** `businessHours` sai de `updateBarbershop` (fica só na tela de horário) e o cadastro passa pela mesma conferência de `setBusinessHours`; `parseBusinessHours` descarta o dia com horário fora de HH:MM ou com início depois do fim. Teste com horário invertido pela edição da unidade.
 
+     **Feito:** a edição da unidade não aceita mais `businessHours` (a tela de horário continua conferindo HH:MM, a escala entre unidades e a lista de espera). O cadastro só grava a semana inteira, com cada dia fechado ou em HH:MM e início antes do fim, e confere se o dono já tem esse expediente em outra unidade. Dia já gravado fora de HH:MM ou com início depois do fim fica fechado; JSON quebrado continua no horário padrão. Teste em `business-hours.spec.ts`.
+
 ### Nonagésima terceira rodada (2026-10-20): cadastro da unidade
 
 Foram lidos o cadastro da unidade (no cadastro do dono e ao abrir outra unidade), o limite de unidades do plano e a entrada do dono na equipe.
 
-264. ⬜ **O cadastro da unidade grava endereço da página, fuso e moeda sem conferir** (back: `createBarbershop`, `CreateBarbershopInput`, `BarbershopSignupData`):
+264. ✅ **O cadastro da unidade grava endereço da página, fuso e moeda sem conferir** (back: `createBarbershop`, `CreateBarbershopInput`, `BarbershopSignupData`):
      - `CreateBarbershopInput` não tem nenhuma validação, e `createBarbershop` só confere se o `slug` já existe. O endereço da página (`/u/:slug`) aceita espaço, barra, `?`, `#`, maiúsculas e acentos: o link da página, o sitemap, o SEO e os links dos e-mails quebram ou apontam para outra rota, e `Barbearia-X` e `barbearia-x` viram duas unidades diferentes.
      - O fuso e a moeda vêm do formulário sem conferência (`timezone ?? 'America/Sao_Paulo'`, `currency ?? network.currency`): na edição da unidade os dois passam por `shopBaseUpdate` (fuso IANA, moeda ISO), mas no cadastro um fuso inexistente cai no padrão só em parte do código (`safeTimeZone`) e uma moeda inventada vai para as vendas e o Stripe.
      - O horário de funcionamento do cadastro é o mesmo caminho sem conferência do item 263. Nome, e-mail e telefone da unidade também não têm tamanho nem formato conferidos.
      
      **Fazer:** o cadastro passa pelas mesmas regras da edição: `slug` só com minúsculas, números e hífen (de 3 a 60, como o subdomínio), fuso e moeda por `shopBaseUpdate` (ou sugeridos pelo país), horário por `setBusinessHours`, e tamanhos máximos nos textos. Teste com `slug` inválido e fuso inexistente.
 
+     **Feito:** o cadastro grava o endereço da página só em minúsculas, números e hífen, de 3 a 60 e sem hífen nas pontas, então `Barbearia-X` e `barbearia-x` são o mesmo endereço. Fuso inexistente é recusado com o mesmo "Fuso horário inválido" da edição; moeda que não é ISO também. Quando o fuso ou a moeda não vêm, saem do país. Nome, endereço e os outros textos têm tamanho máximo; e-mail e telefone (com DDD) valem no cadastro e na edição. O horário do cadastro continua o do item 263. Teste em `shop-signup.spec.ts`.
+
 ### Nonagésima quarta rodada (2026-10-20): descadastro pela resposta no WhatsApp
 
 Foram lidos o código novo do descadastro de campanha pelo WhatsApp (webhook da Meta, texto da campanha com "Responda SAIR", leitura da resposta e busca das fichas pelo telefone).
 
-265. ⬜ **Responder SAIR no WhatsApp não descadastra boa parte dos celulares do Brasil** (back: `WhatsappOptOutService.optOutFromReply`, `whatsappSenderVariants`, `isMarketingOptOut`):
+265. ✅ **Responder SAIR no WhatsApp não descadastra boa parte dos celulares do Brasil** (back: `WhatsappOptOutService.optOutFromReply`, `whatsappSenderVariants`, `isMarketingOptOut`):
      - A Meta manda no `from` o número da conta do WhatsApp (`wa_id`). Para muitos celulares brasileiros, ele vem sem o nono dígito (`55 11 8888-7777`, 12 dígitos), enquanto a ficha guarda o número com o 9 (`+55 11 98888-7777`). `whatsappSenderVariants` gera o número com e sem o DDI, mas nunca o com e sem o 9 depois do DDD: a busca não acha a ficha, nada é marcado, o webhook responde 200 e a pessoa continua recebendo as campanhas depois de pedir para sair.
      - Só a mensagem que é exatamente a palavra (`SAIR`, `STOP`, `SALIR`, com ponto) conta. "Quero sair", "sair por favor" ou "PARAR" não descadastram, e a pessoa não recebe nenhuma resposta dizendo se funcionou ou como fazer.
      - Cada resposta recebida percorre todas as fichas da plataforma com `regexp_replace(phone, ...)` (sem índice), o que pesa à medida que a base cresce.
      
      **Fazer:** para números do Brasil, as variantes incluem o celular com e sem o nono dígito (DDD + 8 ou 9 dígitos); aceitar a palavra de saída no começo ou sozinha na frase (e "PARAR"/"CANCELAR"); responder pelo WhatsApp confirmando o descadastro (dentro da janela de 24 h, sem modelo). Guardar o telefone da ficha só com os dígitos numa coluna indexada para essa busca. Teste com `from` sem o nono dígito.
+
+     **Feito:** o celular do Brasil entra na busca com e sem o 9 depois do DDD, então o `from` sem o nono dígito acha a ficha que guarda o número com o 9. "SAIR", "STOP", "SALIR", "PARAR" e "CANCELAR" valem sozinhos ou no começo da frase. Quem foi descadastrado recebe uma mensagem de texto na mesma conversa, sem modelo. A ficha guarda os dígitos do telefone em `phoneDigits` (coluna calculada, com índice) e a busca usa essa coluna. Teste em `marketing-text.spec.ts`.
 
 ### Nonagésima quinta rodada (2026-10-20): publicação dos posts e país da unidade
 
