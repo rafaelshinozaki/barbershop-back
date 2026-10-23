@@ -2677,11 +2677,17 @@ Foram lidos o login com código (dois passos), os e-mails com HTML (aviso de sal
 
 Foram lidos a compra do plano pelo dono (intenção de pagamento, confirmação, cupom, cartão salvo, remover cartão), a troca de plano pelo dono e o catálogo de planos (listar, buscar por id, remover).
 
-259. ⬜ **Plano removido do catálogo ainda pode ser comprado e escolhido na troca** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`, `changePlan`; `PlanResolver.getPlanById`):
+259. ✅ **Plano removido do catálogo ainda pode ser comprado e escolhido na troca** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`, `changePlan`; `PlanResolver.getPlanById`):
      - Remover um plano (`PlanService.remove`) só marca `deleted_at`, e a lista de planos (`getAllPlans`) passa a escondê-lo. Mas a compra (`createPaymentIntentForCheckout`), a ativação depois do pagamento e a troca de plano (`changePlan`) buscam o plano só pelo id, sem olhar `deleted_at`.
      - Quem tem o id de um plano antigo (o front manda o id; `getPlanById` também devolve plano removido) compra ou troca para ele: um plano descontinuado mais barato, com os módulos e as vagas dele, volta a ser vendido sem ninguém da plataforma saber. O mesmo vale para o plano "Premium" que a importação por planilha cria sozinha (item 256).
      
      **Fazer:** compra, ativação e troca só aceitam plano com `deleted_at` nulo (o dono que já está num plano removido continua nele até trocar); `getPlanById` não devolve plano removido para quem não é da plataforma. Teste: remover um plano e tentar comprar e trocar para ele.
+
+     **Feito:** conferido contra o banco, a compra e a troca já recusavam plano removido. O `PrismaService` tem um filtro de apagados para `Plan`: `findUnique`, `findFirst`, `findMany` e `count` ganham `deleted_at: null` sozinhos. Por isso a compra, a troca, `getPlanById` e a troca de plano pelo backoffice (por nome) não acham o plano removido, e o item descrevia um caminho que não existia. O teste mostrou dois problemas reais, que foram corrigidos:
+     - **Ativação depois do pagamento:** ela também escondia o plano removido. Se a plataforma tirava o plano do catálogo entre a cobrança e a confirmação (pela tela ou pelo webhook), a pessoa pagava e ficava sem plano, com "Plan not found" a cada nova tentativa do webhook. Agora a ativação busca o plano com `withDeleted`, porque o plano vem do pagamento, criado quando ainda estava à venda. A compra de novo continua recusada.
+     - **Troca agendada:** a renovação aplica o plano agendado com `findUniqueOrThrow`, que o filtro não cobre. Assim, o plano removido com uma troca agendada para ele entrava na renovação. `removePlan` agora também recusa o plano que tem troca agendada (`pendingPlanId`) em assinatura ativa.
+
+     Testes em `checkout-coupon.int.spec.ts` (pagou, o plano foi removido, a confirmação entrega o plano e a compra nova é recusada) e `plan.service.int.spec.ts`.
 
 ### Octogésima nona rodada (2026-10-20): situação do horário antes da hora
 

@@ -41,6 +41,7 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
 
   let userId: number;
   let planId: number;
+  let removedPlanId: number | undefined;
   const createdCoupons: number[] = [];
 
   const newCoupon = async (type: COUPON_TYPE, value: number) => {
@@ -89,6 +90,7 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
     await prisma.userCoupon.deleteMany({ where: { userId } });
     await prisma.$executeRaw`DELETE FROM "Coupon" WHERE id = ANY(${createdCoupons})`;
     await prisma.$executeRaw`DELETE FROM "Plan" WHERE id = ${planId}`;
+    if (removedPlanId) await prisma.$executeRaw`DELETE FROM "Plan" WHERE id = ${removedPlanId}`;
     await prisma.$executeRaw`DELETE FROM "User" WHERE id = ${userId}`;
     await prisma.$disconnect();
   });
@@ -283,5 +285,25 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
       const mine = (await coupons.getCouponsForUser(userId)).map((c) => c.id);
       for (const uc of used) expect(mine).not.toContain(uc.couponId);
     });
+  });
+  it('plano removido do catálogo depois do pagamento: a confirmação ainda entrega o plano pago (item 259)', async () => {
+    removedPlanId = (
+      await prisma.plan.create({
+        data: { name: `Antigo ${RUN}`, price: new Prisma.Decimal(50), billingCycle: 'MONTHLY' },
+      })
+    ).id;
+    const result = await payments.createPaymentIntentForCheckout(userId, removedPlanId);
+    await prisma.$executeRaw`UPDATE "Plan" SET deleted_at = NOW() WHERE id = ${removedPlanId}`;
+
+    await payments.confirmPaymentIntent(userId, result.paymentIntentId!);
+    const sub = await prisma.subscription.findFirst({
+      where: { userId, planId: removedPlanId, status: 'ACTIVE' },
+    });
+    expect(sub).not.toBeNull();
+
+    // Mas não é vendido de novo
+    await expect(
+      payments.createPaymentIntentForCheckout(userId, removedPlanId),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
