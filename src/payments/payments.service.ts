@@ -897,7 +897,13 @@ export class PaymentsService {
   ) {
     this.logger.log(`Creating subscription after payment - User: ${userId}, Plan: ${planId}`);
 
-    const plan = await this.prisma.plan.findFirst({ where: { id: planId } });
+    // Inclui plano já removido do catálogo: o plano vem do pagamento, criado
+    // quando ele ainda estava à venda. Sem isso, plano removido entre o
+    // pagamento e a confirmação cobrava sem entregar o plano (item 259)
+    const plan = await this.prisma.plan.findFirst({
+      where: { id: planId },
+      withDeleted: true,
+    } as Prisma.PlanFindFirstArgs);
     if (!plan) throw new NotFoundException('Plan not found');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');

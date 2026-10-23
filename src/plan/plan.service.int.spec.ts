@@ -110,4 +110,18 @@ describe('planos (integração)', () => {
     );
     await expect(service.removePlan(free.id)).rejects.toBeInstanceOf(NotFoundException);
   });
+  it('com troca agendada para ele na renovação, o plano não sai (item 259)', async () => {
+    const current = await createPlan('price_atual');
+    const target = await createPlan('price_alvo');
+    await prisma.subscription.create({
+      data: {
+        userId,
+        planId: current.id,
+        pendingPlanId: target.id,
+        startSubDate: new Date(),
+        status: PLANO_STATUS.ACTIVE,
+      },
+    });
+    await expect(service.removePlan(target.id)).rejects.toThrow('troca(s) agendada(s)');
+  });
 });

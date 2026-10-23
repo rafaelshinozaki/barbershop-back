@@ -107,7 +107,8 @@ export class PlanService {
 
   /**
    * Tira o plano da lista (não apaga: assinaturas antigas e pagamentos
-   * continuam apontando para ele). Com assinatura ativa, não sai.
+   * continuam apontando para ele). Com assinatura ativa, ou troca agendada
+   * para ele na renovação, não sai.
    */
   async removePlan(planId: number) {
     this.logger.log(`Removing plan with ID: ${planId}`);
@@ -121,6 +122,14 @@ export class PlanService {
     if (activeSubscriptions > 0) {
       throw new BadRequestException(
         `O plano tem ${activeSubscriptions} assinatura(s) ativa(s) e não pode ser removido`,
+      );
+    }
+    const scheduled = await this.prisma.subscription.count({
+      where: { pendingPlanId: planId, status: PLANO_STATUS.ACTIVE },
+    });
+    if (scheduled > 0) {
+      throw new BadRequestException(
+        `O plano tem ${scheduled} troca(s) agendada(s) para ele e não pode ser removido`,
       );
     }
 
