@@ -2909,3 +2909,20 @@ Foram lidos a criação de vagas, a candidatura, o aceite com a taxa por vaga pr
      - `apply` e `acceptNow` não olham a data: a candidatura pelo id ainda entra, e a unidade consegue aceitar (e pagar a taxa) para um período que já passou. O convite nasce com `accessEndsAt` no passado.
      
      **Fazer:** uma rotina diária fecha as vagas cujo período acabou (no fuso da unidade) e recusa as candidaturas em aberto com aviso, como `closeOpeningsOfBarbershop`. `apply` e `acceptNow` recusam a vaga que já terminou. As contagens dos dois limites ignoram as vagas vencidas.
+
+### Centésima quarta rodada (2026-10-23): histórico de alterações e importação na agenda solo
+
+Foram lidos o histórico de alterações (gatilho do banco, quem vê o quê e retenção), a verificação de identidade do profissional, as fotos da página pública e a importação de clientes e agenda por planilha.
+
+283. ⬜ **Apagar a ficha do cliente não tira o nome dele do histórico, e a própria exclusão grava o nome de novo** (back: `deleteCustomer`; gatilho `change_log_capture` de `Customer`; `ChangeLogService`):
+     - `deleteCustomer` anonimiza a ficha (nome "Cliente removido", telefone e e-mail apagados), mas o histórico da unidade continua com o nome. Cada linha antiga da ficha tem o nome em `entityName`, e as trocas de nome ficam inteiras em `changes` (só telefone e e-mail são mascarados).
+     - A anonimização roda sem `app.change_log_off` e grava mais uma linha: nome antigo → "Cliente removido", com o nome antigo por extenso. Dono e gerentes de todas as unidades da rede veem isso na tela Histórico por até um ano (retenção do histórico).
+     - A exclusão da conta de cliente (`ClientAuthService`) e a da conta da equipe já tratam o próprio histórico; a ficha apagada pela unidade não.
+     
+     **Fazer:** na anonimização da ficha, desligar o gatilho na transação (`app.change_log_off`) e tirar o nome das linhas antigas daquela ficha: `entityName` vira "Cliente removido" e o campo `name` em `changes` vira "•••". Deixar só uma linha "ficha removida", sem dados pessoais. Teste: criar a ficha, renomear, apagar; o histórico não mostra nenhum dos nomes.
+
+284. ⬜ **Na agenda solo, importar a planilha com os atendimentos do dia escapa da cota mensal** (back: `ImportService`, `parseSheet`, `assertSoloBookingAllowed`, `soloUsage`):
+     - A importação marca toda linha com data passada como `source: 'HISTORY'`. `createAppointment` não confere a cota para `HISTORY`, e `soloUsage` não conta atendimento `HISTORY` como concluído.
+     - A conta solo que chegou ao limite do mês (bloqueada, sem Pro) continua lançando atendimentos: basta importar uma planilha com os horários que já aconteceram hoje. Eles entram concluídos, aparecem na agenda, nos números e na ficha dos clientes, e a cota nunca sobe.
+     
+     **Fazer:** `HISTORY` (fora da cota) só para o que aconteceu antes de a agenda existir (`Barbershop.createdAt`). Linha passada depois disso entra como atendimento comum: conta na cota e passa por `assertSoloBookingAllowed`. Teste: agenda solo no limite, importar uma linha de hoje mais cedo é recusado; uma linha de antes da criação entra.
