@@ -2693,12 +2693,19 @@ Foram lidos a compra do plano pelo dono (intenção de pagamento, confirmação,
 
 Foram lidos a troca de plano pelo dono (subir na hora, descer na renovação), a métrica de buscas do piloto e a edição do horário pela equipe (início, fim e situação).
 
-260. ⬜ **A equipe marca "faltou" ou "concluído" num horário que ainda não aconteceu** (back: `updateAppointment`, `recordNoShowFee`; nota do cliente e pedido de avaliação):
+260. ✅ **A equipe marca "faltou" ou "concluído" num horário que ainda não aconteceu** (back: `updateAppointment`, `recordNoShowFee`; nota do cliente e pedido de avaliação):
      - `updateAppointment` aceita qualquer situação da lista (`STAFF_APPOINTMENT_STATUSES`) a qualquer hora, inclusive para o próprio horário do barbeiro básico (acesso `basic`, só na própria agenda). Não confere se o horário já começou.
      - "Faltou" (`NO_SHOW`) num horário de amanhã registra a taxa de falta para o cliente (com o sinal retido descontado), conta como falta no comparecimento da ficha e na nota do cliente, e libera o horário. O cliente não recebe aviso nenhum de que o horário dele saiu da agenda.
      - "Concluído" (`COMPLETED`) num horário futuro libera na hora o link de avaliação pela equipe (item 246) e conta como atendimento feito nos números e nos selos do profissional.
      
      **Fazer:** "faltou" só depois do início do horário (com uma folga de alguns minutos) e "concluído" só depois do início; antes disso, a única saída é cancelar (que avisa o cliente). Mesma regra para a série e para o horário pela lista de espera. Teste: marcar falta num horário de amanhã é recusado.
+
+     **Feito:** `updateAppointment` passa por `assertStatusFitsTime` (`appointment-status-time.ts`). "Faltou" só vale 5 minutos depois do início do horário, e "concluído" só depois do início. Antes disso, a mensagem orienta a cancelar, o que avisa o cliente. Vale para toda a equipe, incluindo o barbeiro básico na própria agenda, e confere o início novo quando a mesma edição remarca o horário. Cancelar, confirmar e "em atendimento" continuam valendo a qualquer hora.
+     - **Venda:** fechar a conta antes do horário (pago na chegada) não marca mais o horário como concluído. Ele continua marcado e a equipe conclui depois.
+     - **Importação por planilha:** linha futura com "faltou" ou "concluído" entra como marcada.
+     - **Série e lista de espera:** não têm caminho próprio para essas situações. A série só cria e cancela, e o horário vindo da lista de espera é editado pelo mesmo `updateAppointment`.
+
+     Testes em `appointment-status-time.spec.ts`, `no-show-fee.int.spec.ts` e `import-sheet.spec.ts`. Os testes antigos que marcavam falta em horário futuro agora voltam o horário para o passado antes de marcar.
 
 ### Nonagésima rodada (2026-10-20): conta de cliente suspensa e o clube
 

@@ -1,3 +1,4 @@
+import { assertStatusFitsTime } from './appointment-status-time';
 import { must } from '../common/must';
 import { bookingChannel } from './booking-channel';
 import { unsubscribeLinks, verifyUnsubscribeToken } from './marketing-unsubscribe';
@@ -5030,6 +5031,9 @@ export class BarbershopService {
     const newStart = new Date(data.startAt ?? appointment.startAt);
     const newEnd = new Date(data.endAt ?? appointment.endAt);
     if (newEnd <= newStart) throw new BadRequestException('O fim tem que ser depois do início');
+    if (data.status != null && data.status !== appointment.status) {
+      assertStatusFitsTime(data.status, newStart);
+    }
     if (
       data.status != null &&
       data.status !== appointment.status &&
@@ -10262,7 +10266,12 @@ export class BarbershopService {
       // Cobrou o atendimento: ele está concluído
       if (data.appointmentId) {
         await tx.appointment.updateMany({
-          where: { id: data.appointmentId, status: { in: ['CONFIRMED', 'IN_PROGRESS'] } },
+          // Cobrado antes do horário (pago na chegada) continua marcado
+          where: {
+            id: data.appointmentId,
+            status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+            startAt: { lte: new Date() },
+          },
           data: { status: 'COMPLETED' },
         });
       }

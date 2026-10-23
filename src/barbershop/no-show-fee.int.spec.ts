@@ -5,6 +5,7 @@
  */
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { COMPLETED_TOO_EARLY_MESSAGE, NO_SHOW_TOO_EARLY_MESSAGE } from './appointment-status-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService, NO_SHOW_FEE_NOT_PENDING_MESSAGE } from './barbershop.service';
 
@@ -24,6 +25,9 @@ async function waitFor(check: () => Promise<boolean>, ms = 3000) {
 
 describe('Taxa de falta (integração)', () => {
   const prisma = new PrismaService();
+  // O horário já começou: falta e concluído só valem depois do início (item 260)
+  const started = (id: number) =>
+    prisma.$executeRaw`UPDATE "Appointment" SET "startAt" = "startAt" - interval '8 days', "endAt" = "endAt" - interval '8 days' WHERE id = ${id} AND "startAt" > NOW() - interval '5 minutes'`;
   const stub = {} as never;
   const shops = new BarbershopService(
     prisma,
@@ -187,18 +191,43 @@ describe('Taxa de falta (integração)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('260: falta ou concluído num horário que ainda não começou é recusado; cancelar continua', async () => {
+    const id = await appointment();
+    await expect(
+      shops.updateAppointment(ownerId, shopId, id, { status: 'NO_SHOW' }),
+    ).rejects.toThrow(NO_SHOW_TOO_EARLY_MESSAGE);
+    await expect(
+      shops.updateAppointment(ownerId, shopId, id, { status: 'COMPLETED' }),
+    ).rejects.toThrow(COMPLETED_TOO_EARLY_MESSAGE);
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id } })).status).toBe(
+      'CONFIRMED',
+    );
+    expect(await feeOf(id)).toBeNull();
+    await shops.updateAppointment(
+      ownerId,
+      shopId,
+      id,
+      { status: 'CANCELLED' },
+      { cancelledBy: 'business' },
+    );
+  });
+
   it('falta marcada por engano e corrigida: a taxa pendente sai; marcada de novo, volta', async () => {
     const id = await appointment();
+    await started(id);
     await shops.updateAppointment(ownerId, shopId, id, { status: 'NO_SHOW' });
     expect(await waitFor(async () => !!(await feeOf(id)))).toBe(true);
+    await started(id);
     await shops.updateAppointment(ownerId, shopId, id, { status: 'COMPLETED' });
     expect(await feeOf(id)).toBeNull();
+    await started(id);
     await shops.updateAppointment(ownerId, shopId, id, { status: 'NO_SHOW' });
     expect(await waitFor(async () => (await feeOf(id))?.status === 'PENDING')).toBe(true);
   });
 
   it('taxa recebida: pede a forma de pagamento e entra como venda no caixa aberto', async () => {
     const id = await appointment();
+    await started(id);
     await shops.updateAppointment(ownerId, shopId, id, { status: 'NO_SHOW' });
     expect(await waitFor(async () => !!(await feeOf(id)))).toBe(true);
     const fee = (await feeOf(id))!;
@@ -232,6 +261,7 @@ describe('Taxa de falta (integração)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(await prisma.sale.count({ where: { barbershopId: shopId } })).toBe(1);
     // Já recebida: desfazer a falta não apaga
+    await started(id);
     await shops.updateAppointment(ownerId, shopId, id, { status: 'COMPLETED' });
     expect((await feeOf(id))?.status).toBe('COLLECTED');
 
@@ -287,6 +317,7 @@ describe('Taxa de falta (integração)', () => {
         endAt: new Date(start.getTime() + 30 * 60_000),
         services: [{ serviceId: ptService.id, unitPrice: 20 }],
       });
+      await started(appt!.id);
       await shops.updateAppointment(ownerId, lisbon.id, appt!.id, { status: 'NO_SHOW' });
       expect(await waitFor(async () => !!(await feeOf(appt!.id)), 500)).toBe(false);
 
@@ -332,10 +363,12 @@ describe('Taxa de falta (integração)', () => {
     };
     // Taxa fixa de 30: sinal de 20 retido → cobra 10; sinal de 40 → nada
     const partial = await withDeposit(20);
+    await started(partial);
     await shops.updateAppointment(ownerId, shopId, partial, { status: 'NO_SHOW' });
     expect(await waitFor(async () => !!(await feeOf(partial)))).toBe(true);
     expect(Number((await feeOf(partial))!.amount)).toBe(10);
     const covered = await withDeposit(40);
+    await started(covered);
     await shops.updateAppointment(ownerId, shopId, covered, { status: 'NO_SHOW' });
     expect(await waitFor(async () => !!(await feeOf(covered)), 500)).toBe(false);
 
@@ -346,6 +379,7 @@ describe('Taxa de falta (integração)', () => {
     });
     try {
       const pct = await appointment();
+      await started(pct);
       await shops.updateAppointment(ownerId, shopId, pct, { status: 'NO_SHOW' });
       expect(await waitFor(async () => !!(await feeOf(pct)))).toBe(true);
       expect(Number((await feeOf(pct))!.amount)).toBe(9.88);
@@ -403,6 +437,7 @@ describe('Taxa de falta (integração)', () => {
 
     // Falta: taxa fixa de 30 fica com a unidade, 50 voltam, nada pendente
     const noShow = await prepaid();
+    await started(noShow);
     await withStripe.updateAppointment(ownerId, shopId, noShow, { status: 'NO_SHOW' });
     expect(refunds).toEqual([{ intent: `pi_pre_${RUN}_${noShow}`, minor: 5000 }]);
     let row = await prisma.appointment.findUniqueOrThrow({ where: { id: noShow } });
@@ -433,6 +468,7 @@ describe('Taxa de falta (integração)', () => {
         where: { id: small },
         data: { prepaidAt: new Date(), prepaidAmount: 40, prepaidPaymentIntentId: `pi_s_${RUN}` },
       });
+      await started(small);
       await withStripe.updateAppointment(ownerId, shopId, small, { status: 'NO_SHOW' });
       expect(refunds).toEqual([]);
       expect(await waitFor(async () => !!(await feeOf(small)))).toBe(true);

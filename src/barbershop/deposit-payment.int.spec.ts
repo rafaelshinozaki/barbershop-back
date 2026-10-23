@@ -45,6 +45,9 @@ type Intent = {
 
 describe('Sinal online (integração, Stripe simulado)', () => {
   const prisma = new PrismaService();
+  // O horário já começou: falta e concluído só valem depois do início (item 260)
+  const started = (id: number) =>
+    prisma.$executeRaw`UPDATE "Appointment" SET "startAt" = "startAt" - interval '30 days', "endAt" = "endAt" - interval '30 days' WHERE id = ${id} AND "startAt" > NOW() - interval '5 minutes'`;
   const emails: any[] = [];
   const intents = new Map<string, Intent>();
   const refunds: string[] = [];
@@ -388,6 +391,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     expect(await load(kept.id)).toMatchObject({ depositPaid: true, depositRefundedAt: null });
 
     const noShow = await paidBooking('17:00');
+    await started(noShow.id);
     await barbershops.updateAppointment(ownerId, shopId, noShow.id, { status: 'NO_SHOW' });
     expect(refunds).not.toContain(noShow.piId);
   });
@@ -501,6 +505,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
         paymentMethod: 'CASH',
         ...payload,
       });
+    await started(a.id);
     const created = await sale();
     expect(Number(created!.total)).toBe(60);
     expect(Number(created!.depositApplied)).toBe(20);
@@ -772,6 +777,7 @@ describe('Sinal online (integração, Stripe simulado)', () => {
     // Falta: a unidade estorna na mão (gerente/dono)
     const c = await bookTue('12:00');
     const piC = await prepay(c.token, c.id);
+    await started(c.id);
     await barbershops.updateAppointment(ownerId, shopId, c.id, { status: 'NO_SHOW' });
     expect(connectedRefunds).not.toContain(piC);
     await expect(

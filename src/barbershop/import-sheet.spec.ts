@@ -92,4 +92,13 @@ describe('parseSheet', () => {
       expect.objectContaining({ name: 'Corte', durationMinutes: 30, price: 45 }),
     ]);
   });
+  it('horário futuro marcado como "faltou" ou "concluído" entra como marcado (item 260)', () => {
+    const parsed = parseSheet(
+      'Cliente;Telefone;Servico;Data;Hora;Status\nJoão;11977776666;Corte;27/09/2026;15:00;Faltou\nAna;11977775555;Corte;28/09/2026;15:00;Concluído\nRui;11977774444;Corte;25/09/2026;15:00;Faltou\n',
+      'America/Sao_Paulo',
+      NOW,
+    );
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.appointments.map((a) => a.status)).toEqual(['CONFIRMED', 'CONFIRMED', 'NO_SHOW']);
+  });
 });
