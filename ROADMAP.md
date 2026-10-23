@@ -2857,3 +2857,42 @@ Foram lidas as mudanças dos itens 243 a 246: exclusão de horário, desativaç�
      - Sem e-mail, o pedido vai pelo WhatsApp no modelo de campanha (`kind: 'marketing'`), mas sem passar por `whatsappMarketingBody`: sai sem "Responda SAIR" e sem a limpeza de quebra de linha que o modelo exige, e não conta no limite de campanhas da unidade.
      
      **Fazer:** um pedido da equipe por atendimento (ou um a cada 7 dias), além do e-mail automático, gravando quando foi enviado; repetir avisa que já foi pedido. No WhatsApp, passar pelo mesmo `whatsappMarketingBody` (ou um modelo próprio de pedido de avaliação). Teste com dois pedidos seguidos.
+
+### Centésima segunda rodada (2026-10-23): aluguel de cadeira no cartão
+
+Foram lidos o aluguel de cadeira do espaço compartilhado (valor, cobrança no cartão, mensalidades manuais, recibos, estorno pelo painel da Stripe) e a conta de recebimento (Stripe Connect) da unidade e do profissional.
+
+278. ⬜ **O espaço aumenta o aluguel cobrado no cartão do profissional sem ele autorizar de novo** (back: `ChairRentService.setRent`):
+     - Com a cobrança no cartão já rodando, o gerente do espaço troca o valor (até 100.000) e `setRent` troca o preço da assinatura no Stripe na hora (`proration_behavior: 'none'`). A próxima fatura sai no cartão do profissional com o valor novo.
+     - O profissional autorizou um valor e só recebe um aviso de atividade dizendo que mudou. Não há prazo nem aceite: um aumento (ou um erro de digitação, 1500 no lugar de 150) é cobrado no cartão de outra pessoa.
+     
+     **Fazer:** baixar o valor pode valer direto. Subir o valor deixa o novo valor pendente: o profissional aceita (a assinatura troca de preço a partir da próxima fatura) ou recusa (continua o valor antigo e o espaço decide se encerra). Até o aceite, a fatura sai no valor autorizado. Aviso por e-mail ao profissional com o valor antigo e o novo.
+
+279. ⬜ **Autorizar de novo o aluguel no mesmo dia em que a cobrança caiu devolve a assinatura antiga** (back: `ChairRentService.authorize`, `handleSubscriptionDeleted`, caminho `incomplete_expired`):
+     - Quando a assinatura do aluguel é cancelada (tentativas esgotadas, cancelada pelo painel) ou a primeira cobrança expira sem confirmação, o vínculo volta para `AWAITING_PAYMENT`, mas mantém o `rentStripePriceId`.
+     - A nova autorização chama `createSubscription` com a chave de idempotência `chair-rent:${link.id}:${priceId}`, a mesma da primeira vez. A Stripe guarda a chave por 24 horas: com o mesmo cartão, devolve a resposta antiga (a assinatura já cancelada, com o status de quando foi criada). O vínculo grava esse id e pode ficar `ACTIVE` sem nada sendo cobrado. Com outro cartão, a Stripe recusa a chamada (chave repetida com parâmetros diferentes) e o profissional não consegue autorizar.
+     
+     **Fazer:** a chave de idempotência inclui a tentativa (por exemplo, um contador de autorizações gravado no vínculo, ou o id da assinatura anterior), e o vínculo que perdeu a assinatura descarta o preço antigo ou passa a usar uma chave nova. Conferir o status da assinatura devolvida antes de gravar `ACTIVE`.
+
+### Centésima terceira rodada (2026-10-23): vagas para freelancer
+
+Foram lidos a criação de vagas, a candidatura, o aceite com a taxa por vaga preenchida e a rotina que libera o aceito que não entrou na equipe.
+
+280. ⬜ **A taxa da vaga que não consegue ser devolvida nunca é tentada de novo** (back: `JobOpeningService.releaseUnjoinedApplications`, `refundFee`):
+     - A rotina primeiro passa a candidatura para `expired` e depois tenta devolver a taxa. Se a Stripe falha, `refundFee` apaga o `feeRefundedAt` dizendo "tenta de novo na próxima execução", mas a rotina só olha candidaturas `accepted`. A candidatura já está `expired` e a taxa fica com a plataforma para sempre.
+     - Quem pagou recebe o aviso "Candidato não entrou na equipe" sem a frase da devolução, e nada mais acontece.
+     
+     **Fazer:** uma busca separada pelas candidaturas `expired` com `feePaidAt` e sem `feeRefundedAt` (a devolução usa a mesma chave de idempotência, então repetir é seguro). Avisar quem pagou quando a devolução sair.
+
+281. ⬜ **A rotina que libera os aceitos olha sempre as mesmas 500 candidaturas** (back: `JobOpeningService.releaseUnjoinedApplications`):
+     - A busca é `status: 'accepted'` com `take: 500`, sem ordem. Quem aceitou o convite e entrou na equipe continua `accepted` para sempre (a rotina só pula). Com o tempo, as 500 primeiras são todas de quem já entrou, e as que deveriam ser liberadas (convite vencido) nunca entram no lote: a vaga não reabre e a taxa não volta.
+     
+     **Fazer:** quem entrou na equipe sai de `accepted` (um status `joined`, ou `inviteAcceptedAt` gravado no aceite do convite), e a busca só pega as que ainda esperam o convite, em ordem e em lotes até acabar.
+
+282. ⬜ **A vaga cujo período acabou continua aberta: ocupa o limite da unidade e prende as candidaturas** (back: `JobOpeningService.create`, `apply`, `acceptNow`):
+     - Nada fecha a vaga quando o período termina. A lista do profissional esconde as que acabaram, mas a vaga continua `open`.
+     - `create` conta as vagas `open` para o limite de 10 por unidade. Depois de 10 vagas vencidas, a unidade não abre outra até encerrar uma por uma.
+     - As candidaturas `pending` dessas vagas nunca são respondidas e contam no limite de 20 por pessoa. Quem se candidatou a vagas que a unidade esqueceu fica sem poder se candidatar a outras.
+     - `apply` e `acceptNow` não olham a data: a candidatura pelo id ainda entra, e a unidade consegue aceitar (e pagar a taxa) para um período que já passou. O convite nasce com `accessEndsAt` no passado.
+     
+     **Fazer:** uma rotina diária fecha as vagas cujo período acabou (no fuso da unidade) e recusa as candidaturas em aberto com aviso, como `closeOpeningsOfBarbershop`. `apply` e `acceptNow` recusam a vaga que já terminou. As contagens dos dois limites ignoram as vagas vencidas.
