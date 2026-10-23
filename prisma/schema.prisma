@@ -687,8 +687,11 @@ model Customer {
                                    // negócio a uma conta que também compra em outros negócios
   name            String
   phone           String
-  // Só os dígitos de phone. O banco preenche; o descadastro do WhatsApp busca por aqui.
-  phoneDigits     String          @default(dbgenerated("regexp_replace(phone, '\\D', '', 'g')"))
+  // Só os dígitos de phone. Coluna gerada pelo banco (GENERATED ALWAYS, ver a
+  // migração 20261229100000): nunca gravar por aqui. O descadastro do WhatsApp
+  // busca por ela. Opcional e com a expressão como o Postgres a devolve, senão
+  // o `migrate diff` da CI acusa diferença.
+  phoneDigits     String?         @default(dbgenerated("regexp_replace(phone, '\\D'::text, ''::text, 'g'::text)"))
   email           String?
   birthDate       DateTime?
   notes           String?
