@@ -645,7 +645,7 @@ type ShopTextInput = {
 };
 
 type ShopTexts = {
-  [K in keyof typeof SHOP_TEXT_MAX]?: string;
+  -readonly [K in keyof typeof SHOP_TEXT_MAX]?: string;
 } & { phone?: string };
 
 /** Textos do cadastro e da edição: tamanho, e-mail e telefone com DDD. */
@@ -663,8 +663,9 @@ export function normalizeShopTexts(
       return;
     }
     const text = String(value).trim();
+    // País sem estado (Portugal, por exemplo): o estado fica vazio
     if (!text) {
-      if (optional) {
+      if (optional || key === 'state') {
         out[key] = '';
         return;
       }
@@ -2258,8 +2259,11 @@ export class BarbershopService {
     // com o mesmo slug passam juntos por ele e um estoura a unique aqui.
     // ownerTakesAppointments é do cadastro do dono (vai pro Barber dele), não
     // é coluna da unidade
-    const { ownerTakesAppointments: _ownerTakesAppointments, businessHours: _rawHours, ...shopData } =
-      data;
+    const {
+      ownerTakesAppointments: _ownerTakesAppointments,
+      businessHours: _rawHours,
+      ...shopData
+    } = data;
     const barbershop = await this.prisma.barbershop
       .create({
         data: {
