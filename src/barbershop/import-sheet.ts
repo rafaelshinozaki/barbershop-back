@@ -252,10 +252,11 @@ function appointmentStatus(
 ): SheetAppointment['status'] | 'SKIP' {
   const key = sheetKey(value ?? '');
   if (['cancelado', 'cancelled', 'canceled', 'cancelada'].includes(key)) return 'SKIP';
+  // Horário que ainda não chegou fica marcado, mesmo com "faltou" ou
+  // "concluído" na planilha (item 260)
+  if (start.getTime() >= now.getTime()) return 'CONFIRMED';
   if (['faltou', 'no_show', 'noshow'].includes(key)) return 'NO_SHOW';
-  if (['concluido', 'completed', 'finalizado', 'feito', 'done', 'atendido'].includes(key))
-    return 'COMPLETED';
-  return start.getTime() < now.getTime() ? 'COMPLETED' : 'CONFIRMED';
+  return 'COMPLETED';
 }
 
 function field(row: Record<string, string>, key: string) {
