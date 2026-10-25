@@ -29,6 +29,6 @@ export class ClientFacebookStrategy extends PassportStrategy(Strategy, 'facebook
       return done(new Error('Email não fornecido pelo Facebook'), null);
     }
 
-    done(null, { email, displayName });
+    done(null, { email, displayName, providerUserId: profile.id });
   }
 }

@@ -1,7 +1,17 @@
 // src\auth\auth.controller.ts
 import { needsLoginCode, socialLoginAllowed } from './backoffice-login';
 import { backofficeUrl } from '../common/cors-origins';
-import { Controller, Post, Res, UseGuards, Get, Req, Body, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Res,
+  UseGuards,
+  Get,
+  Req,
+  Body,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -183,7 +193,7 @@ export class AuthController {
   }
 
   private async completeSocialLogin(
-    user: { email: string; displayName: string },
+    user: { email: string; displayName: string; providerUserId?: string },
     provider: string,
     req: Request,
     res: Response,
@@ -205,11 +215,22 @@ export class AuthController {
       return;
     }
 
-    const dbUser = await this.userService.findOrCreateSocialUser(
-      user.email,
-      user.displayName,
-      provider,
-    );
+    let dbUser;
+    try {
+      dbUser = await this.userService.findOrCreateSocialUser(
+        user.email,
+        user.displayName,
+        provider,
+        user.providerUserId,
+      );
+    } catch (err) {
+      // Conta desativada: a mesma resposta do login por senha (item 270)
+      if (err instanceof UnauthorizedException) {
+        res.redirect(`${frontendUrl}/login?error=social`);
+        return;
+      }
+      throw err;
+    }
     // Conta do sistema entra só com e-mail, senha e código: o login social
     // pularia os dois
     if (!socialLoginAllowed(dbUser)) {

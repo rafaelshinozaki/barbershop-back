@@ -4,6 +4,7 @@ import { Strategy } from 'passport-apple';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { isAppleConfigured } from '@/auth/interfaces/apple-config.util';
+import { emailUnverified, UNVERIFIED_EMAIL_ERROR } from '../../auth/strategies/social-profile';
 
 @Injectable()
 export class ClientAppleStrategy extends PassportStrategy(Strategy, 'apple-client') {
@@ -29,7 +30,11 @@ export class ClientAppleStrategy extends PassportStrategy(Strategy, 'apple-clien
     done: (err: unknown, user: any) => void,
   ) {
     try {
-      const decoded = jwt.decode(idToken) as { email?: string; sub: string } | null;
+      const decoded = jwt.decode(idToken) as {
+        email?: string;
+        sub: string;
+        email_verified?: boolean | string;
+      } | null;
       const email = decoded?.email;
 
       if (!email) {
@@ -40,7 +45,11 @@ export class ClientAppleStrategy extends PassportStrategy(Strategy, 'apple-clien
         ? `${req.appleProfile.name.firstName ?? ''} ${req.appleProfile.name.lastName ?? ''}`.trim()
         : email.split('@')[0];
 
-      done(null, { email, displayName });
+      if (emailUnverified(decoded?.email_verified)) {
+        return done(new Error(UNVERIFIED_EMAIL_ERROR), null);
+      }
+
+      done(null, { email, displayName, providerUserId: decoded?.sub });
     } catch (error) {
       done(error, null);
     }

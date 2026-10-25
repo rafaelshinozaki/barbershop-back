@@ -1,3 +1,5 @@
+import { countryIso } from '../common/place-locale';
+
 /** Idiomas com template de e-mail (src/email/templates/<idioma>). */
 export type Lang = 'pt' | 'en' | 'es';
 
@@ -42,7 +44,8 @@ const SPANISH = new Set([
  * barbearia (quem agenda numa unidade do México lê espanhol).
  */
 export function langForCountry(country?: string | null): Lang {
-  const c = (country || '').trim().toUpperCase();
+  // O país gravado por nome ("Brasil") também vale (item 267)
+  const c = countryIso(country) ?? (country || '').trim().toUpperCase();
   if (PORTUGUESE.has(c)) return 'pt';
   if (SPANISH.has(c)) return 'es';
   return c ? 'en' : 'pt';

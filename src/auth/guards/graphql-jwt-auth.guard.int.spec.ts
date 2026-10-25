@@ -59,6 +59,7 @@ describe('GraphQLJwtAuthGuard (integração)', () => {
           email: `guard-${RUN}@test.local`,
           password: 'x',
           fullName: 'Guard Teste',
+          isActive: true,
           idDocNumber: `g${RUN}`.slice(-20),
           phone: `+5511${RUN}`.slice(0, 20),
           gender: 'male',
@@ -108,6 +109,17 @@ describe('GraphQLJwtAuthGuard (integração)', () => {
     await expect(
       run({ Authentication: token, ClientAuthentication: 'qualquer' }),
     ).resolves.toMatchObject({ id: userId });
+  });
+
+  it('conta desativada não usa a sessão que ainda existir (item 270)', async () => {
+    const token = jwt.sign({ userId, email: 'x', sessionToken });
+    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+    try {
+      await expect(run({ Authentication: token })).rejects.toBeInstanceOf(UnauthorizedException);
+    } finally {
+      await prisma.user.update({ where: { id: userId }, data: { isActive: true } });
+    }
+    await expect(run({ Authentication: token })).resolves.toMatchObject({ id: userId });
   });
 
   it('busca de usuário sem id dá erro (não devolve o primeiro da tabela)', async () => {

@@ -34,6 +34,6 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
       return done(new Error('Formato de email inválido'), null);
     }
 
-    done(null, { email, displayName });
+    done(null, { email, displayName, providerUserId: profile.id });
   }
 }

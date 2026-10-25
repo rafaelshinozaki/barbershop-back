@@ -625,6 +625,7 @@ export class UserService {
   private readonly socialUserSelect = {
     id: true,
     email: true,
+    emailVerifiedAt: true,
     fullName: true,
     phone: true,
     idDocNumber: true,
@@ -739,12 +740,27 @@ export class UserService {
     return { ok: true };
   }
 
-  async findOrCreateSocialUser(email: string, name: string, provider: string): Promise<UserDTO> {
+  async findOrCreateSocialUser(
+    email: string,
+    name: string,
+    provider: string,
+    providerUserId?: string | null,
+  ): Promise<UserDTO> {
     email = normalizeEmail(email);
-    // 1. Esse provider+email já está linkado a uma conta? Login direto nela.
-    const existingLink = await this.prisma.linkedSocialAccount.findFirst({
-      where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
-    });
+    // 1. A pessoa no provedor (id dela lá) já está ligada a uma conta? Login
+    // direto nela. Depois, o vínculo pelo e-mail (vínculos antigos, sem id).
+    const existingLink =
+      (providerUserId
+        ? await this.prisma.linkedSocialAccount.findFirst({ where: { provider, providerUserId } })
+        : null) ??
+      (await this.prisma.linkedSocialAccount.findFirst({
+        where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
+      }));
+    if (existingLink && providerUserId && !existingLink.providerUserId) {
+      await this.prisma.linkedSocialAccount
+        .update({ where: { id: existingLink.id }, data: { providerUserId } })
+        .catch(() => undefined);
+    }
 
     let user = existingLink
       ? await this.prisma.user.findUnique({
@@ -757,12 +773,35 @@ export class UserService {
           select: this.socialUserSelect,
         });
 
+    // Conta desativada não volta pelo login social: a mesma resposta do
+    // login por senha (item 270)
+    if (user && !user.isActive) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     if (user && !existingLink) {
+      // O provedor confirmou o e-mail. Conta achada por ele que nunca teve o
+      // e-mail confirmado pode ter sido criada por outra pessoa (cadastro com
+      // o e-mail alheio): a senha sai, as sessões e os celulares também, e a
+      // dona do e-mail fica com a conta, como no login do cliente (item 271)
+      if (!user.emailVerifiedAt) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            emailVerifiedAt: new Date(),
+            password: await bcrypt.hash(randomUUID() + randomUUID(), 10),
+          },
+        });
+        await this.prisma.activeSession.deleteMany({ where: { userId: user.id } });
+        await dropPushSubscriptions(this.prisma, { userId: user.id });
+      }
       // Já existe uma conta com esse email (criada por senha ou por outro
       // provider) — conecta este novo método a ela em vez de criar uma
       // segunda conta desconectada com o mesmo email.
       await this.prisma.linkedSocialAccount
-        .create({ data: { userId: user.id, provider, providerEmail: email } })
+        .create({
+          data: { userId: user.id, provider, providerEmail: email, providerUserId },
+        })
         .catch(() => {
           // condição de corrida rara (duas requisições simultâneas linkando o
           // mesmo provider+email) — a outra já deve ter criado, segue o login
@@ -779,6 +818,8 @@ export class UserService {
         data: {
           email,
           provider,
+          // O provedor confirmou o e-mail
+          emailVerifiedAt: new Date(),
           password: await bcrypt.hash(faker.internet.password(), 10),
           fullName: name,
           idDocNumber: 'SOCIAL',
@@ -863,7 +904,7 @@ export class UserService {
       });
 
       await this.prisma.linkedSocialAccount.create({
-        data: { userId: user.id, provider, providerEmail: email },
+        data: { userId: user.id, provider, providerEmail: email, providerUserId },
       });
 
       // Enviar email de boas-vindas para usuários sociais recém-criados
