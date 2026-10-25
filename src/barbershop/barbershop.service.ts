@@ -1015,6 +1015,37 @@ export function assertStaffAppointmentSource(source: string | null | undefined) 
   }
 }
 
+/** Nome da ficha apagada (e da linha dela no histórico) */
+export const REMOVED_CUSTOMER_NAME = 'Cliente removido';
+
+export const SALE_CUSTOMER_LOCKED_MESSAGE =
+  'Esta venda usou pontos ou cartão-presente do cliente: o cliente não muda. Apague a venda e lance de novo no cliente certo.';
+
+/**
+ * Soma (ou tira) pontos sem deixar o saldo negativo: o cliente pode já ter
+ * gastado os pontos que a venda editada ou apagada tinha dado (item 285)
+ */
+async function addLoyaltyPoints(tx: Prisma.TransactionClient, customerId: number, delta: number) {
+  if (delta > 0) {
+    await tx.customer.update({
+      where: { id: customerId },
+      data: { loyaltyPoints: { increment: delta } },
+    });
+  } else if (delta < 0) {
+    await tx.$executeRaw`
+      UPDATE "Customer" SET "loyaltyPoints" = GREATEST(0, "loyaltyPoints" + ${delta})
+      WHERE id = ${customerId}`;
+  }
+}
+
+/**
+ * Preço de custo (e a margem que sai dele) é do gerente e do dono, como o
+ * resto do financeiro. Barbeiro e recepção veem o produto sem ele (item 286).
+ */
+export function withCostFor<T extends { costPrice: unknown }>(level: AccessLevel, product: T): T {
+  return ACCESS_RANK[level] >= ACCESS_RANK.manager ? product : { ...product, costPrice: null };
+}
+
 const STAFF_APPOINTMENT_STATUSES = [
   'DRAFT',
   'CONFIRMED',
@@ -3326,7 +3357,7 @@ export class BarbershopService {
       this.prisma.customer.update({
         where: { id: customerId },
         data: {
-          name: 'Cliente removido',
+          name: REMOVED_CUSTOMER_NAME,
           phone: '',
           email: null,
           birthDate: null,
@@ -3340,6 +3371,20 @@ export class BarbershopService {
           deletedAt: new Date(),
         },
       }),
+      // Histórico da ficha (inclusive a linha que esta exclusão acabou de
+      // gravar): sai o nome, o telefone e o e-mail (item 283)
+      this.prisma.$executeRaw`
+        UPDATE "ChangeLog" SET
+          "entityName" = ${REMOVED_CUSTOMER_NAME},
+          changes = (
+            SELECT coalesce(jsonb_object_agg(k, CASE
+              WHEN k IN ('name', 'phone', 'email') THEN jsonb_build_array(
+                CASE WHEN v -> 0 IS NULL OR v -> 0 = 'null'::jsonb THEN NULL ELSE to_jsonb('•••'::text) END,
+                CASE WHEN v -> 1 IS NULL OR v -> 1 = 'null'::jsonb THEN NULL ELSE to_jsonb('•••'::text) END)
+              ELSE v END), '{}'::jsonb)
+            FROM jsonb_each(changes) AS e(k, v)
+          )
+        WHERE "entityType" = 'Customer' AND "entityId" = ${String(customerId)}`,
     ]);
   }
 
@@ -4324,14 +4369,15 @@ export class BarbershopService {
   }
 
   async getProducts(userId: number, barbershopId: number, activeOnly?: boolean) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     const where: any = { barbershopId };
     if (activeOnly) where.isActive = true;
-    return this.prisma.barbershopProduct.findMany({
+    const products = await this.prisma.barbershopProduct.findMany({
       where,
       include: { category: true },
       orderBy: { name: 'asc' },
     });
+    return products.map((p) => withCostFor(shop.accessLevel, p));
   }
 
   async updateProduct(
@@ -4395,13 +4441,14 @@ export class BarbershopService {
   // ============ INVENTORY ============
 
   async getInventory(userId: number, barbershopId: number) {
-    await this.ensureBarbershopAccess(userId, barbershopId);
+    const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     await this.ensureModuleAccess(barbershopId, 'inventory');
-    return this.prisma.inventoryItem.findMany({
+    const items = await this.prisma.inventoryItem.findMany({
       where: { barbershopId },
       include: { product: { include: { category: true } } },
       orderBy: { product: { name: 'asc' } },
     });
+    return items.map((i) => ({ ...i, product: withCostFor(shop.accessLevel, i.product) }));
   }
 
   /**
@@ -11010,22 +11057,25 @@ export class BarbershopService {
       const prevEarned = existing.loyaltyPointsEarned ?? 0;
       updateData.loyaltyPointsEarned = nextEarned || null;
 
+      // Pontos resgatados e cartão-presente ficam com o cliente da venda: trocar
+      // o cliente deixava o desconto de um na venda do outro, e apagar a venda
+      // devolvia os pontos a quem não os tinha gasto (item 285)
+      if (
+        (existing.customerId ?? null) !== (nextCustomerId ?? null) &&
+        ((existing.loyaltyPointsRedeemed ?? 0) > 0 ||
+          Number(existing.giftCardAmountApplied ?? 0) > 0)
+      ) {
+        throw new BadRequestException(SALE_CUSTOMER_LOCKED_MESSAGE);
+      }
+
       await tx.sale.update({ where: { id: saleId }, data: updateData });
 
       if (existing.customerId && existing.customerId !== nextCustomerId && prevEarned) {
-        await tx.customer.update({
-          where: { id: existing.customerId },
-          data: { loyaltyPoints: { decrement: prevEarned } },
-        });
+        await addLoyaltyPoints(tx, existing.customerId, -prevEarned);
       }
       if (nextCustomerId) {
         const delta = nextCustomerId === existing.customerId ? nextEarned - prevEarned : nextEarned;
-        if (delta !== 0) {
-          await tx.customer.update({
-            where: { id: nextCustomerId },
-            data: { loyaltyPoints: { increment: delta } },
-          });
-        }
+        if (delta !== 0) await addLoyaltyPoints(tx, nextCustomerId, delta);
       }
 
       // Deixou de ser paga ou mudou de cliente: a indicação que ela completou reabre
@@ -11158,10 +11208,7 @@ export class BarbershopService {
       }
       const points = (existing.loyaltyPointsRedeemed ?? 0) - (existing.loyaltyPointsEarned ?? 0);
       if (existing.customerId && points !== 0) {
-        await tx.customer.update({
-          where: { id: existing.customerId },
-          data: { loyaltyPoints: { increment: points } },
-        });
+        await addLoyaltyPoints(tx, existing.customerId, points);
       }
       const movements = await tx.inventoryMovement.findMany({
         where: { referenceType: 'SALE', referenceId: String(saleId), movementType: 'SALE' },
