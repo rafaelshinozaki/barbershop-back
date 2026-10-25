@@ -1498,6 +1498,9 @@ model SocialPost {
   postToInstagram   Boolean   @default(true)
   scheduledFor      DateTime
   status            String    @default("SCHEDULED")
+  // Quando a publicação foi reservada (status PUBLISHING): uma execução só
+  // publica, e a reserva parada há muito tempo vira falha (item 266)
+  publishingAt      DateTime?
   publishedAt       DateTime?
   facebookPostId    String?
   instagramMediaId  String?
@@ -2713,4 +2716,17 @@ model HealthFormAccess {
 model WhatsappOptOut {
   phoneDigits String   @id
   createdAt   DateTime @default(now())
+}
+
+// Sessão da área do cliente (item 272): o token leva o id dela. "Sair"
+// apaga só esta; o prazo se renova enquanto a pessoa usa.
+model ClientSession {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  lastUsedAt      DateTime @default(now())
+  clientAccountId Int
+  sid             String   @unique
+
+  @@index([clientAccountId])
+  @@index([lastUsedAt])
 }

@@ -12,25 +12,54 @@ import {
   USER_NOTIFICATIONS,
   UserNotificationsPayload,
 } from '../../realtime/realtime.service';
-import { shopAccessStale } from '../../realtime/shop-access-cache';
+import {
+  SessionCheck,
+  shopAccessStale,
+  subscriptionSessionValid,
+} from '../../realtime/shop-access-cache';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   NetworkActivityEvent,
   NotificationEvent,
   PublicSlotsChangedEvent,
 } from '../types/realtime.type';
 
-type SubscriptionContext = {
+type SubscriptionContext = SessionCheck & {
   allowedBarbershopIds?: Set<number>;
   allowedBarbershopIdsAt?: number;
   userId?: number;
 };
+
+type SubscribedUser = UserDTO & { sessionToken?: string; sessionExpiresAt?: number };
 
 @Resolver()
 export class RealtimeResolver {
   constructor(
     private readonly realtime: RealtimeService,
     private readonly barbershopService: BarbershopService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * A sessão que abriu a assinatura ainda vale? Sair, derrubar as sessões,
+   * desativar a conta ou o token vencer param os avisos (item 269). Antes o
+   * login só era conferido quando o socket abria.
+   */
+  private sessionValid(context: SubscriptionContext) {
+    return subscriptionSessionValid(context, async (sessionToken) => {
+      const session = await this.prisma.activeSession.findUnique({
+        where: { sessionToken },
+        select: { userId: true, user: { select: { isActive: true } } },
+      });
+      return session ? { userId: session.userId, active: !!session.user?.isActive } : null;
+    });
+  }
+
+  private remember(user: SubscribedUser, context: SubscriptionContext) {
+    context.userId = user.id;
+    context.sessionToken = user.sessionToken;
+    context.sessionExpiresAt = user.sessionExpiresAt;
+  }
 
   /**
    * Eventos das barbearias que o usuário acessa (dono, dono da rede ou
@@ -49,13 +78,17 @@ export class RealtimeResolver {
       return this.allowsShop(context, payload.networkActivity.barbershopId);
     },
   })
-  async networkActivity(@CurrentUser() user: UserDTO, @Context() context: SubscriptionContext) {
-    context.userId = user.id;
+  async networkActivity(
+    @CurrentUser() user: SubscribedUser,
+    @Context() context: SubscriptionContext,
+  ) {
+    this.remember(user, context);
     await this.refreshShopAccess(context);
     return this.realtime.pubSub.asyncIterator(NETWORK_ACTIVITY);
   }
 
   private async allowsShop(context: SubscriptionContext, barbershopId: number) {
+    if (!(await this.sessionValid(context))) return false;
     if (shopAccessStale(context.allowedBarbershopIdsAt, Date.now())) {
       await this.refreshShopAccess(context);
     }
@@ -76,14 +109,22 @@ export class RealtimeResolver {
   /** Sininho em tempo real: só os avisos das notificações do próprio usuário. */
   @UseGuards(GraphQLJwtAuthGuard)
   @Subscription(() => NotificationEvent, {
-    filter: (
+    async filter(
+      this: RealtimeResolver,
       payload: { myNotificationEvents: UserNotificationsPayload },
       _variables: unknown,
       context: SubscriptionContext,
-    ) => context.userId != null && payload.myNotificationEvents.userIds.includes(context.userId),
+    ) {
+      if (context.userId == null || !payload.myNotificationEvents.userIds.includes(context.userId))
+        return false;
+      return this.sessionValid(context);
+    },
   })
-  myNotificationEvents(@CurrentUser() user: UserDTO, @Context() context: SubscriptionContext) {
-    context.userId = user.id;
+  myNotificationEvents(
+    @CurrentUser() user: SubscribedUser,
+    @Context() context: SubscriptionContext,
+  ) {
+    this.remember(user, context);
     return this.realtime.pubSub.asyncIterator(USER_NOTIFICATIONS);
   }
 

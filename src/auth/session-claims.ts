@@ -11,7 +11,7 @@
 const positiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
 
 export type StaffClaims = { userId: number; sessionToken: string };
-export type ClientClaims = { clientAccountId: number; v: number };
+export type ClientClaims = { clientAccountId: number; v: number; sid?: string };
 
 export function staffClaims(decoded: unknown): StaffClaims | null {
   if (!decoded || typeof decoded !== 'object') return null;
@@ -27,7 +27,12 @@ export function clientClaims(decoded: unknown): ClientClaims | null {
   const d = decoded as Record<string, unknown>;
   if ('userId' in d) return null;
   if (!positiveInt(d.clientAccountId)) return null;
-  return { clientAccountId: d.clientAccountId, v: Number.isInteger(d.v) ? (d.v as number) : 0 };
+  return {
+    clientAccountId: d.clientAccountId,
+    v: Number.isInteger(d.v) ? (d.v as number) : 0,
+    // Id da sessão (item 272); token antigo não tem
+    ...(typeof d.sid === 'string' && d.sid ? { sid: d.sid } : {}),
+  };
 }
 
 /**

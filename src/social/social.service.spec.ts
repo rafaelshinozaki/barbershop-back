@@ -100,6 +100,7 @@ describe('SocialService.createPost: chave da imagem', () => {
         findUnique: async () => ({ instagramBusinessAccountId: 'ig' }),
       },
       socialPost: {
+        count: async () => 0,
         create: async ({ data }: { data: unknown }) => {
           created.push(data);
           return data;
@@ -155,8 +156,10 @@ describe('SocialService: chave do token da Página', () => {
           caption: 'oi',
           postToFacebook: true,
           postToInstagram: false,
+          scheduledFor: new Date(),
         }),
         update: updatePost,
+        updateMany: async () => ({ count: 1 }),
       },
       barbershop: { findUnique: async () => ({ closedAt: null }) },
       socialConnection: {
@@ -231,8 +234,10 @@ describe('SocialService.publishPost: Instagram desvinculado', () => {
           caption: 'oi',
           postToFacebook: flags.postToFacebook,
           postToInstagram: flags.postToInstagram,
+          scheduledFor: new Date(),
         }),
         update: updatePost,
+        updateMany: async () => ({ count: 1 }),
       },
       barbershop: { findUnique: async () => ({ closedAt: null }) },
       socialConnection: {

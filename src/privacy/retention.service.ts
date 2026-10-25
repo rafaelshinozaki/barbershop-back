@@ -235,7 +235,15 @@ export class RetentionService {
       BATCH,
     );
 
+    // Sessão do cliente parada além do prazo (30 dias) já não entra: sai
+    const clientSessions = (
+      await this.prisma.clientSession.deleteMany({
+        where: { lastUsedAt: { lt: cutoffBefore(now, 31) } },
+      })
+    ).count;
+
     const result = {
+      clientSessions,
       backofficeAudit,
       changeLog,
       healthFormAccess,

@@ -66,7 +66,7 @@ export class ClientAuthResolver {
       input.phone,
       input.language,
     );
-    this.clientAuthService.issueCookie(account, context.res);
+    await this.clientAuthService.issueCookie(account, context.res);
     return toClientAccountType(account);
   }
 
@@ -78,7 +78,7 @@ export class ClientAuthResolver {
     @Context() context: any,
   ): Promise<ClientAccountType> {
     const account = await this.clientAuthService.validateCredentials(input.email, input.password);
-    this.clientAuthService.issueCookie(account, context.res);
+    await this.clientAuthService.issueCookie(account, context.res);
     return toClientAccountType(account);
   }
 
@@ -142,8 +142,8 @@ export class ClientAuthResolver {
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Mutation(() => Boolean)
   async clientLogout(@Context() context: any): Promise<boolean> {
-    const { res } = context;
-    this.clientAuthService.clearCookie(res);
+    const { req, res } = context;
+    await this.clientAuthService.endSession(req, res);
     return true;
   }
 

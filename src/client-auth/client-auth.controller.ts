@@ -101,7 +101,7 @@ export class ClientAuthController {
       res.redirect(`${frontendUrl}/client/login?suspended=1`);
       return;
     }
-    this.clientAuthService.issueCookie(account, res);
+    await this.clientAuthService.issueCookie(account, res);
     res.redirect(`${frontendUrl}/client/account`);
   }
 }
