@@ -2924,32 +2924,40 @@ Foram lidos a criação de vagas, a candidatura, o aceite com a taxa por vaga pr
 
 Foram lidos o histórico de alterações (gatilho do banco, quem vê o quê e retenção), a verificação de identidade do profissional, as fotos da página pública e a importação de clientes e agenda por planilha.
 
-283. ⬜ **Apagar a ficha do cliente não tira o nome dele do histórico, e a própria exclusão grava o nome de novo** (back: `deleteCustomer`; gatilho `change_log_capture` de `Customer`; `ChangeLogService`):
+283. ✅ **Apagar a ficha do cliente não tira o nome dele do histórico, e a própria exclusão grava o nome de novo** (back: `deleteCustomer`; gatilho `change_log_capture` de `Customer`; `ChangeLogService`):
      - `deleteCustomer` anonimiza a ficha (nome "Cliente removido", telefone e e-mail apagados), mas o histórico da unidade continua com o nome. Cada linha antiga da ficha tem o nome em `entityName`, e as trocas de nome ficam inteiras em `changes` (só telefone e e-mail são mascarados).
      - A anonimização roda sem `app.change_log_off` e grava mais uma linha: nome antigo → "Cliente removido", com o nome antigo por extenso. Dono e gerentes de todas as unidades da rede veem isso na tela Histórico por até um ano (retenção do histórico).
      - A exclusão da conta de cliente (`ClientAuthService`) e a da conta da equipe já tratam o próprio histórico; a ficha apagada pela unidade não.
      
      **Fazer:** na anonimização da ficha, desligar o gatilho na transação (`app.change_log_off`) e tirar o nome das linhas antigas daquela ficha: `entityName` vira "Cliente removido" e o campo `name` em `changes` vira "•••". Deixar só uma linha "ficha removida", sem dados pessoais. Teste: criar a ficha, renomear, apagar; o histórico não mostra nenhum dos nomes.
 
-284. ⬜ **Na agenda solo, importar a planilha com os atendimentos do dia escapa da cota mensal** (back: `ImportService`, `parseSheet`, `assertSoloBookingAllowed`, `soloUsage`):
+     **Feito:** na mesma transação da anonimização, as linhas de histórico daquela ficha são limpas, inclusive a que a própria exclusão acabou de gravar: `entityName` vira "Cliente removido", e nome, telefone e e-mail em `changes` viram "•••". Assim o histórico mostra que a ficha foi apagada, sem dados pessoais. Teste em `round-283-286.int.spec.ts`.
+
+284. ✅ **Na agenda solo, importar a planilha com os atendimentos do dia escapa da cota mensal** (back: `ImportService`, `parseSheet`, `assertSoloBookingAllowed`, `soloUsage`):
      - A importação marca toda linha com data passada como `source: 'HISTORY'`. `createAppointment` não confere a cota para `HISTORY`, e `soloUsage` não conta atendimento `HISTORY` como concluído.
      - A conta solo que chegou ao limite do mês (bloqueada, sem Pro) continua lançando atendimentos: basta importar uma planilha com os horários que já aconteceram hoje. Eles entram concluídos, aparecem na agenda, nos números e na ficha dos clientes, e a cota nunca sobe.
      
      **Fazer:** `HISTORY` (fora da cota) só para o que aconteceu antes de a agenda existir (`Barbershop.createdAt`). Linha passada depois disso entra como atendimento comum: conta na cota e passa por `assertSoloBookingAllowed`. Teste: agenda solo no limite, importar uma linha de hoje mais cedo é recusado; uma linha de antes da criação entra.
 
+     **Feito:** na agenda solo, a importação só marca como `HISTORY` o que aconteceu antes de `Barbershop.createdAt`. Linha passada depois disso entra como `IMPORT`: passa por `assertSoloBookingAllowed` (recusada com a cota fechada) e conta em `soloUsage`. Estabelecimento comum continua como antes, porque não tem cota. Teste em `round-283-286.int.spec.ts`.
+
 ### Centésima quinta rodada (2026-10-23): pontos de fidelidade na edição da venda e custo dos produtos
 
 Foram lidos os pontos de fidelidade (ganho, resgate, edição e exclusão da venda, bônus de indicação), as despesas e o fechamento do caixa, e o cadastro de produtos e o estoque.
 
-285. ⬜ **Trocar o cliente da venda que resgatou pontos passa os pontos de um cliente para outro** (back: `updateSale`, `deleteSale`):
+285. ✅ **Trocar o cliente da venda que resgatou pontos passa os pontos de um cliente para outro** (back: `updateSale`, `deleteSale`):
      - `updateSale` aceita trocar o cliente da venda e move só os pontos **ganhos** (tira do antigo, dá ao novo). Os pontos **resgatados** (`loyaltyPointsRedeemed`) continuam descontados do cliente antigo, e o desconto fica na venda do cliente novo.
      - Apagar a venda depois devolve os pontos resgatados para `existing.customerId`, que agora é o cliente novo. Assim, venda com 100 pontos resgatados de A, trocada para B e apagada: A perde 100 pontos e B ganha 100. O gerente (editar e apagar venda é de gerente para cima) faz isso sem o cliente saber, e um erro de clique na ficha errada tira os pontos de quem não tem nada com a venda.
      - A retirada dos pontos ganhos (troca de cliente, venda que deixou de ser paga ou total menor) usa `decrement` sem piso: se o cliente já usou os pontos, o saldo fica negativo. O bônus de indicação já usa `GREATEST(0, …)`.
      
      **Fazer:** venda com pontos resgatados (ou cartão-presente aplicado) não troca de cliente; a mensagem orienta a apagar e lançar de novo. A retirada dos pontos ganhos não deixa o saldo negativo, como no bônus de indicação. Teste: venda com resgate, trocar o cliente é recusado; total menor depois de o cliente gastar os pontos não deixa o saldo negativo.
 
-286. ⬜ **Barbeiro e recepção veem o preço de custo dos produtos** (back: `getProducts`, `getInventory`; `BarbershopProductType.costPrice`):
+     **Feito:** `updateSale` recusa trocar o cliente de venda com pontos resgatados ou cartão-presente aplicado (`SALE_CUSTOMER_LOCKED_MESSAGE`, que orienta a apagar e lançar de novo). Toda retirada de pontos na edição e na exclusão da venda passa por `addLoyaltyPoints`, com piso zero como no bônus de indicação. Teste em `round-283-286.int.spec.ts`.
+
+286. ✅ **Barbeiro e recepção veem o preço de custo dos produtos** (back: `getProducts`, `getInventory`; `BarbershopProductType.costPrice`):
      - `getProducts` e `getInventory` pedem só o acesso padrão (`barber`) e devolvem o produto inteiro, com `costPrice`. O barbeiro e a recepção veem quanto a unidade paga em cada produto e a margem de cada venda.
      - O resto do financeiro (resumo, despesas, relatórios) é só de gerente para cima, e cadastrar e mudar o custo também.
      
      **Fazer:** `costPrice` só para gerente e dono (o campo volta nulo para os outros cargos, como os dados de contato no item 248). Teste: o barbeiro lista os produtos sem custo, e o gerente com.
+
+     **Feito:** `getProducts` e `getInventory` passam o produto por `withCostFor`: abaixo de gerente, `costPrice` volta nulo. Teste em `round-283-286.int.spec.ts`.

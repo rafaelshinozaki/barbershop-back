@@ -167,11 +167,17 @@ export class ImportService {
       }
     }
 
+    // Agenda solo: só o que aconteceu antes de a agenda existir é histórico
+    // (fora da cota). Passado depois disso conta como atendimento, senão
+    // importar os atendimentos do dia escapava da cota (item 284)
+    const historyBefore = shop.practiceKind === 'solo' ? shop.createdAt : null;
     for (const row of parsed.appointments) {
       const outcome = await this.importAppointment(
         userId,
         barbershopId,
-        row,
+        historyBefore && row.source === 'HISTORY' && row.start >= historyBefore
+          ? { ...row, source: 'IMPORT' }
+          : row,
         phones,
         catalog,
         bookable,
