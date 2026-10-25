@@ -1273,6 +1273,9 @@ model Appointment {
   status       String    @default("CONFIRMED") // DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   notes        String?
   source       String    @default("PHONE") // ONLINE, PHONE, WALK_IN, IMPORT, HISTORY
+  // Quem da equipe criou o horário (nulo: o cliente, pelo app ou pela página).
+  // O horário que o próprio profissional criou não abre a ficha de saúde (item 276)
+  createdByUserId Int?
   // E-mail digitado neste agendamento online. Os avisos deste horário vão
   // para ele; a ficha só é preenchida quando ainda não tinha e-mail.
   contactEmail String?
@@ -1284,6 +1287,8 @@ model Appointment {
   firstVisit   Boolean   @default(false)
   reminderSentAt DateTime?
   reviewRequestSentAt DateTime? // e-mail "como foi?" depois do atendimento (uma vez só)
+  // Pedido de avaliação mandado pela equipe (um por atendimento, item 277)
+  staffReviewRequestedAt DateTime?
   clientRatingRequestSentAt DateTime? // aviso ao profissional pra avaliar o cliente (resumo do dia)
   // Agendamento recorrente (a cada N semanas): mesmo seriesId, ordem na série
   seriesId     String?
@@ -2679,4 +2684,25 @@ model BackofficeApproval {
 
   @@index([status, createdAt])
   @@index([requestedByEmail])
+}
+
+// Quem abriu as respostas de saúde do cliente (item 276), para a gerência ver
+model HealthFormAccess {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  barbershopId Int
+  customerId   Int
+  userId       Int
+
+  @@index([barbershopId, customerId, createdAt])
+  @@index([createdAt])
+}
+
+// Quem respondeu SAIR no WhatsApp (item 275). O número de envio é um só, da
+// plataforma: o descadastro é do telefone, só no WhatsApp, e não mexe no
+// e-mail (Customer.marketingOptOut). Uma linha por variante do número.
+// VOLTAR apaga.
+model WhatsappOptOut {
+  phoneDigits String   @id
+  createdAt   DateTime @default(now())
 }

@@ -46,7 +46,24 @@ describe('pedido de avaliação pela equipe', () => {
     const reviews: Record<string, unknown>[] = [];
     const proReviews: Record<string, unknown>[] = [];
     const prisma = {
-      appointment: { findFirst: async () => appt, findUnique: async () => appt },
+      appointment: {
+        findFirst: async () => appt,
+        findUnique: async () => appt,
+        // Um pedido da equipe por atendimento (item 277)
+        updateMany: async ({
+          where,
+          data,
+        }: {
+          where: { staffReviewRequestedAt: Date | null };
+          data: { staffReviewRequestedAt: Date | null };
+        }) => {
+          const current = (appt as { staffReviewRequestedAt?: Date | null }).staffReviewRequestedAt;
+          if ((current ?? null) !== (where.staffReviewRequestedAt ?? null)) return { count: 0 };
+          Object.assign(appt, { staffReviewRequestedAt: data.staffReviewRequestedAt });
+          return { count: 1 };
+        },
+      },
+      whatsappOptOut: { findMany: async () => [] },
       barbershop: {
         findUnique: async () => ({
           closedAt: null,
@@ -168,5 +185,28 @@ describe('pedido de avaliação pela equipe', () => {
     await expect(service.submitReview(createReviewToken(9), { rating: 5 })).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+  it('um pedido da equipe por atendimento; o WhatsApp sai com o rodapé de saída (item 277)', async () => {
+    const byEmail = build();
+    await byEmail.service.staffReviewLink(7, 3, 9);
+    await expect(byEmail.service.staffReviewLink(7, 3, 9)).rejects.toThrow('já foi enviado');
+    expect(byEmail.emails).toHaveLength(1);
+
+    const byWhatsapp = build(
+      shopAppt({
+        customer: {
+          id: 2,
+          name: 'Carlos Cliente',
+          email: null,
+          phone: '11999999999',
+          marketingOptOut: false,
+          clientAccountId: null,
+        },
+      }),
+    );
+    await byWhatsapp.service.staffReviewLink(7, 3, 9);
+    expect(byWhatsapp.whatsapps[0].message).toContain('SAIR');
+    await expect(byWhatsapp.service.staffReviewLink(7, 3, 9)).rejects.toThrow('já foi enviado');
+    expect(byWhatsapp.whatsapps).toHaveLength(1);
   });
 });

@@ -19,6 +19,8 @@ import { reviewEditData } from './review-edit';
 import { appointmentContactEmail } from './appointment-contact';
 import { phoneForWhatsapp } from '../common/phone.util';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { whatsappMarketingBody } from '../whatsapp/marketing-text';
+import { whatsappOptedOut } from '../whatsapp/whatsapp-opt-out.service';
 
 // O e-mail sai algumas horas depois do fim do atendimento (a pessoa já foi
 // embora, mas ainda lembra de como foi) e só pra atendimentos recentes —
@@ -47,6 +49,9 @@ function checkReview(rating: number, comment?: string | null) {
  * não há unidade: a nota é uma só). Quem se descadastrou dos e-mails não
  * recebe.
  */
+export const STAFF_REVIEW_ALREADY_SENT_MESSAGE =
+  'O pedido de avaliação deste atendimento já foi enviado.';
+
 @Injectable()
 export class ReviewRequestService {
   private readonly logger = new Logger(ReviewRequestService.name);
@@ -86,31 +91,48 @@ export class ReviewRequestService {
     if (!paid) {
       throw new BadRequestException('Este atendimento não tem pagamento registrado.');
     }
-    if (appt.customer.marketingOptOut) {
-      throw new BadRequestException('Este cliente pediu para não receber mensagens.');
-    }
-    const email = appointmentContactEmail(appt);
-    const phone = phoneForWhatsapp(appt.customer.phone, appt.barbershop.country);
-    if (!email && !phone) {
+    // Cada canal com o próprio descadastro: e-mail pela rede, WhatsApp pelo
+    // telefone (item 275)
+    const rawEmail = appointmentContactEmail(appt);
+    const rawPhone = phoneForWhatsapp(appt.customer.phone, appt.barbershop.country);
+    if (!rawEmail && !rawPhone) {
       throw new BadRequestException(
         'Este cliente não tem e-mail nem WhatsApp pra receber o pedido.',
+      );
+    }
+    const email = appt.customer.marketingOptOut ? null : rawEmail;
+    const phone =
+      rawPhone && !(await whatsappOptedOut(this.prisma, [rawPhone])).has(rawPhone)
+        ? rawPhone
+        : null;
+    if (!email && !phone) {
+      throw new BadRequestException('Este cliente pediu para não receber mensagens.');
+    }
+    // Um pedido da equipe por atendimento (além do e-mail automático): antes
+    // cada clique mandava de novo, sem limite (item 277)
+    if (appt.staffReviewRequestedAt) {
+      throw new BadRequestException(STAFF_REVIEW_ALREADY_SENT_MESSAGE);
+    }
+    if (!email && !this.whatsapp.isConfigured()) {
+      throw new BadRequestException(
+        'Não dá para enviar o WhatsApp agora e o cliente não tem e-mail.',
       );
     }
     const url = (rating?: number) =>
       appointmentStaffReviewUrl(appt.id, userId, rating, appt.linkVersion);
     const now = new Date();
+    const claimed = await this.prisma.appointment.updateMany({
+      where: { id: appt.id, staffReviewRequestedAt: null },
+      data: { staffReviewRequestedAt: now },
+    });
+    if (claimed.count === 0) throw new BadRequestException(STAFF_REVIEW_ALREADY_SENT_MESSAGE);
     try {
       if (email) {
         await this.notificationQueue.email(
           this.reviewEmailJob(appt, url, now, email),
-          `review-request-staff-${appt.id}-${now.getTime()}`,
+          `review-request-staff-${appt.id}`,
         );
       } else if (phone) {
-        if (!this.whatsapp.isConfigured()) {
-          throw new BadRequestException(
-            'Não dá para enviar o WhatsApp agora e o cliente não tem e-mail.',
-          );
-        }
         const lang = langForCountry(appt.barbershop.country);
         const first = appt.customer.name.split(' ')[0];
         const text = {
@@ -124,12 +146,22 @@ export class ReviewRequestService {
             appt.barbershop.name
           }? Evalúa aquí: ${url()}`,
         }[lang];
+        // Modelo de campanha: com o rodapé "Responda SAIR" e sem quebra de linha
+        const body = whatsappMarketingBody(text, lang);
+        if (!body.ok) {
+          throw new BadRequestException('Não foi possível montar a mensagem do WhatsApp.');
+        }
         await this.notificationQueue.whatsapp(
-          { kind: 'marketing', to: phone, message: text, lang },
-          `review-request-staff-wa-${appt.id}-${now.getTime()}`,
+          { kind: 'marketing', to: phone, message: body.text, lang },
+          `review-request-staff-wa-${appt.id}`,
         );
       }
     } catch (err) {
+      // Não saiu: libera para tentar de novo
+      await this.prisma.appointment.updateMany({
+        where: { id: appt.id, staffReviewRequestedAt: now },
+        data: { staffReviewRequestedAt: null },
+      });
       if (err instanceof BadRequestException) throw err;
       this.logger.error(`Erro ao enviar pedido de avaliação #${appt.id}:`, err);
       throw new BadRequestException(

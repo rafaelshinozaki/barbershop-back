@@ -2841,45 +2841,61 @@ Foram lidos a sessão da área do cliente (`issueCookie`, `GraphQLClientJwtAuthG
 
 Foram lidos o painel da rede (`getNetworkDashboardStats`, `staffDashboard`, `networkMoney`), o histórico de atendimentos da ficha (`getCustomerServiceHistory`), o público "inativos" das campanhas (`resolveMarketingSegment`) e a fidelidade.
 
-273. ⬜ **O histórico de atendimentos nunca é gravado: a ficha fica vazia, o painel mostra zero e a campanha para inativos não acha ninguém** (back: `ServiceHistory`, `getCustomerServiceHistory`, `getNetworkDashboardStats`, `resolveMarketingSegment`):
+273. ✅ **O histórico de atendimentos nunca é gravado: a ficha fica vazia, o painel mostra zero e a campanha para inativos não acha ninguém** (back: `ServiceHistory`, `getCustomerServiceHistory`, `getNetworkDashboardStats`, `resolveMarketingSegment`):
      - Nenhum fluxo do app cria `ServiceHistory`: concluir o horário, fechar a conta e atender na fila não gravam nada. Só o `seed-demo.ts` cria essas linhas, por isso a demonstração parece certa.
      - Em produção, a aba "Histórico de atendimentos" da ficha do cliente (`customerServiceHistory`) mostra sempre "nenhum atendimento", e "Serviços realizados" no painel da rede (`totalServicesDone`) fica em 0.
      - O público "inativos há N dias" das campanhas usa `ServiceHistory` para saber quem já foi atendido e quem voltou. Sem linhas, ninguém é inativo: a campanha para trazer de volta quem sumiu sai para 0 pessoas, sem aviso.
      
      **Fazer:** ler o histórico do que já existe: horários `COMPLETED` (com os serviços do horário) e atendimentos da fila concluídos, no lugar de `ServiceHistory` (ou gravar a linha ao concluir, com migração preenchendo o passado). O público "inativos" passa a ser quem tem atendimento concluído na unidade e nenhum nos últimos N dias. Teste: concluir um horário aparece na ficha, conta no painel e tira o cliente dos inativos.
+
+     **Feito:** a migração `20261230120000_service_history_sync` cria gatilhos no banco que mantêm `ServiceHistory` igual aos horários concluídos (uma linha por serviço do horário) e aos atendimentos da fila concluídos com cliente e profissional. Vale venha a conclusão de onde vier: edição do horário, fechar a conta, importação ou fila. Voltar de "concluído" ou apagar o horário tira a linha. A mesma migração preenche o passado. Com isso, a ficha, o painel (`totalServicesDone`) e o público "inativos" das campanhas passam a funcionar sem mudar as consultas. `customerServiceHistory` devolve as datas em texto, o nome do serviço e do profissional (`serviceName`, `barberName`). Teste em `round-273-275.int.spec.ts`.
      
-274. ⬜ **O painel da rede soma produtos de vendas não pagas e conta profissionais com vínculo vencido** (back: `getNetworkDashboardStats`):
+274. ✅ **O painel da rede soma produtos de vendas não pagas e conta profissionais com vínculo vencido** (back: `getNetworkDashboardStats`):
      - "Produtos vendidos" soma a quantidade de todos os itens de produto, sem olhar a situação da venda: venda pendente, cancelada ou estornada conta como vendida (o faturamento ao lado só soma as pagas, então os dois números não batem).
      - "Profissionais" conta todo `Barber` com `isActive`, inclusive o freelancer cujo período já acabou ou ainda não começou (`currentEngagement` não é usado aqui, mas é usado no resto do painel).
      
      **Fazer:** produtos só de vendas pagas (e não estornadas); profissionais com `currentEngagement()`. Teste com venda pendente e vínculo vencido.
 
+     **Feito:** "Produtos vendidos" soma só os itens de vendas pagas, como o faturamento ao lado. "Profissionais" usa `currentEngagement()`, então o freelancer fora do período não conta. Teste em `round-273-275.int.spec.ts`.
+
 ### Centésima rodada (2026-10-21): descadastro das campanhas
 
 Foram lidos o descadastro pelo WhatsApp (`WhatsappOptOutService`), o link de descadastro do e-mail, a edição da ficha (`updateCustomer`), os pedidos de avaliação e as campanhas.
 
-275. ⬜ **Responder SAIR a uma barbearia tira a pessoa de tudo, em todas, e não há como voltar** (back: `WhatsappOptOutService.optOutFromReply`, `Customer.marketingOptOut`, `updateCustomer`, `ReviewRequestService`):
+275. ✅ **Responder SAIR a uma barbearia tira a pessoa de tudo, em todas, e não há como voltar** (back: `WhatsappOptOutService.optOutFromReply`, `Customer.marketingOptOut`, `updateCustomer`, `ReviewRequestService`):
      - `optOutFromReply` marca `marketingOptOut` em todas as fichas da plataforma com aquele telefone, de qualquer rede. Quem responde SAIR à campanha de uma barbearia deixa de receber campanhas de todas as outras onde é cliente.
      - É o mesmo campo das campanhas por e-mail e dos pedidos de avaliação (`review-request.service`, `review-management.service` pulam quem tem `marketingOptOut`). Sair do WhatsApp também corta o e-mail e o pedido de avaliação, que a pessoa não pediu para parar.
      - Não existe caminho de volta: a equipe é recusada ("só pode voltar a receber por conta própria"), mas não há link, tela ou palavra no WhatsApp para a pessoa voltar. O link de descadastro do e-mail também só marca.
      
      **Fazer:** separar o descadastro por canal (e-mail e WhatsApp) e por rede no e-mail. No WhatsApp, como o número é um só da plataforma, guardar o descadastro pelo telefone (tabela própria), sem mexer no e-mail. Pedido de avaliação fora do descadastro de marketing (ou com opção própria). Página do link e resposta no WhatsApp (ex.: "VOLTAR") para voltar a receber, e a área do cliente com as opções. Teste: SAIR numa rede não tira o e-mail nem as outras redes, e a pessoa consegue voltar.
 
+     **Feito:** o descadastro agora é por canal.
+     - **WhatsApp:** "SAIR" grava o telefone (todas as variantes do número) na tabela nova `WhatsappOptOut` e não mexe mais nas fichas nem no e-mail. "VOLTAR" (ou START, VOLVER) apaga e confirma.
+     - **Campanhas:** cada canal respeita o próprio descadastro. Quem saiu do e-mail na rede continua no WhatsApp, e vice-versa. A junção das fichas repetidas (item 191) continua valendo para o e-mail.
+     - **Pedido de avaliação da equipe:** usa o e-mail só sem descadastro na rede, e o WhatsApp só sem SAIR.
+     - **Volta pelo e-mail:** a mutation pública `resubscribeToMarketing(token)` usa o mesmo link do descadastro. A equipe continua sem poder fazer isso pela pessoa.
+
+     Os descadastros antigos feitos por SAIR continuam marcados no e-mail, porque não dá para separá-los dos feitos pelo link. Ficam para o front a opção "voltar a receber" na página do link e as opções na área do cliente. Testes em `round-273-275.int.spec.ts`, `marketing-text.spec.ts` e `out-of-service.int.spec.ts` (item 191, atualizado).
+
 ### Centésima primeira rodada (2026-10-22): ficha de saúde e pedido de avaliação pela equipe
 
 Foram lidas as mudanças dos itens 243 a 246: exclusão de horário, desativação de serviço, quem vê a ficha de saúde (`healthFormView`) e o pedido de avaliação enviado pela equipe (`staffReviewLink`).
 
-276. ⬜ **O profissional vê a ficha de saúde de qualquer cliente marcando um horário com ele** (back: `healthFormView`, `createAppointment`):
+276. ✅ **O profissional vê a ficha de saúde de qualquer cliente marcando um horário com ele** (back: `healthFormView`, `createAppointment`):
      - A regra nova libera as respostas de saúde para o profissional que tem um horário com o cliente nos últimos 90 dias ou no futuro, em qualquer situação menos cancelado. O próprio profissional (barbeiro e barbeiro básico) pode criar horário na sua agenda para qualquer cliente da rede (`createAppointment` só confere que o cliente é da rede).
      - Basta marcar um horário qualquer, mesmo para daqui a meses, para ler a anamnese e o teste de alergia daquele cliente. Depois o horário pode ficar parado ou virar falta (falta também conta). A trava do item 244 não segura quem quer olhar.
      
      **Fazer:** contar só o horário que o cliente marcou ou que a recepção/gerência marcou (não o criado pelo próprio profissional), ou só atendimento concluído ou em andamento, e o futuro só nos próximos dias (ex.: 7). Registrar quem abriu a ficha de saúde (como no histórico de alterações) para a gerência ver. Teste: profissional marca horário para cliente alheio e não vê a ficha.
 
-277. ⬜ **O pedido de avaliação pela equipe pode ser mandado sem limite, e o WhatsApp vai sem o rodapé de saída** (back: `ReviewRequestService.staffReviewLink`):
+     **Feito:** a ficha de saúde abre para o profissional só em dois casos. Primeiro, um horário dele com o cliente em andamento ou concluído nos últimos 90 dias, que já tenha começado. Segundo, um horário confirmado entre ontem e os próximos 7 dias que ele não tenha criado para si mesmo, ou seja, marcado pelo cliente, pela recepção ou pela gerência. Para isso existe a coluna nova `Appointment.createdByUserId`, gravada em `createAppointment`. Cada vez que alguém abre as respostas de saúde, isso fica em `HealthFormAccess`, que gerente e dono veem pela query `healthFormAccessLog`. O registro é apagado depois de um ano (retenção). Teste em `health-form-access.spec.ts`.
+
+277. ✅ **O pedido de avaliação pela equipe pode ser mandado sem limite, e o WhatsApp vai sem o rodapé de saída** (back: `ReviewRequestService.staffReviewLink`):
      - Cada clique da recepção para cima manda de novo o e-mail (ou o WhatsApp) para o cliente; a chave de envio leva o horário do clique, então a fila nunca descarta o repetido. Não há limite por atendimento nem intervalo mínimo: dá para mandar dezenas de pedidos para o mesmo cliente.
      - Sem e-mail, o pedido vai pelo WhatsApp no modelo de campanha (`kind: 'marketing'`), mas sem passar por `whatsappMarketingBody`: sai sem "Responda SAIR" e sem a limpeza de quebra de linha que o modelo exige, e não conta no limite de campanhas da unidade.
      
      **Fazer:** um pedido da equipe por atendimento (ou um a cada 7 dias), além do e-mail automático, gravando quando foi enviado; repetir avisa que já foi pedido. No WhatsApp, passar pelo mesmo `whatsappMarketingBody` (ou um modelo próprio de pedido de avaliação). Teste com dois pedidos seguidos.
+
+     **Feito:** um pedido da equipe por atendimento, além do e-mail automático. `Appointment.staffReviewRequestedAt` é gravado antes de enfileirar e liberado se o envio falhar. Repetir avisa "já foi enviado", e a chave de envio não leva mais o horário do clique. O WhatsApp passa por `whatsappMarketingBody`: sai com "Responda SAIR" e sem quebra de linha. Teste em `review-request-staff.spec.ts`.
 
 ### Centésima segunda rodada (2026-10-23): aluguel de cadeira no cartão
 

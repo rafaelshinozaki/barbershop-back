@@ -31,6 +31,7 @@ export class RetentionService {
     const searchBefore = cutoffBefore(now, RETENTION_DAYS.searchEvent);
     const auditBefore = cutoffBefore(now, RETENTION_DAYS.backofficeAudit);
     const changeLogBefore = cutoffBefore(now, RETENTION_DAYS.changeLog);
+    const healthAccessBefore = cutoffBefore(now, RETENTION_DAYS.healthFormAccess);
 
     const emailCopies = await deleteInBatches(
       (take) =>
@@ -219,9 +220,25 @@ export class RetentionService {
       BATCH,
     );
 
+    // Quem abriu a ficha de saúde: um ano, como o histórico de alterações
+    const healthFormAccess = await deleteInBatches(
+      (take) =>
+        this.prisma.healthFormAccess.findMany({
+          where: { createdAt: { lt: healthAccessBefore } },
+          select: { id: true },
+          take,
+        }),
+      async (ids) =>
+        (
+          await this.prisma.healthFormAccess.deleteMany({ where: { id: { in: ids } } })
+        ).count,
+      BATCH,
+    );
+
     const result = {
       backofficeAudit,
       changeLog,
+      healthFormAccess,
       chatThreads,
       supportTickets,
       pushSubscriptions,

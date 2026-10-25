@@ -46,6 +46,7 @@ import {
   ServicePackageType,
   ClientPackageType,
   ConsentFormType,
+  HealthFormAccessType,
   CommissionRuleType,
   CommissionReportType,
   AdvancedReportsType,
@@ -1496,6 +1497,18 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getConsentForms(user.id, barbershopId, customerId);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => [HealthFormAccessType], {
+    description: 'Quem abriu as respostas de saúde do cliente (gerente e dono)',
+  })
+  async healthFormAccessLog(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.getHealthFormAccessLog(user.id, barbershopId, customerId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

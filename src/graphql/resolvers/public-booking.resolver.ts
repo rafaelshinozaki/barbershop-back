@@ -198,6 +198,15 @@ export class PublicBookingResolver {
     return this.barbershopService.unsubscribeFromMarketing(token);
   }
 
+  /** Volta a receber as campanhas por e-mail, pelo mesmo link (item 275) */
+  @ThrottleAuth()
+  @Mutation(() => String, {
+    description: 'Volta a receber as campanhas por e-mail da rede, pelo link do descadastro',
+  })
+  async resubscribeToMarketing(@Args('token') token: string): Promise<string> {
+    return this.barbershopService.resubscribeToMarketing(token);
+  }
+
   @ThrottlePublicBooking()
   @Mutation(() => PublicAppointmentType)
   async createPublicAppointment(

@@ -1,6 +1,7 @@
 import {
   inboundWhatsappTexts,
   isMarketingOptOut,
+  marketingOptInReply,
   marketingOptOutReply,
   whatsappMarketingBody,
 } from './marketing-text';
@@ -87,43 +88,67 @@ describe('resposta SAIR', () => {
     );
   });
 
-  it('SAIR marca a ficha e confirma; outra frase não', async () => {
-    const executeRaw = jest.fn(async (_query: TemplateStringsArray, ..._values: unknown[]) => 2);
+  // Item 275: o descadastro do WhatsApp é do telefone, numa tabela própria;
+  // não mexe nas fichas nem no e-mail, e VOLTAR desfaz
+  function optOutStore() {
+    const rows = new Set<string>();
+    const db = {
+      whatsappOptOut: {
+        createMany: jest.fn(async ({ data }: { data: { phoneDigits: string }[] }) => {
+          let count = 0;
+          for (const { phoneDigits } of data) {
+            if (!rows.has(phoneDigits)) count++;
+            rows.add(phoneDigits);
+          }
+          return { count };
+        }),
+        deleteMany: jest.fn(async ({ where }: { where: { phoneDigits: { in: string[] } } }) => {
+          let count = 0;
+          for (const d of where.phoneDigits.in) if (rows.delete(d)) count++;
+          return { count };
+        }),
+      },
+      $executeRaw: jest.fn(),
+    };
+    return { rows, db };
+  }
+
+  it('SAIR guarda o telefone (sem mexer nas fichas) e confirma; VOLTAR desfaz; outra frase não', async () => {
+    const { rows, db } = optOutStore();
     const sendSessionText = jest.fn(async () => undefined);
-    const service = new WhatsappOptOutService(
-      { $executeRaw: executeRaw } as never,
-      {
-        sendSessionText,
-      } as never,
-    );
-    expect(await service.optOutFromReply('5511999990000', 'SAIR')).toBe(2);
-    expect(executeRaw).toHaveBeenCalledTimes(1);
-    expect(String(executeRaw.mock.calls[0][0])).toContain('phoneDigits');
+    const service = new WhatsappOptOutService(db as never, { sendSessionText } as never);
+    expect(await service.optOutFromReply('5511999990000', 'SAIR')).toBe(1);
+    expect(rows.has('5511999990000')).toBe(true);
+    expect(db.$executeRaw).not.toHaveBeenCalled();
     expect(sendSessionText).toHaveBeenCalledWith(
       '5511999990000',
       expect.stringMatching(/saiu das campanhas/),
     );
+    // Repetir não confirma de novo
+    expect(await service.optOutFromReply('5511999990000', 'SAIR')).toBe(0);
     expect(await service.optOutFromReply('5511999990000', 'obrigado')).toBe(0);
-    expect(executeRaw).toHaveBeenCalledTimes(1);
     expect(sendSessionText).toHaveBeenCalledTimes(1);
+
+    expect(marketingOptInReply('Voltar')).toMatch(/voltou a receber/);
+    expect(marketingOptInReply('quero voltar')).toBeNull();
+    expect(await service.optOutFromReply('5511999990000', 'VOLTAR')).toBe(1);
+    expect(rows.size).toBe(0);
+    expect(sendSessionText).toHaveBeenLastCalledWith(
+      '5511999990000',
+      expect.stringMatching(/voltou a receber/),
+    );
   });
 
-  it('o from sem o nono dígito acha a ficha com o 9 e confirma', async () => {
-    const executeRaw = jest.fn(async (_query: TemplateStringsArray, ..._values: unknown[]) => 1);
-    const sendSessionText = jest.fn(async () => undefined);
+  it('o from sem o nono dígito guarda também a forma com o 9', async () => {
+    const { rows, db } = optOutStore();
     const service = new WhatsappOptOutService(
-      { $executeRaw: executeRaw } as never,
+      db as never,
       {
-        sendSessionText,
+        sendSessionText: async () => undefined,
       } as never,
     );
     expect(await service.optOutFromReply('551188887777', 'sair por favor')).toBe(1);
-    const joined = JSON.stringify(executeRaw.mock.calls[0]);
-    expect(joined).toContain('5511988887777');
-    expect(joined).toContain('11988887777');
-    expect(sendSessionText).toHaveBeenCalledTimes(1);
-    executeRaw.mockResolvedValue(0);
-    expect(await service.optOutFromReply('551188887777', 'PARAR')).toBe(0);
-    expect(sendSessionText).toHaveBeenCalledTimes(1);
+    expect(rows.has('5511988887777')).toBe(true);
+    expect(rows.has('11988887777')).toBe(true);
   });
 });

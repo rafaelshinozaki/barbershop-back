@@ -1836,6 +1836,12 @@ type GiftCardType {
   remainingValue: Float!
 }
 
+type HealthFormAccessType {
+  createdAt: DateTime!
+  userId: Int!
+  userName: String
+}
+
 type IdentityVerificationStartType {
   """Página de verificação (Stripe Identity)"""
   url: String!
@@ -2387,6 +2393,9 @@ type Mutation {
   """O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço"""
   respondChairRentIncrease(accept: Boolean!, barbershopId: Int!, id: Int!): ChairRentType!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
+
+  """Volta a receber as campanhas por e-mail da rede, pelo link do descadastro"""
+  resubscribeToMarketing(token: String!): String!
   retrySocialPost(barbershopId: Int!, id: Int!, scheduledFor: String!): SocialPostType!
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
   runBackupNow: Boolean!
@@ -3502,6 +3511,9 @@ type Query {
   getUserPhotoDownloadUrl: String
   getUsers: [User!]!
   giftCards(networkId: Int!): [GiftCardType!]!
+
+  """Quem abriu as respostas de saúde do cliente (gerente e dono)"""
+  healthFormAccessLog(barbershopId: Int!, customerId: Int!): [HealthFormAccessType!]!
   inventoryItems(barbershopId: Int!): [InventoryItemType!]!
   inventoryMovements(barbershopId: Int!, productId: Int!): [InventoryMovementType!]!
   jobFillFee: JobFillFeeType!
@@ -3827,6 +3839,7 @@ type SeriesSlotType {
 type ServiceHistory {
   appointmentId: Int
   barberId: Int!
+  barberName: String
   barbershopId: Int!
   createdAt: String!
   customerId: Int!
@@ -3836,6 +3849,7 @@ type ServiceHistory {
   performedAt: String!
   priceCharged: Float!
   serviceId: Int!
+  serviceName: String
   walkInId: Int
 }
 
