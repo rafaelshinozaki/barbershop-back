@@ -2103,6 +2103,10 @@ model SharedLocationMember {
   // sistema gera a mensalidade todo mês a partir de rentStartedAt e o espaço
   // registra o pagamento. Em MANUAL, rentStatus fica ACTIVE e a situação
   // (a pagar, atrasado) vem das mensalidades em aberto.
+  // Aumento do aluguel no cartão esperando o profissional aceitar (item 278):
+  // até o aceite, a fatura sai no valor que ele autorizou
+  rentPendingAmount        Decimal?
+  rentPendingAt            DateTime?
   rentBillingMode          String     @default("CARD")
   rentStartedAt            DateTime?
   host               Barbershop @relation("SharedLocationHost", fields: [hostBarbershopId], references: [id], onDelete: Cascade)
@@ -2444,11 +2448,14 @@ model JobApplication {
   feePaidAt          DateTime?
   // Pagou, mas o aceite não deu certo: a taxa volta
   feeRefundedAt      DateTime?
+  // Aceitou o convite e entrou na equipe: sai da rotina que libera os aceitos (item 281)
+  joinedAt           DateTime?
   jobOpening   JobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([jobOpeningId, userId])
   @@index([userId])
+  @@index([status, joinedAt])
 }
 
 // Disputa (chargeback) de um pagamento pelo app, vinda do webhook da

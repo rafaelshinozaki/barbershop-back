@@ -389,31 +389,70 @@ describe('Aluguel da cadeira (integração)', () => {
     expect((await rent.view(linkId, host.shopId)).totalReceived).toBe(1000);
   });
 
-  it('mudar o valor com a cobrança rodando vale na próxima fatura, sem proporcional', async () => {
+  it('aumento com a cobrança rodando espera o aceite do profissional (item 278); redução vale direto', async () => {
     const { host, member } = shops;
     const subId = (await link()).rentStripeSubscriptionId!;
-    const view = await rent.setRent(host.ownerId, linkId, host.shopId, 650);
-    expect(view).toMatchObject({ status: 'ACTIVE', amount: 650 });
+    const updates = () => calls.filter((c) => c.startsWith(`update:${subId}:`)).length;
+    const before = updates();
+
+    // Aumento: nada muda no Stripe até o aceite
+    let view = await rent.setRent(host.ownerId, linkId, host.shopId, 700);
+    expect(view).toMatchObject({ status: 'ACTIVE', amount: 500, pendingAmount: 700 });
+    expect(updates()).toBe(before);
+    expect(events).toContain(`${member.shopId}:increaseProposed`);
+    // Só o dono do negócio do profissional responde
+    await expect(
+      rent.respondRentIncrease(host.ownerId, linkId, member.shopId, true),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    // Recusou: segue o valor autorizado
+    view = await rent.respondRentIncrease(member.ownerId, linkId, member.shopId, false);
+    expect(view).toMatchObject({ amount: 500, pendingAmount: null });
+    expect(updates()).toBe(before);
+    expect(events).toContain(`${host.shopId}:increaseDeclined`);
+    await expect(
+      rent.respondRentIncrease(member.ownerId, linkId, member.shopId, true),
+    ).rejects.toThrow('Não há aumento');
+
+    // Aceitou: troca o preço a partir da próxima fatura, sem proporcional
+    await rent.setRent(host.ownerId, linkId, host.shopId, 650);
+    view = await rent.respondRentIncrease(member.ownerId, linkId, member.shopId, true);
+    expect(view).toMatchObject({ amount: 650, pendingAmount: null });
     const update = calls.filter((c) => c.startsWith(`update:${subId}:`)).pop()!;
     expect(update).toContain('"proration_behavior":"none"');
     expect(update).toContain(`"id":"si_${subId}"`);
+    expect(events).toContain(`${host.shopId}:increaseAccepted`);
+
+    // Redução vale direto (e não espera aceite)
+    view = await rent.setRent(host.ownerId, linkId, host.shopId, 600);
+    expect(view).toMatchObject({ amount: 600, pendingAmount: null });
     expect(events).toContain(`${member.shopId}:changed`);
+    await rent.setRent(host.ownerId, linkId, host.shopId, 650);
+    await rent.respondRentIncrease(member.ownerId, linkId, member.shopId, true);
   });
 
   it('assinatura cancelada pelo Stripe: volta a aguardar autorização, com o mesmo valor', async () => {
     const subId = (await link()).rentStripeSubscriptionId!;
     expect(await rent.handleSubscriptionDeleted(subId)).toBe(true);
     const l = await link();
-    expect(l).toMatchObject({ rentStatus: 'AWAITING_PAYMENT', rentStripeSubscriptionId: null });
+    expect(l).toMatchObject({
+      rentStatus: 'AWAITING_PAYMENT',
+      rentStripeSubscriptionId: null,
+      // Preço antigo descartado: a próxima autorização usa outra chave (item 279)
+      rentStripePriceId: null,
+    });
     expect(Number(l.rentAmount)).toBe(650);
     expect(await rent.handleSubscriptionDeleted('sub_outra')).toBe(false);
   });
 
   it('profissional sai do espaço: a cobrança mensal é cancelada no Stripe', async () => {
     const { member } = shops;
+    const cancelledSubs = [...subs.keys()];
     await rent.authorize(member.ownerId, linkId, member.shopId, 'pm_member_3');
     const subId = (await link()).rentStripeSubscriptionId!;
     expect(subId).toBeTruthy();
+    // Assinatura nova, não a cancelada devolvida pela mesma chave (item 279)
+    expect(cancelledSubs).not.toContain(subId);
     await shared.end(member.ownerId, linkId, member.shopId);
     expect(calls).toContain(`cancel:${subId}`);
     const l = await link();

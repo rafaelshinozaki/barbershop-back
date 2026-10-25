@@ -136,6 +136,19 @@ export class SharedLocationResolver {
     return this.chairRent.authorize(user.id, id, barbershopId, paymentMethodId);
   }
 
+  /** O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço */
+  @Mutation(() => ChairRentType, {
+    description: 'O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço',
+  })
+  async respondChairRentIncrease(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('accept') accept: boolean,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.chairRent.respondRentIncrease(user.id, id, barbershopId, accept);
+  }
+
   /** Recibos do aluguel, pros dois lados */
   @Query(() => [ChairRentPaymentType])
   async chairRentPayments(

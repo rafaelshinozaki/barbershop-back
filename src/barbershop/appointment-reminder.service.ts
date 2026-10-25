@@ -223,6 +223,7 @@ export class AppointmentReminderProcessor extends WorkerHost {
     if (job.name === 'close-stale-waitlist') return this.barbershops.closeStaleWaitlistEntries();
     if (job.name === 'close-stale-walk-ins') return this.barbershops.closeStaleWalkIns();
     if (job.name === 'release-unjoined-applications') {
+      await this.jobs.closeEndedOpenings();
       return this.jobs.releaseUnjoinedApplications();
     }
     if (job.name === 'expire-deposit-holds') {

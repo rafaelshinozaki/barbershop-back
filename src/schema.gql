@@ -818,6 +818,9 @@ type ChairRentType {
   openAmount: Float!
   paidUntil: DateTime
   payoutDue: Float
+
+  """Aumento proposto pelo espaço, esperando o aceite do profissional"""
+  pendingAmount: Float
   platformFeePercent: Float!
   status: String!
   totalReceived: Float!
@@ -2380,6 +2383,9 @@ type Mutation {
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
+
+  """O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço"""
+  respondChairRentIncrease(accept: Boolean!, barbershopId: Int!, id: Int!): ChairRentType!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
   retrySocialPost(barbershopId: Int!, id: Int!, scheduledFor: String!): SocialPostType!
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!

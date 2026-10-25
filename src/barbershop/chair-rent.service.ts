@@ -28,6 +28,8 @@ const MAX_RENT = 100_000;
 const DAY_MS = 86_400_000;
 
 export type RentBillingMode = 'CARD' | 'MANUAL';
+export const RENT_AUTHORIZE_RETRY_MESSAGE =
+  'A cobrança anterior do aluguel foi encerrada. Tente autorizar de novo.';
 /** Como o espaço recebeu o aluguel pago direto a ele */
 export const MANUAL_RENT_METHODS = ['CASH', 'PIX', 'TRANSFER', 'OTHER'] as const;
 export type ManualRentMethod = (typeof MANUAL_RENT_METHODS)[number];
@@ -147,6 +149,8 @@ export class ChairRentService {
           rentStripePriceId: null,
           rentStatus: 'NONE',
           rentStartedAt: null,
+          rentPendingAmount: null,
+          rentPendingAt: null,
         },
       });
       if (link.rentStatus !== 'NONE') {
@@ -188,6 +192,8 @@ export class ChairRentService {
           rentBillingMode: 'MANUAL',
           rentStripePriceId: null,
           rentStatus: 'ACTIVE',
+          rentPendingAmount: null,
+          rentPendingAt: null,
           // Primeira mensalidade vence hoje; as próximas, no mesmo dia do mês
           rentStartedAt: wasManual
             ? link.rentStartedAt
@@ -216,6 +222,29 @@ export class ChairRentService {
       link.rentStatus = 'NONE';
     }
 
+    // Cobrança no cartão já rodando: aumento só com o aceite do profissional.
+    // Antes o preço da assinatura trocava na hora e a próxima fatura saía no
+    // cartão dele com o valor novo, sem ele autorizar (item 278)
+    const currentCents = link.rentAmount ? toMinorUnits(Number(link.rentAmount), currency) : 0;
+    if (link.rentStripeSubscriptionId && cents > currentCents) {
+      await this.prisma.sharedLocationMember.update({
+        where: { id: link.id },
+        data: {
+          rentPendingAmount: new Decimal(fromMinorUnits(cents, currency)),
+          rentPendingAt: new Date(),
+        },
+      });
+      void this.activity.chairRentEvent(
+        link.memberBarbershopId,
+        'increaseProposed',
+        link.host.name,
+        this.money(fromMinorUnits(cents, currency), currency),
+        userId,
+        `rent:${link.id}:increase:${cents}:${Date.now()}`,
+      );
+      return this.view(link.id, hostBarbershopId);
+    }
+
     let event: 'set' | 'changed' = 'set';
     let priceId: string | null = null;
     if (link.rentStripeSubscriptionId) {
@@ -237,6 +266,9 @@ export class ChairRentService {
         rentCurrency: currency,
         rentStripePriceId: priceId,
         rentStatus: link.rentStripeSubscriptionId ? link.rentStatus : 'AWAITING_PAYMENT',
+        // Valor menor (ou o mesmo) no lugar do aumento proposto: a proposta sai
+        rentPendingAmount: null,
+        rentPendingAt: null,
       },
     });
     void this.activity.chairRentEvent(
@@ -248,6 +280,68 @@ export class ChairRentService {
       `rent:${link.id}:${event}:${cents}:${Date.now()}`,
     );
     return this.view(link.id, hostBarbershopId);
+  }
+
+  /**
+   * O profissional aceita (ou recusa) o aumento que o espaço propôs. Aceito,
+   * a assinatura troca de preço a partir da próxima fatura; recusado, segue
+   * o valor que ele autorizou e o espaço decide se encerra (item 278).
+   */
+  async respondRentIncrease(
+    userId: number,
+    linkId: number,
+    memberBarbershopId: number,
+    accept: boolean,
+  ) {
+    await this.barbershopService.ensureAccess(userId, memberBarbershopId, 'owner');
+    const link = await this.loadLink(linkId);
+    if (!link || link.memberBarbershopId !== memberBarbershopId) {
+      throw new NotFoundException('Vínculo não encontrado');
+    }
+    if (!link.rentPendingAmount) {
+      throw new BadRequestException('Não há aumento do aluguel esperando resposta');
+    }
+    const currency = link.rentCurrency ?? link.host.currency;
+    const pending = link.rentPendingAmount;
+    // Condicional: dois cliques não trocam o preço duas vezes
+    const claimed = await this.prisma.sharedLocationMember.updateMany({
+      where: { id: link.id, rentPendingAt: link.rentPendingAt },
+      data: { rentPendingAmount: null, rentPendingAt: null },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException('Não há aumento do aluguel esperando resposta');
+    }
+    const amountText = this.money(pending, currency);
+    if (accept) {
+      if (link.rentStripeSubscriptionId) {
+        const cents = toMinorUnits(Number(pending), currency);
+        const priceId = await this.createPrice(link, cents, currency);
+        const sub = await this.stripe.getSubscription(link.rentStripeSubscriptionId);
+        await this.stripe.updateSubscription(link.rentStripeSubscriptionId, {
+          items: [{ id: sub.items.data[0].id, price: priceId }],
+          proration_behavior: 'none',
+        });
+        await this.prisma.sharedLocationMember.update({
+          where: { id: link.id },
+          data: { rentAmount: pending, rentStripePriceId: priceId },
+        });
+      } else {
+        // A cobrança caiu nesse meio-tempo: o valor novo vale na próxima autorização
+        await this.prisma.sharedLocationMember.update({
+          where: { id: link.id },
+          data: { rentAmount: pending, rentStripePriceId: null },
+        });
+      }
+    }
+    void this.activity.chairRentEvent(
+      link.hostBarbershopId,
+      accept ? 'increaseAccepted' : 'increaseDeclined',
+      link.member.name,
+      amountText,
+      userId,
+      `rent:${link.id}:increase-${accept ? 'ok' : 'no'}:${Date.now()}`,
+    );
+    return this.view(link.id, memberBarbershopId);
   }
 
   /**
@@ -331,12 +425,19 @@ export class ChairRentService {
             return { link, clientSecret: null, event: null };
           }
           // incomplete_expired / canceled: cobrança nova
+          // Preço novo (e chave nova): repetir a chave da primeira vez fazia a
+          // Stripe devolver a assinatura antiga por 24 h (item 279)
           await tx.sharedLocationMember.update({
             where: { id: link.id },
-            data: { rentStripeSubscriptionId: null, rentStatus: 'AWAITING_PAYMENT' },
+            data: {
+              rentStripeSubscriptionId: null,
+              rentStatus: 'AWAITING_PAYMENT',
+              rentStripePriceId: null,
+            },
           });
           link.rentStripeSubscriptionId = null;
           link.rentStatus = 'AWAITING_PAYMENT';
+          link.rentStripePriceId = null;
         }
         if (link.rentStatus !== 'AWAITING_PAYMENT' || !link.rentAmount) {
           throw new BadRequestException(
@@ -374,6 +475,15 @@ export class ChairRentService {
           // Cartão só desta cobrança (não troca o cartão do plano do dono)
           { default_payment_method: paymentMethodId },
         );
+        // Assinatura que já nasceu morta (resposta guardada pela Stripe de uma
+        // tentativa antiga) não vira cobrança ativa
+        if (sub.status === 'canceled' || sub.status === 'incomplete_expired') {
+          await this.prisma.sharedLocationMember.update({
+            where: { id: link.id },
+            data: { rentStripePriceId: null },
+          });
+          throw new BadRequestException(RENT_AUTHORIZE_RETRY_MESSAGE);
+        }
         await tx.sharedLocationMember.update({
           where: { id: link.id },
           data: {
@@ -800,6 +910,7 @@ export class ChairRentService {
       status,
       billingMode: link.rentBillingMode,
       amount: link.rentAmount != null ? Number(link.rentAmount) : null,
+      pendingAmount: link.rentPendingAmount != null ? Number(link.rentPendingAmount) : null,
       currency: link.rentCurrency,
       paidUntil: link.rentPaidUntil,
       nextDueDate,
@@ -1066,7 +1177,11 @@ export class ChairRentService {
       data: {
         rentStripeSubscriptionId: null,
         rentStatus: link.rentAmount && link.status === 'ACTIVE' ? 'AWAITING_PAYMENT' : 'NONE',
-        rentStripePriceId: link.rentAmount ? link.rentStripePriceId : null,
+        // Preço novo na próxima autorização: o antigo levava à mesma chave de
+        // idempotência e a Stripe devolvia a assinatura cancelada (item 279)
+        rentStripePriceId: null,
+        rentPendingAmount: null,
+        rentPendingAt: null,
       },
     });
     for (const [shopId, other] of [
