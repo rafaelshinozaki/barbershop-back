@@ -125,4 +125,73 @@ describe('ModerationService.notifyOwner', () => {
       { inApp: 'securityInApp' },
     );
   });
+  it('dois avisos de mesmo título e mensagens diferentes chegam os dois; o repetido não (item 268)', async () => {
+    const rows: { userId: number; title: string; message: string; createdAt: Date }[] = [];
+    const prisma = {
+      user: {
+        findMany: async () => [
+          {
+            id: 1,
+            isActive: true,
+            deleted_at: null,
+            userSystemConfig: null,
+            notificationPreference: null,
+          },
+        ],
+      },
+      userNotification: {
+        findMany: async ({
+          where,
+        }: {
+          where: { userId: { in: number[] }; title: string | { in: string[] }; message?: string };
+        }) =>
+          rows.filter(
+            (r) =>
+              where.userId.in.includes(r.userId) &&
+              (typeof where.title === 'string'
+                ? r.title === where.title
+                : where.title.in.includes(r.title)) &&
+              (where.message === undefined || r.message === where.message),
+          ),
+        createMany: async ({ data }: { data: typeof rows }) => {
+          rows.push(...data.map((d) => ({ ...d, createdAt: new Date() })));
+          return { count: data.length };
+        },
+      },
+    };
+    const service = new NotificationsService(
+      prisma as never,
+      { notifyUsers: () => undefined } as never,
+    );
+    const notice = (message: string) =>
+      service.createNotificationsForUsers([1], {
+        title: 'Horários para remanejar',
+        message,
+        type: NotificationType.WARNING,
+      });
+    expect((await notice('Ana saiu: 3 horários')).userIds).toEqual([1]);
+    expect((await notice('Bia saiu: 2 horários')).userIds).toEqual([1]);
+    // O mesmo aviso de novo (reenvio): pula, e o celular também não recebe
+    expect((await notice('Bia saiu: 2 horários')).userIds).toEqual([]);
+    expect(rows.map((r) => r.message)).toEqual(['Ana saiu: 3 horários', 'Bia saiu: 2 horários']);
+
+    // Mesmo comportamento no aviso traduzido
+    const localized = (who: string) => ({
+      pt: { title: 'Foto ocultada', message: `Foto de ${who}` },
+      en: { title: 'Photo hidden', message: `Photo of ${who}` },
+      es: { title: 'Foto oculta', message: `Foto de ${who}` },
+    });
+    for (const who of ['A', 'B', 'B']) {
+      await service.createNotificationsForUsers([1], {
+        title: 'Foto ocultada',
+        message: '',
+        type: NotificationType.INFO,
+        localized: localized(who),
+      });
+    }
+    expect(rows.filter((r) => r.title === 'Foto ocultada').map((r) => r.message)).toEqual([
+      'Foto de A',
+      'Foto de B',
+    ]);
+  });
 });

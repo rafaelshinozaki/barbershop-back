@@ -447,12 +447,30 @@ export class ClientAuthService {
   // para ClientAccount: se o provider+email já está linkado, entra direto;
   // se já existe uma conta com esse email (senha ou outro provider), conecta
   // este método a ela em vez de criar uma segunda conta; senão cria nova.
-  async findOrCreateSocialAccount(email: string, name: string, provider: string) {
+  async findOrCreateSocialAccount(
+    email: string,
+    name: string,
+    provider: string,
+    providerUserId?: string | null,
+  ) {
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existingLink = await this.prisma.clientLinkedSocialAccount.findUnique({
-      where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
-    });
+    // A pessoa no provedor (id dela lá) primeiro; depois o vínculo pelo
+    // e-mail, dos vínculos antigos sem id (item 271)
+    const existingLink =
+      (providerUserId
+        ? await this.prisma.clientLinkedSocialAccount.findFirst({
+            where: { provider, providerUserId },
+          })
+        : null) ??
+      (await this.prisma.clientLinkedSocialAccount.findUnique({
+        where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
+      }));
+    if (existingLink && providerUserId && !existingLink.providerUserId) {
+      await this.prisma.clientLinkedSocialAccount
+        .update({ where: { id: existingLink.id }, data: { providerUserId } })
+        .catch(() => undefined);
+    }
 
     let account = existingLink
       ? await this.prisma.clientAccount.findUnique({ where: { id: existingLink.clientAccountId } })
@@ -475,7 +493,14 @@ export class ClientAuthService {
 
     if (account && !existingLink) {
       await this.prisma.clientLinkedSocialAccount
-        .create({ data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail } })
+        .create({
+          data: {
+            clientAccountId: account.id,
+            provider,
+            providerEmail: normalizedEmail,
+            providerUserId,
+          },
+        })
         .catch(() => {
           // Vínculo já criado por outra requisição simultânea — pode ignorar
         });
@@ -491,7 +516,12 @@ export class ClientAuthService {
         },
       });
       await this.prisma.clientLinkedSocialAccount.create({
-        data: { clientAccountId: account.id, provider, providerEmail: normalizedEmail },
+        data: {
+          clientAccountId: account.id,
+          provider,
+          providerEmail: normalizedEmail,
+          providerUserId,
+        },
       });
     }
 

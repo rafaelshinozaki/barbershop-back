@@ -207,10 +207,12 @@ export class NotificationsService {
       if (data.localized || options?.inApp) {
         return await this.createLocalized(userIds, data, options?.inApp);
       }
-      // Pula quem já recebeu uma notificação com o mesmo título nos últimos
-      // 5 minutos (evita duplicar num reenvio/duplo clique)
+      // Pula quem já recebeu o mesmo aviso (título e mensagem) nos últimos 5
+      // minutos: evita duplicar num reenvio ou duplo clique. Só o título
+      // juntava dois eventos diferentes do mesmo tipo (item 268)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
       const uniqueIds = [...new Set(userIds)];
+      const delivered: number[] = [];
       let count = 0;
       for (let i = 0; i < uniqueIds.length; i += BATCH_CHUNK) {
         const chunk = uniqueIds.slice(i, i + BATCH_CHUNK);
@@ -218,6 +220,7 @@ export class NotificationsService {
           where: {
             userId: { in: chunk },
             title: data.title,
+            message: data.message,
             createdAt: { gte: fiveMinutesAgo },
           },
           select: { userId: true },
@@ -232,6 +235,7 @@ export class NotificationsService {
         if (notifications.length === 0) continue;
         const result = await this.prisma.userNotification.createMany({ data: notifications });
         count += result.count;
+        delivered.push(...notifications.map((n) => n.userId));
         this.realtime.notifyUsers(
           notifications.map((n) => n.userId),
           'CREATED',
@@ -239,7 +243,8 @@ export class NotificationsService {
         );
       }
       this.logger.log(`Created ${count} notifications for multiple users`);
-      return { count, userIds: uniqueIds };
+      // Só quem recebeu agora (o celular não repete o aviso descartado)
+      return { count, userIds: delivered };
     } catch (error) {
       this.logger.error(`Error creating notifications for users: ${error.message}`);
       throw error;
@@ -266,15 +271,16 @@ export class NotificationsService {
         notificationPreference: true,
       },
     });
+    // Mesmo aviso = mesmo título e mesma mensagem (item 268)
     const existing = await this.prisma.userNotification.findMany({
       where: {
         userId: { in: uniqueIds },
         title: { in: titles },
         createdAt: { gte: fiveMinutesAgo },
       },
-      select: { userId: true, title: true },
+      select: { userId: true, title: true, message: true },
     });
-    const already = new Set(existing.map((row) => `${row.userId}:${row.title}`));
+    const already = new Set(existing.map((row) => `${row.userId}:${row.title}:${row.message}`));
     const rows: {
       userId: number;
       title: string;
@@ -288,7 +294,7 @@ export class NotificationsService {
       if (inApp && pref && pref[inApp] === false) continue;
       const lang = normalizeLang(user.userSystemConfig?.language);
       const text = localized ? localized[lang] : { title: data.title, message: data.message };
-      if (already.has(`${user.id}:${text.title}`)) continue;
+      if (already.has(`${user.id}:${text.title}:${text.message}`)) continue;
       rows.push({
         userId: user.id,
         title: text.title,

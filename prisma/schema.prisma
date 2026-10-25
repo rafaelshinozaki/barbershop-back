@@ -101,11 +101,15 @@ model LinkedSocialAccount {
   userId        Int
   provider      String   // google, facebook, apple
   providerEmail String
+  // Id da pessoa no provedor (sub do Google/Apple, id do Facebook): acha a
+  // conta pelos próximos logins, não só pelo e-mail (item 271)
+  providerUserId  String?
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, provider])
   @@unique([provider, providerEmail])
   @@index([userId])
+  @@unique([provider, providerUserId])
 }
 
 model PasswordResetToken {
@@ -1003,11 +1007,15 @@ model ClientLinkedSocialAccount {
   clientAccountId Int
   provider        String // google, facebook, apple
   providerEmail   String
+  // Id da pessoa no provedor (sub do Google/Apple, id do Facebook): acha a
+  // conta pelos próximos logins, não só pelo e-mail (item 271)
+  providerUserId  String?
   clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
 
   @@unique([clientAccountId, provider])
   @@unique([provider, providerEmail])
   @@index([clientAccountId])
+  @@unique([provider, providerUserId])
 }
 
 // Profissional favorito do cliente, na unidade em que atende: "agendar de

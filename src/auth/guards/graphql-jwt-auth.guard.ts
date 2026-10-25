@@ -101,6 +101,12 @@ export class GraphQLJwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found');
       }
 
+      // Conta desativada (pela plataforma ou pela própria pessoa) não usa a
+      // sessão que ainda existir (item 270)
+      if (user.isActive === false) {
+        throw new UnauthorizedException('Account disabled');
+      }
+
       // A sessão precisa ter uma ActiveSession correspondente — é isso que
       // faz "Terminar sessão"/"Sair de outras sessões" realmente revogar o
       // acesso, e não só remover uma linha decorativa da lista.
@@ -123,8 +129,6 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       req.user = { ...user, sessionToken: decoded.sessionToken };
       this.logger.log('User attached to request', {
         userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
         role: user.role?.name,
       });
 

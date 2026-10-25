@@ -144,4 +144,79 @@ describe('Cadastro: cargo (integração)', () => {
     expect(accepted.readTerms).toBe(true);
     expect(accepted.termsAcceptedAt).not.toBeNull();
   });
+  describe('login social da equipe (itens 270 e 271)', () => {
+    const local = (label: string, over: Record<string, unknown> = {}) =>
+      prisma.user.create({
+        data: {
+          email: `social-${label}-${RUN}@test.local`,
+          password: 'hash-de-quem-criou',
+          fullName: `Social ${label}`,
+          idDocNumber: `s${label}${RUN}`.slice(-20),
+          phone: `+5513${RUN}`.slice(0, 20),
+          gender: 'female',
+          birthdate: new Date('1990-01-01'),
+          readTerms: true,
+          isActive: true,
+          roleId: undefined as never,
+          ...over,
+        } as never,
+      });
+    let roleId: number;
+    beforeAll(async () => {
+      roleId = (
+        (await prisma.role.findFirst({ where: { name: Role.BARBERSHOP_OWNER } })) ??
+        (await prisma.role.create({ data: { name: Role.BARBERSHOP_OWNER } }))
+      ).id;
+    });
+
+    it('270: conta desativada não entra pelo Google', async () => {
+      const off = await local('off', { roleId, isActive: false });
+      await expect(
+        service.findOrCreateSocialUser(off.email, 'Off', 'google', `g-off-${RUN}`),
+      ).rejects.toThrow('Invalid credentials');
+    });
+
+    it('271: e-mail nunca confirmado — a senha de quem criou sai, e as sessões também', async () => {
+      const taken = await local('taken', { roleId });
+      await prisma.activeSession.create({
+        data: {
+          userId: taken.id,
+          sessionToken: `s-taken-${RUN}`,
+          deviceType: 'd',
+          browser: 'b',
+          os: 'o',
+          ip: 'i',
+          location: 'l',
+        },
+      });
+      const user = await service.findOrCreateSocialUser(
+        taken.email,
+        'Dona',
+        'google',
+        `g-dona-${RUN}`,
+      );
+      expect(user.id).toBe(taken.id);
+      const after = await prisma.user.findUniqueOrThrow({ where: { id: taken.id } });
+      expect(after.password).not.toBe('hash-de-quem-criou');
+      expect(after.emailVerifiedAt).toBeInstanceOf(Date);
+      expect(await prisma.activeSession.count({ where: { userId: taken.id } })).toBe(0);
+
+      // O próximo login acha a conta pelo id do Google, mesmo com outro e-mail
+      const again = await service.findOrCreateSocialUser(
+        `outro-${RUN}@test.local`,
+        'Dona',
+        'google',
+        `g-dona-${RUN}`,
+      );
+      expect(again.id).toBe(taken.id);
+    });
+
+    it('271: conta com e-mail confirmado não perde a senha', async () => {
+      const ok = await local('ok', { roleId, emailVerifiedAt: new Date() });
+      await service.findOrCreateSocialUser(ok.email, 'Ok', 'facebook', `f-ok-${RUN}`);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: ok.id } })).password).toBe(
+        'hash-de-quem-criou',
+      );
+    });
+  });
 });

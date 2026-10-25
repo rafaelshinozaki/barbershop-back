@@ -2783,23 +2783,27 @@ Foram lidos o reenvio e a exclusão dos posts das redes (`retryPost`, `deletePos
      
      **Fazer:** ao ocultar, guardar a chave da imagem como bloqueada para a unidade e recusar em `createPost`/`retryPost` (a unidade envia outra imagem). Marcar o post como `PUBLISHING` com `updateMany` condicionado a `SCHEDULED` antes de chamar a Meta (só quem mudou a linha publica), com prazo (`AbortSignal.timeout`) em cada chamada, e recusar exclusão de post `PUBLISHING`. Post vencido há mais de um tempo (ex.: 24 h) quando a suspensão sai vira `FAILED` com o motivo, para a unidade escolher reagendar. Permitir reenviar só a rede que falhou. Testes para a chave reaproveitada, duas execuções ao mesmo tempo e suspensão encerrada.
      
-267. ⬜ **País da unidade gravado por nome deixa a unidade sem WhatsApp e com e-mails em inglês** (back: `createBarbershop`, `shopBaseUpdate`, `callingCodeForCountry`, `langForCountry`):
+267. ✅ **País da unidade gravado por nome deixa a unidade sem WhatsApp e com e-mails em inglês** (back: `createBarbershop`, `shopBaseUpdate`, `callingCodeForCountry`, `langForCountry`):
      - `Barbershop.country` é texto livre: nem o cadastro nem `shopBaseUpdate` conferem se é um código ISO. A moeda e o fuso aceitam o nome do país (`countryOf` entende "Brasil", "Brazil", "Portugal"), então uma unidade com `country = 'Brasil'` parece certa na tela.
      - O resto do código só entende o código: `callingCodeForCountry('Brasil')` devolve `null`, e `phoneForWhatsapp` então não envia nada. Lembrete de horário, aviso da lista de espera e campanha por WhatsApp deixam de sair sem nenhum aviso (a campanha grava `whatsappQueuedCount = 0`). `langForCountry('BRASIL')` cai em inglês: os e-mails e os modelos de WhatsApp da unidade vão em inglês.
      - O app manda o código ISO, mas a API aceita qualquer texto (cadastro, edição, importação e chamadas diretas), e o `seed.ts` grava `country: 'Brazil'` em endereços.
      
      **Fazer:** normalizar o país para o código ISO de duas letras no cadastro e na edição (usando o mesmo `countryOf`, que já entende os nomes) e recusar o que não for um país; migração que converte os nomes já gravados. `callingCodeForCountry` e `langForCountry` passam pela mesma normalização. Teste com `country = 'Brasil'`.
 
+     **Feito:** nova função `countryIso` (em `place-locale.ts`, a partir do mesmo `countryOf`) dá o código ISO para o código ou o nome do país. `normalizeShopTexts`, usado no cadastro e na edição, grava sempre o código e recusa o que não for país (`SHOP_COUNTRY_INVALID_MESSAGE`). `callingCodeForCountry` e `langForCountry` passam pela mesma normalização, então unidade antiga com "Brasil" volta a ter WhatsApp e e-mail em português. A migração `20261230170000_barbershop_country_iso` converte os nomes já gravados. Teste em `country-iso.spec.ts`.
+
 ### Nonagésima sexta rodada (2026-10-20): avisos do sininho e o tempo real
 
 Foram lidos a criação dos avisos em lote (`createNotificationsForUsers`), o tempo real das telas (`RealtimeResolver`, `RealtimeService`), o sitemap, o backup, a trilha do app e as boas-vindas por cargo.
 
-268. ⬜ **Segundo aviso com o mesmo título em 5 minutos some do sininho e do celular** (back: `NotificationsService.createNotificationsForUsers`, `createLocalized`):
+268. ✅ **Segundo aviso com o mesmo título em 5 minutos some do sininho e do celular** (back: `NotificationsService.createNotificationsForUsers`, `createLocalized`):
      - Para evitar duplicar num reenvio, o lote pula quem já recebeu um aviso com o mesmo título nos últimos 5 minutos. O título é fixo por tipo de evento, e o que muda está na mensagem. Por isso, dois eventos diferentes no mesmo intervalo viram um só.
      - Exemplos: o dono tira duas pessoas da equipe em seguida e só recebe "Horários para remanejar" da primeira (a mensagem diz o nome e quantos horários); a moderação oculta uma foto da unidade A e outra da unidade B da mesma rede e o dono só fica sabendo da A. O mesmo vale para os outros avisos da moderação e do Destaque.
      - A notificação no celular sai só para `sent.userIds`, então o segundo evento também não chega no celular. Nada fica registrado de que o aviso foi descartado.
      
      **Fazer:** deduplicar por título **e** mensagem (ou por uma chave do evento, como `tipo:id`), não só pelo título. Teste com dois avisos de mesmo título e mensagens diferentes no mesmo minuto.
+
+     **Feito:** o lote só pula quem já recebeu o mesmo título **e** a mesma mensagem nos últimos 5 minutos, no aviso simples e no traduzido. O retorno (`userIds`) traz só quem recebeu agora, então o celular não repete o aviso descartado. Teste em `notifications.service.spec.ts`.
      
 269. ⬜ **Tela aberta continua recebendo avisos em tempo real depois de sair, trocar a senha ou ter a conta desativada** (back: `RealtimeResolver`, `GraphQLJwtAuthGuard`, `getMyBarbershops`):
      - O login e a sessão (`ActiveSession`) só são conferidos quando a assinatura (WebSocket) começa. Depois disso, o filtro de `myNotificationEvents` só compara o `userId`, e o de `networkActivity` relê `getMyBarbershops`, que não olha se a conta está ativa nem se a sessão existe.
@@ -2812,19 +2816,28 @@ Foram lidos a criação dos avisos em lote (`createNotificationsForUsers`), o te
 
 Foram lidos o login com Google, Facebook e Apple da equipe e do cliente (`completeSocialLogin`, `findOrCreateSocialUser`, `findOrCreateSocialAccount`, as estratégias e o `state` do OAuth), o login por senha (`verifyUser`), o `GraphQLJwtAuthGuard`, o caixa, as vagas e os preços da plataforma.
 
-270. ⬜ **Conta da equipe desativada volta a entrar pelo Google, Facebook ou Apple** (back: `AuthController.completeSocialLogin`, `UserService.findOrCreateSocialUser`, `AuthService.login`, `GraphQLJwtAuthGuard`):
+270. ✅ **Conta da equipe desativada volta a entrar pelo Google, Facebook ou Apple** (back: `AuthController.completeSocialLogin`, `UserService.findOrCreateSocialUser`, `AuthService.login`, `GraphQLJwtAuthGuard`):
      - O login por senha (`verifyUser`) recusa a conta com `isActive = false`. O login social não confere: `findOrCreateSocialUser` acha a conta pelo e-mail (ou pelo vínculo), `socialLoginAllowed` só olha se é conta do sistema e `AuthService.login` cria uma `ActiveSession` nova.
      - O `GraphQLJwtAuthGuard` só confere se a sessão existe, e não se a conta está ativa. Por isso a pessoa desativada pela plataforma (fraude, pedido do titular) ou pelo próprio fluxo de desativação, que teve as sessões derrubadas, entra de novo com "Entrar com Google" e usa o painel normalmente: agenda, clientes, vendas e caixa das unidades.
      
      **Fazer:** recusar o login social de conta com `isActive = false` ou `deleted_at`, com a mesma resposta do login por senha. No guard, recusar a sessão de conta inativa (já busca o usuário, é só conferir). Teste: conta desativada tenta entrar pelo Google e uma sessão antiga de conta desativada é recusada.
+
+     **Feito:** `findOrCreateSocialUser` recusa a conta com `isActive = false` com a mesma resposta do login por senha ("Invalid credentials"), e o login social volta para a tela de login. O `GraphQLJwtAuthGuard` recusa a sessão de conta desativada. Toda criação de conta grava `isActive: true` (a importação usa o valor da planilha, e conta inativa já não entrava por senha), então ninguém ativo é barrado. O guard também deixou de gravar o e-mail e o nome no log. Testes em `graphql-jwt-auth.guard.int.spec.ts` e `signup-role.int.spec.ts`.
      
-271. ⬜ **Conta da equipe criada com o e-mail de outra pessoa fica com o acesso quando a dona entra pelo Google** (back: `UserService.findOrCreateSocialUser`, cadastro da equipe, estratégias Google/Facebook):
+271. ✅ **Conta da equipe criada com o e-mail de outra pessoa fica com o acesso quando a dona entra pelo Google** (back: `UserService.findOrCreateSocialUser`, cadastro da equipe, estratégias Google/Facebook):
      - O cadastro da equipe não confirma o e-mail: dá para criar uma conta com o e-mail de outra pessoa e uma senha escolhida (`emailVerifiedAt` só é gravado na redefinição de senha e no convite).
      - Quando a dona do e-mail entra depois com "Entrar com Google", `findOrCreateSocialUser` acha essa conta pelo e-mail, liga o Google a ela e faz o login. A senha de quem criou a conta continua valendo. A dona cadastra a unidade, os clientes e o recebimento pelo app, e quem criou a conta entra por senha e vê ou muda tudo.
      - O login social do cliente já trata esse caso: apaga a senha da conta não confirmada e derruba as sessões. O da equipe não faz isso.
      - Nos dois fluxos, o e-mail do Google é aceito sem olhar `emails[0].verified` (`email_verified`), e a conta é identificada só pelo e-mail, sem o id do provedor.
      
      **Fazer:** no login social da equipe, se a conta achada pelo e-mail nunca teve o e-mail confirmado, apagar a senha, derrubar as sessões e as inscrições de push (como no cliente) e gravar `emailVerifiedAt`. Recusar e-mail do Google com `verified = false`. Guardar o id do provedor (`sub`/`id`) no vínculo e usar ele, não o e-mail, para achar a conta nos próximos logins. Teste com conta criada por senha e login pelo Google com o mesmo e-mail.
+
+     **Feito:** três mudanças no login social.
+     - **Conta achada pelo e-mail:** se ela nunca teve o e-mail confirmado, a senha de quem a criou é trocada por uma aleatória, as sessões e as inscrições de push caem e `emailVerifiedAt` é gravado, como no login do cliente. Conta nova pelo login social já nasce com o e-mail confirmado.
+     - **E-mail não verificado:** as estratégias do Google (equipe e cliente) e da Apple recusam o e-mail que o provedor diz não ter verificado (`social-profile.ts`).
+     - **Id do provedor:** o vínculo guarda o id da pessoa no provedor (`providerUserId`, em `LinkedSocialAccount` e `ClientLinkedSocialAccount`) e é por ele que a conta é achada nos próximos logins. Vínculos antigos sem id ganham o id no primeiro login.
+
+     Testes em `signup-role.int.spec.ts` e `social-profile.spec.ts`.
 
 ### Nonagésima oitava rodada (2026-10-21): sessão do cliente final
 

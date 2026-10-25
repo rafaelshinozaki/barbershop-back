@@ -1,4 +1,5 @@
 import { Country } from 'country-state-city';
+import { countryIso } from './place-locale';
 
 // Telefone é texto livre (Customer.phone). O WhatsApp exige E.164
 // (+<DDI><número>). O DDI que falta vem do país da unidade: "415 555 1234"
@@ -21,7 +22,8 @@ function nationalOk(callingCode: string, national: string): boolean {
 
 /** DDI do país (ISO). "+1-684" conta como 1. País desconhecido não chuta 55. */
 export function callingCodeForCountry(country?: string | null): string | null {
-  const iso = (country ?? '').trim().toUpperCase();
+  // O país gravado por nome ("Brasil") também vale (item 267)
+  const iso = countryIso(country) ?? '';
   if (!/^[A-Z]{2}$/.test(iso)) return null;
   const raw = Country.getCountryByCode(iso)?.phonecode ?? '';
   const head = raw.split('-')[0].replace(/\D/g, '');

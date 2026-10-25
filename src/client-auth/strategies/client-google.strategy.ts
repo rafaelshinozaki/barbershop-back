@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-google-oauth20';
 import { ConfigService } from '@nestjs/config';
+import {
+  googleEmailUnverified,
+  UNVERIFIED_EMAIL_ERROR,
+} from '../../auth/strategies/social-profile';
 
 // Estratégia separada da GoogleStrategy de staff (mesmo client ID/secret do
 // Google, já que um único app OAuth pode ter várias redirect URIs
@@ -32,6 +36,10 @@ export class ClientGoogleStrategy extends PassportStrategy(Strategy, 'google-cli
       return done(new Error('Email não fornecido pelo Google'), null);
     }
 
-    done(null, { email, displayName });
+    if (googleEmailUnverified(profile as never)) {
+      return done(new Error(UNVERIFIED_EMAIL_ERROR), null);
+    }
+
+    done(null, { email, displayName, providerUserId: profile.id });
   }
 }

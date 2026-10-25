@@ -69,7 +69,7 @@ export class ClientAuthController {
   }
 
   private async completeSocialLogin(
-    user: { email: string; displayName: string },
+    user: { email: string; displayName: string; providerUserId?: string },
     provider: string,
     req: Request,
     res: Response,
@@ -95,6 +95,7 @@ export class ClientAuthController {
       user.email,
       user.displayName,
       provider,
+      user.providerUserId,
     );
     if (account.suspendedAt) {
       res.redirect(`${frontendUrl}/client/login?suspended=1`);

@@ -170,6 +170,15 @@ function countryOf(raw: string) {
   return Country.getAllCountries().find((c) => c.name.toLowerCase() === text.toLowerCase());
 }
 
+/**
+ * Código ISO de duas letras do país, a partir do código ou do nome
+ * ("Brasil", "Brazil", "br"). null se não for um país (item 267).
+ */
+export function countryIso(raw?: string | null): string | null {
+  const found = countryOf(raw ?? '');
+  return found?.isoCode ? found.isoCode.toUpperCase() : null;
+}
+
 function stateCode(countryIso: string, stateRaw: string): string {
   const text = stateRaw.trim();
   if (!text) return '';

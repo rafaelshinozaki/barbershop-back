@@ -109,7 +109,7 @@ import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
 import { JobOpeningService } from './job-opening.service';
 import { currentPricing } from '../pricing/pricing';
-import { currencyForCountry, timezoneForPlace } from '../common/place-locale';
+import { countryIso, currencyForCountry, timezoneForPlace } from '../common/place-locale';
 import { payoutReport, type PayoutCharge } from './payout-report';
 import { appointmentCalendarLinks, appointmentInvite } from '../calendar/calendar-links';
 import { moneyCap, roundMoney, toMinorUnits } from '../common/money-units';
@@ -609,6 +609,8 @@ export const SHOP_CURRENCY_OWNER_ONLY_MESSAGE = 'Só o dono troca a moeda da uni
 export const SHOP_CURRENCY_LOCKED_MESSAGE =
   'A unidade já tem dinheiro registrado nesta moeda. Para trocar, fale com o suporte.';
 /** Página pública /u/:slug. Minúsculas, sem hífen nas pontas, de 3 a 60. */
+export const SHOP_COUNTRY_INVALID_MESSAGE = 'País inválido (use o país da lista).';
+
 export const SHOP_SLUG_INVALID_MESSAGE =
   'Endereço da página inválido — use só letras minúsculas, números e hífen (sem começar ou terminar com hífen), de 3 a 60 caracteres.';
 
@@ -689,6 +691,13 @@ export function normalizeShopTexts(
   take('city', 'Cidade');
   take('state', 'Estado');
   take('country', 'País');
+  // Sempre o código ISO: o nome ("Brasil") deixava a unidade sem WhatsApp e
+  // com os e-mails em inglês (item 267)
+  if (out.country !== undefined) {
+    const iso = countryIso(out.country);
+    if (!iso) throw new BadRequestException(SHOP_COUNTRY_INVALID_MESSAGE);
+    out.country = iso;
+  }
   take('postalCode', 'CEP');
   take('email', 'E-mail da unidade', { email: true });
   if (data.phone != null || required) {

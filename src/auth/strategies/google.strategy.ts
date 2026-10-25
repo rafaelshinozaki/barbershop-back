@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-google-oauth20';
 import { ConfigService } from '@nestjs/config';
+import { googleEmailUnverified, UNVERIFIED_EMAIL_ERROR } from './social-profile';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
@@ -35,6 +36,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       return done(new Error('Formato de email inválido'), null);
     }
 
-    done(null, { email, displayName });
+    if (googleEmailUnverified(profile as never)) {
+      return done(new Error(UNVERIFIED_EMAIL_ERROR), null);
+    }
+
+    done(null, { email, displayName, providerUserId: profile.id });
   }
 }
