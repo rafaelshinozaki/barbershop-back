@@ -3990,6 +3990,12 @@ type SocialPostType {
   postToFacebook: Boolean!
   postToInstagram: Boolean!
   publishedAt: String
+
+  """Já saiu no Facebook (a nova tentativa vai só para a rede que falhou)"""
+  publishedToFacebook: Boolean!
+
+  """Já saiu no Instagram (a nova tentativa vai só para a rede que falhou)"""
+  publishedToInstagram: Boolean!
   scheduledFor: String!
   status: String!
 }
