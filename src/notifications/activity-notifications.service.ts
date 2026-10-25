@@ -436,7 +436,10 @@ export class ActivityNotificationsService {
       | 'due'
       | 'overdue'
       | 'failed'
-      | 'stopped',
+      | 'stopped'
+      | 'increaseProposed'
+      | 'increaseAccepted'
+      | 'increaseDeclined',
     otherShopName: string,
     amountText: string,
     actorUserId: number | null,
@@ -546,6 +549,48 @@ export class ActivityNotificationsService {
             `El cobro del alquiler (${otherShopName}, ${amountText}) fue rechazado. Hay que cambiar la tarjeta.`,
           ],
         },
+        increaseProposed: {
+          pt: [
+            'Aumento do aluguel',
+            `${otherShopName} propôs mudar o aluguel para ${amountText}. Aceite ou recuse no espaço compartilhado; até lá, a cobrança segue no valor de hoje.`,
+          ],
+          en: [
+            'Rent increase',
+            `${otherShopName} proposed changing the rent to ${amountText}. Accept or decline in Shared location; until then, billing stays at today's amount.`,
+          ],
+          es: [
+            'Aumento del alquiler',
+            `${otherShopName} propuso cambiar el alquiler a ${amountText}. Acepta o rechaza en Espacio compartido; mientras tanto, el cobro sigue con el valor actual.`,
+          ],
+        },
+        increaseAccepted: {
+          pt: [
+            'Aumento do aluguel aceito',
+            `${otherShopName} aceitou o aluguel de ${amountText}, a partir da próxima cobrança.`,
+          ],
+          en: [
+            'Rent increase accepted',
+            `${otherShopName} accepted the ${amountText} rent, starting next billing.`,
+          ],
+          es: [
+            'Aumento del alquiler aceptado',
+            `${otherShopName} aceptó el alquiler de ${amountText}, desde el próximo cobro.`,
+          ],
+        },
+        increaseDeclined: {
+          pt: [
+            'Aumento do aluguel recusado',
+            `${otherShopName} recusou o aluguel de ${amountText}. A cobrança segue no valor de antes.`,
+          ],
+          en: [
+            'Rent increase declined',
+            `${otherShopName} declined the ${amountText} rent. Billing stays at the previous amount.`,
+          ],
+          es: [
+            'Aumento del alquiler rechazado',
+            `${otherShopName} rechazó el alquiler de ${amountText}. El cobro sigue con el valor anterior.`,
+          ],
+        },
         stopped: {
           pt: [
             'Aluguel encerrado',
@@ -562,7 +607,7 @@ export class ActivityNotificationsService {
         actorUserId,
         path: 'shared-location',
         type:
-          event === 'failed' || event === 'overdue'
+          event === 'failed' || event === 'overdue' || event === 'increaseDeclined'
             ? NotificationType.WARNING
             : event === 'paid' || event === 'received'
             ? NotificationType.SUCCESS

@@ -115,6 +115,12 @@ export class ChairRentType {
   @Field(() => Float, { nullable: true })
   amount?: number | null;
 
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Aumento proposto pelo espaço, esperando o aceite do profissional',
+  })
+  pendingAmount?: number | null;
+
   @Field(() => String, { nullable: true })
   currency?: string | null;
 

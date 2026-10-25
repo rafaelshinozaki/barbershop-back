@@ -10,7 +10,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import type Stripe from 'stripe';
-import { TreatmentCategory } from '@prisma/client';
+import { Prisma, TreatmentCategory } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { RealtimeService } from '@/realtime/realtime.service';
 import { PushService } from '@/push/push.service';
@@ -32,6 +32,24 @@ import { normalizeLang, type Lang } from '@/email/language';
 type Notice = Record<Lang, { title: string; message: string }>;
 
 const FEE_KIND = 'job_fill_fee';
+
+export const JOB_OPENING_ENDED_MESSAGE = 'O período desta vaga já acabou.';
+
+/** Vaga encerrada porque o período acabou (item 282) */
+const ENDED_NOTICE = (title: string): Notice => ({
+  pt: {
+    title: 'Vaga encerrada',
+    message: `O período da vaga "${title}" acabou e ela foi encerrada.`,
+  },
+  en: {
+    title: 'Opening closed',
+    message: `The period for "${title}" is over and the opening was closed.`,
+  },
+  es: {
+    title: 'Vacante cerrada',
+    message: `El período de la vacante "${title}" terminó y se cerró.`,
+  },
+});
 
 export const JOB_APPLICANT_DELETED_MESSAGE =
   'Esta conta foi excluída: a candidatura não pode mais ser aceita.';
@@ -74,6 +92,8 @@ const PAYER_NOTICE = (title: string, refunded: boolean): Notice => ({
   },
 });
 
+/** Candidaturas por lote na rotina de liberação */
+const RELEASE_BATCH = 500;
 /** Até quantos dias à frente a vaga pode começar */
 const MAX_DAYS_AHEAD = 180;
 /** Duração máxima do vínculo de uma vaga (freelancer, não contratação fixa) */
@@ -174,8 +194,9 @@ export class JobOpeningService {
     await this.barbershops.ensureAccess(userId, input.barbershopId, 'manager');
     const { today } = await this.today(input.barbershopId);
     const data = this.clean(input, today);
+    // Vaga cujo período acabou não ocupa o limite (item 282)
     const open = await this.prisma.jobOpening.count({
-      where: { barbershopId: input.barbershopId, status: 'open' },
+      where: { barbershopId: input.barbershopId, status: 'open', endDate: { gte: today } },
     });
     if (open >= MAX_OPEN_PER_SHOP) {
       throw new BadRequestException(
@@ -456,6 +477,9 @@ export class JobOpeningService {
     if (application.jobOpening.status !== 'open') {
       throw new BadRequestException('A vaga não está mais aberta');
     }
+    if (application.jobOpening.endDate < (await this.today(barbershopId)).today) {
+      throw new BadRequestException(JOB_OPENING_ENDED_MESSAGE);
+    }
     return application;
   }
 
@@ -494,7 +518,8 @@ export class JobOpeningService {
     const opening = application.jobOpening;
     if (opening.status !== 'open') throw new BadRequestException('A vaga não está mais aberta');
 
-    const { timeZone } = await this.today(barbershopId);
+    const { timeZone, today } = await this.today(barbershopId);
+    if (opening.endDate < today) throw new BadRequestException(JOB_OPENING_ENDED_MESSAGE);
     // Do começo do primeiro dia ao fim do último, no fuso da unidade
     const accessStartsAt = zonedTimeToUtc(opening.startDate, 0, timeZone);
     const accessEndsAt = new Date(
@@ -668,14 +693,25 @@ export class JobOpeningService {
     if (!opening || !opening.barbershop.isActive)
       throw new NotFoundException('Vaga não encontrada');
     if (opening.status !== 'open') throw new BadRequestException('A vaga não está mais aberta');
+    if (opening.endDate < (await this.today(opening.barbershopId)).today) {
+      throw new BadRequestException(JOB_OPENING_ENDED_MESSAGE);
+    }
     if ((await this.myShopIds(userId)).includes(opening.barbershopId)) {
       throw new ForbiddenException('Você já faz parte desta unidade');
     }
     const text = message?.trim() || null;
     if (text && text.length > 500)
       throw new BadRequestException('A mensagem vai até 500 caracteres');
+    // Candidatura em vaga que já acabou não prende o limite (a rotina recusa)
     const pending = await this.prisma.jobApplication.count({
-      where: { userId, status: 'pending' },
+      where: {
+        userId,
+        status: 'pending',
+        jobOpening: {
+          status: 'open',
+          endDate: { gte: addDaysStr(toZonedParts(new Date(), 'UTC').dateStr, -1) },
+        },
+      },
     });
     if (pending >= MAX_PENDING_PER_USER) {
       throw new BadRequestException(
@@ -813,12 +849,66 @@ export class JobOpeningService {
    * Roda de hora em hora.
    */
   async releaseUnjoinedApplications(now = new Date()) {
-    const accepted = await this.prisma.jobApplication.findMany({
-      where: { status: 'accepted' },
-      include: { jobOpening: true },
-      take: 500,
+    // Em lotes, até acabar. Quem já entrou na equipe ganha joinedAt e sai da
+    // busca: antes eram sempre as mesmas 500, todas de quem já tinha entrado,
+    // e as vencidas nunca entravam no lote (item 281)
+    let released = 0;
+    let afterId = 0;
+    for (;;) {
+      const batch = await this.prisma.jobApplication.findMany({
+        where: { status: 'accepted', joinedAt: null, id: { gt: afterId } },
+        include: { jobOpening: true },
+        orderBy: { id: 'asc' },
+        take: RELEASE_BATCH,
+      });
+      if (!batch.length) break;
+      afterId = batch[batch.length - 1].id;
+      released += await this.releaseBatch(batch, now);
+      if (batch.length < RELEASE_BATCH) break;
+    }
+    await this.retryFailedRefunds();
+    if (released)
+      this.logger.log(`Vagas: ${released} candidatura(s) aceita(s) sem entrar na equipe`);
+    return released;
+  }
+
+  /**
+   * Taxa que a Stripe não devolveu na hora: a candidatura já saiu de
+   * `accepted`, então a rotina de cima não a via mais e a taxa ficava com a
+   * plataforma (item 280). Tenta de novo (a chave de idempotência é a mesma)
+   * e avisa quem pagou quando sai.
+   */
+  async retryFailedRefunds() {
+    const pending = await this.prisma.jobApplication.findMany({
+      where: {
+        status: 'expired',
+        feePaidAt: { not: null },
+        feeRefundedAt: null,
+        feePaymentIntentId: { not: null },
+      },
+      include: { jobOpening: { select: { title: true, barbershopId: true } } },
+      orderBy: { id: 'asc' },
+      take: RELEASE_BATCH,
     });
-    if (!accepted.length) return 0;
+    let refunded = 0;
+    for (const application of pending) {
+      if (!(await this.refundFee(application))) continue;
+      refunded++;
+      if (application.feePayerUserId) {
+        await this.notify(
+          [application.feePayerUserId],
+          PAYER_NOTICE(application.jobOpening.title, true),
+          `/barbershops/${application.jobOpening.barbershopId}/jobs`,
+        );
+      }
+    }
+    return refunded;
+  }
+
+  private async releaseBatch(
+    accepted: Array<Prisma.JobApplicationGetPayload<{ include: { jobOpening: true } }>>,
+    now: Date,
+  ) {
     const inviteIds = accepted.map((a) => a.inviteId).filter((id): id is number => id != null);
     const invites = new Map(
       (
@@ -831,7 +921,13 @@ export class JobOpeningService {
     let released = 0;
     for (const application of accepted) {
       const invite = application.inviteId != null ? invites.get(application.inviteId) : undefined;
-      if (invite?.status === 'ACCEPTED') continue;
+      if (invite?.status === 'ACCEPTED') {
+        await this.prisma.jobApplication.updateMany({
+          where: { id: application.id, joinedAt: null },
+          data: { joinedAt: now },
+        });
+        continue;
+      }
       const opening = application.jobOpening;
       const { today } = await this.today(opening.barbershopId);
       const periodOver = opening.endDate < today;
@@ -872,9 +968,34 @@ export class JobOpeningService {
         );
       }
     }
-    if (released)
-      this.logger.log(`Vagas: ${released} candidatura(s) aceita(s) sem entrar na equipe`);
     return released;
+  }
+
+  /**
+   * Vaga cujo período acabou (no fuso da unidade) fecha, e quem esperava
+   * resposta é recusado com aviso. Antes ela ficava aberta para sempre:
+   * ocupava o limite da unidade e prendia as candidaturas (item 282).
+   */
+  async closeEndedOpenings() {
+    const horizon = addDaysStr(toZonedParts(new Date(), 'UTC').dateStr, 1);
+    const candidates = await this.prisma.jobOpening.findMany({
+      where: { status: 'open', endDate: { lt: horizon } },
+      select: { id: true, title: true, endDate: true, barbershopId: true },
+      take: 500,
+    });
+    let closed = 0;
+    for (const opening of candidates) {
+      const { today } = await this.today(opening.barbershopId);
+      if (opening.endDate >= today) continue;
+      const done = await this.prisma.jobOpening.updateMany({
+        where: { id: opening.id, status: 'open' },
+        data: { status: 'closed', closedAt: new Date() },
+      });
+      if (done.count === 0) continue;
+      closed++;
+      await this.rejectPending(opening.id, ENDED_NOTICE(opening.title));
+    }
+    return closed;
   }
 
   /** Devolve a taxa paga (uma vez só); true se havia taxa a devolver */

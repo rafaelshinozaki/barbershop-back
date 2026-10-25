@@ -473,4 +473,123 @@ describe('Vagas para freelancer (integração)', () => {
       else process.env.STRIPE_SECRET_KEY = keyBefore;
     }
   });
+  describe('rotinas (itens 280 a 282)', () => {
+    const refunds: string[] = [];
+    let failRefund = true;
+    const withStripe = () =>
+      new JobOpeningService(
+        prisma,
+        barbershops,
+        invites,
+        { notifyUsers: () => undefined, notify: () => undefined } as never,
+        { sendToUsers: async () => undefined } as never,
+        {
+          createRefund: async (id: string) => {
+            if (failRefund) throw new Error('Stripe fora do ar');
+            refunds.push(id);
+          },
+        } as never,
+      );
+    const pastOpening = (title: string) =>
+      prisma.jobOpening.create({
+        data: {
+          barbershopId: shopId,
+          createdByUserId: ownerId,
+          title,
+          startDate: addDays(-5),
+          endDate: addDays(-1),
+        },
+      });
+
+    it('280: taxa que a Stripe não devolveu é tentada de novo e quem pagou é avisado', async () => {
+      const service = withStripe();
+      const job = await pastOpening('Taxa presa');
+      const app = await prisma.jobApplication.create({
+        data: {
+          jobOpeningId: job.id,
+          userId: pro3Id,
+          status: 'accepted',
+          feePaidAt: new Date(),
+          feeCents: 1000,
+          feePaymentIntentId: `pi_preso_${RUN}`,
+          feePayerUserId: ownerId,
+        },
+      });
+      // Sem convite: a rotina libera, mas a Stripe falha na devolução
+      await service.releaseUnjoinedApplications();
+      let row = await prisma.jobApplication.findUniqueOrThrow({ where: { id: app.id } });
+      expect(row.status).toBe('expired');
+      expect(row.feeRefundedAt).toBeNull();
+
+      // Na próxima execução a Stripe voltou: devolve uma vez e avisa
+      failRefund = false;
+      await service.releaseUnjoinedApplications();
+      row = await prisma.jobApplication.findUniqueOrThrow({ where: { id: app.id } });
+      expect(row.feeRefundedAt).toBeInstanceOf(Date);
+      expect(refunds).toEqual([`pi_preso_${RUN}`]);
+      await service.releaseUnjoinedApplications();
+      expect(refunds).toHaveLength(1);
+      const texts = (await notificationsOf(ownerId)).map((n) => n.message);
+      expect(texts.some((m) => m.includes('Taxa presa') && m.includes('devolvida'))).toBe(true);
+    });
+
+    it('281: quem já entrou na equipe sai da rotina (joinedAt)', async () => {
+      const job = await prisma.jobOpening.create({
+        data: {
+          barbershopId: shopId,
+          createdByUserId: ownerId,
+          title: 'Já entrou',
+          startDate: addDays(5),
+          endDate: addDays(6),
+          status: 'filled',
+        },
+      });
+      const barber = await prisma.barber.findFirstOrThrow({ where: { barbershopId: shopId } });
+      const invite = await prisma.employeeInvite.create({
+        data: {
+          inviterId: ownerId,
+          barbershopId: shopId,
+          barberId: barber.id,
+          email: `entrou-${RUN}@test.local`,
+          inviteToken: `tok-entrou-${RUN}`,
+          role: 'BarbershopEmployee',
+          status: 'ACCEPTED',
+          expiresAt: new Date(Date.now() - 86_400_000),
+        },
+      });
+      const pro5Id = await createUser('pro-cinco-zz');
+      const app = await prisma.jobApplication.create({
+        data: { jobOpeningId: job.id, userId: pro5Id, status: 'accepted', inviteId: invite.id },
+      });
+      await withStripe().releaseUnjoinedApplications();
+      const row = await prisma.jobApplication.findUniqueOrThrow({ where: { id: app.id } });
+      expect(row.status).toBe('accepted');
+      expect(row.joinedAt).toBeInstanceOf(Date);
+    });
+
+    it('282: vaga cujo período acabou fecha, recusa quem esperava e não ocupa limites', async () => {
+      const job = await pastOpening('Vaga que passou');
+      const pro6Id = await createUser('pro-seis-zzz');
+      const app = await prisma.jobApplication.create({
+        data: { jobOpeningId: job.id, userId: pro6Id },
+      });
+      await expect(jobs.apply(pro3Id, job.id)).rejects.toThrow('período desta vaga já acabou');
+      await expect(jobs.accept(ownerId, shopId, app.id)).rejects.toThrow(
+        'período desta vaga já acabou',
+      );
+
+      expect(await jobs.closeEndedOpenings()).toBeGreaterThanOrEqual(1);
+      expect((await prisma.jobOpening.findUniqueOrThrow({ where: { id: job.id } })).status).toBe(
+        'closed',
+      );
+      expect(
+        (await prisma.jobApplication.findUniqueOrThrow({ where: { id: app.id } })).status,
+      ).toBe('rejected');
+      expect((await notificationsOf(pro6Id)).map((n) => n.title)).toContain('Vaga encerrada');
+
+      // Dez vagas vencidas ainda abertas não impedem abrir outra
+      for (let i = 0; i < 10; i++) await pastOpening(`Vencida ${i}`);
+      await expect(opening({ title: 'Nova depois das vencidas' })).resolves.toBeTruthy();
+    });
+  });
 });
