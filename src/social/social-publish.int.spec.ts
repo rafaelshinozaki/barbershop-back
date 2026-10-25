@@ -165,6 +165,10 @@ describe('Posts nas redes sociais (integração)', () => {
       instagramMediaId: null,
     });
 
+    // A tela sabe em qual rede já saiu (para oferecer só a que falhou)
+    const listed = (await service.getPosts(ownerId, shopId)).find((p) => p.id === both.id);
+    expect(listed).toMatchObject({ publishedToFacebook: true, publishedToInstagram: false });
+
     failInstagram = false;
     await service.retryPost(ownerId, shopId, both.id, new Date(Date.now() + 1_000).toISOString());
     await prisma.socialPost.update({

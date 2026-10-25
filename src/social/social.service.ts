@@ -437,6 +437,8 @@ export class SocialService {
         publishedAt: p.publishedAt?.toISOString(),
         createdAt: p.createdAt.toISOString(),
         imageUrl: await this.s3Service.getDownloadUrl(p.imageKey),
+        publishedToFacebook: !!p.facebookPostId,
+        publishedToInstagram: !!p.instagramMediaId,
       })),
     );
   }

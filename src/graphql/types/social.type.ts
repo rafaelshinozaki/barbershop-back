@@ -47,6 +47,12 @@ export class SocialPostType {
   @Field({ nullable: true })
   publishedAt?: string;
 
+  @Field({ description: 'Já saiu no Facebook (a nova tentativa vai só para a rede que falhou)' })
+  publishedToFacebook: boolean;
+
+  @Field({ description: 'Já saiu no Instagram (a nova tentativa vai só para a rede que falhou)' })
+  publishedToInstagram: boolean;
+
   @Field({ nullable: true })
   errorMessage?: string;
 
