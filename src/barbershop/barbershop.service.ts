@@ -29,6 +29,7 @@ import { SearchCacheService } from './search-cache.service';
 import { langForCountry, LOCALE, normalizeLang, type Lang } from '../email/language';
 import { reviewEditData } from './review-edit';
 import { PrismaService } from '../prisma/prisma.service';
+import { whatsappOptedOut } from '../whatsapp/whatsapp-opt-out.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -352,6 +353,8 @@ function waitlistBookUrl(
 const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
 /** O profissional vê a ficha de quem atendeu ou vai atender neste prazo */
 const HEALTH_FORM_LOOKBACK_DAYS = 90;
+/** Horário marcado: a ficha abre só nos dias antes do atendimento */
+const HEALTH_FORM_AHEAD_DAYS = 7;
 
 // Teto de candidatos da busca de unidades (filtra e ordena todos até aqui)
 const SEARCH_CANDIDATE_LIMIT = 5000;
@@ -2117,11 +2120,12 @@ export class BarbershopService {
       return this.staffDashboard(userId, barbershopId ?? undefined);
     }
 
-    // Total barbers (funcionários)
+    // Profissionais com vínculo valendo hoje: o freelancer cujo período
+    // acabou (ou ainda não começou) não conta (item 274)
     const totalBarbers = await this.prisma.barber.count({
       where: {
         barbershopId: { in: barbershopIds },
-        isActive: true,
+        ...currentEngagement(),
       },
     });
 
@@ -2131,10 +2135,12 @@ export class BarbershopService {
     });
 
     // Produtos vendidos (SaleItem onde itemType = PRODUCT)
+    // Só de vendas pagas, como o faturamento ao lado: pendente, cancelada e
+    // estornada não contam como vendidas (item 274)
     const productsSoldResult = await this.prisma.saleItem.aggregate({
       where: {
         itemType: 'PRODUCT',
-        sale: { barbershopId: { in: barbershopIds } },
+        sale: { barbershopId: { in: barbershopIds }, paymentStatus: 'PAID' },
       },
       _sum: { quantity: true },
     });
@@ -5121,6 +5127,7 @@ export class BarbershopService {
           ...appointmentData,
           status: appointmentData.status ?? 'CONFIRMED',
           source: appointmentData.source ?? 'PHONE',
+          createdByUserId: userId,
           depositAmount: resolvedDeposit != null ? new Decimal(resolvedDeposit) : null,
           depositPaid: depositPaid ?? false,
           ...(manualDeposit ?? {}),
@@ -6844,10 +6851,11 @@ export class BarbershopService {
     // Bloqueado pela unidade não recebe. Gerente manda só pra quem já foi
     // atendido na unidade; a rede inteira é só do dono (antes o gerente de
     // uma unidade disparava pros clientes de todas)
+    // Quem saiu só do e-mail continua no WhatsApp (e vice-versa): cada canal
+    // respeita o próprio descadastro (item 275)
     const baseWhere: Prisma.CustomerWhereInput = {
       networkId,
       isActive: true,
-      marketingOptOut: false,
       deletedAt: null,
       blockedAt: null,
       ...(networkWide
@@ -6955,20 +6963,24 @@ export class BarbershopService {
     });
     const out: T[] = [];
     for (const members of groups.values()) {
-      const optOut = members.some((i) => {
+      // Saiu das campanhas por e-mail (nesta rede): sem e-mail. O WhatsApp tem
+      // o próprio descadastro, conferido no envio (item 275)
+      const emailOptOut = members.some((i) => {
         const { email, phone } = keys[i];
         return (!!email && outEmails.has(email)) || (!!phone && outPhones.has(phone));
       });
-      if (optOut) continue;
       // Uma ficha por pessoa, com o e-mail e o telefone que o grupo tiver
       const first = customers[members[0]];
       const withEmail = members.find((i) => keys[i].email);
       const withPhone = members.find((i) => keys[i].phone);
-      out.push({
-        ...first,
-        email: withEmail != null ? customers[withEmail].email : first.email,
-        phone: withPhone != null ? customers[withPhone].phone : first.phone,
-      });
+      const email = emailOptOut
+        ? null
+        : withEmail != null
+        ? customers[withEmail].email
+        : first.email;
+      const phone = withPhone != null ? customers[withPhone].phone : first.phone;
+      if (!email && !phone) continue;
+      out.push({ ...first, email, phone });
     }
     return out;
   }
@@ -7054,13 +7066,16 @@ export class BarbershopService {
       }
       whatsappMessage = prepared.text;
     }
-    const whatsappPhones =
+    const candidatePhones =
       data.sendWhatsapp && this.whatsappService.isConfigured()
         ? customers
             .map((c) => phoneForWhatsapp(c.phone, barbershop.country))
             .filter((phone): phone is string => !!phone)
             .filter((phone, i, all) => all.indexOf(phone) === i)
         : [];
+    // Quem respondeu SAIR no WhatsApp não recebe por lá (item 275)
+    const waOptedOut = await whatsappOptedOut(this.prisma, candidatePhones);
+    const whatsappPhones = candidatePhones.filter((phone) => !waOptedOut.has(phone));
 
     if (emailRecipients.length > 0) {
       const sent = await this.prisma.marketingCampaign.aggregate({
@@ -7150,6 +7165,33 @@ export class BarbershopService {
         ...(email ? { email: { equals: email, mode: 'insensitive' } } : { id: customer.id }),
       },
       data: { marketingOptOut: true },
+    });
+    return customer.network?.name || customer.network?.barbershops[0]?.name || 'Barbershop';
+  }
+
+  /**
+   * Volta a receber as campanhas por e-mail desta rede, pelo mesmo link do
+   * descadastro (item 275). A equipe não faz isso pela pessoa.
+   */
+  async resubscribeToMarketing(token: string): Promise<string> {
+    const customerId = verifyUnsubscribeToken(token);
+    if (!customerId) throw new BadRequestException('Link de descadastro inválido');
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      include: { network: { include: { barbershops: { take: 1, orderBy: { id: 'asc' } } } } },
+    });
+    if (!customer || customer.deletedAt) {
+      throw new BadRequestException('Link de descadastro inválido');
+    }
+    const email = customer.email?.trim();
+    await this.prisma.customer.updateMany({
+      where: {
+        networkId: customer.networkId,
+        deletedAt: null,
+        marketingOptOut: true,
+        ...(email ? { email: { equals: email, mode: 'insensitive' } } : { id: customer.id }),
+      },
+      data: { marketingOptOut: false },
     });
     return customer.network?.name || customer.network?.barbershops[0]?.name || 'Barbershop';
   }
@@ -10357,12 +10399,23 @@ export class BarbershopService {
     limit?: number,
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId);
-    return this.prisma.serviceHistory.findMany({
+    // Gravado pelos gatilhos do banco a cada horário concluído e atendimento
+    // da fila (item 273)
+    const rows = await this.prisma.serviceHistory.findMany({
       where: { barbershopId, customerId },
-      include: { service: true, barber: true },
+      include: { service: { select: { name: true } }, barber: { select: { name: true } } },
       orderBy: { performedAt: 'desc' },
-      take: limit ?? 50,
+      take: Math.min(Math.max(limit ?? 50, 1), 200),
     });
+    return rows.map((r) => ({
+      ...r,
+      performedAt: r.performedAt.toISOString(),
+      // A linha não tem data de criação própria: é a do atendimento
+      createdAt: r.performedAt.toISOString(),
+      priceCharged: Number(r.priceCharged),
+      serviceName: r.service?.name ?? null,
+      barberName: r.barber?.name ?? null,
+    }));
   }
 
   // ============ SALES ============
@@ -12224,9 +12277,13 @@ export class BarbershopService {
   // ============ FICHA DE ANAMNESE / CONSENTIMENTO ============
 
   /**
-   * Quem vê as respostas de saúde: gerência e dono, e o profissional que tem
-   * horário com o cliente (passado recente ou futuro). A recepção vê a ficha
-   * e se está assinada, sem as respostas. Os outros não veem a ficha de saúde.
+   * Quem vê as respostas de saúde: gerência e dono, e o profissional que
+   * atendeu o cliente (em andamento ou concluído, nos últimos 90 dias) ou que
+   * vai atendê-lo nos próximos dias num horário que ele não criou para si
+   * mesmo (marcado pelo cliente, pela recepção ou pela gerência). Antes
+   * bastava o profissional marcar um horário qualquer, até para daqui a
+   * meses, para ler a anamnese (item 276). A recepção vê a ficha e se está
+   * assinada, sem as respostas. Os outros não veem a ficha de saúde.
    */
   private async healthFormView(
     userId: number,
@@ -12237,18 +12294,51 @@ export class BarbershopService {
     if (barbershop.accessLevel === 'reception') return 'status';
     const own = await this.ownBarberIdIfBarber(userId, barbershop);
     if (own == null || own < 0) return 'none';
-    const since = new Date(Date.now() - HEALTH_FORM_LOOKBACK_DAYS * 86_400_000);
+    const now = Date.now();
+    const since = new Date(now - HEALTH_FORM_LOOKBACK_DAYS * 86_400_000);
+    const until = new Date(now + HEALTH_FORM_AHEAD_DAYS * 86_400_000);
     const appointment = await this.prisma.appointment.findFirst({
       where: {
         barbershopId: barbershop.id,
         customerId,
         barberId: own,
-        status: { not: 'CANCELLED' },
-        startAt: { gte: since },
+        OR: [
+          // "Em atendimento" vale a qualquer hora: só conta o horário que já começou
+          // (com uma hora de folga para o cliente adiantado)
+          {
+            status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+            startAt: { gte: since, lte: new Date(now + 3_600_000) },
+          },
+          {
+            status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+            startAt: { gte: new Date(now - 86_400_000), lte: until },
+            OR: [{ createdByUserId: null }, { createdByUserId: { not: userId } }],
+          },
+        ],
       },
       select: { id: true },
     });
     return appointment ? 'full' : 'none';
+  }
+
+  /** Quem abriu as respostas de saúde deste cliente (gerente e dono veem) */
+  async getHealthFormAccessLog(userId: number, barbershopId: number, customerId: number) {
+    await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const rows = await this.prisma.healthFormAccess.findMany({
+      where: { barbershopId, customerId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.userId))] } },
+      select: { id: true, fullName: true },
+    });
+    const names = new Map(users.map((u) => [u.id, u.fullName]));
+    return rows.map((r) => ({
+      createdAt: r.createdAt,
+      userId: r.userId,
+      userName: names.get(r.userId) ?? null,
+    }));
   }
 
   async createConsentForm(
@@ -12323,6 +12413,12 @@ export class BarbershopService {
       orderBy: { createdAt: 'desc' },
     });
     const now = new Date();
+    // Abriu respostas de saúde: fica registrado quem e quando (item 276)
+    if (view === 'full' && forms.some((f) => HEALTH_FORM_TYPES.includes(f.formType) && f.answers)) {
+      await this.prisma.healthFormAccess.create({
+        data: { barbershopId, customerId, userId },
+      });
+    }
     return forms
       .filter((f) => view !== 'none' || !HEALTH_FORM_TYPES.includes(f.formType))
       .map((f) => ({

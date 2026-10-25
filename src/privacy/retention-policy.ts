@@ -27,6 +27,8 @@ export const RETENTION_DAYS = {
   backofficeAudit: 365 * 2,
   /** Histórico de alterações do negócio (quem mudou o quê, antes → depois). */
   changeLog: 365,
+  /** Quem abriu as respostas de saúde do cliente (item 276). */
+  healthFormAccess: 365,
 } as const;
 
 export function cutoffBefore(now: Date, days: number): Date {

@@ -60,6 +60,21 @@ export function marketingOptOutReply(text: string): string | null {
   return word ? OPT_OUT_DONE[word] : null;
 }
 
+/** Palavras para voltar a receber as campanhas do WhatsApp (item 275) */
+const OPT_IN_DONE: Record<string, string> = {
+  VOLTAR: 'Você voltou a receber as campanhas. Responda SAIR para não receber mais.',
+  START: 'You will receive these messages again. Reply STOP to opt out.',
+  UNSTOP: 'You will receive these messages again. Reply STOP to opt out.',
+  VOLVER: 'Vas a recibir las campañas de nuevo. Responde SALIR para no recibir más.',
+};
+
+/** Confirmação de volta às campanhas, se a resposta for "VOLTAR" (ou START/VOLVER). */
+export function marketingOptInReply(text: string): string | null {
+  const match = text.trim().match(/^[^\p{L}\p{N}]*(\p{L}+)/u);
+  if (!match) return null;
+  return OPT_IN_DONE[match[1].toUpperCase()] ?? null;
+}
+
 type Inbound = {
   from?: string;
   type?: string;

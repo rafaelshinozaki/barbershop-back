@@ -935,6 +935,12 @@ export class ServiceHistory {
 
   @Field()
   createdAt: string;
+
+  @Field(() => String, { nullable: true })
+  serviceName?: string | null;
+
+  @Field(() => String, { nullable: true })
+  barberName?: string | null;
 }
 
 @ObjectType()
@@ -1498,6 +1504,18 @@ export class ClientPackageUseType {
 
   @Field({ nullable: true })
   undoneAt?: string;
+}
+
+@ObjectType()
+export class HealthFormAccessType {
+  @Field(() => Date)
+  createdAt: Date;
+
+  @Field(() => Int)
+  userId: number;
+
+  @Field(() => String, { nullable: true })
+  userName?: string | null;
 }
 
 @ObjectType()

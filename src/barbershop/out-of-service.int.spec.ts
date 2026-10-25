@@ -240,7 +240,7 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
     }
   });
 
-  it('campanha: fichas repetidas recebem uma vez; quem saiu numa ficha não recebe pela outra (item 191)', async () => {
+  it('campanha: fichas repetidas recebem uma vez; quem saiu do e-mail numa ficha não recebe e-mail pela outra (itens 191 e 275)', async () => {
     await prisma.customer.createMany({
       data: [
         // A mesma pessoa: o telefone em outro formato, e-mail em outra caixa
@@ -280,15 +280,17 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
       expect(people[0].email).toBeTruthy();
       expect(people[0].phone).toBeTruthy();
     }
-    // Cliente Fiel + a pessoa repetida (a "Repetida 3" bate no e-mail da 1)
-    expect((await shops.previewMarketingSegment(ownerId, shopId, 'ALL')).recipientCount).toBe(2);
+    // Cliente Fiel + a pessoa repetida (a "Repetida 3" bate no e-mail da 1) +
+    // quem saiu só do e-mail (continua no WhatsApp: cada canal com o próprio
+    // descadastro, item 275)
+    expect((await shops.previewMarketingSegment(ownerId, shopId, 'ALL')).recipientCount).toBe(3);
     const campaign = await shops.sendMarketingBlast(ownerId, shopId, {
       message: 'Novidade',
       segment: 'ALL',
       sendEmail: true,
       sendWhatsapp: true,
     });
-    expect(campaign.recipientCount).toBe(2);
+    expect(campaign.recipientCount).toBe(3);
     const emails = queued
       .map((j) => (j as { to?: string }).to)
       .filter((to): to is string => !!to && to.includes('@'));
@@ -299,6 +301,9 @@ describe('Unidade fora do ar e campanha sem repetidos (integração)', () => {
       .filter((to): to is string => !!to && to.startsWith('+'));
     // A pessoa repetida tem dois números: um WhatsApp só, para um deles
     expect(phones.filter((p) => ['+5511977770001', '+5511966660000'].includes(p))).toHaveLength(1);
-    expect(phones).not.toContain('+5511955550000');
+    // Saiu do e-mail numa ficha: a outra (mesmo telefone) também não recebe
+    // e-mail, mas o WhatsApp segue (item 275)
+    expect(emails).not.toContain(`saiu-${RUN}@test.local`);
+    expect(phones).toContain('+5511955550000');
   });
 });
