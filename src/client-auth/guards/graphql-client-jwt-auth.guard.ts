@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ClientTokenPayload } from '../interfaces/client-token-payload.interface';
 import { clientClaims } from '../../auth/session-claims';
+import { clientSessionAlive, renewClientSessionIfStale } from '../client-session';
 
 @Injectable()
 export class GraphQLClientJwtAuthGuard implements CanActivate {
@@ -16,7 +17,7 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext) {
     const gqlContext = GqlExecutionContext.create(context);
-    const { req } = gqlContext.getContext();
+    const { req, res } = gqlContext.getContext();
 
     // Mensagens em pt-BR e sem as palavras 'token'/'authentication'/'Unauthorized' —
     // o errorLink do Apollo no front desloga a sessão de STAFF (useAuthStore.clear())
@@ -47,6 +48,18 @@ export class GraphQLClientJwtAuthGuard implements CanActivate {
       if (claims.v !== account.sessionVersion) {
         throw new UnauthorizedException('Sessão de cliente encerrada.');
       }
+      // "Sair" apagou esta sessão: o token copiado não entra mais (item 272)
+      if (!(await clientSessionAlive(this.prisma, account.id, claims.sid))) {
+        throw new UnauthorizedException('Sessão de cliente encerrada.');
+      }
+      // Em uso: o prazo se renova (antes caía em uma hora mesmo em uso)
+      await renewClientSessionIfStale(
+        this.prisma,
+        this.jwtService,
+        res,
+        decoded as never,
+        this.configService.get<string>('NODE_ENV') === 'production',
+      );
 
       req.clientUser = { id: account.id, email: account.email, name: account.name };
       return true;

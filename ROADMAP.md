@@ -2775,13 +2775,21 @@ Foram lidos o código novo do descadastro de campanha pelo WhatsApp (webhook da 
 
 Foram lidos o reenvio e a exclusão dos posts das redes (`retryPost`, `deletePost`), a publicação pelo agendador, a ocultação de post pela moderação, o telefone do WhatsApp pelo país da unidade (`phoneForWhatsapp`, `callingCodeForCountry`) e o idioma das mensagens (`langForCountry`).
 
-266. ⬜ **Post ocultado pela moderação volta com a mesma imagem, e a publicação não tem trava nem prazo** (back: `SocialService.createPost`, `publishDuePosts`, `publishPost`, `SocialPostsProcessor`):
+266. ✅ **Post ocultado pela moderação volta com a mesma imagem, e a publicação não tem trava nem prazo** (back: `SocialService.createPost`, `publishDuePosts`, `publishPost`, `SocialPostsProcessor`):
      - Ocultar um post (`SocialPost.hiddenAt`) só marca aquele registro. A tela de posts devolve a `imageKey` de cada post, e `createPost` aceita qualquer chave em `social-posts/<unidade>/`: a unidade agenda um post novo com a mesma imagem, ele sai de novo no Facebook e no Instagram e volta para a página pública, sem passar pela moderação.
      - `publishPost` lê o post como `SCHEDULED`, chama a Meta e só no fim grava o resultado. Nada marca o post como "publicando" antes: se uma execução do agendador passa de 5 minutos (cada chamada à Meta não tem prazo próprio; o padrão do Node espera até 5 minutos), a próxima execução, em outra instância, pega os mesmos posts ainda `SCHEDULED` e publica de novo. Excluir o post nesse meio-tempo apaga o registro e a imagem do S3 enquanto ele sai na rede; a gravação final falha e o post publicado fica sem registro.
      - Posts de unidade suspensa pela plataforma ficam `SCHEDULED` (item 190). Quando a suspensão sai, todos os vencidos são publicados de uma vez na rodada seguinte, mesmo com a data de semanas ou meses atrás (promoção de uma data que já passou).
      - Post que saiu no Facebook e falhou no Instagram fica `PUBLISHED` com o erro no aviso; `retryPost` só aceita `FAILED`, então não há como tentar só o Instagram de novo.
      
      **Fazer:** ao ocultar, guardar a chave da imagem como bloqueada para a unidade e recusar em `createPost`/`retryPost` (a unidade envia outra imagem). Marcar o post como `PUBLISHING` com `updateMany` condicionado a `SCHEDULED` antes de chamar a Meta (só quem mudou a linha publica), com prazo (`AbortSignal.timeout`) em cada chamada, e recusar exclusão de post `PUBLISHING`. Post vencido há mais de um tempo (ex.: 24 h) quando a suspensão sai vira `FAILED` com o motivo, para a unidade escolher reagendar. Permitir reenviar só a rede que falhou. Testes para a chave reaproveitada, duas execuções ao mesmo tempo e suspensão encerrada.
+
+     **Feito:** quatro mudanças na publicação dos posts.
+     - **Imagem ocultada:** `createPost` e `retryPost` recusam a imagem de um post da unidade ocultado pela moderação (`SOCIAL_IMAGE_HIDDEN_MESSAGE`). A unidade precisa enviar outra imagem.
+     - **Reserva antes de publicar:** o post é reservado como `PUBLISHING` (`publishingAt`, com `updateMany` condicionado a `SCHEDULED`) e só quem mudou a linha publica. Cada chamada à Meta tem prazo (`AbortSignal.timeout`, 30 s), a exclusão não aceita post `PUBLISHING`, e a reserva parada há mais de 15 minutos vira falha pedindo para conferir na rede.
+     - **Post vencido:** o que passou mais de 24 horas da data (unidade estava suspensa, agendador parado) vira `FAILED` com o motivo, para a unidade reagendar.
+     - **Falha numa rede só:** se o post saiu numa rede e falhou na outra, a nova tentativa vai só para a que falhou.
+
+     A tela do front ainda não conhece a situação `PUBLISHING` nem o botão de tentar de novo para post publicado pela metade. Teste em `social-publish.int.spec.ts`.
      
 267. ✅ **País da unidade gravado por nome deixa a unidade sem WhatsApp e com e-mails em inglês** (back: `createBarbershop`, `shopBaseUpdate`, `callingCodeForCountry`, `langForCountry`):
      - `Barbershop.country` é texto livre: nem o cadastro nem `shopBaseUpdate` conferem se é um código ISO. A moeda e o fuso aceitam o nome do país (`countryOf` entende "Brasil", "Brazil", "Portugal"), então uma unidade com `country = 'Brasil'` parece certa na tela.
@@ -2805,12 +2813,14 @@ Foram lidos a criação dos avisos em lote (`createNotificationsForUsers`), o te
 
      **Feito:** o lote só pula quem já recebeu o mesmo título **e** a mesma mensagem nos últimos 5 minutos, no aviso simples e no traduzido. O retorno (`userIds`) traz só quem recebeu agora, então o celular não repete o aviso descartado. Teste em `notifications.service.spec.ts`.
      
-269. ⬜ **Tela aberta continua recebendo avisos em tempo real depois de sair, trocar a senha ou ter a conta desativada** (back: `RealtimeResolver`, `GraphQLJwtAuthGuard`, `getMyBarbershops`):
+269. ✅ **Tela aberta continua recebendo avisos em tempo real depois de sair, trocar a senha ou ter a conta desativada** (back: `RealtimeResolver`, `GraphQLJwtAuthGuard`, `getMyBarbershops`):
      - O login e a sessão (`ActiveSession`) só são conferidos quando a assinatura (WebSocket) começa. Depois disso, o filtro de `myNotificationEvents` só compara o `userId`, e o de `networkActivity` relê `getMyBarbershops`, que não olha se a conta está ativa nem se a sessão existe.
      - Quem sai do app em outra aba, tem as sessões derrubadas (troca de senha, "derrubar sessões", backoffice) ou a conta desativada continua com o socket aberto: recebe o título de cada aviso novo e os sinais de "a agenda mudou" das unidades, até fechar a aba. O token vencido também não fecha o socket.
      - Não há como o servidor fechar os sockets de uma pessoa quando a sessão dela acaba.
      
      **Fazer:** guardar o id da sessão no contexto da assinatura e, no filtro (com o cache curto que já existe), conferir se a sessão ainda existe, se a conta está ativa e se o token não venceu. Se não estiver tudo certo, encerrar a assinatura. Ao derrubar sessões, publicar um evento que fecha os sockets daquela pessoa. Teste com logout durante uma assinatura aberta.
+
+     **Feito:** o guard guarda o vencimento do token (`sessionExpiresAt`) junto com a sessão. As duas assinaturas da equipe (`networkActivity` e `myNotificationEvents`) conferem a cada aviso, com o cache curto de 15 s, que o token não venceu, que a `ActiveSession` ainda existe e que a conta está ativa (`subscriptionSessionValid`). Se algo falhar, a conexão deixa de receber avisos: sair, trocar a senha, derrubar as sessões ou desativar a conta param o tempo real em até 15 s. O socket só fecha quando a tela fecha. Teste em `shop-access-cache.spec.ts`.
 
 ### Nonagésima sétima rodada (2026-10-20): login social da equipe
 
@@ -2843,12 +2853,20 @@ Foram lidos o login com Google, Facebook e Apple da equipe e do cliente (`comple
 
 Foram lidos a sessão da área do cliente (`issueCookie`, `GraphQLClientJwtAuthGuard`, `clientLogout`), a ligação das contas de cliente e da equipe (`AccountLinkService`), os comandos do backoffice e os pedidos de confirmação.
 
-272. ⬜ **A sessão do cliente final cai depois de `JWT_EXPIRATION` mesmo em uso, e "Sair" não encerra o token** (back: `ClientAuthService.issueCookie`, `GraphQLClientJwtAuthGuard`, `clientLogout`):
+272. ✅ **A sessão do cliente final cai depois de `JWT_EXPIRATION` mesmo em uso, e "Sair" não encerra o token** (back: `ClientAuthService.issueCookie`, `GraphQLClientJwtAuthGuard`, `clientLogout`):
      - O cookie e o token do cliente valem `JWT_EXPIRATION` (3600 s no `.env.example`), e nada renova esse prazo. A equipe tem `renewIfStale` e prazos próprios (12 h, ou 30 dias com "Lembrar de mim"), mas o cliente não tem nada parecido: quem está agendando, conversando no chat ou pagando é deslogado uma hora depois de entrar e cai na tela de login no meio do caminho. O PWA com notificação no celular abre deslogado.
      - Se alguém aumentar `JWT_EXPIRATION` para resolver, o problema muda de lado: `clientLogout` só apaga o cookie do navegador. O token continua valendo até vencer (não muda `sessionVersion` nem existe registro da sessão), então um cookie copiado de um computador compartilhado segue entrando depois do "Sair". O mesmo `JWT_EXPIRATION` também define o prazo do token assinado pelo módulo da equipe, então os dois não podem ser ajustados separadamente.
      - Não existe "Lembrar de mim" nem lista de sessões abertas na área do cliente.
      
      **Fazer:** prazo próprio da sessão do cliente (ex.: 30 dias), com renovação enquanto a pessoa usa (como `renewIfStale`). No "Sair", revogar só aquela sessão: id da sessão no token com uma tabela de sessões do cliente (como `ActiveSession`), ou no mínimo `sessionVersion + 1` com aviso de que sai de todos os aparelhos. Teste com o token de uma sessão encerrada.
+
+     **Feito:** nova tabela `ClientSession`, e o token do cliente leva o id da sessão (`sid`).
+     - **Prazo próprio:** 30 dias, com renovação do cookie a cada dia de uso (`renewClientSessionIfStale` no guard). O cookie deixa de depender de `JWT_EXPIRATION`.
+     - **Sair:** `clientLogout` apaga só aquela sessão, e o token copiado deixa de entrar. As outras sessões continuam; trocar a senha continua derrubando todas (`sessionVersion`).
+     - **Tokens antigos:** os sem `sid` valem até vencer (no máximo 1 hora).
+     - **Retenção:** sessão parada há mais de 31 dias é apagada.
+
+     Teste em `client-auth.int.spec.ts`.
 
 ### Nonagésima nona rodada (2026-10-21): histórico de atendimentos e painel da rede
 

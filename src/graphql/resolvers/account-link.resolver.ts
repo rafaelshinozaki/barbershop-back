@@ -69,7 +69,7 @@ export class AccountLinkResolver {
   ) {
     const account = await this.accountLink.linkFromClient(client.id, password);
     // A ligação derruba as sessões antigas da área do cliente; esta continua
-    this.clientAuth.issueCookie(account, context.res);
+    await this.clientAuth.issueCookie(account, context.res);
     return true;
   }
 
@@ -107,7 +107,7 @@ export class AccountLinkResolver {
   async openClientArea(@CurrentUser() user: UserDTO, @Context() context: any) {
     const { account, created } = await this.accountLink.clientAccountForStaff(user.id);
     if (created) await this.clientAuth.sendVerificationEmail(account);
-    this.clientAuth.issueCookie(account, context.res);
+    await this.clientAuth.issueCookie(account, context.res);
     return created;
   }
 }

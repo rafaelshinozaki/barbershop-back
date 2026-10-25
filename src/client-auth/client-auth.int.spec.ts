@@ -72,7 +72,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
   /** Roda o guard com o cookie dessa conta; devolve se deixou passar. */
   const guardAccepts = async (account: { id: number; email: string; sessionVersion: number }) => {
     const cookies: Record<string, string> = {};
-    service.issueCookie(account, {
+    await service.issueCookie(account, {
       cookie: (name: string, value: string) => (cookies[name] = value),
     } as never);
     const req = { cookies };
@@ -508,5 +508,54 @@ describe('Conta do cliente final (integração com o banco)', () => {
         await prisma.clientLinkedSocialAccount.count({ where: { clientAccountId: account.id } }),
       ).toBe(0);
     });
+  });
+  it('272: sessão de 30 dias renovada em uso; "Sair" encerra só aquela, e o token copiado não entra mais', async () => {
+    const account = await prisma.clientAccount.create({
+      data: { email: `sessao-${RUN}@test.local`, name: 'Sessão', password: null },
+    });
+    const open = async () => {
+      const cookies: Record<string, string> = {};
+      await service.issueCookie(account, {
+        cookie: (name: string, value: string) => (cookies[name] = value),
+      } as never);
+      return cookies.ClientAuthentication;
+    };
+    const run = (token: string, res?: unknown) =>
+      guard
+        .canActivate({
+          getType: () => 'graphql',
+          getArgs: () => [{}, {}, { req: { cookies: { ClientAuthentication: token } }, res }, {}],
+          getClass: () => null,
+          getHandler: () => null,
+        } as never)
+        .then(
+          () => true,
+          () => false,
+        );
+    const phone = await open();
+    const laptop = await open();
+    const decoded = jwt.decode(phone) as { sid: string; exp: number; iat: number };
+    expect(decoded.sid).toBeTruthy();
+    expect(decoded.exp - decoded.iat).toBe(30 * 24 * 3600);
+
+    // Token de dois dias atrás: entra e o cookie é renovado
+    const oldIat = Math.floor(Date.now() / 1000) - 2 * 86_400;
+    const aged = jwt.sign(
+      { clientAccountId: account.id, email: account.email, v: 0, sid: decoded.sid, iat: oldIat },
+      { expiresIn: '30d' },
+    );
+    const renewed: string[] = [];
+    expect(
+      await run(aged, { cookie: (_n: string, value: string) => void renewed.push(value) }),
+    ).toBe(true);
+    expect(renewed).toHaveLength(1);
+
+    // Sair no celular: o token do celular (e a cópia dele) para; o do notebook segue
+    await service.endSession({ cookies: { ClientAuthentication: phone } }, {
+      clearCookie: () => undefined,
+    } as never);
+    expect(await run(phone)).toBe(false);
+    expect(await run(laptop)).toBe(true);
+    await prisma.clientSession.deleteMany({ where: { clientAccountId: account.id } });
   });
 });

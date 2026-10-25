@@ -23,6 +23,7 @@ import { clientClaims } from '../auth/session-claims';
 import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
 import { phoneDigitVariants } from '../common/phone.util';
+import { clientSessionAlive, openClientSession } from './client-session';
 
 export const CLIENT_TOKEN_PURPOSE = {
   VERIFY_EMAIL: 'VERIFY_EMAIL',
@@ -758,7 +759,8 @@ export class ClientAuthService {
       return account &&
         !account.deletedAt &&
         !account.suspendedAt &&
-        claims.v === account.sessionVersion
+        claims.v === account.sessionVersion &&
+        (await clientSessionAlive(this.prisma, claims.clientAccountId, claims.sid))
         ? claims.clientAccountId
         : undefined;
     } catch {
@@ -766,20 +768,28 @@ export class ClientAuthService {
     }
   }
 
-  issueCookie(account: { id: number; email: string; sessionVersion: number }, res: Response) {
-    const token = this.jwtService.sign({
-      clientAccountId: account.id,
-      email: account.email,
-      v: account.sessionVersion,
-    });
+  /** Abre a sessão do cliente (30 dias, renovada enquanto usa; item 272) */
+  async issueCookie(account: { id: number; email: string; sessionVersion: number }, res: Response) {
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-    res.cookie('ClientAuthentication', token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      path: '/',
-      expires: new Date(Date.now() + Number(this.configService.get('JWT_EXPIRATION')) * 1000),
-    });
+    await openClientSession(this.prisma, this.jwtService, res, account, isProduction);
+  }
+
+  /** "Sair": encerra só esta sessão (o token copiado deixa de valer) */
+  async endSession(req: any, res: Response) {
+    const token = req?.cookies?.ClientAuthentication;
+    if (token) {
+      try {
+        const decoded = this.jwtService.verify(token, {
+          secret: this.configService.get<string>('JWT_SECRET'),
+        }) as { sid?: string };
+        if (decoded?.sid) {
+          await this.prisma.clientSession.deleteMany({ where: { sid: decoded.sid } });
+        }
+      } catch {
+        // Token já inválido: só apaga o cookie
+      }
+    }
+    this.clearCookie(res);
   }
 
   clearCookie(res: Response) {

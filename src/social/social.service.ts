@@ -28,6 +28,15 @@ function instagramHashtagCount(caption: string): number {
 // cada barbearia conecta a própria Página do Facebook via OAuth (Login do
 // Facebook pra Empresas) — o token fica salvo em SocialConnection e nunca é
 // exposto no GraphQL.
+export const SOCIAL_IMAGE_HIDDEN_MESSAGE =
+  'Esta imagem foi ocultada pela moderação e não pode ser publicada de novo. Envie outra imagem.';
+/** Prazo de cada chamada à Meta (o padrão do Node espera até 5 minutos) */
+const META_TIMEOUT_MS = 30_000;
+/** Reserva de publicação parada por mais que isso: a execução caiu */
+const PUBLISHING_STALE_MS = 15 * 60_000;
+/** Post vencido há mais que isso não sai mais sozinho */
+const OVERDUE_MS = 24 * 3_600_000;
+
 @Injectable()
 export class SocialService {
   private readonly logger = new Logger(SocialService.name);
@@ -392,6 +401,7 @@ export class SocialService {
     if (!data.postToFacebook && !data.postToInstagram) {
       throw new BadRequestException('Escolha pelo menos uma rede social.');
     }
+    await this.assertImageNotHidden(barbershopId, data.imageKey);
     const connection = await this.prisma.socialConnection.findUnique({ where: { barbershopId } });
     if (!connection) {
       throw new BadRequestException('Conecte uma conta antes de agendar um post.');
@@ -452,9 +462,16 @@ export class SocialService {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     const post = await this.prisma.socialPost.findFirst({ where: { id, barbershopId } });
     if (!post) throw new NotFoundException('Post não encontrado');
-    if (post.status !== 'FAILED') {
+    // Saiu numa rede e falhou na outra: tenta só a que falhou (item 266)
+    const partial =
+      post.status === 'PUBLISHED' &&
+      ((post.postToFacebook && !post.facebookPostId) ||
+        (post.postToInstagram && !post.instagramMediaId));
+    if (post.status !== 'FAILED' && !partial) {
       throw new BadRequestException('Só é possível tentar de novo um post que falhou.');
     }
+    if (post.hiddenAt) throw new BadRequestException(SOCIAL_IMAGE_HIDDEN_MESSAGE);
+    await this.assertImageNotHidden(barbershopId, post.imageKey);
     this.assertInstagramCaption(post.caption, post.postToInstagram);
     if (post.postToInstagram) {
       const connection = await this.prisma.socialConnection.findUnique({ where: { barbershopId } });
@@ -469,11 +486,22 @@ export class SocialService {
         status: 'SCHEDULED',
         scheduledFor,
         errorMessage: null,
-        publishedAt: null,
-        facebookPostId: null,
-        instagramMediaId: null,
+        publishingAt: null,
+        // Tentativa parcial guarda o que já saiu (não publica de novo)
+        ...(partial ? {} : { publishedAt: null, facebookPostId: null, instagramMediaId: null }),
       },
     });
+  }
+
+  /**
+   * Imagem de post ocultado pela moderação não volta num post novo nem numa
+   * nova tentativa (item 266): a unidade envia outra imagem.
+   */
+  private async assertImageNotHidden(barbershopId: number, imageKey: string) {
+    const hidden = await this.prisma.socialPost.count({
+      where: { barbershopId, imageKey, hiddenAt: { not: null } },
+    });
+    if (hidden > 0) throw new BadRequestException(SOCIAL_IMAGE_HIDDEN_MESSAGE);
   }
 
   private assertInstagramCaption(caption: string, postToInstagram: boolean) {
@@ -497,6 +525,19 @@ export class SocialService {
   // ============ PUBLICAÇÃO (chamado pelo cron) ============
 
   async publishDuePosts(): Promise<void> {
+    // Reserva parada (a execução caiu no meio): não sabemos se saiu na rede.
+    // Vira falha com o motivo, para a unidade conferir e reagendar
+    await this.prisma.socialPost.updateMany({
+      where: {
+        status: 'PUBLISHING',
+        publishingAt: { lt: new Date(Date.now() - PUBLISHING_STALE_MS) },
+      },
+      data: {
+        status: 'FAILED',
+        errorMessage:
+          'A publicação foi interrompida. Confira na rede social se o post saiu antes de tentar de novo.',
+      },
+    });
     const due = await this.prisma.socialPost.findMany({
       where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
     });
@@ -530,6 +571,26 @@ export class SocialService {
       });
       return;
     }
+    // Passou muito da data (unidade suspensa por semanas, agendador parado):
+    // não sai agora uma promoção de uma data que já foi. A unidade reagenda
+    if (post.scheduledFor.getTime() < Date.now() - OVERDUE_MS) {
+      await this.prisma.socialPost.updateMany({
+        where: { id: postId, status: 'SCHEDULED' },
+        data: {
+          status: 'FAILED',
+          errorMessage:
+            'O horário marcado já passou há mais de um dia e o post não foi publicado. Reagende se ainda fizer sentido.',
+        },
+      });
+      return;
+    }
+    // Reserva: só quem mudou a linha publica. Antes duas execuções ao mesmo
+    // tempo (em instâncias diferentes) publicavam o mesmo post duas vezes
+    const claimed = await this.prisma.socialPost.updateMany({
+      where: { id: postId, status: 'SCHEDULED' },
+      data: { status: 'PUBLISHING', publishingAt: new Date() },
+    });
+    if (claimed.count === 0) return;
     const connection = await this.prisma.socialConnection.findUnique({
       where: { barbershopId: post.barbershopId },
     });
@@ -554,14 +615,16 @@ export class SocialService {
     }
     const imageUrl = await this.s3Service.getDownloadUrl(post.imageKey);
     const errors: string[] = [];
-    let facebookPostId: string | undefined;
-    let instagramMediaId: string | undefined;
+    // Nova tentativa parcial: a rede em que já saiu não recebe de novo
+    let facebookPostId: string | undefined = post.facebookPostId ?? undefined;
+    let instagramMediaId: string | undefined = post.instagramMediaId ?? undefined;
 
-    if (post.postToFacebook) {
+    if (post.postToFacebook && !facebookPostId) {
       try {
         const res = await fetch(this.graphUrl(`/${connection.facebookPageId}/photos`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(META_TIMEOUT_MS),
           body: JSON.stringify({
             url: imageUrl,
             caption: post.caption,
@@ -577,7 +640,7 @@ export class SocialService {
       }
     }
 
-    if (post.postToInstagram) {
+    if (post.postToInstagram && !instagramMediaId) {
       if (!connection.instagramBusinessAccountId) {
         errors.push('Instagram: Nenhuma conta do Instagram vinculada à Página conectada.');
       } else {
@@ -587,6 +650,7 @@ export class SocialService {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(META_TIMEOUT_MS),
               body: JSON.stringify({
                 image_url: imageUrl,
                 caption: post.caption,
@@ -605,6 +669,7 @@ export class SocialService {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(META_TIMEOUT_MS),
               body: JSON.stringify({
                 creation_id: containerJson.id,
                 access_token: accessToken,
@@ -630,7 +695,7 @@ export class SocialService {
       data: publishedAny
         ? {
             status: 'PUBLISHED',
-            publishedAt: new Date(),
+            publishedAt: post.publishedAt ?? new Date(),
             facebookPostId,
             instagramMediaId,
             errorMessage: errors.length > 0 ? errors.join(' | ') : null,

@@ -85,7 +85,7 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       // Decode the JWT
       const decoded = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
-      }) as SessionPayload & { iat?: number };
+      }) as SessionPayload & { iat?: number; exp?: number };
       // Só sessão da equipe: cookie do cliente ou state do OAuth não valem
       const claims = staffClaims(decoded);
       if (!claims) throw new UnauthorizedException('Invalid session');
@@ -126,7 +126,8 @@ export class GraphQLJwtAuthGuard implements CanActivate {
       );
 
       // Attach user to request for use in resolvers
-      req.user = { ...user, sessionToken: decoded.sessionToken };
+      // Prazo do token: a assinatura em tempo real para quando ele vence (item 269)
+      req.user = { ...user, sessionToken: decoded.sessionToken, sessionExpiresAt: decoded.exp };
       this.logger.log('User attached to request', {
         userId: user.id,
         role: user.role?.name,
