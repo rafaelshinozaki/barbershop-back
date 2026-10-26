@@ -558,4 +558,77 @@ describe('Conta do cliente final (integração com o banco)', () => {
     expect(await run(laptop)).toBe(true);
     await prisma.clientSession.deleteMany({ where: { clientAccountId: account.id } });
   });
+  it('275: na área do cliente, sai do e-mail de uma barbearia só, e do WhatsApp à parte; e volta', async () => {
+    const role =
+      (await prisma.role.findFirst({ where: { name: 'BarbershopOwner' } })) ??
+      (await prisma.role.create({ data: { name: 'BarbershopOwner' } }));
+    const owners = await Promise.all(
+      ['a', 'b'].map((tag) =>
+        prisma.user.create({
+          data: {
+            email: `mkt-dono-${tag}-${RUN}@test.local`,
+            isActive: true,
+            password: 'x',
+            fullName: 'Dono',
+            idDocNumber: `mkt${tag}${RUN}`.slice(-20),
+            phone: `+5511${RUN}`.slice(0, 20),
+            gender: 'male',
+            birthdate: new Date('1990-01-01'),
+            readTerms: true,
+            roleId: role.id,
+          },
+        }),
+      ),
+    );
+    const [a, b] = await Promise.all(
+      ['Alfa', 'Beta'].map((n, i) =>
+        prisma.network.create({ data: { ownerUserId: owners[i].id, name: `${n} ${RUN}` } }),
+      ),
+    );
+    const phone = `+55119${RUN.slice(-8)}`;
+    const account = await prisma.clientAccount.create({
+      data: { email: `mkt-${RUN}@test.local`, name: 'Cliente', password: null, phone },
+    });
+    for (const n of [a, b]) {
+      await prisma.customer.create({
+        data: {
+          networkId: n.id,
+          name: 'Cliente',
+          phone,
+          email: account.email,
+          clientAccountId: account.id,
+        },
+      });
+    }
+    try {
+      let prefs = await service.marketingPreferences(account.id);
+      expect(prefs).toMatchObject({ hasPhone: true, whatsappOptOut: false });
+      expect(prefs.networks.map((n) => [n.networkName, n.emailOptOut])).toEqual([
+        [`Alfa ${RUN}`, false],
+        [`Beta ${RUN}`, false],
+      ]);
+
+      prefs = await service.setNetworkEmailOptOut(account.id, a.id, true);
+      expect(prefs.networks.map((n) => n.emailOptOut)).toEqual([true, false]);
+      prefs = await service.setWhatsappOptOut(account.id, true);
+      expect(prefs.whatsappOptOut).toBe(true);
+      // O WhatsApp não mexe no e-mail das barbearias
+      expect(prefs.networks.map((n) => n.emailOptOut)).toEqual([true, false]);
+
+      // E a pessoa volta por conta própria
+      prefs = await service.setNetworkEmailOptOut(account.id, a.id, false);
+      prefs = await service.setWhatsappOptOut(account.id, false);
+      expect(prefs.whatsappOptOut).toBe(false);
+      expect(prefs.networks.every((n) => !n.emailOptOut)).toBe(true);
+
+      // Barbearia onde não tem ficha: não mexe
+      await expect(service.setNetworkEmailOptOut(account.id, -1, true)).rejects.toThrow(
+        'Barbearia não encontrada',
+      );
+    } finally {
+      await prisma.customer.deleteMany({ where: { networkId: { in: [a.id, b.id] } } });
+      await prisma.network.deleteMany({ where: { id: { in: [a.id, b.id] } } });
+      await prisma.$executeRaw`DELETE FROM "User" WHERE email LIKE ${`mkt-dono-%-${RUN}@test.local`}`;
+    }
+  });
 });

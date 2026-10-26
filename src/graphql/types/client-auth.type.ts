@@ -112,3 +112,27 @@ export class ClientLinkedSocialAccountType {
   @Field()
   createdAt: string;
 }
+
+@ObjectType()
+export class ClientNetworkMarketingType {
+  @Field(() => Int)
+  networkId: number;
+
+  @Field()
+  networkName: string;
+
+  @Field({ description: 'Saiu das campanhas por e-mail desta barbearia' })
+  emailOptOut: boolean;
+}
+
+@ObjectType()
+export class ClientMarketingPreferencesType {
+  @Field({ description: 'A conta tem telefone (dá para escolher pelo WhatsApp)' })
+  hasPhone: boolean;
+
+  @Field({ description: 'Saiu das campanhas pelo WhatsApp (vale para todas as barbearias)' })
+  whatsappOptOut: boolean;
+
+  @Field(() => [ClientNetworkMarketingType])
+  networks: ClientNetworkMarketingType[];
+}

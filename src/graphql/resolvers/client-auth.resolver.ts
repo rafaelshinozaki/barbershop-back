@@ -9,6 +9,7 @@ import {
   ClientFavoriteBarberType,
   ClientHistoryEntryType,
   ClientLinkedSocialAccountType,
+  ClientMarketingPreferencesType,
 } from '../types/client-auth.type';
 import { Network } from '../types/barbershop.type';
 import {
@@ -247,5 +248,35 @@ export class ClientAuthResolver {
   ) {
     await this.clientAuthService.unlinkSocialAccount(client.id, provider);
     return true;
+  }
+
+  /** Campanhas: o que a pessoa quer receber (e-mail por barbearia; WhatsApp) */
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Query(() => ClientMarketingPreferencesType)
+  async clientMarketingPreferences(@CurrentClient() client: CurrentClientUser) {
+    return this.clientAuthService.marketingPreferences(client.id);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => ClientMarketingPreferencesType, {
+    description: 'Sai (ou volta) das campanhas por e-mail de uma barbearia',
+  })
+  async setClientEmailMarketing(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('networkId', { type: () => Int }) networkId: number,
+    @Args('optOut') optOut: boolean,
+  ) {
+    return this.clientAuthService.setNetworkEmailOptOut(client.id, networkId, optOut);
+  }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => ClientMarketingPreferencesType, {
+    description: 'Sai (ou volta) das campanhas pelo WhatsApp',
+  })
+  async setClientWhatsappMarketing(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('optOut') optOut: boolean,
+  ) {
+    return this.clientAuthService.setWhatsappOptOut(client.id, optOut);
   }
 }
