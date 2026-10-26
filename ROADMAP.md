@@ -3178,3 +3178,20 @@ Foram lidos no backoffice-back o saldo a repassar de cada unidade (clube, alugue
      - O percentual cobrado também não fica gravado nesses dois pagamentos (o sinal tem `depositPlatformFeePercent`, o clube `platformFeePercent`). Mudar a taxa em Preços e taxas mudaria o cálculo do que já foi pago.
      
      **Fazer:** gravar o percentual na hora da cobrança (`prepaidPlatformFeePercent` no horário e `platformFeePercent` na caixinha). Em Resultados, linhas "taxa do pagamento antecipado" e "taxa da caixinha", com os estornos proporcionais ao que voltou (`prepaidRefundedAmount`, caixinha estornada), só das unidades em real, como as outras. Teste: um pagamento antecipado e uma caixinha pagos pelo app no período; as taxas aparecem na receita.
+
+### Centésima décima quarta rodada (2026-10-26): Suporte e cobranças vencidas no backoffice
+
+Foram lidos no backoffice-back a fila do Suporte, a busca de contas de cliente e a prévia do clube na suspensão, o histórico da unidade, os horários e o clube em aberto do dono, e o Financeiro dos planos (vencidas, resumo da cobrança recorrente e cobranças feitas). No back, a mesma lista de vencidas (`allOverduePayments`).
+
+303. ⬜ **Pedido de suporte em aberto e antigo some da fila padrão do Suporte** (backoffice-back: `SupportQueries.queue`):
+     - Sem filtro, a fila lê os 200 pedidos com atividade mais recente, de qualquer situação, e só depois põe os em aberto na frente. Um pedido em aberto parado há mais tempo que esses 200 (respondidos e fechados recentes) não aparece.
+     - É justamente o pedido que está esperando há mais tempo. Só aparece filtrando por "em aberto", e quem atende pela fila padrão não sabe que ele existe.
+     
+     **Fazer:** a ordem vai para o banco (situação primeiro: em aberto, respondido, fechado; depois a atividade), e o limite vale depois dela. Ou os em aberto entram todos e o limite vale só para os outros. Teste: 250 pedidos respondidos recentes e um em aberto antigo; o em aberto aparece na fila padrão.
+
+304. ⬜ **"Cobranças de plano vencidas" lista cada mensalidade já paga das assinaturas renovadas** (back: `BackofficeResolver.allOverduePayments`; backoffice-back: `FinanceQueries.overdue`):
+     - A lista pega todo `Payment` com `nextPaymentDate` no passado e situação `COMPLETED`. A cada renovação, a mensalidade anterior fica com `nextPaymentDate` vencido. Assim, uma assinatura em dia com 12 meses pagos aparece 11 vezes como vencida, com "dias em atraso" crescendo.
+     - Também entram assinaturas canceladas e as cobradas pela Stripe (que não estão em atraso). O resumo da cobrança recorrente (`recurringStats`) e o relatório de vencidas do back já filtram isso (`latestPerSubscription` e `OVERDUE_SUBSCRIPTION_FILTER`); a lista completa não.
+     - O Financeiro vê centenas de "vencidas" e não acha as que estão de fato sem pagar.
+     
+     **Fazer:** nas duas, só o pagamento mais recente de cada assinatura (`latestPerSubscription`) e só assinatura ativa sem Stripe com o período vencido (`OVERDUE_SUBSCRIPTION_FILTER`), como no resumo. Teste: assinatura com três mensalidades pagas e a última em dia; não aparece. Assinatura com a última vencida aparece uma vez.
