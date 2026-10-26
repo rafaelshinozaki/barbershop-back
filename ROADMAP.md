@@ -3023,27 +3023,35 @@ Foram lidos os pontos de fidelidade (ganho, resgate, edição e exclusão da ven
 
 Foram lidos o pagamento antecipado pelo app, os pagamentos pelo app no backoffice, a ligação entre conta de cliente e da equipe, a indicação do Pro, as séries de horários, o calendário assinável, a guarda de dados, a verificação de identidade, o espaço compartilhado, o Destaque, os convites da equipe, os fechamentos, o cabeçalho de SEO da página pública e a localização das unidades.
 
-287. ⬜ **Pagamento antecipado que conclui depois de a conta ser fechada cobra o cliente duas vezes** (back: `PrepaymentService.finalize`, `createSale`):
+287. ✅ **Pagamento antecipado que conclui depois de a conta ser fechada cobra o cliente duas vezes** (back: `PrepaymentService.finalize`, `createSale`):
      - O cliente abre o link "gerenciar agendamento" e começa a pagar pelo app (`start` cria o PaymentIntent e guarda `prepaidPaymentIntentId`). Antes de ele concluir, a equipe fecha a conta no balcão (`createSale` lê `prepaidAt`, ainda nulo, e cobra o valor inteiro) e o horário vira concluído.
      - Quando o cartão é confirmado (tela ou webhook), `finalize` grava `prepaidAt` e só estorna se o horário estiver cancelado. Com venda fechada, concluído ou falta, o pagamento fica registrado e não entra em venda nenhuma: o cliente pagou no balcão e pelo app.
      - Fechar a conta também não cancela o PaymentIntent aberto, então a aba antiga continua podendo pagar.
      
      **Fazer:** em `finalize`, pagamento que chega com o horário fora de `PAYABLE` ou com venda já fechada é estornado inteiro (como o pagamento a mais, chave fixa) e não grava `prepaidAt`. Ao fechar a conta de um horário com `prepaidPaymentIntentId` sem `prepaidAt`, cancelar o PaymentIntent. Teste: começa o pagamento, fecha a conta, conclui o pagamento; o valor é estornado e o horário não fica como pago pelo app.
 
-288. ⬜ **Os totais do Financeiro (pagamentos pelo app) somam moedas diferentes** (back: `AppPaymentsService.list`):
+     **Feito:** `PrepaymentService.finalize` estorna inteiro (mesma chave fixa do pagamento a mais) e não grava `prepaidAt` quando o pagamento chega com a conta do horário já fechada, ou com o horário concluído ou como falta. Cancelado continua como antes: registra e devolve. `createSale` cancela o PaymentIntent aberto do horário (`prepaidPaymentIntentId` sem `prepaidAt`) ao fechar a conta. Teste em `round-287-289.int.spec.ts`.
+
+288. ✅ **Os totais do Financeiro (pagamentos pelo app) somam moedas diferentes** (back: `AppPaymentsService.list`):
      - A lista junta sinal, atendimento pago antes e caixinha de todas as unidades, cada linha na moeda da unidade (`b.currency`, `t.currency`). Mas `SUM(p.amount)`, `SUM(p."refundedAmount")` e a taxa estimada saem num número só, sem moeda.
      - Com unidades em reais e em dólares (o país e a moeda já são por unidade), o total mistura R$ 100 com US$ 100 como se fossem 200 da mesma coisa, e a taxa estimada da plataforma sai errada.
      
      **Fazer:** totais agrupados por moeda (`GROUP BY currency`), devolvidos como lista (moeda, quantidade, valor, estornado, taxa estimada). A tela mostra uma linha por moeda. Teste: um pagamento em BRL e um em USD; os totais vêm separados.
 
-289. ⬜ **O cabeçalho da página pública sai sempre em português, e um `$` no nome da unidade embaralha o HTML** (back: `ShopSeoService.forSlug`; front: `api/_shop-head.js`):
+     **Feito:** `AppPaymentsService.list` soma por moeda (`GROUP BY currency`) e devolve `byCurrency` (moeda, quantidade, valor, estornado e taxa estimada). Com uma moeda só, os totais da raiz continuam como antes; com várias, a raiz fica em zero, como já fazia a leitura do backoffice (`appPaymentTotals` no backoffice-back). Teste em `round-287-289.int.spec.ts`.
+
+289. ✅ **O cabeçalho da página pública sai sempre em português, e um `$` no nome da unidade embaralha o HTML** (back: `ShopSeoService.forSlug`; front: `api/_shop-head.js`):
      - O título ("… | Agende online"), a descrição padrão ("Agende online em …") e a nota ("avaliações") são fixos em português. Uma unidade nos Estados Unidos ou na Espanha aparece no Google e na prévia do WhatsApp em português, embora a página e os e-mails dela sigam o idioma do país (`langForCountry`).
      - `injectShopHead` monta as tags com o nome e a descrição do dono e as coloca com `html.replace(/<\/head>/i, texto)`. Num texto de substituição, `$&`, `` $` `` e `$'` são padrões especiais. O `escapeHtml` não trata `$`, então uma unidade chamada, por exemplo, "Studio $' Barber" injeta no `<head>` o resto do HTML da página (o app inteiro de novo).
      
      **Fazer:** textos do SEO no idioma do país da unidade (pt, en, es), como os e-mails. No front, passar uma função como substituição (`replace(re, () => …)`) para o texto do dono não ser interpretado. Teste: unidade nos EUA recebe título em inglês; nome com `$'` sai literal no `<title>`.
 
-290. ⬜ **Mudar o endereço da unidade mantém a localização antiga quando a nova não é encontrada** (back: `GeocodingService.locateNow`, `updateBarbershop` no resolver):
+     **Feito:** `ShopSeoService` monta o título, a descrição padrão e a nota no idioma do país da unidade (`langForCountry`: pt, en, es). No front, `injectShopHead` passa uma função como substituição, então `$&`, `` $` `` e `$'` no texto do dono saem literais. Teste em `round-287-289.int.spec.ts`; o front foi conferido com um nome que tem `$'`.
+
+290. ✅ **Mudar o endereço da unidade mantém a localização antiga quando a nova não é encontrada** (back: `GeocodingService.locateNow`, `updateBarbershop` no resolver):
      - Ao mudar o endereço, o resolver chama `geocoding.locate`. Se o serviço não acha o endereço novo (ou falha), `locateNow` não grava nada e a unidade fica com a latitude e a longitude do endereço antigo.
      - O backfill só completa unidades sem coordenadas, então isso nunca se corrige: a unidade que mudou de bairro ou de cidade continua aparecendo na busca "perto de mim" e no mapa no lugar antigo, com a distância errada.
      
      **Fazer:** quando o endereço muda, limpar as coordenadas na mesma atualização e só então localizar. Se não achar, a unidade fica sem localização (o backfill tenta de novo), em vez de ficar no lugar errado. Teste: unidade localizada, muda o endereço para um que o serviço não acha; as coordenadas ficam nulas.
+
+     **Feito:** `updateBarbershop` guarda o endereço antes de salvar e chama `GeocodingService.relocateIfMoved`. Se o endereço mudou de fato, as coordenadas saem antes de localizar o novo, e o backfill tenta de novo se não achar. Salvar o formulário sem mudar o endereço não mexe em nada. Teste em `geocoding.service.spec.ts`.

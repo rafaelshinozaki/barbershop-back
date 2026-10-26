@@ -10,6 +10,25 @@ type Address = {
   country: string;
 };
 
+const ADDRESS_FIELDS = {
+  address: true,
+  complement1: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  country: true,
+} as const;
+
+const addressKey = (a: Address) =>
+  JSON.stringify([
+    a.address,
+    a.complement1 ?? null,
+    a.city,
+    a.state,
+    a.postalCode ?? null,
+    a.country,
+  ]);
+
 /** Nominatim pede no máximo 1 pedido por segundo */
 const MIN_INTERVAL_MS = 1100;
 /** Quantas unidades sem localização completar por vez ao subir o servidor */
@@ -99,6 +118,31 @@ export class GeocodingService implements OnApplicationBootstrap, OnModuleDestroy
       this.logger.warn(`Não localizou a unidade #${barbershopId}: ${String(err)}`);
       return false;
     });
+  }
+
+  /** O endereço atual, pra comparar depois de uma edição */
+  async addressOf(barbershopId: number): Promise<string | null> {
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: ADDRESS_FIELDS,
+    });
+    return shop ? addressKey(shop) : null;
+  }
+
+  /**
+   * Depois de editar a unidade: se o endereço mudou, as coordenadas antigas
+   * saem antes de localizar o novo. Antes, endereço novo não encontrado
+   * deixava a unidade no lugar antigo, e o backfill nunca corrigia (item 290).
+   */
+  async relocateIfMoved(barbershopId: number, before: string | null): Promise<boolean> {
+    if (!this.enabled) return false;
+    const now = await this.addressOf(barbershopId);
+    if (now == null || now === before) return false;
+    await this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      data: { latitude: null, longitude: null },
+    });
+    return this.locate(barbershopId);
   }
 
   private async locateNow(barbershopId: number): Promise<boolean> {

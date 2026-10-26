@@ -10541,6 +10541,7 @@ export class BarbershopService {
           prepaidAmount: true,
           prepaidRefundedAt: true,
           prepaidRefundedAmount: true,
+          prepaidPaymentIntentId: true,
           sale: { select: { id: true } },
         },
       });
@@ -10558,6 +10559,13 @@ export class BarbershopService {
         throw new BadRequestException(SALE_APPOINTMENT_CUSTOMER_MESSAGE);
       }
       data = { ...data, customerId: appt.customerId };
+      // Pagamento pelo app começado e não concluído: a conta fecha agora, então
+      // a aba antiga não paga mais (se já tinha pago, o aviso estorna; item 287)
+      if (appt.prepaidPaymentIntentId && !appt.prepaidAt) {
+        await this.stripeService
+          .cancelPaymentIntent(appt.prepaidPaymentIntentId)
+          .catch(() => undefined);
+      }
       if (appt.depositPaid) depositPaidOnAppointment = Number(appt.depositAmount ?? 0);
       if (appt.prepaidAt && !appt.prepaidRefundedAt) {
         // Menos o que já foi devolvido em estorno parcial
