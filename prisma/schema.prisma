@@ -43,6 +43,10 @@ model User {
   viewerModeStartDate DateTime?
   roleId              Int
   twoFactorEnabled    Boolean            @default(false)
+  // Quem tem as duas etapas ligadas escolhe se o login social (Google,
+  // Facebook, Apple) também pede o código. Desligado: vale a verificação do
+  // próprio provedor (item 315)
+  socialLoginTwoFactor Boolean          @default(false)
   // Equipe do sistema (SystemManager): áreas do backoffice liberadas (support,
   // moderation, users, finance, operations). O SystemAdmin vê tudo.
   backofficeAreas     String[]           @default([])

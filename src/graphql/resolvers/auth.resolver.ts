@@ -20,6 +20,7 @@ import {
   ForgotPasswordCheckInput,
   ResetPasswordInput,
   TwoFactorInput,
+  SocialLoginTwoFactorInput,
   RequestChangePasswordCodeInput,
   VerifyChangePasswordCodeInput,
   ResetPasswordWithCodeInput,
@@ -55,6 +56,7 @@ function toGraphQLUser(user: any) {
     stripeCustomerId: user.stripeCustomerId,
     role: user.role && typeof user.role === 'object' ? user.role.name : user.role,
     twoFactorEnabled: user.twoFactorEnabled,
+    socialLoginTwoFactor: user.socialLoginTwoFactor,
     photoKey: user.photoKey,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -297,6 +299,20 @@ export class AuthResolver {
     }
     await this.userService.setTwoFactor(user.id, false);
     return true;
+  }
+
+  /**
+   * Login social também pede o código (item 315). Desligado (o padrão), quem
+   * entra pelo Google usa a verificação dele, sem um segundo código.
+   */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  @ThrottleAuth()
+  async setSocialLoginTwoFactor(
+    @Args('input') input: SocialLoginTwoFactorInput,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.userService.setSocialLoginTwoFactor(user.id, input.enabled, input.currentPassword);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

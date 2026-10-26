@@ -2448,6 +2448,8 @@ type Mutation {
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
   setSharedLocationInviteBlock(barbershopId: Int!, blocked: Boolean!, id: Int!): Boolean!
+
+  setSocialLoginTwoFactor(input: SocialLoginTwoFactorInput!): Boolean!
   setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
@@ -4002,6 +4004,11 @@ type SocialConnectionType {
   instagramUsername: String
 }
 
+input SocialLoginTwoFactorInput {
+  currentPassword: String
+  enabled: Boolean!
+}
+
 type SocialPageOptionType {
   id: String!
   name: String!
@@ -4605,6 +4612,9 @@ type User {
   provider: String!
   readTerms: Boolean!
   role: String
+
+  """Login social também pede o código das duas etapas"""
+  socialLoginTwoFactor: Boolean
   stripeCustomerId: String
   subscriptionStatus: String
   twoFactorEnabled: Boolean!

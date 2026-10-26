@@ -3290,12 +3290,14 @@ Foram lidos no back a venda inteira (criação com sinal, pago pelo app, cartão
 
 Foram lidos no back o login da equipe (senha, código por e-mail, "lembrar de mim", renovação do token), as sessões ativas (sair, sair das outras, encerrar uma), a troca e a redefinição de senha, a verificação em duas etapas (ativar, desativar, código do login), os guards do GraphQL e do REST, o login social da equipe e do cliente, e a área do cliente (cadastro, login com a senha da equipe, confirmação do e-mail, redefinição de senha, sessão). No backoffice-back, o login da equipe da plataforma (bloqueio por tentativas, código, sessão com prazo e tempo parado, redefinição e convite).
 
-315. ⬜ **O login social entra direto em conta com verificação em duas etapas, sem pedir o código** (back: `AuthController.completeSocialLogin`, `socialLoginAllowed`):
+315. ✅ **O login social entra direto em conta com verificação em duas etapas, sem pedir o código** (back: `AuthController.completeSocialLogin`, `socialLoginAllowed`):
      - No login por senha, `needsLoginCode` pede o código por e-mail para quem ligou a verificação em duas etapas (`twoFactorEnabled`) e para as contas do sistema.
      - No login pelo Google, Facebook ou Apple, só as contas do sistema são recusadas (`socialLoginAllowed`). O dono ou funcionário com a verificação ligada entra sem o código, e quem tem acesso só à conta do Google da pessoa pula a segunda etapa que ela ligou de propósito.
      - A própria tela de "abrir a área da equipe" pela área do cliente (`staffForClient`) já recusa conta com a verificação ligada; o login social não segue a mesma regra.
      
-     **Fazer:** no login social da equipe, conta com `twoFactorEnabled` passa pelo código: manda o código e redireciona para a tela de código do login (com um `loginId`), ou recusa o login social e pede o login por senha. Teste: conta com verificação ligada entrando pelo Google não ganha a sessão sem o código.
+     **Fazer (decidido em 2026-10-26):** opção nas configurações da conta, "pedir o código também no login social". Desligada por padrão: quem entra pelo Google já passa pela verificação do Google, e um segundo código atrapalharia. Ligada, o login social de quem tem as duas etapas manda o código e a sessão só abre na tela do código.
+
+     **Feito:** `User.socialLoginTwoFactor` (padrão falso) e a mutation `setSocialLoginTwoFactor`. Ligar exige as duas etapas ligadas; desligar pede a senha atual, como desligar as duas etapas; desligar as duas etapas zera a opção. No login social, `needsSocialLoginCode` (duas etapas e opção ligadas) manda o código (`sendLoginCode`) e redireciona para `/verification-code?loginId=…`, sem abrir sessão. No front, a opção fica no cartão das duas etapas da conta, e a tela do código aceita o `loginId` vindo do login social. Testes em `backoffice-login.spec.ts` e `social-login-2fa.int.spec.ts`.
 
 316. ⬜ **Encerrar uma sessão na lista de sessões não para os avisos no celular daquele aparelho** (back: `UserService.terminateSession`; `PushSubscription`):
      - "Sair das outras sessões", a troca de senha e o "derrubar sessões" do backoffice apagam as inscrições de aviso no celular (menos a do aparelho que pediu). Encerrar só uma sessão (`terminateSession`) apaga a `ActiveSession` e mais nada.

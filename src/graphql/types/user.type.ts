@@ -142,6 +142,9 @@ export class User {
   @Field()
   twoFactorEnabled: boolean;
 
+  @Field({ nullable: true, description: 'Login social também pede o código das duas etapas' })
+  socialLoginTwoFactor?: boolean;
+
   /** Áreas do backoffice da equipe do sistema (SystemManager); vazio pros outros */
   @Field(() => [String], { nullable: true })
   backofficeAreas?: string[];

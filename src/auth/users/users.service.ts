@@ -59,6 +59,9 @@ const SIGNUP_ROLES: string[] = [Role.BARBERSHOP_OWNER, Role.BARBERSHOP_EMPLOYEE]
 /** Link de criar a senha da conta importada pela planilha */
 const IMPORT_PASSWORD_LINK_HOURS = 7 * 24;
 
+/** Pedir o código no login social só faz sentido com as duas etapas ligadas */
+export const SOCIAL_TWO_FACTOR_NEEDS_2FA_MESSAGE =
+  'Ligue a verificação em duas etapas antes de pedir o código no login social.';
 export const TERMS_REQUIRED_MESSAGE =
   'Aceite os termos de uso e a política de privacidade para criar a conta.';
 
@@ -637,6 +640,7 @@ export class UserService {
     isActive: true,
     photoKey: true,
     twoFactorEnabled: true,
+    socialLoginTwoFactor: true,
     provider: true,
     role: {
       select: {
@@ -1860,10 +1864,34 @@ export class UserService {
     return true;
   }
 
+  /**
+   * Login social também pede o código (item 315). Ligar só aperta a regra;
+   * desligar afrouxa, então pede a senha atual (como desligar as duas etapas).
+   */
+  async setSocialLoginTwoFactor(userId: number, enabled: boolean, currentPassword?: string | null) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, twoFactorEnabled: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (enabled && !user.twoFactorEnabled) {
+      throw new BadRequestException(SOCIAL_TWO_FACTOR_NEEDS_2FA_MESSAGE);
+    }
+    if (!enabled && !(await this.isPasswordValid(user.email, currentPassword ?? ''))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { socialLoginTwoFactor: enabled },
+    });
+    return true;
+  }
+
   async setTwoFactor(userId: number, enabled: boolean) {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { twoFactorEnabled: enabled },
+      // Sem as duas etapas, a opção do login social não tem o que pedir
+      data: { twoFactorEnabled: enabled, ...(enabled ? {} : { socialLoginTwoFactor: false }) },
     });
     return true;
   }
