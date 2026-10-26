@@ -1,8 +1,31 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { BarbershopService } from '../barbershop/barbershop.service';
+import { langForCountry, type Lang } from '../email/language';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MAX_DESCRIPTION = 160;
+
+/** Textos no idioma do país da unidade, como a página e os e-mails (item 289) */
+const TEXTS: Record<
+  Lang,
+  { book: string; bookAt: (name: string, place: string) => string; reviews: string }
+> = {
+  pt: {
+    book: 'Agende online',
+    bookAt: (name, place) => `Agende online em ${name}, ${place}.`,
+    reviews: 'avaliações',
+  },
+  en: {
+    book: 'Book online',
+    bookAt: (name, place) => `Book online at ${name}, ${place}.`,
+    reviews: 'reviews',
+  },
+  es: {
+    book: 'Reserva online',
+    bookAt: (name, place) => `Reserva online en ${name}, ${place}.`,
+    reviews: 'reseñas',
+  },
+};
 
 export type ShopSeo = {
   title: string;
@@ -34,12 +57,12 @@ export class ShopSeoService {
     const image =
       hasImage && api ? `${api}/seo/shops/${encodeURIComponent(shop.slug)}/image` : null;
     const place = `${shop.city} - ${shop.state}`;
+    const text = TEXTS[langForCountry(shop.country)];
     const rating =
       shop.reviewCount > 0 && shop.averageRating != null
-        ? ` ★ ${Number(shop.averageRating).toFixed(1)} (${shop.reviewCount} avaliações).`
+        ? ` ★ ${Number(shop.averageRating).toFixed(1)} (${shop.reviewCount} ${text.reviews}).`
         : '';
-    const base =
-      shop.description?.replace(/\s+/g, ' ').trim() || `Agende online em ${shop.name}, ${place}.`;
+    const base = shop.description?.replace(/\s+/g, ' ').trim() || text.bookAt(shop.name, place);
     const description = truncate(`${base}${rating}`, MAX_DESCRIPTION);
     const sameAs = [shop.instagramUrl, shop.facebookUrl, shop.linkedinUrl].filter(Boolean);
 
@@ -91,7 +114,7 @@ export class ShopSeoService {
       })),
     };
     return {
-      title: `${shop.name} · ${place} | Agende online`,
+      title: `${shop.name} · ${place} | ${text.book}`,
       description,
       url,
       image,

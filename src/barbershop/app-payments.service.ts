@@ -113,19 +113,40 @@ export class AppPaymentsService {
         SELECT p.*, d.status AS "disputeStatus", d.reason AS "disputeReason"
         ${from} ORDER BY p."paidAt" DESC, p.kind, p.id DESC LIMIT ${limit} OFFSET ${offset}`,
       this.prisma.$queryRaw<
-        { count: bigint; amount: Prisma.Decimal | null; refunded: Prisma.Decimal | null }[]
+        {
+          currency: string;
+          count: bigint;
+          amount: Prisma.Decimal | null;
+          refunded: Prisma.Decimal | null;
+        }[]
       >`
-        SELECT COUNT(*) AS count, SUM(p.amount) AS amount, SUM(p."refundedAmount") AS refunded ${from}`,
+        SELECT p.currency, COUNT(*) AS count, SUM(p.amount) AS amount,
+               SUM(p."refundedAmount") AS refunded
+        ${from} GROUP BY p.currency ORDER BY p.currency`,
     ]);
-    const amount = Number(totals[0]?.amount ?? 0);
-    const refunded = Number(totals[0]?.refunded ?? 0);
+    // Cada unidade cobra na moeda dela: somar reais com dólares dava um número
+    // sem sentido (item 288). Uma moeda só fica na raiz; várias, só na lista
+    const feePercent = currentPricing().platformFeePercent;
+    const byCurrency = totals.map((t) => {
+      const amount = Number(t.amount ?? 0);
+      const refunded = Number(t.refunded ?? 0);
+      return {
+        currency: t.currency,
+        count: Number(t.count),
+        amount,
+        refunded,
+        // Taxa pela tabela de hoje (a cobrada na hora pode ter sido outra)
+        estimatedFee: Math.round((amount - refunded) * feePercent) / 100,
+      };
+    });
+    const single = byCurrency.length === 1 ? byCurrency[0] : null;
     return {
-      total: Number(totals[0]?.count ?? 0),
-      amount,
-      refunded,
-      // Taxa pela tabela de hoje (a cobrada na hora pode ter sido outra)
-      estimatedFee: Math.round((amount - refunded) * currentPricing().platformFeePercent) / 100,
-      feePercent: currentPricing().platformFeePercent,
+      total: byCurrency.reduce((n, g) => n + g.count, 0),
+      amount: single?.amount ?? 0,
+      refunded: single?.refunded ?? 0,
+      estimatedFee: single?.estimatedFee ?? 0,
+      feePercent,
+      byCurrency,
       items: rows.map((r) => {
         const total = Number(r.amount);
         const back = Number(r.refundedAmount);

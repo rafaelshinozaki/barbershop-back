@@ -228,17 +228,10 @@ export class BarbershopResolver {
     @Args('input') input: UpdateBarbershopInput,
     @CurrentUser() user: UserDTO,
   ) {
+    const before = await this.geocoding.addressOf(id);
     const shop = await this.barbershopService.updateBarbershop(user.id, id, input);
-    // Mudou o endereço: localiza de novo
-    const addressKeys = [
-      'address',
-      'complement1',
-      'city',
-      'state',
-      'country',
-      'postalCode',
-    ] as const;
-    if (addressKeys.some((k) => input[k] !== undefined)) void this.geocoding.locate(id);
+    // Mudou o endereço: tira a localização antiga e localiza de novo
+    void this.geocoding.relocateIfMoved(id, before).catch(() => undefined);
     return shop;
   }
 

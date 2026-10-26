@@ -63,4 +63,32 @@ describe('GeocodingService', () => {
     }
     expect(updates).toEqual([{ where: { id: 7 }, data: { latitude: 1.5, longitude: 2.5 } }]);
   });
+
+  it('item 290: endereço novo tira a localização antiga; sem achar o novo, fica sem', async () => {
+    let shop: Record<string, unknown> = { id: 7, ...address, latitude: 1, longitude: 2 };
+    const prisma = {
+      barbershop: {
+        findUnique: async () => shop,
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          shop = { ...shop, ...data };
+        },
+      },
+    };
+    global.fetch = (async () => ({ ok: true, json: async () => [] })) as never;
+    const geo = new GeocodingService(prisma as never);
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      // Salvou sem mudar o endereço: nada muda
+      const before = await geo.addressOf(7);
+      expect(await geo.relocateIfMoved(7, before)).toBe(false);
+      expect(shop).toMatchObject({ latitude: 1, longitude: 2 });
+      // Mudou para um endereço que o serviço não acha
+      shop = { ...shop, address: 'Rua Nova, 5', city: 'Campinas' };
+      expect(await geo.relocateIfMoved(7, before)).toBe(false);
+      expect(shop).toMatchObject({ latitude: null, longitude: null });
+    } finally {
+      process.env.NODE_ENV = env;
+    }
+  });
 });

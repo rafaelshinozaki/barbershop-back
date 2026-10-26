@@ -171,7 +171,13 @@ export class PrepaymentService {
     const appointmentId = Number(intent.metadata?.appointmentId);
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
-      select: { id: true, status: true, prepaidAt: true, prepaidPaymentIntentId: true },
+      select: {
+        id: true,
+        status: true,
+        prepaidAt: true,
+        prepaidPaymentIntentId: true,
+        sale: { select: { id: true } },
+      },
     });
     if (!appt) {
       this.logger.warn(`Pagamento ${intent.id} sem agendamento`);
@@ -179,6 +185,11 @@ export class PrepaymentService {
     }
     if (appt.prepaidAt) {
       if (appt.prepaidPaymentIntentId === intent.id) return true;
+      return this.refundExtra(intent);
+    }
+    // Chegou com a conta já fechada (ou o horário concluído/falta): o cliente
+    // pagou no balcão, então este volta inteiro e não fica registrado (item 287)
+    if (appt.sale || (!PAYABLE.includes(appt.status) && appt.status !== 'CANCELLED')) {
       return this.refundExtra(intent);
     }
     const recorded = await this.prisma.appointment.updateMany({
