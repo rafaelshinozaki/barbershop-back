@@ -3055,3 +3055,20 @@ Foram lidos o pagamento antecipado pelo app, os pagamentos pelo app no backoffic
      **Fazer:** quando o endereço muda, limpar as coordenadas na mesma atualização e só então localizar. Se não achar, a unidade fica sem localização (o backfill tenta de novo), em vez de ficar no lugar errado. Teste: unidade localizada, muda o endereço para um que o serviço não acha; as coordenadas ficam nulas.
 
      **Feito:** `updateBarbershop` guarda o endereço antes de salvar e chama `GeocodingService.relocateIfMoved`. Se o endereço mudou de fato, as coordenadas saem antes de localizar o novo, e o backfill tenta de novo se não achar. Salvar o formulário sem mudar o endereço não mexe em nada. Teste em `geocoding.service.spec.ts`.
+
+### Centésima sétima rodada (2026-10-26): estorno com confirmação e WhatsApp pela área do cliente
+
+Foram lidos as confirmações do backoffice (estorno, exclusão, e-mail em massa), a exclusão da conta, as avaliações da unidade e do profissional, o histórico de alterações, os lembretes, o sinal online, a trilha de atividade, o backup, a agenda da franquia e as preferências de campanha da área do cliente.
+
+291. ⬜ **O limite de estorno sem confirmação é em reais, mas é comparado com o valor em qualquer moeda** (back: `adminRefundAppPayment`, `refundApprovalLimit`):
+     - Quem não é Administrador estorna sozinho até `BACKOFFICE_REFUND_APPROVAL_LIMIT` (padrão 500, "em reais"). Acima disso, vira pedido de confirmação. O resolver compara `refundValue + refundedSoFar` direto com esse número, na moeda do pagamento.
+     - Pagamento em dólar ou euro: um estorno de US$ 500 (uns R$ 2.700) passa sem a confirmação de outro Administrador. Moeda sem centavos e de número grande (peso chileno, iene): qualquer estorno pequeno vira pedido de confirmação.
+     
+     **Fazer:** o limite vale por moeda. Converter o valor para reais com uma tabela de câmbio mantida no `.env` (por exemplo `BACKOFFICE_REFUND_APPROVAL_LIMITS=BRL:500,USD:100,EUR:90`), ou exigir confirmação sempre que a moeda não for a do limite. Teste: estorno de 200 em USD, sem limite configurado para USD, vira pedido de confirmação.
+
+292. ⬜ **Pela área do cliente, dá para voltar a mandar WhatsApp para quem respondeu SAIR, com o telefone de outra pessoa** (back: `ClientAuthService.setWhatsappOptOut`, `marketingPreferences`):
+     - O telefone da conta de cliente é digitado pela pessoa e não é confirmado. `setWhatsappOptOut(false)` apaga da `WhatsappOptOut` todas as formas desse número.
+     - Quem cadastra na própria conta o telefone de outra pessoa e marca "receber pelo WhatsApp" desfaz o SAIR que ela mandou. As campanhas de todas as barbearias voltam a ir para o WhatsApp dela, contra o pedido dela (LGPD e regra da Meta para mensagens de marketing).
+     - A tela também conta se aquele telefone pediu para sair (`whatsappOptOut`), mesmo sendo de outra pessoa.
+     
+     **Fazer:** pela conta, sair do WhatsApp continua valendo. Voltar só desfaz a saída feita por esta conta (guardar `clientAccountId` na linha da `WhatsappOptOut`); quem saiu respondendo SAIR volta respondendo VOLTAR, e a tela explica isso. A tela não mostra a escolha de um telefone que a conta não confirmou, e a saída feita por outra conta ou pelo WhatsApp aparece como "fale VOLTAR no WhatsApp". Teste: SAIR pelo WhatsApp e, numa conta com esse telefone, marcar "receber" não apaga a linha.
