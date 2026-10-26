@@ -5,6 +5,27 @@ import { RATE_WINDOW_MS } from './customer-rating.service';
 const MAX_REPLY = 1000;
 const PUBLIC_REVIEWS = 20;
 
+/** A nota do atendimento já pode aparecer: o profissional avaliou o cliente, o prazo passou, ou o horário veio de histórico. */
+function revealedAppointment(now = new Date()) {
+  return {
+    OR: [
+      { customerRatings: { some: { side: 'professional' as const } } },
+      { endAt: { lt: new Date(now.getTime() - RATE_WINDOW_MS) } },
+      { source: { in: ['HISTORY', 'IMPORT'] } },
+    ],
+  };
+}
+
+function reviewIsRevealed(appointment: {
+  endAt: Date;
+  source: string | null;
+  customerRatings: { id: number }[];
+}) {
+  if (appointment.customerRatings.length > 0) return true;
+  if (appointment.source === 'HISTORY' || appointment.source === 'IMPORT') return true;
+  return appointment.endAt.getTime() < Date.now() - RATE_WINDOW_MS;
+}
+
 /** "Carlos S." — o nome que aparece na página; sem ficha, "Cliente" */
 export function reviewerLabel(name: string | null | undefined) {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
@@ -38,7 +59,7 @@ export class ProfessionalReviewService {
   /** Últimos comentários pra página pública, com a resposta do profissional */
   async publicReviews(professionalId: number) {
     const rows = await this.prisma.professionalReview.findMany({
-      where: { professionalId, hiddenAt: null },
+      where: { professionalId, hiddenAt: null, appointment: revealedAppointment() },
       orderBy: { createdAt: 'desc' },
       take: PUBLIC_REVIEWS,
       include: {
@@ -67,13 +88,7 @@ export class ProfessionalReviewService {
     const rows = await this.prisma.professionalReview.findMany({
       where: {
         ...this.ownedBy(userId),
-        appointment: {
-          OR: [
-            { customerRatings: { some: { side: 'professional' } } },
-            { endAt: { lt: new Date(Date.now() - RATE_WINDOW_MS) } },
-            { source: { in: ['HISTORY', 'IMPORT'] } },
-          ],
-        },
+        appointment: revealedAppointment(),
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -110,9 +125,21 @@ export class ProfessionalReviewService {
   async reply(userId: number, reviewId: number, reply?: string | null) {
     const review = await this.prisma.professionalReview.findFirst({
       where: { id: reviewId, ...this.ownedBy(userId) },
-      select: { id: true },
+      select: {
+        id: true,
+        appointment: {
+          select: {
+            endAt: true,
+            source: true,
+            customerRatings: { where: { side: 'professional' }, select: { id: true } },
+          },
+        },
+      },
     });
     if (!review) throw new NotFoundException('Avaliação não encontrada');
+    if (!reviewIsRevealed(review.appointment)) {
+      throw new BadRequestException('Esta avaliação ainda não pode ser respondida.');
+    }
     const text = reply?.trim() || null;
     if (text && text.length > MAX_REPLY) {
       throw new BadRequestException(`Resposta com no máximo ${MAX_REPLY} caracteres.`);

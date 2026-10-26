@@ -318,15 +318,38 @@ export class ScheduleService {
     });
     const timeZone = safeTimeZone(shop?.timezone);
     const now = new Date();
-    const [appts, closures] = await Promise.all([
-      this.prisma.appointment.findMany({
+    const closures = await this.prisma.barbershopClosure.findMany({
+      where: { barbershopId, date: { gte: toZonedParts(now, timeZone).dateStr } },
+      select: { date: true },
+    });
+    const closed = new Set(closures.map((c) => c.date));
+    const appts: {
+      id: number;
+      startAt: Date;
+      endAt: Date;
+      barberId: number;
+      contactEmail: string | null;
+      customer: { name: string; email: string | null };
+      barber: { name: string };
+    }[] = [];
+    let cursor: { startAt: Date; id: number } | null = null;
+    for (;;) {
+      const page = await this.prisma.appointment.findMany({
         where: {
           barbershopId,
           ...(barberId != null ? { barberId } : {}),
           status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
           startAt: { gte: now },
+          ...(cursor
+            ? {
+                OR: [
+                  { startAt: { gt: cursor.startAt } },
+                  { startAt: cursor.startAt, id: { gt: cursor.id } },
+                ],
+              }
+            : {}),
         },
-        orderBy: { startAt: 'asc' },
+        orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
         take: IMPACT_LIMIT,
         select: {
           id: true,
@@ -337,13 +360,12 @@ export class ScheduleService {
           customer: { select: { name: true, email: true } },
           barber: { select: { name: true } },
         },
-      }),
-      this.prisma.barbershopClosure.findMany({
-        where: { barbershopId, date: { gte: toZonedParts(now, timeZone).dateStr } },
-        select: { date: true },
-      }),
-    ]);
-    const closed = new Set(closures.map((c) => c.date));
+      });
+      appts.push(...page);
+      if (page.length < IMPACT_LIMIT) break;
+      const last = page[page.length - 1];
+      cursor = { startAt: last.startAt, id: last.id };
+    }
     return appts
       .filter((a) => {
         const start = toZonedParts(a.startAt, timeZone);

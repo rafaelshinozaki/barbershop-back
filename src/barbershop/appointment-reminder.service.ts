@@ -72,9 +72,22 @@ export class AppointmentReminderService {
 
     let enqueued = 0;
     for (const appt of appointments) {
-      // Marcado já dentro das 24 h: a confirmação acabou de sair com os
-      // mesmos dados. Marca como lembrado pra não mandar o segundo e-mail.
-      if (reminderCoveredByConfirmation(appt.createdAt, appt.startAt)) {
+      const to = appointmentContactEmail(appt);
+      const phone = this.whatsappService.isConfigured()
+        ? phoneForWhatsapp(appt.customer.phone, appt.barbershop.country)
+        : null;
+      // A confirmação e a remarcação saem só por e-mail. Elas cobrem o
+      // lembrete nesse canal; o WhatsApp sai mesmo dentro das 24 h (item 322).
+      const emailAlreadySent = reminderCoveredByConfirmation(appt.createdAt, appt.startAt) && !!to;
+      const movedAt = appt.updatedAt?.getTime?.() ?? appt.createdAt.getTime();
+      const justMoved =
+        !emailAlreadySent &&
+        !!to &&
+        movedAt - appt.createdAt.getTime() > 60_000 &&
+        Date.now() - movedAt < 15 * 60_000 &&
+        appt.startAt.getTime() - Date.now() <= 24 * 60 * 60 * 1000;
+      const skipEmail = emailAlreadySent || justMoved;
+      if (skipEmail && !phone) {
         await this.prisma.appointment.updateMany({
           where: { id: appt.id, reminderSentAt: null },
           data: { reminderSentAt: new Date() },
@@ -106,8 +119,7 @@ export class AppointmentReminderService {
       });
 
       try {
-        const to = appointmentContactEmail(appt);
-        if (to) {
+        if (to && !skipEmail) {
           await this.notificationQueue.email(
             {
               kind: 'customer',
@@ -141,9 +153,6 @@ export class AppointmentReminderService {
           );
         }
 
-        const phone = this.whatsappService.isConfigured()
-          ? phoneForWhatsapp(appt.customer.phone, appt.barbershop.country)
-          : null;
         if (phone) {
           await this.notificationQueue.whatsapp(
             {

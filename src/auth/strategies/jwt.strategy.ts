@@ -32,6 +32,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
+    // Conta desativada não usa a sessão que ainda existir (item 317)
+    if (user.isActive === false) {
+      throw new UnauthorizedException('Account disabled');
+    }
+
     // A sessão precisa ter uma ActiveSession correspondente — é isso que faz
     // "Terminar sessão"/"Sair de outras sessões" realmente revogar o acesso,
     // e não só remover uma linha decorativa da lista.

@@ -9,6 +9,14 @@ export function reminderCoveredByNotice(noticeAt: Date, startAt: Date) {
  * Remarcado para dentro de 24 h: o e-mail de remarcação já traz o horário,
  * então o lembrete de 24 h não sai de novo. Mais longe, o lembrete volta a valer.
  */
-export function reminderSentAtAfterMove(startAt: Date, now = new Date()): Date | null {
-  return reminderCoveredByNotice(now, startAt) ? now : null;
+export function reminderSentAtAfterMove(
+  startAt: Date,
+  now = new Date(),
+  whatsapp = false,
+): Date | null {
+  if (!reminderCoveredByNotice(now, startAt)) return null;
+  // O e-mail da remarcação cobre só o e-mail. Com WhatsApp, o lembrete desse
+  // canal ainda sai (item 322).
+  if (whatsapp) return null;
+  return now;
 }

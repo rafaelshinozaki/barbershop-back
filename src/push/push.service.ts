@@ -74,7 +74,11 @@ export class PushService {
   async subscribe(
     owner: PushOwner,
     sub: PushSubscriptionInput,
-    meta: { userAgent?: string | null; language?: string | null } = {},
+    meta: {
+      userAgent?: string | null;
+      language?: string | null;
+      sessionToken?: string | null;
+    } = {},
   ) {
     const endpoint = sub.endpoint?.trim();
     if (!endpoint || endpoint.length > 1000) {
@@ -97,6 +101,8 @@ export class PushService {
       // O aparelho passa a ser só de quem inscreveu agora (troca de conta no mesmo navegador)
       userId: 'userId' in owner ? owner.userId : null,
       clientAccountId: 'clientAccountId' in owner ? owner.clientAccountId : null,
+      // Encerrar esta sessão apaga o aviso deste aparelho (item 316)
+      ...(meta.sessionToken ? { sessionToken: meta.sessionToken } : {}),
     };
     await this.prisma.pushSubscription.upsert({
       where: { endpoint },

@@ -3306,11 +3306,13 @@ Foram lidos no back a venda inteira (criação com sinal, pago pelo app, cartão
      
      **Fazer:** tratar o sinal recebido na mão como o online nos dois lugares (`depositPaid` com `depositPaidAt` ou `depositReceivedAt`). Teste: sinal de 20 recebido na mão, taxa de falta de 30; fica devido 10, e os 20 entram no faturamento do dia.
 
-314. ⬜ **Dá para estornar o sinal online depois de a conta do horário ser fechada, e a venda continua contando o sinal como recebido** (back: `refundAppointmentDeposit`, `AppPaymentsService.refund` com `kind = 'deposit'`):
+314. ✅ **Dá para estornar o sinal online depois de a conta do horário ser fechada, e a venda continua contando o sinal como recebido** (back: `refundAppointmentDeposit`, `AppPaymentsService.refund` com `kind = 'deposit'`):
      - O estorno do pago pelo app já é recusado com a conta fechada ("estorne pelo painel do Stripe"), porque a venda descontou esse valor. O do sinal não tem essa trava, nem na unidade (gerente e dono) nem no Financeiro do backoffice.
      - A venda fechada gravou o sinal em `depositApplied` e cobrou do cliente só o resto. Estornado o sinal, o cliente recebe de volta e fica pagando menos que o serviço. O faturamento (`saleRevenue`) e os pontos continuam contando o sinal.
      
      **Fazer:** recusar o estorno do sinal quando o horário tem venda (mesma mensagem do pago pelo app), ou, se houver estorno, lançar o estorno do sinal como lançamento negativo na unidade (como o estorno do saldo de pacote) e tirar os pontos dele. Teste: sinal pago online, conta fechada, pedido de estorno do sinal é recusado.
+
+     **Feito:** a unidade e o Financeiro recusam o estorno do sinal quando o horário já tem venda, com a mesma mensagem do pago pelo app. Teste em `round-314-317.spec.ts`.
 
 ### Centésima vigésima rodada (2026-10-26): login e sessão
 
@@ -3325,81 +3327,101 @@ Foram lidos no back o login da equipe (senha, código por e-mail, "lembrar de mi
 
      **Feito:** `User.socialLoginTwoFactor` (padrão falso) e a mutation `setSocialLoginTwoFactor`. Ligar exige as duas etapas ligadas; desligar pede a senha atual, como desligar as duas etapas; desligar as duas etapas zera a opção. No login social, `needsSocialLoginCode` (duas etapas e opção ligadas) manda o código (`sendLoginCode`) e redireciona para `/verification-code?loginId=…`, sem abrir sessão. No front, a opção fica no cartão das duas etapas da conta, e a tela do código aceita o `loginId` vindo do login social. Testes em `backoffice-login.spec.ts` e `social-login-2fa.int.spec.ts`.
 
-316. ⬜ **Encerrar uma sessão na lista de sessões não para os avisos no celular daquele aparelho** (back: `UserService.terminateSession`; `PushSubscription`):
+316. ✅ **Encerrar uma sessão na lista de sessões não para os avisos no celular daquele aparelho** (back: `UserService.terminateSession`; `PushSubscription`):
      - "Sair das outras sessões", a troca de senha e o "derrubar sessões" do backoffice apagam as inscrições de aviso no celular (menos a do aparelho que pediu). Encerrar só uma sessão (`terminateSession`) apaga a `ActiveSession` e mais nada.
      - O aparelho derrubado (perdido, de outra pessoa) perde o acesso, mas continua recebendo os avisos de novo agendamento, venda, conversa, com nome de cliente e horário.
      - A inscrição de aviso não guarda de qual sessão ela é, então hoje não dá para apagar só a daquele aparelho.
      
      **Fazer:** gravar a sessão (`sessionToken`) na inscrição de aviso quando ela é criada. Ao encerrar a sessão, apagar as inscrições dela. Teste: duas sessões com aviso; encerrar uma apaga só a inscrição dela.
 
-317. ⬜ **Conta desativada ainda usa as rotas REST com a sessão que sobrou, e o código do login não confere se a conta continua ativa** (back: `JwtStrategy.validate`, `UserService.verifyLoginCode`):
+     **Feito:** a inscrição da equipe guarda a sessão. Encerrar essa sessão apaga só o aviso dela. Teste em `round-314-317.spec.ts`. Migração `20261231120000_push_subscription_session`.
+
+317. ✅ **Conta desativada ainda usa as rotas REST com a sessão que sobrou, e o código do login não confere se a conta continua ativa** (back: `JwtStrategy.validate`, `UserService.verifyLoginCode`):
      - O guard do GraphQL recusa conta desativada mesmo com a sessão ainda aberta (item 270). A estratégia das rotas REST (`JwtStrategy`, usada por pagamentos, cupons, convites, redes sociais, foto do perfil) só confere se a sessão existe, sem olhar `isActive`.
      - Quando uma conta é desativada por um caminho que não apaga as sessões, ela continua podendo, pelo REST, abrir checkout, salvar cartão e usar os convites.
      - No login com código, a senha é conferida no primeiro passo, e `verifyLoginCode` busca a conta de novo pelo e-mail sem conferir `isActive`. A conta desativada entre os dois passos ganha a sessão.
      
      **Fazer:** `JwtStrategy.validate` recusa `isActive = false`, como o guard do GraphQL. `verifyLoginCode` só devolve conta ativa. Teste: conta desativada com sessão aberta recebe 401 numa rota REST; código certo de conta desativada no meio do login é recusado.
 
+     **Feito:** a rota REST recusa a conta desativada mesmo com sessão aberta. O código do login só abre sessão de conta ativa. Teste em `round-314-317.spec.ts`.
+
 ### Centésima vigésima primeira rodada (2026-10-26): login, sessão e permissões
 
 Foram lidos no back os guards do GraphQL e do REST (`GraphQLJwtAuthGuard`, `JwtStrategy`, `RolesGuard` global com as áreas do backoffice), o cargo na unidade (`accessLevelOf`, `currentEngagement`, `ACCESS_RANK`), a equipe da unidade (convite, edição e remoção de profissional), as avaliações do profissional e as assinaturas em tempo real. No backoffice-back, o proxy (lista de operações e `OPERATION_PERMISSIONS`, rotas REST e `REST_PERMISSIONS`), a tela Equipe (`canAssignRole`, convite, cargo, sessões) e o login da equipe da plataforma.
 
-318. ⬜ **O gerente muda o próprio vínculo: tira o prazo de acesso que o dono deu, e mexe no cargo e no prazo de outros gerentes** (back: `BarbershopService.updateBarber`):
+318. ✅ **O gerente muda o próprio vínculo: tira o prazo de acesso que o dono deu, e mexe no cargo e no prazo de outros gerentes** (back: `BarbershopService.updateBarber`):
      - O cargo na unidade vem do cadastro do profissional (`staffType`) dentro do prazo (`accessStartsAt`/`accessEndsAt`, `currentEngagement`). O dono usa o prazo para dar acesso por um tempo (temporada, cobertura de férias).
      - `updateBarber` pede só o cargo de gerente e não olha de quem é o cadastro. O gerente edita o próprio e apaga o `accessEndsAt` (acesso sem fim), adianta o `accessStartsAt` ou se reativa.
      - O gerente também muda o cargo, o prazo e o "Ativo" de outro gerente, inclusive tirando o acesso dele, e do cadastro de profissional do próprio dono. Só o dono deveria mexer em quem tem o mesmo cargo que o gerente.
      
      **Fazer:** em `updateBarber` (e `deleteBarber`), quem não é dono não mexe em cargo, prazo e "Ativo" do próprio cadastro, nem de cadastro com cargo de gerente, nem do cadastro ligado ao dono. Nome, foto e especialidades seguem livres. Teste: gerente com prazo tenta apagar o `accessEndsAt` do próprio cadastro e é recusado; o dono consegue.
 
-319. ⬜ **A avaliação "às cegas" aparece na página pública do profissional antes de ele dar a nota ao cliente** (back: `ProfessionalReviewService.publicReviews`, `reply`):
+     **Feito:** quem não é dono não muda cargo, prazo nem "Ativo" do próprio cadastro, de outro gerente ou do dono. Nome continua livre. O mesmo vale para tirar e reativar. Teste em `round-318-325.spec.ts`.
+
+319. ✅ **A avaliação "às cegas" aparece na página pública do profissional antes de ele dar a nota ao cliente** (back: `ProfessionalReviewService.publicReviews`, `reply`):
      - A lista do profissional (`mine`) só mostra a avaliação de um atendimento depois que ele deu a nota ao cliente ou quando passaram os 30 dias, para que a nota de um não influencie a do outro.
      - A página pública `/p/:slug` (`CareerService` → `publicReviews`) lista as últimas 20 sem essa regra, com nota, comentário, "Carlos S.", unidade e data. Basta o profissional abrir a própria página para ver a avaliação recém-feita e dar a nota ao cliente depois.
      - `reply` aceita responder a avaliação ainda às cegas. A resposta sai na página pública, e a mutation diz se a avaliação existe (verdadeiro ou "não encontrada") para qualquer id dele.
      
      **Fazer:** aplicar o mesmo filtro de `mine` em `publicReviews` (a média em `summary` pode continuar contando tudo, como já diz o comentário) e recusar `reply` em avaliação ainda às cegas. Teste: avaliação nova, sem nota do profissional para o cliente, não aparece na página pública e não aceita resposta; depois da nota, aparece e aceita.
 
-320. ⬜ **Backoffice: com a senha certa, o código das duas etapas pode ser chutado sem fim, e o desafio aberto sobrevive à troca de senha** (backoffice-back: `StaffAuth.login`, `verifyCode`, `setPassword`):
+     **Feito:** a página pública usa o mesmo filtro da lista do profissional. Resposta em avaliação ainda às cegas é recusada. A média continua contando tudo. Teste em `round-318-325.spec.ts`.
+
+320. ✅ **Backoffice: com a senha certa, o código das duas etapas pode ser chutado sem fim, e o desafio aberto sobrevive à troca de senha** (backoffice-back: `StaffAuth.login`, `verifyCode`, `setPassword`):
      - Cada desafio aceita 5 tentativas de código. Errar as 5 não conta no bloqueio da conta (`failedLogins`): basta entrar de novo com a senha certa, que zera `failedLogins` e abre um desafio novo com mais 5.
      - O único freio é o limite por IP em memória (30 pedidos a cada 5 minutos em todas as rotas de `/auth`). Com vários IPs, quem tem a senha vazada tenta o milhão de códigos aos poucos, e a pessoa recebe um e-mail de código a cada tentativa.
      - A troca ou redefinição de senha (`setPassword`) derruba sessões e links, mas não apaga o desafio aberto. Quem já tinha passado da senha antiga ainda termina o login com o código dentro dos 10 minutos.
      
      **Fazer:** contar os desafios esgotados (ou cada código errado) em `failedLogins` e bloquear a conta como na senha errada. `setPassword` (e desativar a conta na Equipe) apaga os desafios abertos. Teste: 5 códigos errados em dois desafios seguidos bloqueiam a conta; desafio aberto antes da troca de senha é recusado depois dela.
 
+     **Feito:** cada código errado conta como senha errada, e a senha certa não zera a conta antes do código. Cinco erros bloqueiam o próximo login. Trocar a senha e desativar a conta apagam o desafio aberto. Teste em `round-318-325.spec.ts` (backoffice-back).
+
 ### Centésima vigésima segunda rodada (2026-10-26): agendamento
 
 Foram lidos no back a criação e a edição de horário pela equipe (`createAppointment`, `updateAppointment`, conflitos com `lockSchedule` e `ensureBarberAvailable`), o agendamento pela página pública (`createPublicAppointment`, `getPublicAvailableSlots`, `getPublicNextAvailableSlot`, `ensurePublicSlot`), o link de gerenciar (cancelar e remarcar), a série recorrente (`AppointmentSeriesService`), o horário da unidade e a escala (`ScheduleService`), a lista de espera (entrada, aviso, passar a vaga) e o lembrete de 24 h.
 
-321. ⬜ **Trocar o cliente de um horário deixa o link do cliente anterior valendo, e leva junto a venda e o que foi pago** (back: `BarbershopService.updateAppointment`):
+321. ✅ **Trocar o cliente de um horário deixa o link do cliente anterior valendo, e leva junto a venda e o que foi pago** (back: `BarbershopService.updateAppointment`):
      - A edição aceita `customerId` novo sem outra regra além de a ficha ser da rede. A versão do link (`linkVersion`) só sobe no cancelamento pela unidade.
      - O link "gerenciar" que foi para o cliente anterior continua abrindo o horário, agora de outra pessoa: mostra o primeiro nome dela, o profissional, o serviço e a hora, e deixa cancelar e remarcar.
      - Horário com venda, sinal pago online ou pago antes pelo app troca de cliente do mesmo jeito. A venda fica no cliente anterior e o horário no novo, e o estorno de um cancelamento depois vai para o cartão de quem pagou, sem relação com a ficha nova.
      
      **Fazer:** ao trocar o cliente, subir `linkVersion` (e mandar a confirmação ao cliente novo, como na criação). Recusar a troca quando o horário tem venda, sinal pago online ou pago antes pelo app. Teste: trocado o cliente, o link antigo dá "link inválido"; horário com sinal pago online não troca de cliente.
 
-322. ⬜ **Horário marcado ou remarcado a menos de 24 h não recebe o lembrete por WhatsApp, e quem não tem e-mail não recebe aviso nenhum** (back: `AppointmentReminderService.enqueueDueReminders`, `reminderCoveredByConfirmation`, `reminderSentAtAfterMove`):
+     **Feito:** a troca sobe duas versões do link (a anterior deixa de abrir) e manda a confirmação ao cliente novo. Venda, sinal pago online ou pago pelo app recusam a troca. Teste em `round-318-325.spec.ts`.
+
+322. ✅ **Horário marcado ou remarcado a menos de 24 h não recebe o lembrete por WhatsApp, e quem não tem e-mail não recebe aviso nenhum** (back: `AppointmentReminderService.enqueueDueReminders`, `reminderCoveredByConfirmation`, `reminderSentAtAfterMove`):
      - O lembrete de 24 h vai por e-mail e, com o WhatsApp configurado, também pelo WhatsApp.
      - Horário criado a menos de 24 h do início é dado como "já avisado pela confirmação" e marcado como lembrado. A remarcação para dentro de 24 h faz o mesmo. Só que a confirmação e o aviso de remarcação saem só por e-mail, e só quando há e-mail.
      - O cliente marcado pelo telefone para amanhã cedo, sem e-mail na ficha, não recebe nada. Quem tem e-mail perde o WhatsApp.
      
      **Fazer:** a confirmação só cobre o lembrete no canal em que saiu. Sem e-mail de contato, ou com WhatsApp configurado, o lembrete sai pelo WhatsApp mesmo dentro das 24 h. Teste: horário criado 10 h antes, cliente sem e-mail e WhatsApp configurado, recebe o lembrete pelo WhatsApp.
 
-323. ⬜ **Não dá para editar um horário cancelado (ou falta) quando o horário dele já foi ocupado por outro cliente** (back: `BarbershopService.updateAppointment`):
+     **Feito:** a confirmação e a remarcação cobrem só o e-mail. Com WhatsApp configurado, o lembrete desse canal sai mesmo dentro das 24 h. Teste em `appointment-reminder.service.spec.ts`.
+
+323. ✅ **Não dá para editar um horário cancelado (ou falta) quando o horário dele já foi ocupado por outro cliente** (back: `BarbershopService.updateAppointment`):
      - A edição sempre confere conflito com a agenda do profissional, mesmo quando o horário continua cancelado ou como falta.
      - Cancelado o horário das 10h e marcado outro cliente às 10h, mudar a observação do cancelado, ou passar de cancelado para falta, dá "Este profissional já tem um agendamento nesse horário".
      
      **Fazer:** conferir conflito (profissional e recurso) só quando a situação final ocupa a agenda (não é `CANCELLED` nem `NO_SHOW`). Reativar continua conferindo. Teste: horário cancelado com a vaga ocupada aceita mudar a observação e virar falta, e recusa voltar a confirmado.
 
-324. ⬜ **A lista de espera perde a vaga quando a equipe tira quem foi avisado, e avisa vaga que não está livre depois de uma remarcação** (back: `cancelWaitlistEntry`, `checkWaitlistOnCancellation`, `passWaitlistOffer`):
+     **Feito:** cancelado e falta não conferem conflito. Voltar a confirmado continua conferindo. Teste em `round-318-325.spec.ts`.
+
+324. ✅ **A lista de espera perde a vaga quando a equipe tira quem foi avisado, e avisa vaga que não está livre depois de uma remarcação** (back: `cancelWaitlistEntry`, `checkWaitlistOnCancellation`, `passWaitlistOffer`):
      - Quem sai pelo link do e-mail com uma vaga oferecida passa a vaga ao próximo (`leaveWaitlist` → `passWaitlistOffer`). A equipe tirando a mesma pessoa pela tela (`cancelWaitlistEntry`) só muda a situação para cancelada. O job que passa a vaga adiante só olha entradas avisadas, e a vaga fica sem ninguém.
      - Remarcar pela agenda avisa a lista do horário antigo como livre, sem ver se o horário novo ocupa parte dele (10h → 10h30, uma hora de serviço). A pessoa avisada abre a página e o horário das 10h não existe.
      - `passWaitlistOffer` considera a vaga livre olhando só o instante do início, sem a duração, a folga e a agenda da mesma pessoa em outras unidades.
      
      **Fazer:** `cancelWaitlistEntry` passa a vaga como `leaveWaitlist`. Antes de avisar (cancelamento, remarcação, passar a vaga), conferir que o horário inteiro está livre com a mesma regra da página pública. Teste: entrada avisada tirada pela equipe passa a vaga ao próximo; remarcação 10h → 10h30 de 1 h não avisa ninguém para as 10h.
 
-325. ⬜ **O aviso de "horários fora do expediente" ao mudar o horário da unidade ou a escala só olha os 500 próximos horários** (back: `ScheduleService.outside`):
+     **Feito:** tirar uma entrada avisada passa a vaga ao próximo. Antes de avisar, o horário inteiro tem de estar livre na página pública. Remarcação que ainda ocupa o horário antigo não avisa ninguém. Teste em `round-318-325.spec.ts`.
+
+325. ✅ **O aviso de "horários fora do expediente" ao mudar o horário da unidade ou a escala só olha os 500 próximos horários** (back: `ScheduleService.outside`):
      - Antes de salvar o horário da unidade ou a escala, a tela mostra os horários já marcados que ficam fora (item 241). A busca pega os 500 primeiros horários futuros da unidade (ou do profissional) e só depois filtra os que ficam fora.
      - Numa unidade cheia, ou com séries recorrentes de meses, os horários depois dos 500 primeiros não aparecem. Fechar o sábado avisa só dos sábados das próximas semanas, e os seguintes ficam fora do expediente sem ninguém saber.
      
      **Fazer:** filtrar no banco pelo dia da semana e pelo horário (ou buscar em páginas até o fim), e limitar só a lista mostrada, com o total. Teste: 600 horários futuros, os de sábado depois do 500º aparecem no aviso.
+
+     **Feito:** o aviso percorre todos os horários futuros, em páginas de 500, e lista os que ficam fora. Sábado depois do 500º aparece. Teste em `round-318-325.spec.ts`.
 
 326. ⬜ **"Próximo horário livre" responde para unidade pausada ou fora da página pública** (back: `getPublicNextAvailableSlot`):
      - A lista de horários do dia (`getPublicAvailableSlots`) e a criação recusam unidade inativa ou cujo dono não aceita agendamento público (`isActive`, `ownerAcceptsPublic`). O "próximo horário livre" busca a unidade só pelo id.

@@ -241,12 +241,22 @@ export class AppPaymentsService {
       if (amount != null) throw new BadRequestException('O sinal volta inteiro');
       const appt = await this.prisma.appointment.findUnique({
         where: { id },
-        select: { depositPaidAt: true, depositRefundedAt: true, depositPaymentIntentId: true },
+        select: {
+          depositPaidAt: true,
+          depositRefundedAt: true,
+          depositPaymentIntentId: true,
+          sale: { select: { id: true } },
+        },
       });
       if (!appt?.depositPaymentIntentId || !appt.depositPaidAt) {
         throw new NotFoundException('Sinal pago pelo app não encontrado');
       }
       if (appt.depositRefundedAt) throw new BadRequestException('O sinal já foi estornado');
+      if (appt.sale) {
+        throw new BadRequestException(
+          'A conta deste horário já foi fechada: estorne pelo painel do Stripe',
+        );
+      }
       const ok = await this.guard(() => this.barbershops.refundOnlineDeposit(id));
       if (!ok) throw new BadRequestException('O sinal já foi estornado');
       return true;

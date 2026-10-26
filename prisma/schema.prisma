@@ -2398,11 +2398,14 @@ model PushSubscription {
   language        String?
   userId          Int?
   clientAccountId Int?
+  // Sessão que inscreveu o aparelho: encerrar essa sessão para os avisos (item 316)
+  sessionToken    String?
   user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([clientAccountId])
+  @@index([sessionToken])
 }
 
 // Conta de recebimento no Stripe (Connect Express), opcional: quem liga

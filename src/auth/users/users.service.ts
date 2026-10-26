@@ -1650,6 +1650,12 @@ export class UserService {
     await (this.prisma as any).activeSession?.delete({
       where: { id: sessionId },
     });
+    // O aparelho dessa sessão para de receber aviso (item 316)
+    if (session.sessionToken) {
+      await this.prisma.pushSubscription.deleteMany({
+        where: { sessionToken: session.sessionToken },
+      });
+    }
 
     this.logger.log(`Session ${sessionId} terminated for user ${userId}`);
     return true;
@@ -2082,7 +2088,11 @@ export class UserService {
     await this.redis.client.del(UserService.KEY.codeByUser(entry.email)).catch(() => undefined);
     const { email } = entry;
     const user = await this.prisma.user.findFirst({
-      where: { email: { equals: normalizeEmail(email), mode: 'insensitive' }, provider: 'local' },
+      where: {
+        email: { equals: normalizeEmail(email), mode: 'insensitive' },
+        provider: 'local',
+        isActive: true,
+      },
       include: {
         subscriptions: {
           where: { status: PLANO_STATUS.ACTIVE },
@@ -2092,7 +2102,7 @@ export class UserService {
         role: true,
       },
     });
-    if (user) {
+    if (user && user.isActive !== false) {
       const sub = user.subscriptions?.[0];
       const { password: _pw, ...userWithoutPassword } = user as any;
       return {

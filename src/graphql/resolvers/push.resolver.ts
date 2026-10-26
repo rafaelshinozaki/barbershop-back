@@ -53,6 +53,7 @@ export class PushResolver {
     return this.push.subscribe({ userId: user.id }, input, {
       userAgent: context.req?.headers?.['user-agent'],
       language: input.language,
+      sessionToken: user.sessionToken,
     });
   }
 

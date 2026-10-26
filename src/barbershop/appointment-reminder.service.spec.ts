@@ -76,6 +76,45 @@ describe('lembrete por WhatsApp no país da unidade', () => {
     );
   });
 
+  it('marcado 10 h antes, sem e-mail, recebe o lembrete pelo WhatsApp', async () => {
+    const start = new Date(Date.now() + 10 * 60 * 60 * 1000);
+    const whatsapp = jest.fn();
+    const reminders = new AppointmentReminderService(
+      {
+        appointment: {
+          findMany: async () => [
+            {
+              id: 8,
+              createdAt: new Date(start.getTime() - 10 * 60 * 60 * 1000),
+              startAt: start,
+              linkVersion: 1,
+              customer: { name: 'Ana', phone: '11988887777', email: null },
+              barber: { name: 'Leo' },
+              barbershop: {
+                country: 'BR',
+                timezone: 'America/Sao_Paulo',
+                name: 'Shop',
+                address: 'Rua 1',
+                city: 'São Paulo',
+                state: 'SP',
+                phone: '1133334444',
+                ownerUserId: 1,
+                network: { lateCancellationWindowHours: 2 },
+              },
+              services: [{ service: { name: 'Corte' } }],
+            },
+          ],
+          updateMany: async () => ({ count: 1 }),
+        },
+      } as never,
+      { email: jest.fn(), whatsapp } as never,
+      { isConfigured: () => true } as never,
+    );
+    await reminders.enqueueDueReminders();
+    expect(whatsapp).toHaveBeenCalled();
+    expect(whatsapp.mock.calls[0][0].to).toBe('+5511988887777');
+  });
+
   it('telefone que não fecha com o país da unidade não vai para o WhatsApp', async () => {
     const { reminders, whatsapp } = serviceFor('11999990000');
     await reminders.enqueueDueReminders();
