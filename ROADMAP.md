@@ -3206,3 +3206,14 @@ Foram lidos no back a troca de plano (plano maior cobrado na hora, menor agendad
      - Estornar só a diferença (o cliente reclamou do upgrade, por exemplo) acaba com o plano que ele tinha pago inteiro no início do período, em vez de só voltar ao plano anterior. O dinheiro do período continua com a plataforma e o cliente perde o acesso.
      
      **Fazer:** marcar a cobrança da diferença (`kind = 'plan_upgrade'`, ou guardar o plano anterior no `Payment`). O estorno dela volta a assinatura para o plano anterior até o fim do período. Só o estorno da cobrança do período (a da contratação ou da renovação) encerra o plano. Teste: assina o plano A, sobe para o B (cobra a diferença), estorna a diferença; a assinatura continua ativa no plano A com o mesmo vencimento.
+
+### Centésima décima sexta rodada (2026-10-26): checkout com plano pago ativo
+
+Foram lidos no back o checkout dos planos (cobrança, cupom, confirmação pela tela e pelo webhook, ativação) e a fatura paga da assinatura na Stripe.
+
+306. ⬜ **Fazer o checkout de um plano com outro plano pago ativo perde os dias pagos e pode deixar duas assinaturas cobrando** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `StripeController.handleInvoicePaymentSucceeded`):
+     - O checkout não confere se a conta já tem um plano pago ativo (a troca de plano tem um caminho próprio, `changePlan`, com a diferença proporcional). Pago o checkout, `createSubscriptionAfterPayment` marca a assinatura ativa anterior como inativa e cria outra, cobrada pelo preço cheio.
+     - O que sobrava do período pago da anterior se perde, sem crédito nem estorno. Duas abas de checkout (ou plano A e plano B) cobram as duas vezes, e a segunda desativa a primeira.
+     - Se a anterior era cobrada pela Stripe (`stripeSubscriptionId`), ela não é cancelada lá. Na fatura seguinte, `handleInvoicePaymentSucceeded` acha a assinatura pelo id da Stripe e a volta para ativa: a conta fica com duas assinaturas ativas e o cartão é cobrado pelas duas todo mês.
+     
+     **Fazer:** com plano pago ativo (preço > 0 e período em vigor, ou assinatura na Stripe), o checkout recusa e manda para a troca de plano. Pagamento confirmado nesse estado (corrida entre abas) é estornado em vez de criar outra assinatura. Ao desativar uma assinatura com `stripeSubscriptionId` (também no checkout que vem do gratuito), cancelar na Stripe. A fatura paga de assinatura inativa não a reativa. Teste: conta com plano pago ativo pede checkout de outro plano e é recusada; assinatura inativa com fatura paga na Stripe continua inativa.
