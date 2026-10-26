@@ -3195,3 +3195,14 @@ Foram lidos no backoffice-back a fila do Suporte, a busca de contas de cliente e
      - O Financeiro vê centenas de "vencidas" e não acha as que estão de fato sem pagar.
      
      **Fazer:** nas duas, só o pagamento mais recente de cada assinatura (`latestPerSubscription`) e só assinatura ativa sem Stripe com o período vencido (`OVERDUE_SUBSCRIPTION_FILTER`), como no resumo. Teste: assinatura com três mensalidades pagas e a última em dia; não aparece. Assinatura com a última vencida aparece uma vez.
+
+### Centésima décima quinta rodada (2026-10-26): estorno da diferença do plano
+
+Foram lidos no back a troca de plano (plano maior cobrado na hora, menor agendado para a renovação, desfazer o agendado), a renovação sem Stripe (tentativas, tolerância, plano agendado), o cancelamento no fim do período e o estorno da cobrança do plano (pela equipe e pelo painel da Stripe).
+
+305. ⬜ **Estornar só a diferença de um plano maior derruba o plano inteiro** (back: `PaymentsService.markPlanPaymentRefunded`, `chargeUpgrade`):
+     - Trocar para um plano maior sem Stripe cobra só a diferença proporcional (`chargeUpgrade`) e grava um `Payment` à parte, com a data de hoje. Ele passa a ser a cobrança mais recente da assinatura.
+     - O estorno de cobrança de plano (pela equipe, `staffRefundPlanPayment`, ou pelo painel da Stripe, `syncPlanRefund`) encerra o plano quando a cobrança estornada é a mais recente: volta ao gratuito e cancela a assinatura.
+     - Estornar só a diferença (o cliente reclamou do upgrade, por exemplo) acaba com o plano que ele tinha pago inteiro no início do período, em vez de só voltar ao plano anterior. O dinheiro do período continua com a plataforma e o cliente perde o acesso.
+     
+     **Fazer:** marcar a cobrança da diferença (`kind = 'plan_upgrade'`, ou guardar o plano anterior no `Payment`). O estorno dela volta a assinatura para o plano anterior até o fim do período. Só o estorno da cobrança do período (a da contratação ou da renovação) encerra o plano. Teste: assina o plano A, sobe para o B (cobra a diferença), estorna a diferença; a assinatura continua ativa no plano A com o mesmo vencimento.
