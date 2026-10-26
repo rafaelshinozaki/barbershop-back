@@ -3312,3 +3312,28 @@ Foram lidos no back o login da equipe (senha, código por e-mail, "lembrar de mi
      - No login com código, a senha é conferida no primeiro passo, e `verifyLoginCode` busca a conta de novo pelo e-mail sem conferir `isActive`. A conta desativada entre os dois passos ganha a sessão.
      
      **Fazer:** `JwtStrategy.validate` recusa `isActive = false`, como o guard do GraphQL. `verifyLoginCode` só devolve conta ativa. Teste: conta desativada com sessão aberta recebe 401 numa rota REST; código certo de conta desativada no meio do login é recusado.
+
+### Centésima vigésima primeira rodada (2026-10-26): login, sessão e permissões
+
+Foram lidos no back os guards do GraphQL e do REST (`GraphQLJwtAuthGuard`, `JwtStrategy`, `RolesGuard` global com as áreas do backoffice), o cargo na unidade (`accessLevelOf`, `currentEngagement`, `ACCESS_RANK`), a equipe da unidade (convite, edição e remoção de profissional), as avaliações do profissional e as assinaturas em tempo real. No backoffice-back, o proxy (lista de operações e `OPERATION_PERMISSIONS`, rotas REST e `REST_PERMISSIONS`), a tela Equipe (`canAssignRole`, convite, cargo, sessões) e o login da equipe da plataforma.
+
+318. ⬜ **O gerente muda o próprio vínculo: tira o prazo de acesso que o dono deu, e mexe no cargo e no prazo de outros gerentes** (back: `BarbershopService.updateBarber`):
+     - O cargo na unidade vem do cadastro do profissional (`staffType`) dentro do prazo (`accessStartsAt`/`accessEndsAt`, `currentEngagement`). O dono usa o prazo para dar acesso por um tempo (temporada, cobertura de férias).
+     - `updateBarber` pede só o cargo de gerente e não olha de quem é o cadastro. O gerente edita o próprio e apaga o `accessEndsAt` (acesso sem fim), adianta o `accessStartsAt` ou se reativa.
+     - O gerente também muda o cargo, o prazo e o "Ativo" de outro gerente, inclusive tirando o acesso dele, e do cadastro de profissional do próprio dono. Só o dono deveria mexer em quem tem o mesmo cargo que o gerente.
+     
+     **Fazer:** em `updateBarber` (e `deleteBarber`), quem não é dono não mexe em cargo, prazo e "Ativo" do próprio cadastro, nem de cadastro com cargo de gerente, nem do cadastro ligado ao dono. Nome, foto e especialidades seguem livres. Teste: gerente com prazo tenta apagar o `accessEndsAt` do próprio cadastro e é recusado; o dono consegue.
+
+319. ⬜ **A avaliação "às cegas" aparece na página pública do profissional antes de ele dar a nota ao cliente** (back: `ProfessionalReviewService.publicReviews`, `reply`):
+     - A lista do profissional (`mine`) só mostra a avaliação de um atendimento depois que ele deu a nota ao cliente ou quando passaram os 30 dias, para que a nota de um não influencie a do outro.
+     - A página pública `/p/:slug` (`CareerService` → `publicReviews`) lista as últimas 20 sem essa regra, com nota, comentário, "Carlos S.", unidade e data. Basta o profissional abrir a própria página para ver a avaliação recém-feita e dar a nota ao cliente depois.
+     - `reply` aceita responder a avaliação ainda às cegas. A resposta sai na página pública, e a mutation diz se a avaliação existe (verdadeiro ou "não encontrada") para qualquer id dele.
+     
+     **Fazer:** aplicar o mesmo filtro de `mine` em `publicReviews` (a média em `summary` pode continuar contando tudo, como já diz o comentário) e recusar `reply` em avaliação ainda às cegas. Teste: avaliação nova, sem nota do profissional para o cliente, não aparece na página pública e não aceita resposta; depois da nota, aparece e aceita.
+
+320. ⬜ **Backoffice: com a senha certa, o código das duas etapas pode ser chutado sem fim, e o desafio aberto sobrevive à troca de senha** (backoffice-back: `StaffAuth.login`, `verifyCode`, `setPassword`):
+     - Cada desafio aceita 5 tentativas de código. Errar as 5 não conta no bloqueio da conta (`failedLogins`): basta entrar de novo com a senha certa, que zera `failedLogins` e abre um desafio novo com mais 5.
+     - O único freio é o limite por IP em memória (30 pedidos a cada 5 minutos em todas as rotas de `/auth`). Com vários IPs, quem tem a senha vazada tenta o milhão de códigos aos poucos, e a pessoa recebe um e-mail de código a cada tentativa.
+     - A troca ou redefinição de senha (`setPassword`) derruba sessões e links, mas não apaga o desafio aberto. Quem já tinha passado da senha antiga ainda termina o login com o código dentro dos 10 minutos.
+     
+     **Fazer:** contar os desafios esgotados (ou cada código errado) em `failedLogins` e bloquear a conta como na senha errada. `setPassword` (e desativar a conta na Equipe) apaga os desafios abertos. Teste: 5 códigos errados em dois desafios seguidos bloqueiam a conta; desafio aberto antes da troca de senha é recusado depois dela.
