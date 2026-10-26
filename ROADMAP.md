@@ -3380,3 +3380,33 @@ Foram lidos no back a criação e a edição de horário pela equipe (`createApp
      - A página mostra "próximo horário: amanhã 9h" de uma unidade pausada. O cliente escolhe o horário e recebe "Unidade não encontrada" ao confirmar.
      
      **Fazer:** a mesma busca da lista do dia (`isActive` e `ownerAcceptsPublic`), devolvendo null. Teste: unidade pausada não tem próximo horário.
+
+### Centésima vigésima terceira rodada (2026-10-26): agendamento, segunda passada
+
+Foram lidos no back o sinal online (reserva aguardando pagamento, `DepositPaymentService`: começar, confirmar, lembrar, expirar e liberar), os fechamentos da unidade (`ClosureService`), as folgas do profissional, a exclusão de horário (`deleteAppointment`), o sinal recebido à mão, a fila por ordem de chegada (walk-in), a agenda da unidade e da franquia (`getAppointments`, `queryNetworkAppointments`), a janela de trabalho (`getWorkingWindowOn`) e o limite de horários do cliente na página pública.
+
+327. ⬜ **Horário aguardando o sinal online que a equipe confirma à mão ou exclui deixa o pagamento aberto, e o sinal pago depois some** (back: `updateAppointment`, `deleteAppointment`, `DepositPaymentService.finalize`):
+     - A reserva com sinal online nasce `PENDING_PAYMENT`, com um PaymentIntent que a tela do cliente usa para pagar. A equipe pode mudar a situação para confirmado (`CONFIRMED` está entre as situações da equipe) ou excluir o horário, que ainda não tem o sinal pago.
+     - Nos dois casos o PaymentIntent fica aberto. Se o cliente paga depois (aba aberta, e-mail "falta pagar o sinal"), `finalize` não acha a reserva aguardando: no horário confirmado à mão devolve "CONFIRMED" sem marcar o sinal como pago; no excluído, só registra "pago sem agendamento". O dinheiro fica com a plataforma, sem sinal pago no horário e sem estorno.
+     - O horário confirmado à mão também não manda a confirmação ao cliente e guarda o `holdExpiresAt`.
+     
+     **Fazer:** ao sair de `PENDING_PAYMENT` pela equipe (confirmar, cancelar ou excluir), cancelar o PaymentIntent no Stripe e limpar `holdExpiresAt`. Se ele já foi pago, aplicar o pagamento (`finalize`) em vez de mudar. Em `finalize`, pagamento de horário que não aguarda mais sinal, ou que não existe, é estornado. Confirmado à mão manda a confirmação. Teste: reserva confirmada pela equipe tem o PaymentIntent cancelado; pagamento aprovado de horário excluído é estornado.
+
+328. ⬜ **Excluir um horário com sinal recebido à mão apaga o recebimento do caixa e do faturamento** (back: `deleteAppointment`):
+     - O sinal recebido pela equipe (dinheiro, Pix, cartão) fica no próprio horário (`depositPaid`, `depositManualMethod`, `depositCashSessionId`). O fechamento do caixa soma o sinal em dinheiro pelos horários ligados ao caixa.
+     - Desmarcar o sinal recebido exige recepção para cima e o caixa ainda aberto. Excluir o horário (gerente) só recusa o sinal pago online.
+     - Excluído o horário, o dinheiro continua na gaveta, mas sai da conta do caixa (sobra no fechamento) e do faturamento. Com o caixa já fechado, o relatório do dia muda depois de fechado.
+     
+     **Fazer:** recusar a exclusão de horário com sinal recebido à mão, com a mesma mensagem do sinal online ("cancele em vez de excluir"). Teste: horário com sinal de 20 em dinheiro não pode ser excluído; depois de desmarcar o sinal (caixa aberto), pode.
+
+329. ⬜ **Folga cadastrada por cima de uma reserva aguardando o sinal deixa o cliente pagar um horário em que o profissional não vai estar** (back: `createBarberTimeOff`):
+     - O fechamento da unidade libera as reservas aguardando o sinal nos dias fechados (`releaseUnpaidHold`), para ninguém pagar por um horário que não existe mais.
+     - A folga só conta os horários afetados e mantém a reserva. O cliente recebe o e-mail "falta pagar o sinal", paga e o horário fica confirmado durante as férias do profissional.
+     
+     **Fazer:** ao criar a folga, liberar as reservas `PENDING_PAYMENT` do profissional (e da mesma pessoa nas outras unidades) dentro do período, como o fechamento faz. Teste: reserva aguardando o sinal dentro da folga nova é cancelada, e o pagamento dela não é mais aceito.
+
+330. ⬜ **Remarcar não passa pelas regras de quem marca: unidade pausada, horário em cima de outro do mesmo cliente e cota do plano solo do outro mês** (back: `rescheduleManagedAppointment`, `updateAppointment`):
+     - Pelo link do cliente, a remarcação confere o expediente, a folga e a agenda do profissional. Não confere se a unidade continua ativa e aberta à página pública (`isActive`, `ownerAcceptsPublic`), que a criação exige, nem se o cliente já tem outro horário na rede no mesmo período (`assertPublicCustomerCanBook`).
+     - O plano solo sem assinatura tem cota de atendimentos por mês (`assertSoloBookingAllowed`), conferida na criação pela data do horário. A remarcação, pelo link ou pela agenda da equipe, leva o horário para outro mês sem conferir a cota de lá.
+     
+     **Fazer:** na remarcação pelo link, recusar unidade pausada ou fora da página pública e horário que cruze outro do mesmo cliente. Nas duas remarcações, conferir a cota do solo quando o mês muda. Teste: unidade pausada não aceita remarcação pelo link; remarcar para cruzar outro horário do mesmo cliente é recusado; solo com a cota do mês seguinte cheia não remarca para lá.
