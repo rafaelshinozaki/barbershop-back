@@ -3242,3 +3242,15 @@ Foram lidos no back o cancelamento, a renovação e a troca de cartão do plano,
      - A Stripe reenvia por dias um aviso que falhou e não garante a ordem. Se o aviso da fatura de outubro chega depois do de novembro (já processado), as sessões usadas em novembro voltam a zero, e o cliente ganha sessões a mais no ciclo.
      
      **Fazer:** zerar o contador e mover o período só quando a fatura é do período atual ou de um mais novo (`invoice.lines` / `period_end` da fatura maior que o `currentPeriodStart` gravado). A fatura antiga só registra o pagamento. Teste: processar a fatura de novembro, usar duas sessões, processar a de outubro; o contador continua em 2.
+
+### Centésima décima oitava rodada (2026-10-26): resumo financeiro da unidade
+
+Foram lidos no back as despesas (lançamento, lista e exclusão), o resumo financeiro (receita, despesas, por forma de pagamento, por dia), o sinal e o pago pelo app que ficam com a unidade, o relatório do clube, a venda com cartão-presente, pontos, clube e pacote, o estorno do saldo de pacote e cartão-presente e o cálculo do pagamento da equipe (comissão, fixo, vales).
+
+310. ⬜ **O resumo financeiro (receita e lucro) não conta o clube nem o aluguel de cadeira pago no cartão** (back: `getFinancialSummary`; front: Caixa e Relatórios):
+     - A receita do resumo soma as vendas pagas, o sinal e o pago pelo app que ficaram com a unidade, e à parte o aluguel de cadeira recebido fora do cartão. O lucro líquido é isso menos as despesas.
+     - O clube de assinatura não entra. As mensalidades pagas (`ClientSubscriptionPayment`), que caem na conta da unidade pelo Connect ou chegam pelo repasse da plataforma, não aparecem na receita, e as sessões usadas entram como venda de valor zero. A unidade que vive do clube vê receita e lucro muito menores do que recebe, e o prejuízo aparente cresce com cada assinante.
+     - O aluguel de cadeira no cartão também fica de fora. Ele não entra na hora (fica na plataforma) e não entra quando o repasse (`ChairRentPayout`) é pago.
+     - O relatório do clube (`subscriptionRevenueReport`) mostra o clube em outra tela, mas não alimenta o resumo.
+     
+     **Fazer:** no resumo, uma linha "clube" com o que a unidade recebeu do clube no período (mensalidade menos estorno e taxa, como no relatório do clube: na data da cobrança se via Connect, ou na data do repasse se pela plataforma), e o aluguel no cartão pelo repasse recebido. As duas entram na receita e no lucro, com linha própria em "por forma de pagamento". Teste: unidade com uma mensalidade de clube paga via Connect e um repasse de aluguel no período; os dois aparecem na receita.
