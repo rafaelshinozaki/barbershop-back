@@ -3147,3 +3147,23 @@ Foi revisada a entrega dos itens 291 a 297 (limite de estorno por moeda, saída 
      - O navegador fica na página de retorno do provedor, no domínio da API, com o JSON do erro 401, sem caminho de volta para o app nem a mensagem para entrar com a senha.
      
      **Fazer:** no controller do cliente, pegar o `UnauthorizedException` e redirecionar para `/client/login?error=social` (e a tela de login do cliente mostrar a mensagem, como a da equipe). Teste: login social do cliente com vínculo de outro id redireciona para a tela de login.
+
+### Centésima décima segunda rodada (2026-10-26): backoffice-back
+
+Foram lidos no backoffice-back as escritas da área Usuários (edição, ações em lote, derrubar sessões), o Suporte (resposta, situação, suspensão da conta de cliente), as confirmações, os avisos e e-mails em massa, a moderação (fila e decisões), as permissões por operação e a exportação de dados do titular.
+
+300. ⬜ **A fila de moderação do backoffice some com denúncias em aberto mais antigas que as últimas 500** (backoffice-back: `ModerationQueries.queue`):
+     - A fila lê as 500 denúncias mais recentes de `ContentReport`, de qualquer situação (abertas, resolvidas, descartadas), e só depois agrupa. Uma denúncia em aberto mais antiga que essas 500 não entra na fila, e o conteúdo denunciado fica no ar sem ninguém ver.
+     - Também sai da fila o conteúdo oculto cuja última denúncia ficou fora da janela: não dá mais para restaurar pela tela.
+     - O back já corrigiu isso no `ModerationService.queue` (agrupa no banco só as abertas e junta as ocultas por `hiddenTargets`). O backoffice-back, que é a tela em uso, ficou com a versão antiga.
+     
+     **Fazer:** a mesma consulta do back. Primeiro as denúncias em aberto agrupadas no banco (`GROUP BY "targetType", "targetId"`, até 500 conteúdos), depois os conteúdos ocultos, e só então os detalhes das denúncias desses conteúdos. Teste: 600 denúncias resolvidas mais novas que uma aberta; a aberta aparece na fila.
+
+301. ⬜ **A exportação de dados do titular (LGPD) traz quase nada da pessoa** (backoffice-back: `Ops.privacyExport`):
+     - O pedido de acesso ou portabilidade (art. 18 da LGPD) gera um JSON com, da conta da equipe, só nome, e-mail, telefone, data de criação, se está ativa e o plano, mais as unidades em que ela é `ownerUserId` e os pagamentos do plano. Da conta de cliente, só nome, e-mail, criação, confirmação do e-mail e suspensão.
+     - Ficam de fora dados pessoais que a plataforma guarda e trata:
+       - **da equipe:** nascimento, documento, gênero, endereço, histórico de login e sessões (com o local aproximado), os vínculos como profissional em outras unidades, o perfil profissional e a verificação de identidade (o resultado, não as imagens);
+       - **do cliente:** telefone, as fichas ligadas em cada barbearia, os horários, as avaliações feitas, os favoritos, o clube e os pacotes, e as preferências de campanha.
+     - Também ficam de fora as unidades das redes em que a pessoa é dona pela rede (`Network.ownerUserId`) e não por `ownerUserId`. Quem responde o pedido com esse arquivo entrega uma "declaração completa" incompleta.
+     
+     **Fazer:** a exportação inclui os dados pessoais de cada lado: conta, endereço, logins e sessões, vínculos e perfil profissional, unidades pela rede; e, do cliente, telefone, fichas, horários, avaliações, favoritos, assinaturas, pacotes e preferências. Sem segredos (senha, tokens) e sem dados de terceiros (os clientes da unidade não entram na exportação do dono). Teste: conta de cliente com ficha, horário e avaliação; os três aparecem no JSON.
