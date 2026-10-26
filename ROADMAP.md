@@ -3088,3 +3088,20 @@ Foram lidos a conta de cliente (login social, ligação das fichas, favoritos, p
      - Quem avalia pelo link e depois cria a conta (as fichas são ligadas pelo e-mail e telefone) e avalia de novo pelo app ganha uma segunda linha: as duas aparecem na página e contam na nota média. A ligação das fichas não leva a avaliação junto. O caminho do link já procura pelas duas chaves (`findExisting`); o da conta não.
      
      **Fazer:** logado, procurar também a avaliação das fichas da conta naquela unidade e editar essa (gravando `clientAccountId`) em vez de criar outra. Ao ligar fichas a uma conta, passar o `clientAccountId` para as avaliações delas que ainda não têm. Teste: avaliação pelo link sem conta, liga a ficha, avalia logado; continua uma avaliação só.
+
+### Centésima nona rodada (2026-10-26): clube pela ficha e recursos desativados
+
+Foram lidos os pacotes (cadastro, venda, baixa e exclusão da venda), o cartão-presente na cobrança, os recursos (salas e cadeiras), as regras e o relatório de comissão, e os planos do clube com a ligação entre a ficha e a assinatura.
+
+295. ⬜ **O clube de outra pessoa aparece na ficha com o mesmo e-mail digitado, e bloquear a ficha cancela a assinatura dela** (back: `clientAccountIdForCustomer`, `getCustomerSubscriptions`, `prepareClubSession`, `cancelCustomerClub`, `customerBlockPreview`):
+     - Ficha ainda não ligada a uma conta: a assinatura do clube é procurada pela conta de cliente com o mesmo e-mail da ficha. Esse e-mail foi digitado pela equipe e não é confirmado, e a conta achada nem precisa ter o e-mail confirmado. Foi pelo mesmo motivo que o item 251 passou a exigir também o telefone para ligar as fichas.
+     - Com um erro de digitação (ou o e-mail de um parente), a tela da ficha mostra o clube e as sessões de outra pessoa. O caixa usa uma sessão do clube dela numa venda desta ficha, e a sessão sai do ciclo que ela pagou.
+     - Bloquear essa ficha (com "cancelar o clube") cancela no Stripe a assinatura da outra pessoa, com ou sem estorno.
+     
+     **Fazer:** a assinatura só vale pela ficha ligada à conta (`clientAccountId`). Sem ligação, `clientAccountIdForCustomer` devolve nulo, ou só aceita a conta com e-mail confirmado e o mesmo telefone da ficha, como a ligação do item 251. Teste: ficha sem conta, com o e-mail de uma conta que assina o clube e outro telefone; o clube não aparece, a sessão é recusada e bloquear a ficha não cancela a assinatura.
+
+296. ⬜ **Desativar um recurso com horários marcados deixa esses horários sem conseguir ser editados** (back: `updateResource`, `deleteResource`, `ensureResourceOfBarbershop`):
+     - Excluir o recurso (sala, cadeira) é recusado se ele tem horário futuro (`RESOURCE_IN_USE_MESSAGE`). Desativar pela edição (`updateResource` com `isActive: false`) não confere nada.
+     - Os horários futuros continuam com o recurso. Ao editar um deles, a tela manda o `resourceId` de novo e `updateAppointment` chama `ensureResourceOfBarbershop`, que só aceita recurso ativo: "Recurso não encontrado". A equipe não consegue remarcar nem trocar o profissional desses horários sem antes tirar a sala.
+     
+     **Fazer:** `updateResource` com `isActive: false` faz a mesma checagem da exclusão (recusa com horário futuro). Na edição do horário, o recurso que ele já tem continua aceito mesmo inativo; só a troca para um recurso inativo é recusada. Teste: recurso com horário amanhã; desativar é recusado; horário com recurso já inativo pode mudar de hora mantendo o recurso.
