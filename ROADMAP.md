@@ -3410,3 +3410,21 @@ Foram lidos no back o sinal online (reserva aguardando pagamento, `DepositPaymen
      - O plano solo sem assinatura tem cota de atendimentos por mês (`assertSoloBookingAllowed`), conferida na criação pela data do horário. A remarcação, pelo link ou pela agenda da equipe, leva o horário para outro mês sem conferir a cota de lá.
      
      **Fazer:** na remarcação pelo link, recusar unidade pausada ou fora da página pública e horário que cruze outro do mesmo cliente. Nas duas remarcações, conferir a cota do solo quando o mês muda. Teste: unidade pausada não aceita remarcação pelo link; remarcar para cruzar outro horário do mesmo cliente é recusado; solo com a cota do mês seguinte cheia não remarca para lá.
+
+### Centésima vigésima quarta rodada (2026-10-26): agendamento, terceira passada
+
+Foram lidos no back a agenda assinável e o "adicionar à agenda" (`CalendarService`), o pagamento do atendimento pelo app (`PrepaymentService`), a abertura de vagas e o aviso da lista de espera (`withWaitlistOpening`, `waitlistOpeningSlots`, `sendWaitlistNotice`), os recursos (sala, cadeira) e a fila de envio (`NotificationQueueService`). No front, a tela de agendar (`PublicBooking/BookingDialog`) e a de gerenciar o horário pelo link (`ManageAppointment`).
+
+331. ⬜ **O segundo aviso de vaga para a mesma pessoa da lista de espera não sai, e a vaga fica 30 minutos guardada para quem não sabe dela** (back: `sendWaitlistNotice`, `NotificationQueueService`):
+     - O aviso vai pela fila com um id fixo por entrada (`waitlist-email-<id>` e `waitlist-whatsapp-<id>`). A fila ignora um envio com id repetido enquanto guarda o anterior (24 h, `removeOnComplete`).
+     - Quem foi avisado e não agendou volta a esperar no mesmo lugar (`backToWaiting`) e é a primeira da fila na próxima vaga. Como a entrada é de um dia só, a próxima vaga quase sempre chega dentro das 24 h: a entrada vira "avisada" de novo, mas o e-mail e o WhatsApp são descartados.
+     - A vaga fica reservada para essa pessoa por `WAITLIST_OFFER_MINUTES` (30) antes de passar ao próximo. Cada vaga nova do dia vai primeiro para quem nunca fica sabendo.
+     
+     **Fazer:** pôr o horário oferecido no id do envio (`waitlist-email-<id>-<offeredStartAt>`), como no lembrete e na remarcação. Teste: a mesma entrada avisada de duas vagas no mesmo dia gera dois envios.
+
+332. ⬜ **Remarcar pelo link não mostra os horários que encostam no horário atual, e para de funcionar quando um serviço sai da página** (front: `ManageAppointment`; back: `getPublicAvailableSlots`, `rescheduleManagedAppointment`):
+     - A tela de remarcar busca os horários com `publicAvailableSlots` (profissional e serviços do horário). Essa lista conta o próprio horário do cliente como ocupado: quem tem 10h às 11h não vê 9h30, 10h15 nem 10h30, embora a remarcação no servidor aceite (ela desconta o próprio horário).
+     - A lista usa a duração atual dos serviços; a remarcação usa a duração do horário marcado. Com um horário esticado pela equipe, a lista mostra horários que a remarcação recusa por conflito.
+     - Serviço desativado depois de marcado faz `publicServices` responder "Serviço não encontrado". A tela fica sem horários e o cliente não consegue remarcar, embora a remarcação em si não dependa do serviço estar ativo.
+     
+     **Fazer:** uma consulta de horários pelo token do link (`managedAppointmentSlots(token, date)`), que desconta o próprio horário, usa a duração dele e não exige o serviço ativo, com as mesmas regras de `ensurePublicSlot`. A tela de remarcar passa a usá-la. Teste: horário das 10h às 11h vê 10h30 na lista e remarca para lá; serviço desativado continua listando horários.
