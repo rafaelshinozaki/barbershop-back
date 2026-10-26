@@ -139,7 +139,14 @@ export class CareerService {
 
   /** Atalho antigo: público ou oculto. O controle completo é a página de privacidade. */
   async setPublic(userId: number, isPublic: boolean) {
-    await ensureProfessional(this.prisma, userId);
+    const professional = await ensureProfessional(this.prisma, userId);
+    // Fichas da própria conta criadas antes do perfil (a do dono, criada com a
+    // unidade): sem a ligação, o perfil público saía sem as unidades e sem a
+    // distância na busca
+    await this.prisma.barber.updateMany({
+      where: { userId, professionalId: null },
+      data: { professionalId: professional.id },
+    });
     await this.updatePrivacy(userId, { visibility: isPublic ? 'public' : 'hidden' });
     return this.overview(userId);
   }
