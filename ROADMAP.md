@@ -3072,3 +3072,19 @@ Foram lidos as confirmações do backoffice (estorno, exclusão, e-mail em massa
      - A tela também conta se aquele telefone pediu para sair (`whatsappOptOut`), mesmo sendo de outra pessoa.
      
      **Fazer:** pela conta, sair do WhatsApp continua valendo. Voltar só desfaz a saída feita por esta conta (guardar `clientAccountId` na linha da `WhatsappOptOut`); quem saiu respondendo SAIR volta respondendo VOLTAR, e a tela explica isso. A tela não mostra a escolha de um telefone que a conta não confirmou, e a saída feita por outra conta ou pelo WhatsApp aparece como "fale VOLTAR no WhatsApp". Teste: SAIR pelo WhatsApp e, numa conta com esse telefone, marcar "receber" não apaga a linha.
+
+### Centésima oitava rodada (2026-10-26): login social e avaliação em dobro
+
+Foram lidos a conta de cliente (login social, ligação das fichas, favoritos, perfil), o cancelamento e a remarcação pelo link, a fila por ordem de chegada, o caixa (abertura, fechamento e o que entra na conferência), o pagamento da equipe e as avaliações da unidade pela conta e pelo link.
+
+293. ⬜ **Login social entra na conta pelo e-mail mesmo quando o vínculo é de outra pessoa no provedor** (back: `UserService.findOrCreateSocialUser`, `ClientAuthService.findOrCreateSocialAccount`):
+     - O item 271 passou a guardar o id da pessoa no provedor (`providerUserId`) e a procurar o vínculo por ele. Se não acha, ainda procura o vínculo pelo e-mail, e usa o que achar mesmo quando esse vínculo já tem outro `providerUserId`.
+     - O e-mail de uma conta no Google, Facebook ou Apple pode passar para outra pessoa (conta apagada e e-mail reaproveitado, troca do e-mail principal no Facebook). Essa pessoa entra pelo provedor com o mesmo e-mail e outro id, e o login cai no vínculo antigo: ela entra na conta da equipe (agenda, clientes, recebimentos) ou na área do cliente de quem tinha o e-mail antes.
+     
+     **Fazer:** a busca pelo e-mail só vale para vínculo sem `providerUserId` (os antigos, que então recebem o id). Vínculo com outro id não é usado: o login segue como uma pessoa nova do provedor (que pode cair na conta pelo e-mail confirmado, com as regras de hoje) ou é recusado com uma mensagem para entrar com a senha. Nos dois fluxos (equipe e cliente). Teste: vínculo com id A; login com o mesmo e-mail e id B não entra pelo vínculo de A.
+
+294. ⬜ **A mesma pessoa fica com duas avaliações da unidade: uma pelo link do e-mail e outra pela conta** (back: `createOrUpdateReview`, `ReviewRequestService.submitReview`):
+     - Pelo link do e-mail, a avaliação é gravada pela ficha (`barbershopId + customerId`), com `clientAccountId` nulo se a ficha ainda não estava ligada a uma conta. Logado, a avaliação é procurada só por `barbershopId + clientAccountId`.
+     - Quem avalia pelo link e depois cria a conta (as fichas são ligadas pelo e-mail e telefone) e avalia de novo pelo app ganha uma segunda linha: as duas aparecem na página e contam na nota média. A ligação das fichas não leva a avaliação junto. O caminho do link já procura pelas duas chaves (`findExisting`); o da conta não.
+     
+     **Fazer:** logado, procurar também a avaliação das fichas da conta naquela unidade e editar essa (gravando `clientAccountId`) em vez de criar outra. Ao ligar fichas a uma conta, passar o `clientAccountId` para as avaliações delas que ainda não têm. Teste: avaliação pelo link sem conta, liga a ficha, avalia logado; continua uma avaliação só.
