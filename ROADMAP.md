@@ -3285,3 +3285,28 @@ Foram lidos no back a venda inteira (criação com sinal, pago pelo app, cartão
      - A venda fechada gravou o sinal em `depositApplied` e cobrou do cliente só o resto. Estornado o sinal, o cliente recebe de volta e fica pagando menos que o serviço. O faturamento (`saleRevenue`) e os pontos continuam contando o sinal.
      
      **Fazer:** recusar o estorno do sinal quando o horário tem venda (mesma mensagem do pago pelo app), ou, se houver estorno, lançar o estorno do sinal como lançamento negativo na unidade (como o estorno do saldo de pacote) e tirar os pontos dele. Teste: sinal pago online, conta fechada, pedido de estorno do sinal é recusado.
+
+### Centésima vigésima rodada (2026-10-26): login e sessão
+
+Foram lidos no back o login da equipe (senha, código por e-mail, "lembrar de mim", renovação do token), as sessões ativas (sair, sair das outras, encerrar uma), a troca e a redefinição de senha, a verificação em duas etapas (ativar, desativar, código do login), os guards do GraphQL e do REST, o login social da equipe e do cliente, e a área do cliente (cadastro, login com a senha da equipe, confirmação do e-mail, redefinição de senha, sessão). No backoffice-back, o login da equipe da plataforma (bloqueio por tentativas, código, sessão com prazo e tempo parado, redefinição e convite).
+
+315. ⬜ **O login social entra direto em conta com verificação em duas etapas, sem pedir o código** (back: `AuthController.completeSocialLogin`, `socialLoginAllowed`):
+     - No login por senha, `needsLoginCode` pede o código por e-mail para quem ligou a verificação em duas etapas (`twoFactorEnabled`) e para as contas do sistema.
+     - No login pelo Google, Facebook ou Apple, só as contas do sistema são recusadas (`socialLoginAllowed`). O dono ou funcionário com a verificação ligada entra sem o código, e quem tem acesso só à conta do Google da pessoa pula a segunda etapa que ela ligou de propósito.
+     - A própria tela de "abrir a área da equipe" pela área do cliente (`staffForClient`) já recusa conta com a verificação ligada; o login social não segue a mesma regra.
+     
+     **Fazer:** no login social da equipe, conta com `twoFactorEnabled` passa pelo código: manda o código e redireciona para a tela de código do login (com um `loginId`), ou recusa o login social e pede o login por senha. Teste: conta com verificação ligada entrando pelo Google não ganha a sessão sem o código.
+
+316. ⬜ **Encerrar uma sessão na lista de sessões não para os avisos no celular daquele aparelho** (back: `UserService.terminateSession`; `PushSubscription`):
+     - "Sair das outras sessões", a troca de senha e o "derrubar sessões" do backoffice apagam as inscrições de aviso no celular (menos a do aparelho que pediu). Encerrar só uma sessão (`terminateSession`) apaga a `ActiveSession` e mais nada.
+     - O aparelho derrubado (perdido, de outra pessoa) perde o acesso, mas continua recebendo os avisos de novo agendamento, venda, conversa, com nome de cliente e horário.
+     - A inscrição de aviso não guarda de qual sessão ela é, então hoje não dá para apagar só a daquele aparelho.
+     
+     **Fazer:** gravar a sessão (`sessionToken`) na inscrição de aviso quando ela é criada. Ao encerrar a sessão, apagar as inscrições dela. Teste: duas sessões com aviso; encerrar uma apaga só a inscrição dela.
+
+317. ⬜ **Conta desativada ainda usa as rotas REST com a sessão que sobrou, e o código do login não confere se a conta continua ativa** (back: `JwtStrategy.validate`, `UserService.verifyLoginCode`):
+     - O guard do GraphQL recusa conta desativada mesmo com a sessão ainda aberta (item 270). A estratégia das rotas REST (`JwtStrategy`, usada por pagamentos, cupons, convites, redes sociais, foto do perfil) só confere se a sessão existe, sem olhar `isActive`.
+     - Quando uma conta é desativada por um caminho que não apaga as sessões, ela continua podendo, pelo REST, abrir checkout, salvar cartão e usar os convites.
+     - No login com código, a senha é conferida no primeiro passo, e `verifyLoginCode` busca a conta de novo pelo e-mail sem conferir `isActive`. A conta desativada entre os dois passos ganha a sessão.
+     
+     **Fazer:** `JwtStrategy.validate` recusa `isActive = false`, como o guard do GraphQL. `verifyLoginCode` só devolve conta ativa. Teste: conta desativada com sessão aberta recebe 401 numa rota REST; código certo de conta desativada no meio do login é recusado.
