@@ -3105,3 +3105,14 @@ Foram lidos os pacotes (cadastro, venda, baixa e exclusão da venda), o cartão-
      - Os horários futuros continuam com o recurso. Ao editar um deles, a tela manda o `resourceId` de novo e `updateAppointment` chama `ensureResourceOfBarbershop`, que só aceita recurso ativo: "Recurso não encontrado". A equipe não consegue remarcar nem trocar o profissional desses horários sem antes tirar a sala.
      
      **Fazer:** `updateResource` com `isActive: false` faz a mesma checagem da exclusão (recusa com horário futuro). Na edição do horário, o recurso que ele já tem continua aceito mesmo inativo; só a troca para um recurso inativo é recusada. Teste: recurso com horário amanhã; desativar é recusado; horário com recurso já inativo pode mudar de hora mantendo o recurso.
+
+### Centésima décima rodada (2026-10-26): ficha apagada que deixa dados para trás
+
+Foram lidos a indicação de clientes pela página pública, os horários livres e o próximo horário, os relatórios avançados, o estoque, a escala dos profissionais, as fichas de saúde (registro, revogação e assinatura) e a exclusão e edição da ficha do cliente.
+
+297. ⬜ **Apagar a ficha do cliente deixa o e-mail dele nos horários e o nome e o telefone na fila** (back: `deleteCustomer`; `Appointment.contactEmail`, `WalkIn.customerName`/`customerPhone`):
+     - `deleteCustomer` anonimiza a ficha (nome, telefone, e-mail, nascimento, observações), apaga as fichas de saúde e a lista de espera e limpa o histórico de alterações (item 283). Os horários e a fila ficam, como registro.
+     - O e-mail digitado no agendamento online fica em cada horário (`contactEmail`), e a fila por ordem de chegada guarda o nome e o telefone de cada entrada (`customerName`, `customerPhone`), separados da ficha. Depois da exclusão, a agenda e a fila continuam mostrando esses dados, e o e-mail segue sendo usado no horário (`appointmentContactEmail`).
+     - O pedido de exclusão da ficha (LGPD) fica pela metade: os dados pessoais continuam na base, ligados ao mesmo `customerId`.
+     
+     **Fazer:** na mesma transação de `deleteCustomer`, limpar `contactEmail` dos horários da ficha e trocar o nome da fila por "Cliente removido" e o telefone por nulo nas entradas dela. Teste: ficha com horário agendado pela página (com e-mail) e entrada na fila; depois de apagar, nenhum dos dois tem o e-mail, o nome ou o telefone.
