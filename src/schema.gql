@@ -1022,6 +1022,22 @@ input ClientLoginInput {
   password: String!
 }
 
+type ClientMarketingPreferencesType {
+  """A conta tem telefone (dá para escolher pelo WhatsApp)"""
+  hasPhone: Boolean!
+  networks: [ClientNetworkMarketingType!]!
+
+  """Saiu das campanhas pelo WhatsApp (vale para todas as barbearias)"""
+  whatsappOptOut: Boolean!
+}
+
+type ClientNetworkMarketingType {
+  """Saiu das campanhas por e-mail desta barbearia"""
+  emailOptOut: Boolean!
+  networkId: Int!
+  networkName: String!
+}
+
 type ClientPackageType {
   barbershopId: Int!
   createdAt: String!
@@ -2414,6 +2430,12 @@ type Mutation {
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setClientAccountSuspended(cancelSubscriptions: Boolean, clientAccountId: Int!, reason: String, refundUnused: Boolean, suspended: Boolean!): Boolean!
+
+  """Sai (ou volta) das campanhas por e-mail de uma barbearia"""
+  setClientEmailMarketing(networkId: Int!, optOut: Boolean!): ClientMarketingPreferencesType!
+
+  """Sai (ou volta) das campanhas pelo WhatsApp"""
+  setClientWhatsappMarketing(optOut: Boolean!): ClientMarketingPreferencesType!
   setCommissionRule(barbershopId: Int!, input: SetCommissionRuleInput!): CommissionRuleType!
 
   """Bloqueia ou desbloqueia o cliente (gerente para cima)"""
@@ -3472,6 +3494,7 @@ type Query {
   clientFavorites: [Network!]!
   clientHistory: [ClientHistoryEntryType!]!
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
+  clientMarketingPreferences: ClientMarketingPreferencesType!
   clientMe: ClientAccountType!
   clientPackages(barbershopId: Int!, customerId: Int!): [ClientPackageType!]!
   clientSession: ClientAccountType

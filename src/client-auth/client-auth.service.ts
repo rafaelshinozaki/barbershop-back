@@ -22,7 +22,11 @@ import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
 import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
-import { phoneDigitVariants } from '../common/phone.util';
+import {
+  normalizePhoneToE164,
+  phoneDigitVariants,
+  whatsappSenderVariants,
+} from '../common/phone.util';
 import { clientSessionAlive, openClientSession } from './client-session';
 
 export const CLIENT_TOKEN_PURPOSE = {
@@ -528,6 +532,107 @@ export class ClientAuthService {
 
     await this.linkVerifiedCustomers(account);
     return account;
+  }
+
+  // ============ CAMPANHAS: O QUE A PESSOA QUER RECEBER ============
+
+  /**
+   * Campanhas na área do cliente (item 275): por e-mail, uma opção por
+   * barbearia (rede) onde a pessoa tem ficha; no WhatsApp, uma só, porque o
+   * número de envio é um só da plataforma.
+   */
+  async marketingPreferences(clientAccountId: number) {
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+      select: { phone: true },
+    });
+    const fichas = await this.prisma.customer.findMany({
+      where: { clientAccountId, deletedAt: null },
+      select: {
+        networkId: true,
+        marketingOptOut: true,
+        network: {
+          select: {
+            name: true,
+            barbershops: { take: 1, orderBy: { id: 'asc' }, select: { name: true } },
+          },
+        },
+      },
+    });
+    const byNetwork = new Map<
+      number,
+      { networkId: number; networkName: string; emailOptOut: boolean }
+    >();
+    for (const f of fichas) {
+      const current = byNetwork.get(f.networkId);
+      byNetwork.set(f.networkId, {
+        networkId: f.networkId,
+        networkName: f.network?.name || f.network?.barbershops[0]?.name || '',
+        emailOptOut: (current?.emailOptOut ?? false) || f.marketingOptOut,
+      });
+    }
+    const variants = this.whatsappVariants(account?.phone);
+    const whatsappOptOut = variants.length
+      ? (await this.prisma.whatsappOptOut.count({ where: { phoneDigits: { in: variants } } })) > 0
+      : false;
+    return {
+      hasPhone: variants.length > 0,
+      whatsappOptOut,
+      networks: [...byNetwork.values()].sort((a, b) => a.networkName.localeCompare(b.networkName)),
+    };
+  }
+
+  /** Sai (ou volta) das campanhas por e-mail de uma barbearia */
+  async setNetworkEmailOptOut(clientAccountId: number, networkId: number, optOut: boolean) {
+    const fichas = await this.prisma.customer.findMany({
+      where: { clientAccountId, networkId, deletedAt: null },
+      select: { id: true, email: true },
+    });
+    if (!fichas.length) throw new NotFoundException('Barbearia não encontrada');
+    const emails = [...new Set(fichas.map((f) => f.email?.trim()).filter((e): e is string => !!e))];
+    // As outras fichas da rede com o mesmo e-mail seguem a escolha (como o
+    // link do descadastro)
+    await this.prisma.customer.updateMany({
+      where: {
+        networkId,
+        deletedAt: null,
+        OR: [
+          { clientAccountId },
+          ...emails.map((email) => ({ email: { equals: email, mode: 'insensitive' as const } })),
+        ],
+      },
+      data: { marketingOptOut: optOut },
+    });
+    return this.marketingPreferences(clientAccountId);
+  }
+
+  /** Sai (ou volta) das campanhas pelo WhatsApp, pelo telefone da conta */
+  async setWhatsappOptOut(clientAccountId: number, optOut: boolean) {
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+      select: { phone: true },
+    });
+    const variants = this.whatsappVariants(account?.phone);
+    if (!variants.length) {
+      throw new BadRequestException(
+        'Cadastre o seu telefone na conta para escolher pelo WhatsApp.',
+      );
+    }
+    if (optOut) {
+      await this.prisma.whatsappOptOut.createMany({
+        data: variants.map((phoneDigits) => ({ phoneDigits })),
+        skipDuplicates: true,
+      });
+    } else {
+      await this.prisma.whatsappOptOut.deleteMany({ where: { phoneDigits: { in: variants } } });
+    }
+    return this.marketingPreferences(clientAccountId);
+  }
+
+  /** Todas as formas do número (com e sem DDI, com e sem o nono dígito) */
+  private whatsappVariants(phone?: string | null): string[] {
+    const e164 = normalizePhoneToE164(phone);
+    return e164 ? whatsappSenderVariants(e164) : [];
   }
 
   async getLinkedSocialAccounts(clientAccountId: number) {

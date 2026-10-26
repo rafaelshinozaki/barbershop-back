@@ -2906,7 +2906,7 @@ Foram lidos o descadastro pelo WhatsApp (`WhatsappOptOutService`), o link de des
      - **Pedido de avaliação da equipe:** usa o e-mail só sem descadastro na rede, e o WhatsApp só sem SAIR.
      - **Volta pelo e-mail:** a mutation pública `resubscribeToMarketing(token)` usa o mesmo link do descadastro. A equipe continua sem poder fazer isso pela pessoa.
 
-     Os descadastros antigos feitos por SAIR continuam marcados no e-mail, porque não dá para separá-los dos feitos pelo link. No front, a página do link oferece "Voltar a receber" e explica que o WhatsApp é separado (SAIR e VOLTAR). As opções na área do cliente ainda faltam. Testes em `round-273-275.int.spec.ts`, `marketing-text.spec.ts` e `out-of-service.int.spec.ts` (item 191, atualizado).
+     Os descadastros antigos feitos por SAIR continuam marcados no e-mail, porque não dá para separá-los dos feitos pelo link. No front, a página do link oferece "Voltar a receber" e explica que o WhatsApp é separado (SAIR e VOLTAR). Na área do cliente, `clientMarketingPreferences`, `setClientEmailMarketing` e `setClientWhatsappMarketing` deixam a pessoa escolher o e-mail de cada barbearia onde tem ficha e o WhatsApp (pelo telefone da conta), e voltar quando quiser. No front, isso fica no card "Promoções e novidades" da conta. Testes em `round-273-275.int.spec.ts`, `marketing-text.spec.ts` e `out-of-service.int.spec.ts` (item 191, atualizado).
 
 ### Centésima primeira rodada (2026-10-22): ficha de saúde e pedido de avaliação pela equipe
 
