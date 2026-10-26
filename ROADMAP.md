@@ -3217,3 +3217,28 @@ Foram lidos no back o checkout dos planos (cobrança, cupom, confirmação pela 
      - Se a anterior era cobrada pela Stripe (`stripeSubscriptionId`), ela não é cancelada lá. Na fatura seguinte, `handleInvoicePaymentSucceeded` acha a assinatura pelo id da Stripe e a volta para ativa: a conta fica com duas assinaturas ativas e o cartão é cobrado pelas duas todo mês.
      
      **Fazer:** com plano pago ativo (preço > 0 e período em vigor, ou assinatura na Stripe), o checkout recusa e manda para a troca de plano. Pagamento confirmado nesse estado (corrida entre abas) é estornado em vez de criar outra assinatura. Ao desativar uma assinatura com `stripeSubscriptionId` (também no checkout que vem do gratuito), cancelar na Stripe. A fatura paga de assinatura inativa não a reativa. Teste: conta com plano pago ativo pede checkout de outro plano e é recusada; assinatura inativa com fatura paga na Stripe continua inativa.
+
+### Centésima décima sétima rodada (2026-10-26): avisos da Stripe sobre assinaturas
+
+Foram lidos no back o cancelamento, a renovação e a troca de cartão do plano, os avisos da Stripe (fatura paga e recusada, assinatura atualizada e encerrada, disputa, estorno) e a assinatura do clube pelo cliente (cartão, assinatura, cancelamento, baixa de sessão).
+
+307. ⬜ **Plano cobrado pela Stripe cai na primeira cobrança recusada, sem a tolerância dos outros planos** (back: `StripeController.handleSubscriptionUpdated`):
+     - Na renovação sem Stripe, o plano continua ativo por `RENEWAL_GRACE_DAYS` (7 dias) enquanto o cartão é tentado de novo. Na assinatura pela Stripe, o aviso `customer.subscription.updated` com `past_due` (a primeira falha, com a Stripe ainda tentando) põe a assinatura como `INACTIVE` na hora. `unpaid`, `incomplete` e `trialing` também.
+     - O dono perde os recursos do plano pago no mesmo dia (os limites voltam aos do gratuito, `getPlanLimitsForOwner` não acha assinatura ativa), embora a Stripe vá cobrar de novo e o plano volte se passar.
+     - O plano também não volta para o gratuito: a conta fica sem nenhuma assinatura ativa, diferente de `expireSubscription`.
+     
+     **Fazer:** `past_due` mantém a assinatura `ACTIVE` (só a conta vai para `PAST_DUE`), como na tolerância da renovação. `trialing` conta como ativa. Só `canceled`, `unpaid` e `incomplete_expired` encerram, e aí como `expireSubscription` (volta para o gratuito). Teste: aviso com `past_due` deixa a assinatura ativa; com `canceled`, a conta fica no gratuito.
+
+308. ⬜ **Clube cuja primeira cobrança não se completa fica "incompleto" para sempre, e o cliente não consegue assinar de novo** (back: `subscribeToPlan`, `StripeController.handleSubscriptionUpdated`):
+     - A assinatura do clube que precisa de confirmação do cartão (3DS) nasce `INCOMPLETE`. Se o cliente não confirma, a Stripe muda a assinatura para `incomplete_expired` depois de 23 horas, num `customer.subscription.updated`.
+     - `handleSubscriptionUpdated` só trata o plano do dono (procura em `Subscription` e sai se não acha). A assinatura do clube continua `INCOMPLETE` no banco para sempre.
+     - `subscribeToPlan` recusa nova assinatura do mesmo plano enquanto houver uma `INCOMPLETE`: "Você já tem uma assinatura ativa neste plano". O cliente fica sem jeito de assinar.
+     - A prévia do bloqueio e a da suspensão contam essa assinatura como cobrando. Mudanças feitas no painel da Stripe (cancelar no fim do ciclo, `unpaid`) também não chegam ao clube.
+     
+     **Fazer:** `handleSubscriptionUpdated` também atualiza `ClientSubscription`. `incomplete_expired`, `canceled` e `unpaid` viram `CANCELED`; `past_due` vira `PAST_DUE`; `active` vira `ACTIVE`; `cancel_at_period_end` é copiado. Teste: assinatura do clube `INCOMPLETE` recebe `incomplete_expired`, fica `CANCELED`, e o cliente consegue assinar de novo.
+
+309. ⬜ **Aviso atrasado da fatura do ciclo anterior do clube zera as sessões usadas no ciclo atual** (back: `StripeController.handleClientSubscriptionInvoiceSucceeded`):
+     - Cada fatura paga do clube zera `usedThisCycle` e copia o período atual da assinatura na Stripe. A trava só impede repetir a mesma fatura.
+     - A Stripe reenvia por dias um aviso que falhou e não garante a ordem. Se o aviso da fatura de outubro chega depois do de novembro (já processado), as sessões usadas em novembro voltam a zero, e o cliente ganha sessões a mais no ciclo.
+     
+     **Fazer:** zerar o contador e mover o período só quando a fatura é do período atual ou de um mais novo (`invoice.lines` / `period_end` da fatura maior que o `currentPeriodStart` gravado). A fatura antiga só registra o pagamento. Teste: processar a fatura de novembro, usar duas sessões, processar a de outubro; o contador continua em 2.
