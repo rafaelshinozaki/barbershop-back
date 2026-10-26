@@ -3167,3 +3167,14 @@ Foram lidos no backoffice-back as escritas da área Usuários (edição, ações
      - Também ficam de fora as unidades das redes em que a pessoa é dona pela rede (`Network.ownerUserId`) e não por `ownerUserId`. Quem responde o pedido com esse arquivo entrega uma "declaração completa" incompleta.
      
      **Fazer:** a exportação inclui os dados pessoais de cada lado: conta, endereço, logins e sessões, vínculos e perfil profissional, unidades pela rede; e, do cliente, telefone, fichas, horários, avaliações, favoritos, assinaturas, pacotes e preferências. Sem segredos (senha, tokens) e sem dados de terceiros (os clientes da unidade não entram na exportação do dono). Teste: conta de cliente com ficha, horário e avaliação; os três aparecem no JSON.
+
+### Centésima décima terceira rodada (2026-10-26): resultados da plataforma no backoffice-back
+
+Foram lidos no backoffice-back o saldo a repassar de cada unidade (clube, aluguel e sinal), os resultados da plataforma (receita, estornos, dinheiro de terceiros, repasses, GMV) e as contas de uso do painel.
+
+302. ⬜ **A receita da plataforma não conta a taxa do pagamento antecipado nem da caixinha pelo app** (backoffice-back: `ResultsQueries.slice`; back: `PrepaymentService.start`, `TipService.startAppTip`):
+     - O pagamento antecipado do atendimento e a caixinha pelo app cobram a taxa da plataforma como `application_fee` no Stripe Connect (`platformFeeCents`), como o sinal.
+     - Em Resultados, a receita soma plano, Destaque, taxa da vaga, taxa do sinal e taxa do clube. As taxas desses dois pagamentos não entram em nenhuma linha, nem os estornos delas. A receita e o líquido do período saem menores do que a plataforma recebeu, e a diferença cresce com o uso do app.
+     - O percentual cobrado também não fica gravado nesses dois pagamentos (o sinal tem `depositPlatformFeePercent`, o clube `platformFeePercent`). Mudar a taxa em Preços e taxas mudaria o cálculo do que já foi pago.
+     
+     **Fazer:** gravar o percentual na hora da cobrança (`prepaidPlatformFeePercent` no horário e `platformFeePercent` na caixinha). Em Resultados, linhas "taxa do pagamento antecipado" e "taxa da caixinha", com os estornos proporcionais ao que voltou (`prepaidRefundedAmount`, caixinha estornada), só das unidades em real, como as outras. Teste: um pagamento antecipado e uma caixinha pagos pelo app no período; as taxas aparecem na receita.
