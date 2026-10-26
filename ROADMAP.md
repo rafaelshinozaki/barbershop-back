@@ -3060,59 +3060,73 @@ Foram lidos o pagamento antecipado pelo app, os pagamentos pelo app no backoffic
 
 Foram lidos as confirmações do backoffice (estorno, exclusão, e-mail em massa), a exclusão da conta, as avaliações da unidade e do profissional, o histórico de alterações, os lembretes, o sinal online, a trilha de atividade, o backup, a agenda da franquia e as preferências de campanha da área do cliente.
 
-291. ⬜ **O limite de estorno sem confirmação é em reais, mas é comparado com o valor em qualquer moeda** (back: `adminRefundAppPayment`, `refundApprovalLimit`):
+291. ✅ **O limite de estorno sem confirmação é em reais, mas é comparado com o valor em qualquer moeda** (back: `adminRefundAppPayment`, `refundApprovalLimit`):
      - Quem não é Administrador estorna sozinho até `BACKOFFICE_REFUND_APPROVAL_LIMIT` (padrão 500, "em reais"). Acima disso, vira pedido de confirmação. O resolver compara `refundValue + refundedSoFar` direto com esse número, na moeda do pagamento.
      - Pagamento em dólar ou euro: um estorno de US$ 500 (uns R$ 2.700) passa sem a confirmação de outro Administrador. Moeda sem centavos e de número grande (peso chileno, iene): qualquer estorno pequeno vira pedido de confirmação.
      
      **Fazer:** o limite vale por moeda. Converter o valor para reais com uma tabela de câmbio mantida no `.env` (por exemplo `BACKOFFICE_REFUND_APPROVAL_LIMITS=BRL:500,USD:100,EUR:90`), ou exigir confirmação sempre que a moeda não for a do limite. Teste: estorno de 200 em USD, sem limite configurado para USD, vira pedido de confirmação.
 
-292. ⬜ **Pela área do cliente, dá para voltar a mandar WhatsApp para quem respondeu SAIR, com o telefone de outra pessoa** (back: `ClientAuthService.setWhatsappOptOut`, `marketingPreferences`):
+     **Feito:** `BACKOFFICE_REFUND_APPROVAL_LIMITS` define o teto de cada moeda. O real, se não estiver na tabela, continua no limite antigo (padrão 500). Moeda sem linha pede confirmação de outro Administrador, qualquer que seja o valor. Teste em `round-291-297.spec.ts`.
+
+292. ✅ **Pela área do cliente, dá para voltar a mandar WhatsApp para quem respondeu SAIR, com o telefone de outra pessoa** (back: `ClientAuthService.setWhatsappOptOut`, `marketingPreferences`):
      - O telefone da conta de cliente é digitado pela pessoa e não é confirmado. `setWhatsappOptOut(false)` apaga da `WhatsappOptOut` todas as formas desse número.
      - Quem cadastra na própria conta o telefone de outra pessoa e marca "receber pelo WhatsApp" desfaz o SAIR que ela mandou. As campanhas de todas as barbearias voltam a ir para o WhatsApp dela, contra o pedido dela (LGPD e regra da Meta para mensagens de marketing).
      - A tela também conta se aquele telefone pediu para sair (`whatsappOptOut`), mesmo sendo de outra pessoa.
      
      **Fazer:** pela conta, sair do WhatsApp continua valendo. Voltar só desfaz a saída feita por esta conta (guardar `clientAccountId` na linha da `WhatsappOptOut`); quem saiu respondendo SAIR volta respondendo VOLTAR, e a tela explica isso. A tela não mostra a escolha de um telefone que a conta não confirmou, e a saída feita por outra conta ou pelo WhatsApp aparece como "fale VOLTAR no WhatsApp". Teste: SAIR pelo WhatsApp e, numa conta com esse telefone, marcar "receber" não apaga a linha.
 
+     **Feito:** a linha da `WhatsappOptOut` guarda a conta que pediu para sair. Marcar "receber" só apaga a saída dessa conta. Quem respondeu SAIR fica com a linha sem conta, e só VOLTAR (START/VOLVER) apaga. A tela não mostra a chave nesse caso: explica que é preciso responder VOLTAR no WhatsApp. Teste em `round-291-297.spec.ts`.
+
 ### Centésima oitava rodada (2026-10-26): login social e avaliação em dobro
 
 Foram lidos a conta de cliente (login social, ligação das fichas, favoritos, perfil), o cancelamento e a remarcação pelo link, a fila por ordem de chegada, o caixa (abertura, fechamento e o que entra na conferência), o pagamento da equipe e as avaliações da unidade pela conta e pelo link.
 
-293. ⬜ **Login social entra na conta pelo e-mail mesmo quando o vínculo é de outra pessoa no provedor** (back: `UserService.findOrCreateSocialUser`, `ClientAuthService.findOrCreateSocialAccount`):
+293. ✅ **Login social entra na conta pelo e-mail mesmo quando o vínculo é de outra pessoa no provedor** (back: `UserService.findOrCreateSocialUser`, `ClientAuthService.findOrCreateSocialAccount`):
      - O item 271 passou a guardar o id da pessoa no provedor (`providerUserId`) e a procurar o vínculo por ele. Se não acha, ainda procura o vínculo pelo e-mail, e usa o que achar mesmo quando esse vínculo já tem outro `providerUserId`.
      - O e-mail de uma conta no Google, Facebook ou Apple pode passar para outra pessoa (conta apagada e e-mail reaproveitado, troca do e-mail principal no Facebook). Essa pessoa entra pelo provedor com o mesmo e-mail e outro id, e o login cai no vínculo antigo: ela entra na conta da equipe (agenda, clientes, recebimentos) ou na área do cliente de quem tinha o e-mail antes.
      
      **Fazer:** a busca pelo e-mail só vale para vínculo sem `providerUserId` (os antigos, que então recebem o id). Vínculo com outro id não é usado: o login segue como uma pessoa nova do provedor (que pode cair na conta pelo e-mail confirmado, com as regras de hoje) ou é recusado com uma mensagem para entrar com a senha. Nos dois fluxos (equipe e cliente). Teste: vínculo com id A; login com o mesmo e-mail e id B não entra pelo vínculo de A.
 
-294. ⬜ **A mesma pessoa fica com duas avaliações da unidade: uma pelo link do e-mail e outra pela conta** (back: `createOrUpdateReview`, `ReviewRequestService.submitReview`):
+     **Feito:** o e-mail só casa com vínculo antigo, sem id no provedor. Vínculo com outro id é recusado, na equipe e na área do cliente, com o aviso para entrar com a senha. Teste em `round-291-297.spec.ts`.
+
+294. ✅ **A mesma pessoa fica com duas avaliações da unidade: uma pelo link do e-mail e outra pela conta** (back: `createOrUpdateReview`, `ReviewRequestService.submitReview`):
      - Pelo link do e-mail, a avaliação é gravada pela ficha (`barbershopId + customerId`), com `clientAccountId` nulo se a ficha ainda não estava ligada a uma conta. Logado, a avaliação é procurada só por `barbershopId + clientAccountId`.
      - Quem avalia pelo link e depois cria a conta (as fichas são ligadas pelo e-mail e telefone) e avalia de novo pelo app ganha uma segunda linha: as duas aparecem na página e contam na nota média. A ligação das fichas não leva a avaliação junto. O caminho do link já procura pelas duas chaves (`findExisting`); o da conta não.
      
      **Fazer:** logado, procurar também a avaliação das fichas da conta naquela unidade e editar essa (gravando `clientAccountId`) em vez de criar outra. Ao ligar fichas a uma conta, passar o `clientAccountId` para as avaliações delas que ainda não têm. Teste: avaliação pelo link sem conta, liga a ficha, avalia logado; continua uma avaliação só.
 
+     **Feito:** logado, a avaliação da ficha ligada é editada e passa a ter `clientAccountId`, em vez de nascer outra. Ao ligar a ficha, a avaliação dela que ainda não tem conta recebe a conta (se a conta já avaliou a unidade, a do link fica). Teste em `round-291-297.spec.ts`.
+
 ### Centésima nona rodada (2026-10-26): clube pela ficha e recursos desativados
 
 Foram lidos os pacotes (cadastro, venda, baixa e exclusão da venda), o cartão-presente na cobrança, os recursos (salas e cadeiras), as regras e o relatório de comissão, e os planos do clube com a ligação entre a ficha e a assinatura.
 
-295. ⬜ **O clube de outra pessoa aparece na ficha com o mesmo e-mail digitado, e bloquear a ficha cancela a assinatura dela** (back: `clientAccountIdForCustomer`, `getCustomerSubscriptions`, `prepareClubSession`, `cancelCustomerClub`, `customerBlockPreview`):
+295. ✅ **O clube de outra pessoa aparece na ficha com o mesmo e-mail digitado, e bloquear a ficha cancela a assinatura dela** (back: `clientAccountIdForCustomer`, `getCustomerSubscriptions`, `prepareClubSession`, `cancelCustomerClub`, `customerBlockPreview`):
      - Ficha ainda não ligada a uma conta: a assinatura do clube é procurada pela conta de cliente com o mesmo e-mail da ficha. Esse e-mail foi digitado pela equipe e não é confirmado, e a conta achada nem precisa ter o e-mail confirmado. Foi pelo mesmo motivo que o item 251 passou a exigir também o telefone para ligar as fichas.
      - Com um erro de digitação (ou o e-mail de um parente), a tela da ficha mostra o clube e as sessões de outra pessoa. O caixa usa uma sessão do clube dela numa venda desta ficha, e a sessão sai do ciclo que ela pagou.
      - Bloquear essa ficha (com "cancelar o clube") cancela no Stripe a assinatura da outra pessoa, com ou sem estorno.
      
      **Fazer:** a assinatura só vale pela ficha ligada à conta (`clientAccountId`). Sem ligação, `clientAccountIdForCustomer` devolve nulo, ou só aceita a conta com e-mail confirmado e o mesmo telefone da ficha, como a ligação do item 251. Teste: ficha sem conta, com o e-mail de uma conta que assina o clube e outro telefone; o clube não aparece, a sessão é recusada e bloquear a ficha não cancela a assinatura.
 
-296. ⬜ **Desativar um recurso com horários marcados deixa esses horários sem conseguir ser editados** (back: `updateResource`, `deleteResource`, `ensureResourceOfBarbershop`):
+     **Feito:** sem ficha ligada, o clube só aparece se a conta tem o e-mail confirmado e o mesmo telefone da ficha. E-mail igual com outro telefone não lista a assinatura, recusa a sessão e o bloqueio da ficha não cancela nada. Teste em `round-291-297.spec.ts`.
+
+296. ✅ **Desativar um recurso com horários marcados deixa esses horários sem conseguir ser editados** (back: `updateResource`, `deleteResource`, `ensureResourceOfBarbershop`):
      - Excluir o recurso (sala, cadeira) é recusado se ele tem horário futuro (`RESOURCE_IN_USE_MESSAGE`). Desativar pela edição (`updateResource` com `isActive: false`) não confere nada.
      - Os horários futuros continuam com o recurso. Ao editar um deles, a tela manda o `resourceId` de novo e `updateAppointment` chama `ensureResourceOfBarbershop`, que só aceita recurso ativo: "Recurso não encontrado". A equipe não consegue remarcar nem trocar o profissional desses horários sem antes tirar a sala.
      
      **Fazer:** `updateResource` com `isActive: false` faz a mesma checagem da exclusão (recusa com horário futuro). Na edição do horário, o recurso que ele já tem continua aceito mesmo inativo; só a troca para um recurso inativo é recusada. Teste: recurso com horário amanhã; desativar é recusado; horário com recurso já inativo pode mudar de hora mantendo o recurso.
 
+     **Feito:** desativar a sala ou a cadeira com horário futuro é recusado, como a exclusão. Remarcar um horário mantém o recurso que ele já tem, mesmo inativo; trocar para um recurso inativo continua recusado. Teste em `round-291-297.spec.ts`.
+
 ### Centésima décima rodada (2026-10-26): ficha apagada que deixa dados para trás
 
 Foram lidos a indicação de clientes pela página pública, os horários livres e o próximo horário, os relatórios avançados, o estoque, a escala dos profissionais, as fichas de saúde (registro, revogação e assinatura) e a exclusão e edição da ficha do cliente.
 
-297. ⬜ **Apagar a ficha do cliente deixa o e-mail dele nos horários e o nome e o telefone na fila** (back: `deleteCustomer`; `Appointment.contactEmail`, `WalkIn.customerName`/`customerPhone`):
+297. ✅ **Apagar a ficha do cliente deixa o e-mail dele nos horários e o nome e o telefone na fila** (back: `deleteCustomer`; `Appointment.contactEmail`, `WalkIn.customerName`/`customerPhone`):
      - `deleteCustomer` anonimiza a ficha (nome, telefone, e-mail, nascimento, observações), apaga as fichas de saúde e a lista de espera e limpa o histórico de alterações (item 283). Os horários e a fila ficam, como registro.
      - O e-mail digitado no agendamento online fica em cada horário (`contactEmail`), e a fila por ordem de chegada guarda o nome e o telefone de cada entrada (`customerName`, `customerPhone`), separados da ficha. Depois da exclusão, a agenda e a fila continuam mostrando esses dados, e o e-mail segue sendo usado no horário (`appointmentContactEmail`).
      - O pedido de exclusão da ficha (LGPD) fica pela metade: os dados pessoais continuam na base, ligados ao mesmo `customerId`.
      
      **Fazer:** na mesma transação de `deleteCustomer`, limpar `contactEmail` dos horários da ficha e trocar o nome da fila por "Cliente removido" e o telefone por nulo nas entradas dela. Teste: ficha com horário agendado pela página (com e-mail) e entrada na fila; depois de apagar, nenhum dos dois tem o e-mail, o nome ou o telefone.
+
+     **Feito:** apagar a ficha, na mesma transação, limpa o e-mail dos horários e troca o nome da fila por "Cliente removido", com o telefone nulo. Teste em `round-291-297.spec.ts`.

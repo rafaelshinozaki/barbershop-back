@@ -175,6 +175,24 @@ export class AppPaymentsService {
     };
   }
 
+  /** Moeda do pagamento, pro limite de estorno sem confirmação (item 291). */
+  async refundCurrency(kind: AppPaymentKind, id: number): Promise<string> {
+    if (kind === 'tip') {
+      const tip = await this.prisma.appointmentTip.findUnique({
+        where: { id },
+        select: { currency: true },
+      });
+      if (!tip) throw new NotFoundException('Caixinha paga pelo app não encontrada');
+      return tip.currency;
+    }
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id },
+      select: { barbershop: { select: { currency: true } } },
+    });
+    if (!appt) throw new NotFoundException('Pagamento não encontrado');
+    return appt.barbershop.currency;
+  }
+
   /** Quanto o estorno devolve (o pedido, ou o que restar): pro limite sem confirmação */
   async refundValue(kind: AppPaymentKind, id: number, amount?: number | null): Promise<number> {
     if (kind === 'tip') {

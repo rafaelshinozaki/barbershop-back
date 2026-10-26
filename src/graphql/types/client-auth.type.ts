@@ -130,8 +130,13 @@ export class ClientMarketingPreferencesType {
   @Field({ description: 'A conta tem telefone (dá para escolher pelo WhatsApp)' })
   hasPhone: boolean;
 
-  @Field({ description: 'Saiu das campanhas pelo WhatsApp (vale para todas as barbearias)' })
+  @Field({ description: 'Esta conta pediu para sair das campanhas pelo WhatsApp' })
   whatsappOptOut: boolean;
+
+  @Field({
+    description: 'O telefone saiu pelo WhatsApp ou por outra conta. Só volta respondendo VOLTAR.',
+  })
+  whatsappReplyOnly: boolean;
 
   @Field(() => [ClientNetworkMarketingType])
   networks: ClientNetworkMarketingType[];

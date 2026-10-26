@@ -848,6 +848,7 @@ model ClientAccount {
   linkedSocialAccounts ClientLinkedSocialAccount[]
   reviews              Review[]
   subscriptions        ClientSubscription[]
+  whatsappOptOuts      WhatsappOptOut[]
 }
 
 // Avaliação de uma unidade (Barbershop), não da rede inteira — o cliente
@@ -2714,8 +2715,14 @@ model HealthFormAccess {
 // e-mail (Customer.marketingOptOut). Uma linha por variante do número.
 // VOLTAR apaga.
 model WhatsappOptOut {
-  phoneDigits String   @id
-  createdAt   DateTime @default(now())
+  phoneDigits     String         @id
+  createdAt       DateTime       @default(now())
+  // Conta que pediu para sair na área do cliente. Nulo: a pessoa respondeu
+  // SAIR no WhatsApp, e só VOLTAR desfaz (item 292).
+  clientAccountId Int?
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  @@index([clientAccountId])
 }
 
 // Sessão da área do cliente (item 272): o token leva o id dela. "Sair"

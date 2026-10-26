@@ -43,12 +43,27 @@ export class WhatsappOptOutService {
     if (!variants.length) return 0;
     const out = marketingOptOutReply(text);
     if (out) {
-      const created = await this.prisma.whatsappOptOut.createMany({
-        data: variants.map((phoneDigits) => ({ phoneDigits })),
-        skipDuplicates: true,
+      // SAIR no WhatsApp não fica no nome de uma conta: só VOLTAR desfaz.
+      const existing = await this.prisma.whatsappOptOut.findMany({
+        where: { phoneDigits: { in: variants } },
+        select: { phoneDigits: true, clientAccountId: true },
       });
-      if (created.count > 0) await this.confirm(from, out);
-      return created.count > 0 ? 1 : 0;
+      const byDigits = new Map(existing.map((row) => [row.phoneDigits, row.clientAccountId]));
+      let changed = 0;
+      for (const phoneDigits of variants) {
+        if (!byDigits.has(phoneDigits)) {
+          await this.prisma.whatsappOptOut.create({ data: { phoneDigits, clientAccountId: null } });
+          changed++;
+        } else if (byDigits.get(phoneDigits) != null) {
+          await this.prisma.whatsappOptOut.update({
+            where: { phoneDigits },
+            data: { clientAccountId: null },
+          });
+          changed++;
+        }
+      }
+      if (changed > 0) await this.confirm(from, out);
+      return changed > 0 ? 1 : 0;
     }
     const back = marketingOptInReply(text);
     if (back) {

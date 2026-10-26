@@ -23,6 +23,7 @@ import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
 import { normalizeEmail } from '@/common/email';
+import { pickSocialLink } from '../social-link';
 import { canonicalIdDoc } from '@/common/id-doc';
 import { idDocTaken } from '@/common/id-doc-lookup';
 import { SmartLogger } from '@/common/logger.util';
@@ -748,14 +749,16 @@ export class UserService {
   ): Promise<UserDTO> {
     email = normalizeEmail(email);
     // 1. A pessoa no provedor (id dela lá) já está ligada a uma conta? Login
-    // direto nela. Depois, o vínculo pelo e-mail (vínculos antigos, sem id).
-    const existingLink =
-      (providerUserId
-        ? await this.prisma.linkedSocialAccount.findFirst({ where: { provider, providerUserId } })
-        : null) ??
-      (await this.prisma.linkedSocialAccount.findFirst({
-        where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
-      }));
+    // direto nela. O e-mail só casa com vínculo antigo, sem id (item 293).
+    const byId = providerUserId
+      ? await this.prisma.linkedSocialAccount.findFirst({ where: { provider, providerUserId } })
+      : null;
+    const byEmail = byId
+      ? null
+      : await this.prisma.linkedSocialAccount.findFirst({
+          where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
+        });
+    const existingLink = pickSocialLink(byId, byEmail, providerUserId);
     if (existingLink && providerUserId && !existingLink.providerUserId) {
       await this.prisma.linkedSocialAccount
         .update({ where: { id: existingLink.id }, data: { providerUserId } })

@@ -26,6 +26,35 @@ export function refundApprovalLimit(env: NodeJS.ProcessEnv = process.env): numbe
   return raw && Number.isFinite(value) && value >= 0 ? value : 500;
 }
 
+/** Limites por moeda: `BACKOFFICE_REFUND_APPROVAL_LIMITS=BRL:500,USD:100,EUR:90`. */
+export function refundLimitsByCurrency(env: NodeJS.ProcessEnv = process.env): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const part of (env.BACKOFFICE_REFUND_APPROVAL_LIMITS ?? '').split(',')) {
+    const [code, amount] = part.split(':').map((piece) => piece.trim());
+    const value = Number(amount);
+    if (code && /^[A-Za-z]{3}$/.test(code) && Number.isFinite(value) && value >= 0) {
+      map.set(code.toUpperCase(), value);
+    }
+  }
+  return map;
+}
+
+/**
+ * Estorno sem confirmação só cabe no limite daquela moeda. Real sem linha na
+ * tabela usa o número antigo. Moeda sem limite pede confirmação sempre.
+ */
+export function refundExceedsLimit(
+  total: number,
+  currency: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const code = currency.trim().toUpperCase() || 'BRL';
+  const limits = refundLimitsByCurrency(env);
+  if (limits.has(code)) return total > (limits.get(code) as number);
+  if (code === 'BRL') return total > refundApprovalLimit(env);
+  return true;
+}
+
 export type ApprovalOutcome = { done: boolean; approvalId: number | null };
 
 type Payloads = {

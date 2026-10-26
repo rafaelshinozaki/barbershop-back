@@ -1027,8 +1027,11 @@ type ClientMarketingPreferencesType {
   hasPhone: Boolean!
   networks: [ClientNetworkMarketingType!]!
 
-  """Saiu das campanhas pelo WhatsApp (vale para todas as barbearias)"""
+  """Esta conta pediu para sair das campanhas pelo WhatsApp"""
   whatsappOptOut: Boolean!
+
+  """O telefone saiu pelo WhatsApp ou por outra conta. Só volta respondendo VOLTAR."""
+  whatsappReplyOnly: Boolean!
 }
 
 type ClientNetworkMarketingType {

@@ -3369,6 +3369,14 @@ export class BarbershopService {
       this.prisma.customerReferral.deleteMany({
         where: { completedAt: null, OR: [{ referrerId: customerId }, { referredId: customerId }] },
       }),
+      this.prisma.appointment.updateMany({
+        where: { customerId },
+        data: { contactEmail: null },
+      }),
+      this.prisma.walkIn.updateMany({
+        where: { customerId },
+        data: { customerName: REMOVED_CUSTOMER_NAME, customerPhone: null },
+      }),
       this.prisma.customer.update({
         where: { id: customerId },
         data: {
@@ -4866,9 +4874,17 @@ export class BarbershopService {
     if (!barber) throw new NotFoundException('Profissional não encontrado');
   }
 
-  private async ensureResourceOfBarbershop(barbershopId: number, resourceId: number) {
+  private async ensureResourceOfBarbershop(
+    barbershopId: number,
+    resourceId: number,
+    opts: { allowInactive?: boolean } = {},
+  ) {
     const resource = await this.prisma.resource.findFirst({
-      where: { id: resourceId, barbershopId, isActive: true },
+      where: {
+        id: resourceId,
+        barbershopId,
+        ...(opts.allowInactive ? {} : { isActive: true }),
+      },
       select: { id: true },
     });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
@@ -5392,7 +5408,11 @@ export class BarbershopService {
       await this.ensureBarberOfBarbershop(barbershopId, data.barberId as number, { active: true });
       await this.ensureTipsCanMove(appointmentId);
     }
-    if (data.resourceId) await this.ensureResourceOfBarbershop(barbershopId, data.resourceId);
+    if (data.resourceId) {
+      await this.ensureResourceOfBarbershop(barbershopId, data.resourceId, {
+        allowInactive: data.resourceId === appointment.resourceId,
+      });
+    }
     if (
       data.status != null &&
       data.status !== appointment.status &&
@@ -9106,16 +9126,18 @@ export class BarbershopService {
     // Mesmo limite da avaliação pelo link (sem limite, um texto enorme ia
     // pra página pública da unidade)
     const text = comment?.trim().slice(0, 1000) || null;
-    const existing = await this.prisma.review.findUnique({
-      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
-      select: { comment: true, reply: true },
-    });
-    // A ocultada pela moderação (mesmo "apagada" pelo cliente) é editada no
-    // lugar: continua oculta, sem voltar ao ar por uma linha nova (item 247)
-    return this.prisma.review.upsert({
-      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
-      create: { barbershopId, clientAccountId, rating, comment: text },
-      update: { ...reviewEditData(existing, { rating, comment: text }), withdrawnAt: null },
+    // A da conta ou a da ficha ligada (pelo link, antes de ter conta). Editar
+    // essa, em vez de criar outra (item 294).
+    const existing = await this.findAccountReview(clientAccountId, barbershopId);
+    const data = { ...reviewEditData(existing, { rating, comment: text }), withdrawnAt: null };
+    if (existing) {
+      return this.prisma.review.update({
+        where: { id: existing.id },
+        data: { ...data, clientAccountId },
+      });
+    }
+    return this.prisma.review.create({
+      data: { barbershopId, clientAccountId, rating, comment: text },
     });
   }
 
@@ -9134,10 +9156,25 @@ export class BarbershopService {
     });
   }
 
-  async getMyReview(clientAccountId: number, barbershopId: number) {
-    const review = await this.prisma.review.findUnique({
-      where: { barbershopId_clientAccountId: { barbershopId, clientAccountId } },
+  /** Avaliação da conta nesta unidade, ou a que a ficha deixou pelo link. */
+  private async findAccountReview(clientAccountId: number, barbershopId: number) {
+    const fichas = await this.prisma.customer.findMany({
+      where: { clientAccountId, deletedAt: null },
+      select: { id: true },
     });
+    const ids = fichas.map((ficha) => ficha.id);
+    return this.prisma.review.findFirst({
+      where: {
+        barbershopId,
+        OR: [{ clientAccountId }, ...(ids.length ? [{ customerId: { in: ids } }] : [])],
+      },
+      // A da conta vale mais (é a que o cliente edita logado)
+      orderBy: [{ clientAccountId: { sort: 'asc', nulls: 'last' } }],
+    });
+  }
+
+  async getMyReview(clientAccountId: number, barbershopId: number) {
+    const review = await this.findAccountReview(clientAccountId, barbershopId);
     return review?.withdrawnAt ? null : review;
   }
 
@@ -9719,8 +9756,8 @@ export class BarbershopService {
   }
 
   /**
-   * Assinaturas ativas do cliente nesta unidade. A ficha da unidade liga pela
-   * conta; se ainda não ligou, o e-mail igual encontra a conta do clube.
+   * Assinaturas ativas do cliente nesta unidade. Só a ficha ligada à conta,
+   * ou (sem ligação) a conta com o e-mail confirmado e o mesmo telefone.
    */
   async getCustomerSubscriptions(userId: number, barbershopId: number, customerId: number) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId);
@@ -9749,21 +9786,33 @@ export class BarbershopService {
     }));
   }
 
-  /** Conta do clube desta ficha, ou null se o cliente não tem conta. */
+  /**
+   * Conta do clube desta ficha. Sem ligação, só a conta com o e-mail
+   * confirmado e o mesmo telefone (item 251). E-mail digitado sozinho não vale.
+   */
   private async clientAccountIdForCustomer(networkId: number, customerId: number) {
     const customer = await this.prisma.customer.findFirst({
       where: { id: customerId, networkId },
-      select: { clientAccountId: true, email: true },
+      select: { clientAccountId: true, email: true, phone: true },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     if (customer.clientAccountId) return customer.clientAccountId;
     const email = customer.email?.trim();
     if (!email) return null;
     const account = await this.prisma.clientAccount.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
-      select: { id: true },
+      where: {
+        deletedAt: null,
+        emailVerifiedAt: { not: null },
+        email: { equals: email, mode: 'insensitive' },
+      },
+      select: { id: true, phone: true },
     });
-    return account?.id ?? null;
+    if (!account) return null;
+    const accountPhones = new Set(phoneDigitVariants(account.phone));
+    const samePhone = phoneDigitVariants(customer.phone).some(
+      (variant) => variant.length >= 8 && accountPhones.has(variant),
+    );
+    return samePhone ? account.id : null;
   }
 
   /**
@@ -11963,6 +12012,16 @@ export class BarbershopService {
       where: { id: resourceId, barbershopId },
     });
     if (!resource) throw new NotFoundException('Recurso não encontrado');
+    if (data.isActive === false && resource.isActive) {
+      const upcoming = await this.prisma.appointment.count({
+        where: {
+          resourceId,
+          status: { in: ['CONFIRMED', 'PENDING_PAYMENT', 'IN_PROGRESS'] },
+          endAt: { gt: new Date() },
+        },
+      });
+      if (upcoming > 0) throw new BadRequestException(RESOURCE_IN_USE_MESSAGE);
+    }
     return this.prisma.resource.update({
       where: { id: resourceId },
       data: {

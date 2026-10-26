@@ -16,10 +16,12 @@ import { EmailService } from '@/email/email.service';
 import { StripeService } from '@/stripe/stripe.service';
 import { normalizeLang } from '@/email/language';
 import { appointmentReviewUrl } from '../barbershop/appointment-link';
+import { claimFichaReviews } from '../barbershop/review-account';
 import { ClientAccountDTO } from './dto/client-account.dto';
 import { AccountLinkService } from './account-link.service';
 import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
+import { pickSocialLink } from '../auth/social-link';
 import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
 import {
@@ -154,6 +156,7 @@ export class ClientAuthService {
       where: { id: { in: ids }, clientAccountId: null },
       data: { clientAccountId: account.id },
     });
+    await claimFichaReviews(this.prisma, account.id, ids);
   }
 
   /** Cria um link de uso único (só o hash fica no banco) e devolve o token. */
@@ -460,17 +463,19 @@ export class ClientAuthService {
   ) {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // A pessoa no provedor (id dela lá) primeiro; depois o vínculo pelo
-    // e-mail, dos vínculos antigos sem id (item 271)
-    const existingLink =
-      (providerUserId
-        ? await this.prisma.clientLinkedSocialAccount.findFirst({
-            where: { provider, providerUserId },
-          })
-        : null) ??
-      (await this.prisma.clientLinkedSocialAccount.findUnique({
-        where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
-      }));
+    // A pessoa no provedor (id dela lá) primeiro. O e-mail só casa com
+    // vínculo antigo, sem id (itens 271 e 293).
+    const byId = providerUserId
+      ? await this.prisma.clientLinkedSocialAccount.findFirst({
+          where: { provider, providerUserId },
+        })
+      : null;
+    const byEmail = byId
+      ? null
+      : await this.prisma.clientLinkedSocialAccount.findUnique({
+          where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
+        });
+    const existingLink = pickSocialLink(byId, byEmail, providerUserId);
     if (existingLink && providerUserId && !existingLink.providerUserId) {
       await this.prisma.clientLinkedSocialAccount
         .update({ where: { id: existingLink.id }, data: { providerUserId } })
@@ -572,12 +577,21 @@ export class ClientAuthService {
       });
     }
     const variants = this.whatsappVariants(account?.phone);
-    const whatsappOptOut = variants.length
-      ? (await this.prisma.whatsappOptOut.count({ where: { phoneDigits: { in: variants } } })) > 0
-      : false;
+    const rows = variants.length
+      ? await this.prisma.whatsappOptOut.findMany({
+          where: { phoneDigits: { in: variants } },
+          select: { clientAccountId: true },
+        })
+      : [];
+    // Saída pelo WhatsApp ou por outra conta: a tela não mostra como escolha
+    // desta conta (o telefone não é confirmado). Só VOLTAR desfaz.
+    const whatsappReplyOnly = rows.some((row) => row.clientAccountId !== clientAccountId);
+    const whatsappOptOut =
+      !whatsappReplyOnly && rows.some((row) => row.clientAccountId === clientAccountId);
     return {
       hasPhone: variants.length > 0,
       whatsappOptOut,
+      whatsappReplyOnly,
       networks: [...byNetwork.values()].sort((a, b) => a.networkName.localeCompare(b.networkName)),
     };
   }
@@ -619,12 +633,22 @@ export class ClientAuthService {
       );
     }
     if (optOut) {
-      await this.prisma.whatsappOptOut.createMany({
-        data: variants.map((phoneDigits) => ({ phoneDigits })),
-        skipDuplicates: true,
+      const existing = await this.prisma.whatsappOptOut.findMany({
+        where: { phoneDigits: { in: variants } },
+        select: { phoneDigits: true },
       });
+      const taken = new Set(existing.map((row) => row.phoneDigits));
+      const fresh = variants.filter((phoneDigits) => !taken.has(phoneDigits));
+      if (fresh.length) {
+        await this.prisma.whatsappOptOut.createMany({
+          data: fresh.map((phoneDigits) => ({ phoneDigits, clientAccountId })),
+          skipDuplicates: true,
+        });
+      }
     } else {
-      await this.prisma.whatsappOptOut.deleteMany({ where: { phoneDigits: { in: variants } } });
+      await this.prisma.whatsappOptOut.deleteMany({
+        where: { phoneDigits: { in: variants }, clientAccountId },
+      });
     }
     return this.marketingPreferences(clientAccountId);
   }

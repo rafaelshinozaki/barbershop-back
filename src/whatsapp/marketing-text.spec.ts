@@ -91,20 +91,38 @@ describe('resposta SAIR', () => {
   // Item 275: o descadastro do WhatsApp é do telefone, numa tabela própria;
   // não mexe nas fichas nem no e-mail, e VOLTAR desfaz
   function optOutStore() {
-    const rows = new Set<string>();
+    const rows = new Map<string, number | null>();
     const db = {
       whatsappOptOut: {
-        createMany: jest.fn(async ({ data }: { data: { phoneDigits: string }[] }) => {
-          let count = 0;
-          for (const { phoneDigits } of data) {
-            if (!rows.has(phoneDigits)) count++;
-            rows.add(phoneDigits);
-          }
-          return { count };
-        }),
+        findMany: jest.fn(async ({ where }: { where: { phoneDigits: { in: string[] } } }) =>
+          where.phoneDigits.in
+            .filter((digits) => rows.has(digits))
+            .map((phoneDigits) => ({
+              phoneDigits,
+              clientAccountId: rows.get(phoneDigits) ?? null,
+            })),
+        ),
+        create: jest.fn(
+          async ({ data }: { data: { phoneDigits: string; clientAccountId: number | null } }) => {
+            rows.set(data.phoneDigits, data.clientAccountId);
+            return data;
+          },
+        ),
+        update: jest.fn(
+          async ({
+            where,
+            data,
+          }: {
+            where: { phoneDigits: string };
+            data: { clientAccountId: number | null };
+          }) => {
+            rows.set(where.phoneDigits, data.clientAccountId);
+            return data;
+          },
+        ),
         deleteMany: jest.fn(async ({ where }: { where: { phoneDigits: { in: string[] } } }) => {
           let count = 0;
-          for (const d of where.phoneDigits.in) if (rows.delete(d)) count++;
+          for (const digits of where.phoneDigits.in) if (rows.delete(digits)) count++;
           return { count };
         }),
       },
