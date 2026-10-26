@@ -3130,3 +3130,20 @@ Foram lidos a indicação de clientes pela página pública, os horários livres
      **Fazer:** na mesma transação de `deleteCustomer`, limpar `contactEmail` dos horários da ficha e trocar o nome da fila por "Cliente removido" e o telefone por nulo nas entradas dela. Teste: ficha com horário agendado pela página (com e-mail) e entrada na fila; depois de apagar, nenhum dos dois tem o e-mail, o nome ou o telefone.
 
      **Feito:** apagar a ficha, na mesma transação, limpa o e-mail dos horários e troca o nome da fila por "Cliente removido", com o telefone nulo. Teste em `round-291-297.spec.ts`.
+
+### Centésima décima primeira rodada (2026-10-26): o login social depois do item 293
+
+Foi revisada a entrega dos itens 291 a 297 (limite de estorno por moeda, saída do WhatsApp pela conta, vínculo do login social pelo id, avaliação da ficha e da conta, clube pela ficha, recurso desativado e ficha apagada) e os caminhos do login social que ela toca.
+
+298. ⬜ **"Conectar" o Google/Facebook/Apple pela tela do perfil grava o vínculo sem o id do provedor, e o item 293 não protege esse vínculo** (back: `UserService.linkSocialAccountToUser`, `ClientAuthService.linkSocialAccountToClient`, `completeSocialLogin` dos dois controllers):
+     - Logado, quem clica em "conectar" um provedor passa por `linkSocialAccountToUser`/`linkSocialAccountToClient`, que gravam o vínculo só com o e-mail (`providerEmail`), sem `providerUserId`. O controller nem passa o id para eles.
+     - O item 293 só recusa o vínculo achado pelo e-mail quando ele já tem outro id. Um vínculo sem id continua valendo para qualquer pessoa que chegue do provedor com aquele e-mail, e o id dela é gravado nele. Se o e-mail passou para outra pessoa no provedor antes de o dono entrar uma vez pelo login social, ela entra na conta (equipe ou cliente).
+     - É o caminho mais comum para quem já tem senha: conectar pelo perfil, e continuar entrando pela senha.
+     
+     **Fazer:** os dois controllers passam `providerUserId` para o "conectar", e ele é gravado no vínculo (e conferido: o mesmo id já ligado a outra conta recusa como `already_linked_elsewhere`). Teste: conectar grava o id; login pelo provedor com o mesmo e-mail e outro id é recusado.
+
+299. ⬜ **Na área do cliente, o login social recusado pelo item 293 mostra um erro cru da API em vez de voltar para a tela de login** (back: `ClientAuthController.completeSocialLogin`):
+     - `findOrCreateSocialAccount` agora lança `UnauthorizedException` quando o vínculo pelo e-mail é de outro id no provedor. Na equipe, `completeSocialLogin` pega esse erro e redireciona para `/login?error=social`. Na área do cliente, não há `try/catch`.
+     - O navegador fica na página de retorno do provedor, no domínio da API, com o JSON do erro 401, sem caminho de volta para o app nem a mensagem para entrar com a senha.
+     
+     **Fazer:** no controller do cliente, pegar o `UnauthorizedException` e redirecionar para `/client/login?error=social` (e a tela de login do cliente mostrar a mensagem, como a da equipe). Teste: login social do cliente com vínculo de outro id redireciona para a tela de login.
