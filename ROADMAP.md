@@ -3337,3 +3337,46 @@ Foram lidos no back os guards do GraphQL e do REST (`GraphQLJwtAuthGuard`, `JwtS
      - A troca ou redefinição de senha (`setPassword`) derruba sessões e links, mas não apaga o desafio aberto. Quem já tinha passado da senha antiga ainda termina o login com o código dentro dos 10 minutos.
      
      **Fazer:** contar os desafios esgotados (ou cada código errado) em `failedLogins` e bloquear a conta como na senha errada. `setPassword` (e desativar a conta na Equipe) apaga os desafios abertos. Teste: 5 códigos errados em dois desafios seguidos bloqueiam a conta; desafio aberto antes da troca de senha é recusado depois dela.
+
+### Centésima vigésima segunda rodada (2026-10-26): agendamento
+
+Foram lidos no back a criação e a edição de horário pela equipe (`createAppointment`, `updateAppointment`, conflitos com `lockSchedule` e `ensureBarberAvailable`), o agendamento pela página pública (`createPublicAppointment`, `getPublicAvailableSlots`, `getPublicNextAvailableSlot`, `ensurePublicSlot`), o link de gerenciar (cancelar e remarcar), a série recorrente (`AppointmentSeriesService`), o horário da unidade e a escala (`ScheduleService`), a lista de espera (entrada, aviso, passar a vaga) e o lembrete de 24 h.
+
+321. ⬜ **Trocar o cliente de um horário deixa o link do cliente anterior valendo, e leva junto a venda e o que foi pago** (back: `BarbershopService.updateAppointment`):
+     - A edição aceita `customerId` novo sem outra regra além de a ficha ser da rede. A versão do link (`linkVersion`) só sobe no cancelamento pela unidade.
+     - O link "gerenciar" que foi para o cliente anterior continua abrindo o horário, agora de outra pessoa: mostra o primeiro nome dela, o profissional, o serviço e a hora, e deixa cancelar e remarcar.
+     - Horário com venda, sinal pago online ou pago antes pelo app troca de cliente do mesmo jeito. A venda fica no cliente anterior e o horário no novo, e o estorno de um cancelamento depois vai para o cartão de quem pagou, sem relação com a ficha nova.
+     
+     **Fazer:** ao trocar o cliente, subir `linkVersion` (e mandar a confirmação ao cliente novo, como na criação). Recusar a troca quando o horário tem venda, sinal pago online ou pago antes pelo app. Teste: trocado o cliente, o link antigo dá "link inválido"; horário com sinal pago online não troca de cliente.
+
+322. ⬜ **Horário marcado ou remarcado a menos de 24 h não recebe o lembrete por WhatsApp, e quem não tem e-mail não recebe aviso nenhum** (back: `AppointmentReminderService.enqueueDueReminders`, `reminderCoveredByConfirmation`, `reminderSentAtAfterMove`):
+     - O lembrete de 24 h vai por e-mail e, com o WhatsApp configurado, também pelo WhatsApp.
+     - Horário criado a menos de 24 h do início é dado como "já avisado pela confirmação" e marcado como lembrado. A remarcação para dentro de 24 h faz o mesmo. Só que a confirmação e o aviso de remarcação saem só por e-mail, e só quando há e-mail.
+     - O cliente marcado pelo telefone para amanhã cedo, sem e-mail na ficha, não recebe nada. Quem tem e-mail perde o WhatsApp.
+     
+     **Fazer:** a confirmação só cobre o lembrete no canal em que saiu. Sem e-mail de contato, ou com WhatsApp configurado, o lembrete sai pelo WhatsApp mesmo dentro das 24 h. Teste: horário criado 10 h antes, cliente sem e-mail e WhatsApp configurado, recebe o lembrete pelo WhatsApp.
+
+323. ⬜ **Não dá para editar um horário cancelado (ou falta) quando o horário dele já foi ocupado por outro cliente** (back: `BarbershopService.updateAppointment`):
+     - A edição sempre confere conflito com a agenda do profissional, mesmo quando o horário continua cancelado ou como falta.
+     - Cancelado o horário das 10h e marcado outro cliente às 10h, mudar a observação do cancelado, ou passar de cancelado para falta, dá "Este profissional já tem um agendamento nesse horário".
+     
+     **Fazer:** conferir conflito (profissional e recurso) só quando a situação final ocupa a agenda (não é `CANCELLED` nem `NO_SHOW`). Reativar continua conferindo. Teste: horário cancelado com a vaga ocupada aceita mudar a observação e virar falta, e recusa voltar a confirmado.
+
+324. ⬜ **A lista de espera perde a vaga quando a equipe tira quem foi avisado, e avisa vaga que não está livre depois de uma remarcação** (back: `cancelWaitlistEntry`, `checkWaitlistOnCancellation`, `passWaitlistOffer`):
+     - Quem sai pelo link do e-mail com uma vaga oferecida passa a vaga ao próximo (`leaveWaitlist` → `passWaitlistOffer`). A equipe tirando a mesma pessoa pela tela (`cancelWaitlistEntry`) só muda a situação para cancelada. O job que passa a vaga adiante só olha entradas avisadas, e a vaga fica sem ninguém.
+     - Remarcar pela agenda avisa a lista do horário antigo como livre, sem ver se o horário novo ocupa parte dele (10h → 10h30, uma hora de serviço). A pessoa avisada abre a página e o horário das 10h não existe.
+     - `passWaitlistOffer` considera a vaga livre olhando só o instante do início, sem a duração, a folga e a agenda da mesma pessoa em outras unidades.
+     
+     **Fazer:** `cancelWaitlistEntry` passa a vaga como `leaveWaitlist`. Antes de avisar (cancelamento, remarcação, passar a vaga), conferir que o horário inteiro está livre com a mesma regra da página pública. Teste: entrada avisada tirada pela equipe passa a vaga ao próximo; remarcação 10h → 10h30 de 1 h não avisa ninguém para as 10h.
+
+325. ⬜ **O aviso de "horários fora do expediente" ao mudar o horário da unidade ou a escala só olha os 500 próximos horários** (back: `ScheduleService.outside`):
+     - Antes de salvar o horário da unidade ou a escala, a tela mostra os horários já marcados que ficam fora (item 241). A busca pega os 500 primeiros horários futuros da unidade (ou do profissional) e só depois filtra os que ficam fora.
+     - Numa unidade cheia, ou com séries recorrentes de meses, os horários depois dos 500 primeiros não aparecem. Fechar o sábado avisa só dos sábados das próximas semanas, e os seguintes ficam fora do expediente sem ninguém saber.
+     
+     **Fazer:** filtrar no banco pelo dia da semana e pelo horário (ou buscar em páginas até o fim), e limitar só a lista mostrada, com o total. Teste: 600 horários futuros, os de sábado depois do 500º aparecem no aviso.
+
+326. ⬜ **"Próximo horário livre" responde para unidade pausada ou fora da página pública** (back: `getPublicNextAvailableSlot`):
+     - A lista de horários do dia (`getPublicAvailableSlots`) e a criação recusam unidade inativa ou cujo dono não aceita agendamento público (`isActive`, `ownerAcceptsPublic`). O "próximo horário livre" busca a unidade só pelo id.
+     - A página mostra "próximo horário: amanhã 9h" de uma unidade pausada. O cliente escolhe o horário e recebe "Unidade não encontrada" ao confirmar.
+     
+     **Fazer:** a mesma busca da lista do dia (`isActive` e `ownerAcceptsPublic`), devolvendo null. Teste: unidade pausada não tem próximo horário.
