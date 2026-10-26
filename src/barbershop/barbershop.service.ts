@@ -11863,10 +11863,46 @@ export class BarbershopService {
       }),
     ]);
     const kept = await this.retainedPrepayments(barbershopId, { gte: from, lte: to });
+    const [clubPayments, clubPayouts, chairPayouts] = await Promise.all([
+      this.prisma.clientSubscriptionPayment.findMany({
+        where: {
+          status: 'SUCCEEDED',
+          settledViaConnect: true,
+          createdAt: { gte: from, lte: to },
+          subscription: { barbershopId },
+        },
+        select: {
+          amount: true,
+          refundedAmount: true,
+          platformFeePercent: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.subscriptionPayout.findMany({
+        where: { barbershopId, paidAt: { gte: from, lte: to } },
+        select: { amount: true, paidAt: true },
+      }),
+      this.prisma.chairRentPayout.findMany({
+        where: { barbershopId, paidAt: { gte: from, lte: to } },
+        select: { amount: true, paidAt: true },
+      }),
+    ]);
+    const feeNow = currentPricing().platformFeePercent;
+    const clubFromConnect = clubPayments.reduce((sum, p) => {
+      const net = Number(p.amount) - Number(p.refundedAmount ?? 0);
+      const percent = p.platformFeePercent == null ? feeNow : Number(p.platformFeePercent);
+      return sum + round2(net - round2((net * percent) / 100));
+    }, 0);
+    const clubIncome = round2(
+      clubFromConnect + clubPayouts.reduce((sum, p) => sum + Number(p.amount), 0),
+    );
+    const chairCardIncome = round2(chairPayouts.reduce((sum, p) => sum + Number(p.amount), 0));
 
     const totalRevenue =
       sales.reduce((sum, s) => sum + saleRevenue(s), 0) +
-      kept.reduce((sum, k) => sum + k.deposit + k.prepaid, 0);
+      kept.reduce((sum, k) => sum + k.deposit + k.prepaid, 0) +
+      clubIncome +
+      chairCardIncome;
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
     // Aluguel da cadeira que o espaço recebeu direto (PIX, dinheiro...). O
     // que entra pelo cartão fica na plataforma até o repasse
@@ -11896,6 +11932,8 @@ export class BarbershopService {
       addTo('DEPOSIT', k.deposit);
       addTo('APP', k.prepaid);
     });
+    addTo('CLUB', clubIncome);
+    addTo('CHAIR_RENT', chairCardIncome);
 
     const byCategory = new Map<string, number>();
     expenses.forEach((e) => {
@@ -11913,6 +11951,17 @@ export class BarbershopService {
       const key = toZonedParts(k.date, timeZone).dateStr;
       byDay.set(key, round2((byDay.get(key) ?? 0) + k.deposit + k.prepaid));
     });
+    clubPayments.forEach((p) => {
+      const net = Number(p.amount) - Number(p.refundedAmount ?? 0);
+      const percent = p.platformFeePercent == null ? feeNow : Number(p.platformFeePercent);
+      const share = round2(net - round2((net * percent) / 100));
+      const key = toZonedParts(p.createdAt, timeZone).dateStr;
+      byDay.set(key, round2((byDay.get(key) ?? 0) + share));
+    });
+    for (const p of [...clubPayouts, ...chairPayouts]) {
+      const key = toZonedParts(p.paidAt, timeZone).dateStr;
+      byDay.set(key, round2((byDay.get(key) ?? 0) + Number(p.amount)));
+    }
     const sortedDays = Array.from(byDay.keys()).sort();
 
     return {

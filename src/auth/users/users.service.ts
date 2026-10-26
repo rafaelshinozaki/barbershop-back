@@ -717,16 +717,33 @@ export class UserService {
     userId: number,
     email: string,
     provider: string,
+    providerUserId?: string | null,
   ): Promise<{
     ok: boolean;
     reason?: 'already_linked_elsewhere' | 'email_belongs_to_another_account';
   }> {
     email = normalizeEmail(email);
+    const id = providerUserId?.trim() || null;
+    // O mesmo id do provedor em outra conta é outra pessoa (item 298).
+    if (id) {
+      const byId = await this.prisma.linkedSocialAccount.findFirst({
+        where: { provider, providerUserId: id },
+      });
+      if (byId && byId.userId !== userId) return { ok: false, reason: 'already_linked_elsewhere' };
+    }
     const existingLink = await this.prisma.linkedSocialAccount.findFirst({
       where: { provider, providerEmail: { equals: email, mode: 'insensitive' } },
     });
-    if (existingLink) {
-      if (existingLink.userId === userId) return { ok: true };
+    if (existingLink && existingLink.userId !== userId) {
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+    if (existingLink?.providerUserId && id && existingLink.providerUserId !== id) {
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+    const own = await this.prisma.linkedSocialAccount.findUnique({
+      where: { userId_provider: { userId, provider } },
+    });
+    if (own?.providerUserId && id && own.providerUserId !== id) {
       return { ok: false, reason: 'already_linked_elsewhere' };
     }
 
@@ -739,8 +756,8 @@ export class UserService {
 
     await this.prisma.linkedSocialAccount.upsert({
       where: { userId_provider: { userId, provider } },
-      create: { userId, provider, providerEmail: email },
-      update: { providerEmail: email },
+      create: { userId, provider, providerEmail: email, providerUserId: id },
+      update: { providerEmail: email, ...(id ? { providerUserId: id } : {}) },
     });
     return { ok: true };
   }

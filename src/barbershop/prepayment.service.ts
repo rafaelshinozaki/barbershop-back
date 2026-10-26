@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type Stripe from 'stripe';
+import { currentPricing } from '../pricing/pricing';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService } from './barbershop.service';
@@ -118,12 +120,17 @@ export class PrepaymentService {
         await this.stripe.cancelPaymentIntent(existing.id).catch(() => undefined);
       }
     }
+    const feePercent = currentPricing().platformFeePercent;
     const intent = await this.stripe.createPaymentIntent(
       cents,
       appt.barbershop.currency.toLowerCase(),
       undefined,
       {
-        metadata: { kind: KIND, appointmentId: String(appt.id) },
+        metadata: {
+          kind: KIND,
+          appointmentId: String(appt.id),
+          platformFeePercent: String(feePercent),
+        },
         description: `Atendimento — ${appt.barbershop.name}`,
         destination: { accountId: destination, applicationFeeAmount: platformFeeCents(cents) },
       },
@@ -134,7 +141,10 @@ export class PrepaymentService {
         prepaidAt: null,
         prepaidPaymentIntentId: appt.prepaidPaymentIntentId,
       },
-      data: { prepaidPaymentIntentId: intent.id },
+      data: {
+        prepaidPaymentIntentId: intent.id,
+        prepaidPlatformFeePercent: new Decimal(feePercent),
+      },
     });
     if (saved.count === 0) {
       // Outra aba criou junto: fica a primeira
@@ -199,6 +209,9 @@ export class PrepaymentService {
         prepaidAmount: fromMinorUnits(intent.amount, intent.currency),
         prepaidPaymentIntentId: intent.id,
         prepaidStripeAccountId: (intent.transfer_data?.destination as string) ?? null,
+        prepaidPlatformFeePercent: new Decimal(
+          intent.metadata?.platformFeePercent ?? currentPricing().platformFeePercent,
+        ),
       },
     });
     if (recorded.count === 0) {

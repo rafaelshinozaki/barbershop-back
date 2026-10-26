@@ -11,6 +11,7 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { BarbershopService, type AccessLevel } from './barbershop.service';
+import { currentPricing } from '../pricing/pricing';
 import { ConnectService, platformFeeCents } from './connect.service';
 import { appointmentLinkCovers, verifyReviewToken } from './appointment-link';
 import { fromMinorUnits, moneyCap, moneyScale, toMinorUnits } from '../common/money-units';
@@ -251,6 +252,7 @@ export class TipService {
       throw new BadRequestException('Este destino ainda não recebe caixinha pelo app');
     }
     const cents = toMinorUnits(amount, appt.barbershop.currency);
+    const feePercent = currentPricing().platformFeePercent;
     const intent = await this.stripe.createPaymentIntent(
       cents,
       appt.barbershop.currency.toLowerCase(),
@@ -260,6 +262,7 @@ export class TipService {
           kind: TIP_KIND,
           appointmentId: String(appt.id),
           destination,
+          platformFeePercent: String(feePercent),
         },
         description: `Caixinha — ${
           destination === 'professional' ? appt.barber.name : appt.barbershop.name
@@ -312,6 +315,9 @@ export class TipService {
           currency: appt.barbershop.currency,
           receivedByUnit: false,
           stripePaymentIntentId: intent.id,
+          platformFeePercent: new Decimal(
+            intent.metadata?.platformFeePercent ?? currentPricing().platformFeePercent,
+          ),
         },
       });
     } catch (err) {

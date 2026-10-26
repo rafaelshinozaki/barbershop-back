@@ -206,6 +206,7 @@ export class AuthController {
         currentUserId,
         user.email,
         provider,
+        user.providerUserId,
       );
       let redirectUrl = `${frontendUrl}/profile?linked=${provider}`;
       if (!result.ok) {

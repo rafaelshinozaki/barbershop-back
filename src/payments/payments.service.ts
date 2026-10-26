@@ -32,6 +32,23 @@ const MIN_STRIPE_CHARGE = 0.5;
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
+export const CHECKOUT_HAS_PAID_PLAN =
+  'Você já tem um plano pago. Use a troca de plano.';
+
+/** Plano pago em vigor, ou cobrado pela Stripe: o checkout não substitui a troca. */
+export function blocksNewCheckout(
+  sub: {
+    stripeSubscriptionId: string | null;
+    currentPeriodEnd: Date | null;
+    plan: { price: Prisma.Decimal | number };
+  } | null,
+  now = new Date(),
+) {
+  if (!sub || Number(sub.plan.price) <= 0) return false;
+  if (sub.stripeSubscriptionId) return true;
+  return sub.currentPeriodEnd != null && sub.currentPeriodEnd > now;
+}
+
 /**
  * "Pagamento vencido" = plano ativo cobrado por nós que passou do vencimento.
  * Antes contava todo pagamento antigo com data passada (depois da primeira
@@ -442,6 +459,7 @@ export class PaymentsService {
     sub: {
       id: number;
       userId: number;
+      planId: number;
       currentPeriodEnd: Date | null;
       plan: { price: Prisma.Decimal; billingCycle: string };
     },
@@ -512,6 +530,8 @@ export class PaymentsService {
           paymentMethod: 'stripe',
           transactionId: paymentIntent.id,
           status: PAGAMENTO_STATUS.COMPLETED,
+          kind: 'plan_upgrade',
+          previousPlanId: sub.planId,
         },
       });
     }
@@ -691,6 +711,12 @@ export class PaymentsService {
     if (!user.isActive) {
       throw new Error('User is not active');
     }
+
+    const activePlan = await this.prisma.subscription.findFirst({
+      where: { userId, status: PLANO_STATUS.ACTIVE },
+      include: { plan: { select: { price: true } } },
+    });
+    if (blocksNewCheckout(activePlan)) throw new BadRequestException(CHECKOUT_HAS_PAID_PLAN);
 
     // Cupom: valida pro usuário e o plano e cobra o valor com desconto (o
     // desconto nunca passa do preço — cupom de valor fixo podia passar)
@@ -924,8 +950,16 @@ export class PaymentsService {
           where: { transactionId: paymentIntentId },
           include: { subscription: true },
         });
-        if (existing?.subscription) return { subscription: existing.subscription, created: false };
+        if (existing?.subscription) {
+          return { subscription: existing.subscription, created: false, cancelStripeIds: [] as string[] };
+        }
       }
+
+      const blocking = await tx.subscription.findFirst({
+        where: { userId, status: PLANO_STATUS.ACTIVE },
+        include: { plan: { select: { price: true } } },
+      });
+      if (blocksNewCheckout(blocking, now)) return { blocked: true as const };
 
       // Cupom: o uso é registrado aqui, com trava. Sem cobrança (plano
       // grátis pelo cupom), uso que não cabe mais não ativa nada. Cobrança
@@ -940,7 +974,12 @@ export class PaymentsService {
         return null;
       }
 
-      // A assinatura anterior (ex.: o Free) é encerrada
+      // A assinatura anterior (ex.: o Free) é encerrada. Se ela cobrava na
+      // Stripe, a assinatura de lá também acaba (item 306).
+      const ending = await tx.subscription.findMany({
+        where: { userId, status: PLANO_STATUS.ACTIVE, stripeSubscriptionId: { not: null } },
+        select: { stripeSubscriptionId: true },
+      });
       await tx.subscription.updateMany({
         where: { userId, status: PLANO_STATUS.ACTIVE },
         data: { status: PLANO_STATUS.INACTIVE, cancelationDate: now },
@@ -980,8 +1019,30 @@ export class PaymentsService {
       });
       // Primeiro plano pago de quem veio por convite: quem convidou ganha agora
       const reward = paymentIntentId ? await rewardInviterOnFirstPayment(tx, userId) : null;
-      return { subscription, created: true, reward };
+      return {
+        subscription,
+        created: true,
+        reward,
+        cancelStripeIds: ending
+          .map((row) => row.stripeSubscriptionId)
+          .filter((id): id is string => !!id),
+      };
     });
+
+    if (result && 'blocked' in result) {
+      if (paymentIntentId) {
+        this.logger.warn(`Checkout ${paymentIntentId} com plano pago ativo: estorno`);
+        await this.stripeService
+          .createRefund(
+            paymentIntentId,
+            undefined,
+            'duplicate',
+            `checkout-blocked:${paymentIntentId}`,
+          )
+          .catch((e) => this.logger.error(`Estorno da cobrança ${paymentIntentId} falhou: ${e}`));
+      }
+      throw new BadRequestException(CHECKOUT_HAS_PAID_PLAN);
+    }
 
     if (!result) {
       if (couponRefused && paymentIntentId) {
@@ -1002,6 +1063,15 @@ export class PaymentsService {
 
     if (result.created && 'reward' in result && result.reward) {
       await this.sendInviterReward(result.reward);
+    }
+    if (result.created && result.cancelStripeIds.length) {
+      for (const stripeSubscriptionId of result.cancelStripeIds) {
+        await this.stripeService.cancelSubscription(stripeSubscriptionId).catch((err) => {
+          this.logger.warn(
+            `Assinatura ${stripeSubscriptionId} não foi cancelada na Stripe após o checkout: ${err}`,
+          );
+        });
+      }
     }
     if (result.created) {
       // O cartão usado vira o padrão: é ele que a renovação cobra
@@ -1427,6 +1497,11 @@ export class PaymentsService {
       .catch((e) => this.logger.error(`E-mail de falha não enviado (user ${sub.userId}): ${e}`));
   }
 
+  /** Aviso da Stripe que encerra o plano: volta ao gratuito (item 307). */
+  async releaseToFreePlan(subscriptionId: number, userId: number) {
+    await this.expireSubscription(subscriptionId, userId);
+  }
+
   /** Tolerância esgotada sem pagamento: o plano cai pro gratuito. */
   private async expireSubscription(subscriptionId: number, userId: number) {
     await this.prisma.subscription.update({
@@ -1628,6 +1703,19 @@ export class PaymentsService {
     });
     const sub = payment.subscription;
     if (sub.status !== PLANO_STATUS.ACTIVE) return;
+    // Diferença do plano maior: volta ao plano de antes, o período fica (item 305)
+    if (payment.kind === 'plan_upgrade') {
+      if (payment.previousPlanId) {
+        await this.prisma.subscription.update({
+          where: { id: sub.id },
+          data: { planId: payment.previousPlanId },
+        });
+      }
+      this.logger.log(
+        `Assinatura ${sub.id} voltou ao plano anterior pelo estorno da diferença ${paymentId}`,
+      );
+      return;
+    }
     const latest = await this.prisma.payment.findFirst({
       where: {
         subscriptionId: sub.id,

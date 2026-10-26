@@ -454,40 +454,43 @@ export class BackofficeResolver {
 
     try {
       // Buscar todos os pagamentos em atraso primeiro
-      let payments = await this.prisma.payment.findMany({
-        where: {
-          nextPaymentDate: {
-            lte: new Date(),
+      let payments = latestPerSubscription(
+        await this.prisma.payment.findMany({
+          where: {
+            nextPaymentDate: {
+              lte: new Date(),
+            },
+            status: PAGAMENTO_STATUS.COMPLETED,
+            subscription: OVERDUE_SUBSCRIPTION_FILTER(),
           },
-          status: PAGAMENTO_STATUS.COMPLETED,
-        },
-        include: {
-          subscription: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  email: true,
-                  fullName: true,
-                  membership: true,
-                  stripeCustomerId: true,
+          include: {
+            subscription: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    membership: true,
+                    stripeCustomerId: true,
+                  },
                 },
-              },
-              plan: {
-                select: {
-                  id: true,
-                  name: true,
-                  price: true,
-                  billingCycle: true,
+                plan: {
+                  select: {
+                    id: true,
+                    name: true,
+                    price: true,
+                    billingCycle: true,
+                  },
                 },
               },
             },
           },
-        },
-        orderBy: {
-          nextPaymentDate: 'asc',
-        },
-      });
+          orderBy: {
+            nextPaymentDate: 'asc',
+          },
+        }),
+      );
 
       // Aplicar filtros no código se necessário
       if (filters) {

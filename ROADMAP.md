@@ -3135,31 +3135,37 @@ Foram lidos a indicação de clientes pela página pública, os horários livres
 
 Foi revisada a entrega dos itens 291 a 297 (limite de estorno por moeda, saída do WhatsApp pela conta, vínculo do login social pelo id, avaliação da ficha e da conta, clube pela ficha, recurso desativado e ficha apagada) e os caminhos do login social que ela toca.
 
-298. ⬜ **"Conectar" o Google/Facebook/Apple pela tela do perfil grava o vínculo sem o id do provedor, e o item 293 não protege esse vínculo** (back: `UserService.linkSocialAccountToUser`, `ClientAuthService.linkSocialAccountToClient`, `completeSocialLogin` dos dois controllers):
+298. ✅ **"Conectar" o Google/Facebook/Apple pela tela do perfil grava o vínculo sem o id do provedor, e o item 293 não protege esse vínculo** (back: `UserService.linkSocialAccountToUser`, `ClientAuthService.linkSocialAccountToClient`, `completeSocialLogin` dos dois controllers):
      - Logado, quem clica em "conectar" um provedor passa por `linkSocialAccountToUser`/`linkSocialAccountToClient`, que gravam o vínculo só com o e-mail (`providerEmail`), sem `providerUserId`. O controller nem passa o id para eles.
      - O item 293 só recusa o vínculo achado pelo e-mail quando ele já tem outro id. Um vínculo sem id continua valendo para qualquer pessoa que chegue do provedor com aquele e-mail, e o id dela é gravado nele. Se o e-mail passou para outra pessoa no provedor antes de o dono entrar uma vez pelo login social, ela entra na conta (equipe ou cliente).
      - É o caminho mais comum para quem já tem senha: conectar pelo perfil, e continuar entrando pela senha.
      
      **Fazer:** os dois controllers passam `providerUserId` para o "conectar", e ele é gravado no vínculo (e conferido: o mesmo id já ligado a outra conta recusa como `already_linked_elsewhere`). Teste: conectar grava o id; login pelo provedor com o mesmo e-mail e outro id é recusado.
 
-299. ⬜ **Na área do cliente, o login social recusado pelo item 293 mostra um erro cru da API em vez de voltar para a tela de login** (back: `ClientAuthController.completeSocialLogin`):
+     **Feito:** conectar pelo perfil grava o id do provedor. Login com o mesmo e-mail e outro id é recusado. Teste em `round-298-305.spec.ts`.
+
+299. ✅ **Na área do cliente, o login social recusado pelo item 293 mostra um erro cru da API em vez de voltar para a tela de login** (back: `ClientAuthController.completeSocialLogin`):
      - `findOrCreateSocialAccount` agora lança `UnauthorizedException` quando o vínculo pelo e-mail é de outro id no provedor. Na equipe, `completeSocialLogin` pega esse erro e redireciona para `/login?error=social`. Na área do cliente, não há `try/catch`.
      - O navegador fica na página de retorno do provedor, no domínio da API, com o JSON do erro 401, sem caminho de volta para o app nem a mensagem para entrar com a senha.
      
      **Fazer:** no controller do cliente, pegar o `UnauthorizedException` e redirecionar para `/client/login?error=social` (e a tela de login do cliente mostrar a mensagem, como a da equipe). Teste: login social do cliente com vínculo de outro id redireciona para a tela de login.
 
+     **Feito:** o login social do cliente recusado volta para `/client/login?error=social`, e a tela pede para entrar com o e-mail e a senha (a da equipe também). Teste em `round-298-305.spec.ts`.
+
 ### Centésima décima segunda rodada (2026-10-26): backoffice-back
 
 Foram lidos no backoffice-back as escritas da área Usuários (edição, ações em lote, derrubar sessões), o Suporte (resposta, situação, suspensão da conta de cliente), as confirmações, os avisos e e-mails em massa, a moderação (fila e decisões), as permissões por operação e a exportação de dados do titular.
 
-300. ⬜ **A fila de moderação do backoffice some com denúncias em aberto mais antigas que as últimas 500** (backoffice-back: `ModerationQueries.queue`):
+300. ✅ **A fila de moderação do backoffice some com denúncias em aberto mais antigas que as últimas 500** (backoffice-back: `ModerationQueries.queue`):
      - A fila lê as 500 denúncias mais recentes de `ContentReport`, de qualquer situação (abertas, resolvidas, descartadas), e só depois agrupa. Uma denúncia em aberto mais antiga que essas 500 não entra na fila, e o conteúdo denunciado fica no ar sem ninguém ver.
      - Também sai da fila o conteúdo oculto cuja última denúncia ficou fora da janela: não dá mais para restaurar pela tela.
      - O back já corrigiu isso no `ModerationService.queue` (agrupa no banco só as abertas e junta as ocultas por `hiddenTargets`). O backoffice-back, que é a tela em uso, ficou com a versão antiga.
      
      **Fazer:** a mesma consulta do back. Primeiro as denúncias em aberto agrupadas no banco (`GROUP BY "targetType", "targetId"`, até 500 conteúdos), depois os conteúdos ocultos, e só então os detalhes das denúncias desses conteúdos. Teste: 600 denúncias resolvidas mais novas que uma aberta; a aberta aparece na fila.
 
-301. ⬜ **A exportação de dados do titular (LGPD) traz quase nada da pessoa** (backoffice-back: `Ops.privacyExport`):
+     **Feito:** a fila agrupa no banco só as denúncias em aberto e junta os conteúdos já ocultos. A aberta antiga continua na fila. Teste em `round-298-305.spec.ts` (backoffice-back).
+
+301. ✅ **A exportação de dados do titular (LGPD) traz quase nada da pessoa** (backoffice-back: `Ops.privacyExport`):
      - O pedido de acesso ou portabilidade (art. 18 da LGPD) gera um JSON com, da conta da equipe, só nome, e-mail, telefone, data de criação, se está ativa e o plano, mais as unidades em que ela é `ownerUserId` e os pagamentos do plano. Da conta de cliente, só nome, e-mail, criação, confirmação do e-mail e suspensão.
      - Ficam de fora dados pessoais que a plataforma guarda e trata:
        - **da equipe:** nascimento, documento, gênero, endereço, histórico de login e sessões (com o local aproximado), os vínculos como profissional em outras unidades, o perfil profissional e a verificação de identidade (o resultado, não as imagens);
@@ -3168,68 +3174,82 @@ Foram lidos no backoffice-back as escritas da área Usuários (edição, ações
      
      **Fazer:** a exportação inclui os dados pessoais de cada lado: conta, endereço, logins e sessões, vínculos e perfil profissional, unidades pela rede; e, do cliente, telefone, fichas, horários, avaliações, favoritos, assinaturas, pacotes e preferências. Sem segredos (senha, tokens) e sem dados de terceiros (os clientes da unidade não entram na exportação do dono). Teste: conta de cliente com ficha, horário e avaliação; os três aparecem no JSON.
 
+     **Feito:** o JSON leva conta, endereço, logins, sessões, vínculos, perfil, verificação (sem imagens), unidades da rede e, do cliente, telefone, fichas, horários, avaliações, favoritos, assinaturas, pacotes e preferências. Sem senha nem token. Teste em `round-298-305.spec.ts` (backoffice-back).
+
 ### Centésima décima terceira rodada (2026-10-26): resultados da plataforma no backoffice-back
 
 Foram lidos no backoffice-back o saldo a repassar de cada unidade (clube, aluguel e sinal), os resultados da plataforma (receita, estornos, dinheiro de terceiros, repasses, GMV) e as contas de uso do painel.
 
-302. ⬜ **A receita da plataforma não conta a taxa do pagamento antecipado nem da caixinha pelo app** (backoffice-back: `ResultsQueries.slice`; back: `PrepaymentService.start`, `TipService.startAppTip`):
+302. ✅ **A receita da plataforma não conta a taxa do pagamento antecipado nem da caixinha pelo app** (backoffice-back: `ResultsQueries.slice`; back: `PrepaymentService.start`, `TipService.startAppTip`):
      - O pagamento antecipado do atendimento e a caixinha pelo app cobram a taxa da plataforma como `application_fee` no Stripe Connect (`platformFeeCents`), como o sinal.
      - Em Resultados, a receita soma plano, Destaque, taxa da vaga, taxa do sinal e taxa do clube. As taxas desses dois pagamentos não entram em nenhuma linha, nem os estornos delas. A receita e o líquido do período saem menores do que a plataforma recebeu, e a diferença cresce com o uso do app.
      - O percentual cobrado também não fica gravado nesses dois pagamentos (o sinal tem `depositPlatformFeePercent`, o clube `platformFeePercent`). Mudar a taxa em Preços e taxas mudaria o cálculo do que já foi pago.
      
      **Fazer:** gravar o percentual na hora da cobrança (`prepaidPlatformFeePercent` no horário e `platformFeePercent` na caixinha). Em Resultados, linhas "taxa do pagamento antecipado" e "taxa da caixinha", com os estornos proporcionais ao que voltou (`prepaidRefundedAmount`, caixinha estornada), só das unidades em real, como as outras. Teste: um pagamento antecipado e uma caixinha pagos pelo app no período; as taxas aparecem na receita.
 
+     **Feito:** o percentual fica gravado na cobrança. Resultados soma as duas taxas, e o estorno proporcional, só das unidades em real. Teste em `round-298-305.spec.ts` (backoffice-back). Migração `20261231100000_prepaid_tip_fee_and_plan_upgrade`.
+
 ### Centésima décima quarta rodada (2026-10-26): Suporte e cobranças vencidas no backoffice
 
 Foram lidos no backoffice-back a fila do Suporte, a busca de contas de cliente e a prévia do clube na suspensão, o histórico da unidade, os horários e o clube em aberto do dono, e o Financeiro dos planos (vencidas, resumo da cobrança recorrente e cobranças feitas). No back, a mesma lista de vencidas (`allOverduePayments`).
 
-303. ⬜ **Pedido de suporte em aberto e antigo some da fila padrão do Suporte** (backoffice-back: `SupportQueries.queue`):
+303. ✅ **Pedido de suporte em aberto e antigo some da fila padrão do Suporte** (backoffice-back: `SupportQueries.queue`):
      - Sem filtro, a fila lê os 200 pedidos com atividade mais recente, de qualquer situação, e só depois põe os em aberto na frente. Um pedido em aberto parado há mais tempo que esses 200 (respondidos e fechados recentes) não aparece.
      - É justamente o pedido que está esperando há mais tempo. Só aparece filtrando por "em aberto", e quem atende pela fila padrão não sabe que ele existe.
      
      **Fazer:** a ordem vai para o banco (situação primeiro: em aberto, respondido, fechado; depois a atividade), e o limite vale depois dela. Ou os em aberto entram todos e o limite vale só para os outros. Teste: 250 pedidos respondidos recentes e um em aberto antigo; o em aberto aparece na fila padrão.
 
-304. ⬜ **"Cobranças de plano vencidas" lista cada mensalidade já paga das assinaturas renovadas** (back: `BackofficeResolver.allOverduePayments`; backoffice-back: `FinanceQueries.overdue`):
+     **Feito:** a fila padrão ordena no banco (em aberto, respondido, fechado) e só então limita. O pedido antigo em aberto aparece. Teste em `round-298-305.spec.ts` (backoffice-back).
+
+304. ✅ **"Cobranças de plano vencidas" lista cada mensalidade já paga das assinaturas renovadas** (back: `BackofficeResolver.allOverduePayments`; backoffice-back: `FinanceQueries.overdue`):
      - A lista pega todo `Payment` com `nextPaymentDate` no passado e situação `COMPLETED`. A cada renovação, a mensalidade anterior fica com `nextPaymentDate` vencido. Assim, uma assinatura em dia com 12 meses pagos aparece 11 vezes como vencida, com "dias em atraso" crescendo.
      - Também entram assinaturas canceladas e as cobradas pela Stripe (que não estão em atraso). O resumo da cobrança recorrente (`recurringStats`) e o relatório de vencidas do back já filtram isso (`latestPerSubscription` e `OVERDUE_SUBSCRIPTION_FILTER`); a lista completa não.
      - O Financeiro vê centenas de "vencidas" e não acha as que estão de fato sem pagar.
      
      **Fazer:** nas duas, só o pagamento mais recente de cada assinatura (`latestPerSubscription`) e só assinatura ativa sem Stripe com o período vencido (`OVERDUE_SUBSCRIPTION_FILTER`), como no resumo. Teste: assinatura com três mensalidades pagas e a última em dia; não aparece. Assinatura com a última vencida aparece uma vez.
 
+     **Feito:** as duas listas ficam com o pagamento mais recente de cada assinatura ativa, sem Stripe, com o período vencido. Três mensalidades viram uma. Teste em `round-298-305.spec.ts` (back e backoffice-back).
+
 ### Centésima décima quinta rodada (2026-10-26): estorno da diferença do plano
 
 Foram lidos no back a troca de plano (plano maior cobrado na hora, menor agendado para a renovação, desfazer o agendado), a renovação sem Stripe (tentativas, tolerância, plano agendado), o cancelamento no fim do período e o estorno da cobrança do plano (pela equipe e pelo painel da Stripe).
 
-305. ⬜ **Estornar só a diferença de um plano maior derruba o plano inteiro** (back: `PaymentsService.markPlanPaymentRefunded`, `chargeUpgrade`):
+305. ✅ **Estornar só a diferença de um plano maior derruba o plano inteiro** (back: `PaymentsService.markPlanPaymentRefunded`, `chargeUpgrade`):
      - Trocar para um plano maior sem Stripe cobra só a diferença proporcional (`chargeUpgrade`) e grava um `Payment` à parte, com a data de hoje. Ele passa a ser a cobrança mais recente da assinatura.
      - O estorno de cobrança de plano (pela equipe, `staffRefundPlanPayment`, ou pelo painel da Stripe, `syncPlanRefund`) encerra o plano quando a cobrança estornada é a mais recente: volta ao gratuito e cancela a assinatura.
      - Estornar só a diferença (o cliente reclamou do upgrade, por exemplo) acaba com o plano que ele tinha pago inteiro no início do período, em vez de só voltar ao plano anterior. O dinheiro do período continua com a plataforma e o cliente perde o acesso.
      
      **Fazer:** marcar a cobrança da diferença (`kind = 'plan_upgrade'`, ou guardar o plano anterior no `Payment`). O estorno dela volta a assinatura para o plano anterior até o fim do período. Só o estorno da cobrança do período (a da contratação ou da renovação) encerra o plano. Teste: assina o plano A, sobe para o B (cobra a diferença), estorna a diferença; a assinatura continua ativa no plano A com o mesmo vencimento.
 
+     **Feito:** a diferença fica `plan_upgrade` e guarda o plano anterior. O estorno dela volta a esse plano e não encerra o período. Teste em `round-298-305.spec.ts`. Mesma migração do item 302.
+
 ### Centésima décima sexta rodada (2026-10-26): checkout com plano pago ativo
 
 Foram lidos no back o checkout dos planos (cobrança, cupom, confirmação pela tela e pelo webhook, ativação) e a fatura paga da assinatura na Stripe.
 
-306. ⬜ **Fazer o checkout de um plano com outro plano pago ativo perde os dias pagos e pode deixar duas assinaturas cobrando** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `StripeController.handleInvoicePaymentSucceeded`):
+306. ✅ **Fazer o checkout de um plano com outro plano pago ativo perde os dias pagos e pode deixar duas assinaturas cobrando** (back: `PaymentsService.createPaymentIntentForCheckout`, `createSubscriptionAfterPayment`; `StripeController.handleInvoicePaymentSucceeded`):
      - O checkout não confere se a conta já tem um plano pago ativo (a troca de plano tem um caminho próprio, `changePlan`, com a diferença proporcional). Pago o checkout, `createSubscriptionAfterPayment` marca a assinatura ativa anterior como inativa e cria outra, cobrada pelo preço cheio.
      - O que sobrava do período pago da anterior se perde, sem crédito nem estorno. Duas abas de checkout (ou plano A e plano B) cobram as duas vezes, e a segunda desativa a primeira.
      - Se a anterior era cobrada pela Stripe (`stripeSubscriptionId`), ela não é cancelada lá. Na fatura seguinte, `handleInvoicePaymentSucceeded` acha a assinatura pelo id da Stripe e a volta para ativa: a conta fica com duas assinaturas ativas e o cartão é cobrado pelas duas todo mês.
      
      **Fazer:** com plano pago ativo (preço > 0 e período em vigor, ou assinatura na Stripe), o checkout recusa e manda para a troca de plano. Pagamento confirmado nesse estado (corrida entre abas) é estornado em vez de criar outra assinatura. Ao desativar uma assinatura com `stripeSubscriptionId` (também no checkout que vem do gratuito), cancelar na Stripe. A fatura paga de assinatura inativa não a reativa. Teste: conta com plano pago ativo pede checkout de outro plano e é recusada; assinatura inativa com fatura paga na Stripe continua inativa.
 
+     **Feito:** o checkout com plano pago ativo recusa e manda para a troca. O pagamento que chega nesse estado é estornado. A assinatura anterior na Stripe (também a do gratuito) é cancelada lá. Fatura paga de assinatura inativa não a reativa. Teste em `round-306-310.spec.ts`.
+
 ### Centésima décima sétima rodada (2026-10-26): avisos da Stripe sobre assinaturas
 
 Foram lidos no back o cancelamento, a renovação e a troca de cartão do plano, os avisos da Stripe (fatura paga e recusada, assinatura atualizada e encerrada, disputa, estorno) e a assinatura do clube pelo cliente (cartão, assinatura, cancelamento, baixa de sessão).
 
-307. ⬜ **Plano cobrado pela Stripe cai na primeira cobrança recusada, sem a tolerância dos outros planos** (back: `StripeController.handleSubscriptionUpdated`):
+307. ✅ **Plano cobrado pela Stripe cai na primeira cobrança recusada, sem a tolerância dos outros planos** (back: `StripeController.handleSubscriptionUpdated`):
      - Na renovação sem Stripe, o plano continua ativo por `RENEWAL_GRACE_DAYS` (7 dias) enquanto o cartão é tentado de novo. Na assinatura pela Stripe, o aviso `customer.subscription.updated` com `past_due` (a primeira falha, com a Stripe ainda tentando) põe a assinatura como `INACTIVE` na hora. `unpaid`, `incomplete` e `trialing` também.
      - O dono perde os recursos do plano pago no mesmo dia (os limites voltam aos do gratuito, `getPlanLimitsForOwner` não acha assinatura ativa), embora a Stripe vá cobrar de novo e o plano volte se passar.
      - O plano também não volta para o gratuito: a conta fica sem nenhuma assinatura ativa, diferente de `expireSubscription`.
      
      **Fazer:** `past_due` mantém a assinatura `ACTIVE` (só a conta vai para `PAST_DUE`), como na tolerância da renovação. `trialing` conta como ativa. Só `canceled`, `unpaid` e `incomplete_expired` encerram, e aí como `expireSubscription` (volta para o gratuito). Teste: aviso com `past_due` deixa a assinatura ativa; com `canceled`, a conta fica no gratuito.
 
-308. ⬜ **Clube cuja primeira cobrança não se completa fica "incompleto" para sempre, e o cliente não consegue assinar de novo** (back: `subscribeToPlan`, `StripeController.handleSubscriptionUpdated`):
+     **Feito:** `past_due` deixa a assinatura ativa e a conta em atraso. `trialing` conta como ativa. `canceled`, `unpaid` e `incomplete_expired` voltam ao gratuito. A fatura recusada também não encerra a assinatura. Teste em `round-306-310.spec.ts`.
+
+308. ✅ **Clube cuja primeira cobrança não se completa fica "incompleto" para sempre, e o cliente não consegue assinar de novo** (back: `subscribeToPlan`, `StripeController.handleSubscriptionUpdated`):
      - A assinatura do clube que precisa de confirmação do cartão (3DS) nasce `INCOMPLETE`. Se o cliente não confirma, a Stripe muda a assinatura para `incomplete_expired` depois de 23 horas, num `customer.subscription.updated`.
      - `handleSubscriptionUpdated` só trata o plano do dono (procura em `Subscription` e sai se não acha). A assinatura do clube continua `INCOMPLETE` no banco para sempre.
      - `subscribeToPlan` recusa nova assinatura do mesmo plano enquanto houver uma `INCOMPLETE`: "Você já tem uma assinatura ativa neste plano". O cliente fica sem jeito de assinar.
@@ -3237,23 +3257,29 @@ Foram lidos no back o cancelamento, a renovação e a troca de cartão do plano,
      
      **Fazer:** `handleSubscriptionUpdated` também atualiza `ClientSubscription`. `incomplete_expired`, `canceled` e `unpaid` viram `CANCELED`; `past_due` vira `PAST_DUE`; `active` vira `ACTIVE`; `cancel_at_period_end` é copiado. Teste: assinatura do clube `INCOMPLETE` recebe `incomplete_expired`, fica `CANCELED`, e o cliente consegue assinar de novo.
 
-309. ⬜ **Aviso atrasado da fatura do ciclo anterior do clube zera as sessões usadas no ciclo atual** (back: `StripeController.handleClientSubscriptionInvoiceSucceeded`):
+     **Feito:** o aviso da Stripe atualiza a assinatura do clube. `incomplete_expired` fica cancelada, e `subscribeToPlan` só bloqueia incompleta, ativa e em atraso. Teste em `round-306-310.spec.ts`.
+
+309. ✅ **Aviso atrasado da fatura do ciclo anterior do clube zera as sessões usadas no ciclo atual** (back: `StripeController.handleClientSubscriptionInvoiceSucceeded`):
      - Cada fatura paga do clube zera `usedThisCycle` e copia o período atual da assinatura na Stripe. A trava só impede repetir a mesma fatura.
      - A Stripe reenvia por dias um aviso que falhou e não garante a ordem. Se o aviso da fatura de outubro chega depois do de novembro (já processado), as sessões usadas em novembro voltam a zero, e o cliente ganha sessões a mais no ciclo.
      
      **Fazer:** zerar o contador e mover o período só quando a fatura é do período atual ou de um mais novo (`invoice.lines` / `period_end` da fatura maior que o `currentPeriodStart` gravado). A fatura antiga só registra o pagamento. Teste: processar a fatura de novembro, usar duas sessões, processar a de outubro; o contador continua em 2.
 
+     **Feito:** só a fatura do período atual ou de um mais novo zera as sessões e move o período. A de outubro, depois da de novembro, só registra o pagamento. Teste em `round-306-310.spec.ts`.
+
 ### Centésima décima oitava rodada (2026-10-26): resumo financeiro da unidade
 
 Foram lidos no back as despesas (lançamento, lista e exclusão), o resumo financeiro (receita, despesas, por forma de pagamento, por dia), o sinal e o pago pelo app que ficam com a unidade, o relatório do clube, a venda com cartão-presente, pontos, clube e pacote, o estorno do saldo de pacote e cartão-presente e o cálculo do pagamento da equipe (comissão, fixo, vales).
 
-310. ⬜ **O resumo financeiro (receita e lucro) não conta o clube nem o aluguel de cadeira pago no cartão** (back: `getFinancialSummary`; front: Caixa e Relatórios):
+310. ✅ **O resumo financeiro (receita e lucro) não conta o clube nem o aluguel de cadeira pago no cartão** (back: `getFinancialSummary`; front: Caixa e Relatórios):
      - A receita do resumo soma as vendas pagas, o sinal e o pago pelo app que ficaram com a unidade, e à parte o aluguel de cadeira recebido fora do cartão. O lucro líquido é isso menos as despesas.
      - O clube de assinatura não entra. As mensalidades pagas (`ClientSubscriptionPayment`), que caem na conta da unidade pelo Connect ou chegam pelo repasse da plataforma, não aparecem na receita, e as sessões usadas entram como venda de valor zero. A unidade que vive do clube vê receita e lucro muito menores do que recebe, e o prejuízo aparente cresce com cada assinante.
      - O aluguel de cadeira no cartão também fica de fora. Ele não entra na hora (fica na plataforma) e não entra quando o repasse (`ChairRentPayout`) é pago.
      - O relatório do clube (`subscriptionRevenueReport`) mostra o clube em outra tela, mas não alimenta o resumo.
      
      **Fazer:** no resumo, uma linha "clube" com o que a unidade recebeu do clube no período (mensalidade menos estorno e taxa, como no relatório do clube: na data da cobrança se via Connect, ou na data do repasse se pela plataforma), e o aluguel no cartão pelo repasse recebido. As duas entram na receita e no lucro, com linha própria em "por forma de pagamento". Teste: unidade com uma mensalidade de clube paga via Connect e um repasse de aluguel no período; os dois aparecem na receita.
+
+     **Feito:** o resumo soma o clube (cobrança pelo Connect na data dela, menos estorno e taxa; repasse da plataforma na data do repasse) e o aluguel no cartão pelo repasse. Os dois entram na receita, no lucro e em "por forma de pagamento" (`CLUB` e `CHAIR_RENT`). Teste em `round-306-310.spec.ts`.
 
 ### Centésima décima nona rodada (2026-10-26): varredura do financeiro da unidade
 

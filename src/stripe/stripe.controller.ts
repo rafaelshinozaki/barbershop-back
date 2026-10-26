@@ -33,6 +33,16 @@ import { fromMinorUnits } from '../common/money-units';
 import { supportEmail } from '../common/app-urls';
 import { timeZoneForOwner } from '../common/owner-timezone';
 
+/** Fim do período da fatura (linhas, senão o period_end). */
+function clientInvoicePeriodEnd(invoice: Stripe.Invoice): Date | null {
+  const fromLines = (invoice.lines?.data ?? []).reduce(
+    (max, line) => Math.max(max, line.period?.end ?? 0),
+    0,
+  );
+  const sec = fromLines || invoice.period_end || 0;
+  return sec ? new Date(sec * 1000) : null;
+}
+
 @ApiTags('stripe')
 @Controller('stripe')
 export class StripeController {
@@ -182,10 +192,13 @@ export class StripeController {
       return;
     }
 
-    // Evento atrasado ou repetido (o Stripe tenta de novo por dias) não
-    // reativa assinatura que já foi cancelada: vale o estado de agora no Stripe
-    const live = await this.stripeService.getSubscription(subscriptionId).catch(() => null);
-    if (!live || live.status === 'active') {
+    // Assinatura já encerrada não volta por fatura atrasada (item 306).
+    // Evento repetido também não reativa o que o Stripe já cancelou.
+    const live =
+      subscription.status === PLANO_STATUS.INACTIVE
+        ? null
+        : await this.stripeService.getSubscription(subscriptionId).catch(() => null);
+    if (subscription.status !== PLANO_STATUS.INACTIVE && (!live || live.status === 'active')) {
       const memberRole = await this.prisma.role.findFirst({
         where: { name: Role.BARBERSHOP_OWNER },
       });
@@ -287,17 +300,10 @@ export class StripeController {
     await this.prisma.user.update({
       where: { id: subscription.userId },
       // Sem isActive: false — isso bloqueava o login e a pessoa não
-      // conseguia nem entrar pra trocar o cartão
+      // conseguia nem entrar pra trocar o cartão. A assinatura continua
+      // ativa: a Stripe ainda vai tentar de novo (item 307).
       data: {
         membership: MEMBERSHIP_STATUS.PAST_DUE,
-      },
-    });
-
-    // Atualizar status da assinatura
-    await this.prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        status: PLANO_STATUS.INACTIVE,
       },
     });
 
@@ -325,6 +331,12 @@ export class StripeController {
     }
 
     const stripeSubscription = await this.stripeService.getSubscription(stripeSubscriptionId);
+    const invoiceEnd = clientInvoicePeriodEnd(invoice);
+    // Fatura de um ciclo já passado: só registra o pagamento. Não zera as
+    // sessões do ciclo atual (item 309).
+    const advancesCycle =
+      !subscription.currentPeriodStart ||
+      (invoiceEnd != null && invoiceEnd > subscription.currentPeriodStart);
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
         'client-invoice:' + invoice.id
@@ -336,15 +348,17 @@ export class StripeController {
       // no ciclo (antes cada reenvio zerava o contador — sessões de graça)
       if (already?.status === 'SUCCEEDED') return;
 
-      await tx.clientSubscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'ACTIVE',
-          usedThisCycle: 0,
-          currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-          currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-        },
-      });
+      if (advancesCycle) {
+        await tx.clientSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: 'ACTIVE',
+            usedThisCycle: 0,
+            currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+            currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+          },
+        });
+      }
       // A taxa da conta conectada é a da assinatura (o Stripe já descontou
       // essa). A da plataforma é a de hoje, porque o repasse ainda vai sair.
       const feePercent = subscription.connectAccountId
@@ -412,36 +426,61 @@ export class StripeController {
     });
 
     if (!dbSubscription) {
+      await this.syncClientClub(subscription);
       return;
     }
 
-    // Atualizar status baseado no status do Stripe. Só o plano muda: a conta
-    // (isActive) fica ativa, senão quem atrasou nem entrava pra trocar o cartão
-    let membershipStatus = MEMBERSHIP_STATUS.FREE;
-    let planStatus = PLANO_STATUS.INACTIVE;
-
-    switch (subscription.status) {
-      case 'active':
-        membershipStatus = MEMBERSHIP_STATUS.PAID;
-        planStatus = PLANO_STATUS.ACTIVE;
-        break;
-      case 'past_due':
-      case 'unpaid':
-        membershipStatus = MEMBERSHIP_STATUS.PAST_DUE;
-        break;
+    // past_due mantém o plano (a Stripe ainda tenta). trialing conta como
+    // ativo. Só o encerramento de verdade volta ao gratuito (item 307).
+    if (
+      subscription.status === 'canceled' ||
+      subscription.status === 'unpaid' ||
+      subscription.status === 'incomplete_expired'
+    ) {
+      await this.paymentsService.releaseToFreePlan(dbSubscription.id, dbSubscription.userId);
+      return;
+    }
+    if (
+      subscription.status !== 'active' &&
+      subscription.status !== 'trialing' &&
+      subscription.status !== 'past_due'
+    ) {
+      return;
     }
 
     await this.prisma.user.update({
       where: { id: dbSubscription.userId },
       data: {
-        membership: membershipStatus,
+        membership:
+          subscription.status === 'past_due' ? MEMBERSHIP_STATUS.PAST_DUE : MEMBERSHIP_STATUS.PAID,
       },
     });
 
     await this.prisma.subscription.update({
       where: { id: dbSubscription.id },
+      data: { status: PLANO_STATUS.ACTIVE },
+    });
+  }
+
+  /** O mesmo aviso da Stripe também chega na assinatura do clube (item 308). */
+  private async syncClientClub(subscription: Stripe.Subscription) {
+    const status =
+      subscription.status === 'active'
+        ? 'ACTIVE'
+        : subscription.status === 'past_due'
+          ? 'PAST_DUE'
+          : subscription.status === 'incomplete_expired' ||
+              subscription.status === 'canceled' ||
+              subscription.status === 'unpaid'
+            ? 'CANCELED'
+            : null;
+    if (!status) return;
+    await this.prisma.clientSubscription.updateMany({
+      where: { stripeSubscriptionId: subscription.id },
       data: {
-        status: planStatus,
+        status,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        ...(status === 'CANCELED' ? { canceledAt: new Date() } : {}),
       },
     });
   }

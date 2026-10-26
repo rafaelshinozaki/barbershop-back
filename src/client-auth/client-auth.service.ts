@@ -679,16 +679,35 @@ export class ClientAuthService {
     clientAccountId: number,
     email: string,
     provider: string,
+    providerUserId?: string | null,
   ): Promise<{
     ok: boolean;
     reason?: 'already_linked_elsewhere' | 'email_belongs_to_another_account';
   }> {
     const normalizedEmail = email.trim().toLowerCase();
+    const id = providerUserId?.trim() || null;
+    // O mesmo id do provedor em outra conta é outra pessoa (item 298).
+    if (id) {
+      const byId = await this.prisma.clientLinkedSocialAccount.findFirst({
+        where: { provider, providerUserId: id },
+      });
+      if (byId && byId.clientAccountId !== clientAccountId) {
+        return { ok: false, reason: 'already_linked_elsewhere' };
+      }
+    }
     const existingLink = await this.prisma.clientLinkedSocialAccount.findUnique({
       where: { provider_providerEmail: { provider, providerEmail: normalizedEmail } },
     });
-    if (existingLink) {
-      if (existingLink.clientAccountId === clientAccountId) return { ok: true };
+    if (existingLink && existingLink.clientAccountId !== clientAccountId) {
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+    if (existingLink?.providerUserId && id && existingLink.providerUserId !== id) {
+      return { ok: false, reason: 'already_linked_elsewhere' };
+    }
+    const own = await this.prisma.clientLinkedSocialAccount.findUnique({
+      where: { clientAccountId_provider: { clientAccountId, provider } },
+    });
+    if (own?.providerUserId && id && own.providerUserId !== id) {
       return { ok: false, reason: 'already_linked_elsewhere' };
     }
 
@@ -701,8 +720,13 @@ export class ClientAuthService {
 
     await this.prisma.clientLinkedSocialAccount.upsert({
       where: { clientAccountId_provider: { clientAccountId, provider } },
-      create: { clientAccountId, provider, providerEmail: normalizedEmail },
-      update: { providerEmail: normalizedEmail },
+      create: {
+        clientAccountId,
+        provider,
+        providerEmail: normalizedEmail,
+        providerUserId: id,
+      },
+      update: { providerEmail: normalizedEmail, ...(id ? { providerUserId: id } : {}) },
     });
     return { ok: true };
   }

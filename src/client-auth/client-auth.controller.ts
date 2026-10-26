@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -82,6 +82,7 @@ export class ClientAuthController {
         currentClientId,
         user.email,
         provider,
+        user.providerUserId,
       );
       let redirectUrl = `${frontendUrl}/client/account?linked=${provider}`;
       if (!result.ok) {
@@ -91,12 +92,22 @@ export class ClientAuthController {
       return;
     }
 
-    const account = await this.clientAuthService.findOrCreateSocialAccount(
-      user.email,
-      user.displayName,
-      provider,
-      user.providerUserId,
-    );
+    let account;
+    try {
+      account = await this.clientAuthService.findOrCreateSocialAccount(
+        user.email,
+        user.displayName,
+        provider,
+        user.providerUserId,
+      );
+    } catch (err) {
+      // Vínculo de outra pessoa neste provedor: volta pra tela de login (item 299)
+      if (err instanceof UnauthorizedException) {
+        res.redirect(`${frontendUrl}/client/login?error=social`);
+        return;
+      }
+      throw err;
+    }
     if (account.suspendedAt) {
       res.redirect(`${frontendUrl}/client/login?suspended=1`);
       return;

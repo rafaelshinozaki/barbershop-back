@@ -237,6 +237,10 @@ model Payment {
   // Renovação: "<assinatura>:<fim do período>:<tentativa>". Único — é a
   // trava que impede duas execuções de cobrar a mesma renovação
   renewalKey      String?      @unique
+  // plan_upgrade: só a diferença de um plano maior. O estorno dela volta ao
+  // plano anterior (previousPlanId), sem encerrar o período (item 305).
+  kind            String?
+  previousPlanId  Int?
   appliedCoupon   Coupon?      @relation("AppliedCoupons", fields: [appliedCouponId], references: [id])
   subscription    Subscription @relation(fields: [subscriptionId], references: [id])
 }
@@ -991,6 +995,8 @@ model AppointmentTip {
   // Caixinha pelo app (method STRIPE): cai direto na conta de recebimento
   // de quem recebe, já sem a taxa da plataforma
   stripePaymentIntentId String? @unique
+  // Taxa da plataforma na hora da cobrança pelo app (item 302).
+  platformFeePercent Decimal?
   // Caixinha pelo app devolvida (pelo backoffice, Financeiro)
   refundedAt      DateTime?
   // Dinheiro que entrou na gaveta (da unidade, ou do profissional deixado no
@@ -1333,6 +1339,9 @@ model Appointment {
   prepaidRefundedAt      DateTime?
   // Quanto já foi devolvido (estorno parcial); prepaidRefundedAt = devolvido inteiro
   prepaidRefundedAmount  Decimal?
+  // Taxa da plataforma na hora em que o atendimento foi cobrado pelo app.
+  // Mudar a taxa depois não mexe no que já foi pago (item 302).
+  prepaidPlatformFeePercent Decimal?
   depositPaymentIntentId String? @unique // pagamento do sinal no Stripe
   // Reservado aguardando o sinal (status PENDING_PAYMENT) até esse instante
   holdExpiresAt  DateTime?
