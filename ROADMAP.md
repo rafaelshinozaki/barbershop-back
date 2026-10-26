@@ -3428,3 +3428,26 @@ Foram lidos no back a agenda assinável e o "adicionar à agenda" (`CalendarServ
      - Serviço desativado depois de marcado faz `publicServices` responder "Serviço não encontrado". A tela fica sem horários e o cliente não consegue remarcar, embora a remarcação em si não dependa do serviço estar ativo.
      
      **Fazer:** uma consulta de horários pelo token do link (`managedAppointmentSlots(token, date)`), que desconta o próprio horário, usa a duração dele e não exige o serviço ativo, com as mesmas regras de `ensurePublicSlot`. A tela de remarcar passa a usá-la. Teste: horário das 10h às 11h vê 10h30 na lista e remarca para lá; serviço desativado continua listando horários.
+
+### Centésima vigésima quinta rodada (2026-10-26): agendamento, quarta passada
+
+Foram lidos no back o fim da unidade no app (`cancelFutureAppointmentsOfBarbershops`), a saída e a edição do profissional (`deleteBarber`, `updateBarber`, `warnFutureAppointments`), o bloqueio e a exclusão da ficha do cliente com horários marcados, a conferência de quem agenda para quem (`ensureCanBookForBarber`, `ensureCanManageBarber`), a leitura de um horário (`getAppointment`), as rotinas periódicas da agenda e o pedido de avaliação depois do atendimento (`ReviewRequestService`).
+
+333. ⬜ **Encerrar o período do profissional na unidade deixa os horários marcados depois da data, sem aviso** (back: `BarbershopService.updateBarber`):
+     - O profissional pode ter um período na unidade (`accessStartsAt`/`accessEndsAt`). Fora dele não entra na agenda, não aparece na página pública e não recebe horário novo.
+     - Desligar o profissional ("Ativo" desmarcado) avisa o dono e os gerentes dos horários que ficaram (`warnFutureAppointments`). Deixar de atender (cargo sem agenda) é recusado enquanto houver horário marcado.
+     - Pôr ou antecipar o fim do período (ou adiar o início) não faz nem um nem outro. Os horários depois da data continuam confirmados, com lembrete ao cliente, num profissional que já não está na unidade. O cliente chega e não tem quem atenda.
+     
+     **Fazer:** ao mudar o período, contar os horários confirmados ou aguardando sinal que ficam fora dele. Recusar como no "deixar de atender", ou salvar e avisar como no desligamento. Teste: profissional com horário dia 20, fim do período dia 15, mostra o aviso (ou recusa) com 1 horário.
+
+334. ⬜ **Cliente bloqueado continua recebendo avisos da lista de espera, e cada vaga fica 30 minutos guardada para quem não pode agendar** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `setCustomerBlocked`):
+     - O bloqueio impede o cliente de agendar online e de entrar na lista de espera (`ensureNotBlocked` em `joinPublicWaitlist` e `createPublicAppointment`). As entradas que ele já tinha continuam aguardando.
+     - Quando abre uma vaga, a entrada dele é avisada como qualquer outra. A vaga fica reservada para ele por 30 minutos, e o link do aviso termina em "não é possível agendar". O mesmo vale para quem foi suspenso pela plataforma.
+     
+     **Fazer:** ao bloquear, cancelar as entradas aguardando na lista de espera da rede (das fichas do mesmo telefone e da mesma conta). Na hora de avisar, pular entrada de cliente bloqueado ou suspenso. Teste: cliente com entrada aguardando, bloqueado, não é avisado; a vaga vai para o próximo.
+
+335. ⬜ **A equipe pode marcar como "em atendimento" um horário de outro dia, e ele some do lembrete, do link do cliente e do fechamento** (back: `assertStatusFitsTime`, `updateAppointment`):
+     - Desde o item 260, falta e concluído só valem para horário que já começou. "Em atendimento" (`IN_PROGRESS`) não tem regra: um clique errado no horário de amanhã é aceito.
+     - Fora de "confirmado", o horário perde o lembrete de 24 h, o cliente não consegue mais cancelar ou remarcar pelo link e o fechamento da unidade não o cancela. Na agenda continua ocupando o lugar.
+     
+     **Fazer:** `IN_PROGRESS` só a partir de pouco antes do início (por exemplo, 30 minutos), com uma mensagem como as outras duas. Teste: horário de amanhã não vira "em atendimento"; o de daqui a 10 minutos vira.
