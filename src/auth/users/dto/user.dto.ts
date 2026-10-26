@@ -22,6 +22,8 @@ export class UserDTO {
   userSystemConfig: UserSystemConfigDTO | null;
   notificationPreference: NotificationPreferenceSchema | null;
   twoFactorEnabled: boolean;
+  /** Login social também pede o código das duas etapas (item 315) */
+  socialLoginTwoFactor?: boolean;
   /** Áreas do backoffice da equipe do sistema (SystemManager) */
   backofficeAreas?: string[];
   photoKey?: string | null;

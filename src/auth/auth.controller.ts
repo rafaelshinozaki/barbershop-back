@@ -1,5 +1,5 @@
 // src\auth\auth.controller.ts
-import { needsLoginCode, socialLoginAllowed } from './backoffice-login';
+import { needsLoginCode, needsSocialLoginCode, socialLoginAllowed } from './backoffice-login';
 import { backofficeUrl } from '../common/cors-origins';
 import {
   Controller,
@@ -236,6 +236,14 @@ export class AuthController {
     if (!socialLoginAllowed(dbUser)) {
       this.logger.warn(`Login social recusado para conta do sistema (usuário ${dbUser.id})`);
       res.redirect(`${backofficeUrl()}/login?error=social`);
+      return;
+    }
+    // Escolheu pedir o código também no login social (item 315): o código
+    // vai por e-mail e a sessão só abre na tela do código, como no login por senha
+    if (needsSocialLoginCode(dbUser)) {
+      const loginId = randomUUID();
+      await this.userService.sendLoginCode(dbUser, loginId);
+      res.redirect(`${frontendUrl}/verification-code?loginId=${encodeURIComponent(loginId)}`);
       return;
     }
     // Login social: sem caixa "Lembrar de mim"; fica lembrado

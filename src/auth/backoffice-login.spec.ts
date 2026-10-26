@@ -1,5 +1,11 @@
 import { Role } from './interfaces/roles';
-import { backofficeRequires2fa, needsLoginCode, socialLoginAllowed } from './backoffice-login';
+import {
+  backofficeRequires2fa,
+  needsLoginCode,
+  needsSocialLoginCode,
+  socialLoginAllowed,
+} from './backoffice-login';
+import { AuthController } from './auth.controller';
 import { AuthResolver } from '../graphql/resolvers/auth.resolver';
 
 /**
@@ -73,6 +79,65 @@ describe('login da conta do sistema', () => {
       process.env.BACKOFFICE_REQUIRE_2FA = 'true';
       const { resolver, authService, userService } = resolverFor(owner);
       await login(resolver);
+      expect(userService.sendLoginCode).not.toHaveBeenCalled();
+      expect(authService.login).toHaveBeenCalled();
+    });
+  });
+
+  describe('login social com duas etapas (item 315)', () => {
+    it('pede o código só com as duas etapas ligadas e a opção marcada', () => {
+      expect(needsSocialLoginCode({ twoFactorEnabled: true, socialLoginTwoFactor: true })).toBe(
+        true,
+      );
+      expect(needsSocialLoginCode({ twoFactorEnabled: true, socialLoginTwoFactor: false })).toBe(
+        false,
+      );
+      expect(needsSocialLoginCode({ twoFactorEnabled: false, socialLoginTwoFactor: true })).toBe(
+        false,
+      );
+    });
+
+    const callback = async (user: object) => {
+      const authService = { login: jest.fn() };
+      const userService = {
+        findOrCreateSocialUser: jest
+          .fn()
+          .mockResolvedValue({ id: 1, email: 'a@b.c', phone: '119', ...user }),
+        sendLoginCode: jest.fn(),
+      };
+      const controller = new AuthController(
+        authService as never,
+        userService as never,
+        { get: (k: string) => (k === 'FRONTEND_URL' ? 'https://app.test' : undefined) } as never,
+        {} as never,
+      );
+      const res = { redirect: jest.fn() };
+      await (
+        controller as unknown as {
+          completeSocialLogin: (...args: unknown[]) => Promise<void>;
+        }
+      ).completeSocialLogin(
+        { email: 'a@b.c', displayName: 'A', providerUserId: 'g1' },
+        'google',
+        { cookies: {} },
+        res,
+      );
+      return { authService, userService, redirect: res.redirect.mock.calls[0]?.[0] as string };
+    };
+
+    it('opção marcada: manda o código e vai pra tela do código, sem sessão', async () => {
+      const { authService, userService, redirect } = await callback({
+        ...owner,
+        twoFactorEnabled: true,
+        socialLoginTwoFactor: true,
+      });
+      expect(userService.sendLoginCode).toHaveBeenCalled();
+      expect(authService.login).not.toHaveBeenCalled();
+      expect(redirect).toMatch(/^https:\/\/app\.test\/verification-code\?loginId=/);
+    });
+
+    it('opção desligada (padrão): entra direto pelo Google', async () => {
+      const { authService, userService } = await callback({ ...owner, twoFactorEnabled: true });
       expect(userService.sendLoginCode).not.toHaveBeenCalled();
       expect(authService.login).toHaveBeenCalled();
     });

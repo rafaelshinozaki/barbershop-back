@@ -2,6 +2,7 @@ import { isSystemRole } from './backoffice-areas';
 
 type LoginUser = {
   twoFactorEnabled?: boolean | null;
+  socialLoginTwoFactor?: boolean | null;
   role?: { name?: string } | string | null;
 };
 
@@ -25,6 +26,14 @@ export function needsLoginCode(user: LoginUser, env: NodeJS.ProcessEnv = process
   if (user.twoFactorEnabled) return true;
   return isSystemRole(roleName(user)) && backofficeRequires2fa(env);
 }
+
+/**
+ * O login social pede o nosso código? Só se a pessoa ligou as duas etapas e
+ * escolheu pedir o código também no login social (item 315). Desligado, vale
+ * a verificação do próprio Google/Facebook/Apple, sem um segundo código.
+ */
+export const needsSocialLoginCode = (user: LoginUser) =>
+  !!user.twoFactorEnabled && !!user.socialLoginTwoFactor;
 
 /** Conta do sistema não entra pelo login social (sem senha nem código). */
 export const socialLoginAllowed = (user: LoginUser) => !isSystemRole(roleName(user));

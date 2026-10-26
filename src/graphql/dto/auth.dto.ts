@@ -343,6 +343,19 @@ export class ForgotPasswordInput {
 }
 
 @InputType()
+export class SocialLoginTwoFactorInput {
+  @Field()
+  @IsBoolean()
+  enabled: boolean;
+
+  /** Obrigatório quando enabled=false — desligar afrouxa a entrada pelo login social */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  currentPassword?: string;
+}
+
+@InputType()
 export class TwoFactorInput {
   @Field()
   @IsBoolean()
