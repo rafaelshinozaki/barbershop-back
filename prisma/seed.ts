@@ -588,6 +588,25 @@ async function main() {
       );
     }
 
+    // Toda ficha com conta ligada ao perfil da pessoa (antes ficava depois do
+    // return abaixo e só rodava com SEED_RESET)
+    const unlinked = await prisma.barber.findMany({
+      where: { userId: { not: null }, professionalId: null },
+      select: { id: true, userId: true },
+    });
+    for (const row of unlinked) {
+      if (row.userId == null) continue;
+      const professional = await prisma.professional.upsert({
+        where: { userId: row.userId },
+        create: { userId: row.userId },
+        update: {},
+      });
+      await prisma.barber.update({
+        where: { id: row.id },
+        data: { professionalId: professional.id },
+      });
+    }
+
     if (!RESET_DB) {
       console.log('Seeding completed (SEED_RESET not set - skipped random demo users).');
       return;
@@ -712,23 +731,6 @@ async function main() {
           transactionId: faker.random.alphaNumeric(10),
           status: 'COMPLETED',
         },
-      });
-    }
-
-    const unlinked = await prisma.barber.findMany({
-      where: { userId: { not: null }, professionalId: null },
-      select: { id: true, userId: true },
-    });
-    for (const row of unlinked) {
-      if (row.userId == null) continue;
-      const professional = await prisma.professional.upsert({
-        where: { userId: row.userId },
-        create: { userId: row.userId },
-        update: {},
-      });
-      await prisma.barber.update({
-        where: { id: row.id },
-        data: { professionalId: professional.id },
       });
     }
 
