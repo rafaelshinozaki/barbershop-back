@@ -116,7 +116,7 @@ describe('avaliação da ficha e da conta', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 8 },
-        data: expect.objectContaining({ clientAccountId: 4, rating: 5 }),
+        data: expect.objectContaining({ clientAccount: { connect: { id: 4 } }, rating: 5 }),
       }),
     );
   });
