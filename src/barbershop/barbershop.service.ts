@@ -9133,7 +9133,7 @@ export class BarbershopService {
     if (existing) {
       return this.prisma.review.update({
         where: { id: existing.id },
-        data: { ...data, clientAccountId },
+        data: { ...data, clientAccount: { connect: { id: clientAccountId } } },
       });
     }
     return this.prisma.review.create({
