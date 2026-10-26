@@ -3477,3 +3477,21 @@ Foram lidos no back o fim da unidade no app (`cancelFutureAppointmentsOfBarbersh
      - Fora de "confirmado", o horário perde o lembrete de 24 h, o cliente não consegue mais cancelar ou remarcar pelo link e o fechamento da unidade não o cancela. Na agenda continua ocupando o lugar.
      
      **Fazer:** `IN_PROGRESS` só a partir de pouco antes do início (por exemplo, 30 minutos), com uma mensagem como as outras duas. Teste: horário de amanhã não vira "em atendimento"; o de daqui a 10 minutos vira.
+
+### Centésima vigésima sexta rodada (2026-10-26): agendamento, quinta passada
+
+Foram lidos no front a agenda da equipe (`BarbershopDetail/Appointments`: criar, série, arrastar, esticar e editar no fuso da unidade), o agendamento rápido do painel e a tela de agendar da página pública (dias, horários ao vivo, próximo horário livre, lista de espera). No back, os avisos ao vivo (`RealtimeService.notify`, `publicSlotsChanged`) e quem os chama: resolvers de agendamento, série, fechamento e escala, o webhook do Stripe e as rotinas do sinal.
+
+336. ⬜ **A agenda aberta e a página pública não atualizam quando a reserva do sinal vence ou é paga pelo webhook, nem quando muda o horário da unidade, a escala ou um fechamento sem cancelamentos** (back: `DepositPaymentService.expireHolds`/`finalize`, `StripeController.handlePaymentIntentSucceeded`, `setBusinessHours`, `setBarberWeeklySchedule`, `setBarbershopClosure`, `deleteBarbershopClosure`):
+     - A agenda da equipe e a tela de agendar recarregam os horários com o aviso ao vivo de agendamento (`notify(..., 'APPOINTMENT')`, que também publica `publicSlotsChanged`).
+     - A reserva aguardando o sinal que vence (rotina de 1 minuto) é cancelada sem aviso. A vaga volta, mas a página pública aberta não mostra e a agenda da equipe continua com "aguardando sinal". O sinal confirmado pelo webhook (cliente fechou a aba depois de pagar) também não avisa: a agenda segue "aguardando" até alguém recarregar.
+     - Mudar o horário da unidade ou a escala do profissional, e fechar um dia sem horários afetados (ou reabrir), não avisa. A página aberta continua oferecendo horários de um dia fechado ou de uma escala que mudou, e o cliente só descobre ao confirmar.
+     
+     **Fazer:** avisar (`APPOINTMENT`, `UPDATED`) ao liberar a reserva vencida, ao confirmar o sinal por qualquer caminho e depois de mudar o horário da unidade, a escala ou um fechamento. Teste: reserva vencida e sinal confirmado pelo webhook publicam `publicSlotsChanged` da unidade; fechar um dia sem horários também.
+
+337. ⬜ **A tela de agendar deixa escolher dias fora da janela e oferece a lista de espera onde o servidor recusa** (front: `PublicBooking/BookingDialog`):
+     - O agendamento online vai até 90 dias (`PUBLIC_BOOKING_WINDOW_DAYS`), e a lista de espera até 60 (`WAITLIST_MAX_DAYS_AHEAD`). O seletor de data só tem o mínimo (hoje), sem máximo.
+     - Um dia depois dos 90 aparece como "sem horários" com "Avisar se abrir vaga". O cliente preenche e recebe o erro do intervalo de dias. Entre 61 e 90 dias, um dia cheio também oferece a lista de espera que o servidor recusa.
+     - Os fechamentos da página vêm só dos próximos 60 dias (`upcomingPublic`). Depois disso, um dia fechado aparece como aberto e cheio.
+     
+     **Fazer:** máximo do seletor em hoje + 90 dias, e "agenda ainda não aberta" além disso. Lista de espera só até 60 dias. Fechamentos carregados até o fim da janela. Teste (e2e): o dia 75 cheio não mostra o botão da lista de espera; o seletor não passa do dia 90.
