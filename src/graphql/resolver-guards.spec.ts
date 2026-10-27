@@ -43,6 +43,7 @@ const PUBLIC: Record<string, string> = {
   'public-booking.resolver.ts#unsubscribeFromMarketing': 'descadastro (token)',
   'public-booking.resolver.ts#resubscribeToMarketing': 'volta às campanhas (token)',
   'public-booking.resolver.ts#managedAppointment': 'gerenciar agendamento (token)',
+  'public-booking.resolver.ts#managedAppointmentSlots': 'gerenciar agendamento (token)',
   'public-booking.resolver.ts#cancelManagedAppointment': 'gerenciar agendamento (token)',
   'public-booking.resolver.ts#rescheduleManagedAppointment': 'gerenciar agendamento (token)',
   'public-booking.resolver.ts#startDepositPayment': 'sinal pelo link (token)',

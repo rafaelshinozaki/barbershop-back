@@ -72,7 +72,14 @@ function build(slotTaken = false) {
       appointment: {
         findFirst: async () => (slotTaken ? { id: 1 } : null),
       },
+      barbershop: {
+        findUnique: async () => ({ timezone: 'America/Sao_Paulo', minBookingLeadMinutes: 0 }),
+      },
     },
+    // A vaga passa só se o horário inteiro continua livre (item 324)
+    offeredEnd: async (_barbershopId: number, startAt: Date) =>
+      new Date(startAt.getTime() + 30 * 60_000),
+    publicSlotIsOpen: async () => !slotTaken,
     realtime: { notify: () => undefined },
     logger: { error: () => undefined },
     checkWaitlistOnCancellation: async (

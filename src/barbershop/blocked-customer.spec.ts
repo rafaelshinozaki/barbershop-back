@@ -124,6 +124,7 @@ describe('cliente bloqueado no clube e no link', () => {
             ...data,
           }),
         },
+        waitlistEntry: { findMany: async () => [] },
         clientSubscription: {
           findMany: async () => [
             {

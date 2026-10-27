@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService } from './coupons.service';
 import { FRIEND_EMAIL_NOT_CONFIRMED, FriendInviteService } from './friend-invite.service';
-import { PaymentsService } from './payments.service';
+import { CHECKOUT_HAS_PAID_PLAN, PaymentsService } from './payments.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -130,9 +130,11 @@ describe('Convidar amigos (integração)', () => {
     ).toBe(1);
     expect(emails).toContain('friend_invite_accepted_inviter');
 
-    // Outro pagamento não dá outro mês
-    const again = await payments.createPaymentIntentForCheckout(friend.id, planId);
-    await payments.confirmPaymentIntent(friend.id, again.paymentIntentId!);
+    // Outro pagamento não dá outro mês: com o plano pago ativo, o checkout
+    // nem abre (vai para a troca de plano, item 306)
+    await expect(payments.createPaymentIntentForCheckout(friend.id, planId)).rejects.toThrow(
+      CHECKOUT_HAS_PAID_PLAN,
+    );
     expect(
       await prisma.coupon.count({
         where: { code: { startsWith: `FRIEND_INVITER_${created.id}_` } },

@@ -7,7 +7,7 @@ import {
 } from '../payments/payments.service';
 import { StripeController } from '../stripe/stripe.controller';
 
-const logger = { log() {}, warn() {}, error() {} };
+const logger = { log: () => undefined, warn: () => undefined, error: () => undefined };
 
 describe('checkout com plano pago (306)', () => {
   it('recusa o checkout e manda para a troca de plano', async () => {
@@ -71,7 +71,7 @@ describe('checkout com plano pago (306)', () => {
     });
     await expect(
       (
-        svc as unknown as { createSubscriptionAfterPayment: Function }
+        svc as unknown as { createSubscriptionAfterPayment: (...args: any[]) => any }
       ).createSubscriptionAfterPayment(3, 2, 'pi_corrida'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(createRefund).toHaveBeenCalledWith(
@@ -112,7 +112,7 @@ describe('checkout com plano pago (306)', () => {
       },
     });
     const out = await (
-      svc as unknown as { createSubscriptionAfterPayment: Function }
+      svc as unknown as { createSubscriptionAfterPayment: (...args: any[]) => any }
     ).createSubscriptionAfterPayment(3, 2, 'pi_free');
     expect(out.success).toBe(true);
     expect(cancelSubscription).toHaveBeenCalledWith('sub_free');
@@ -141,7 +141,7 @@ describe('checkout com plano pago (306)', () => {
       },
     });
     await (
-      controller as unknown as { handleInvoicePaymentSucceeded: Function }
+      controller as unknown as { handleInvoicePaymentSucceeded: (...args: any[]) => any }
     ).handleInvoicePaymentSucceeded({
       id: 'in_1',
       subscription: 'sub_x',
@@ -189,7 +189,7 @@ describe('aviso da assinatura na Stripe (307 e 308)', () => {
   it('past_due deixa a assinatura ativa; canceled volta ao gratuito', async () => {
     const past = controllerFor('past_due');
     await (
-      past.controller as unknown as { handleSubscriptionUpdated: Function }
+      past.controller as unknown as { handleSubscriptionUpdated: (...args: any[]) => any }
     ).handleSubscriptionUpdated({ id: 'sub_1', status: 'past_due', cancel_at_period_end: false });
     expect(past.subUpdate.mock.calls[0][0].data.status).toBe('ACTIVE');
     expect(past.userUpdate.mock.calls[0][0].data.membership).toBe('PAST_DUE');
@@ -197,7 +197,7 @@ describe('aviso da assinatura na Stripe (307 e 308)', () => {
 
     const canceled = controllerFor('canceled');
     await (
-      canceled.controller as unknown as { handleSubscriptionUpdated: Function }
+      canceled.controller as unknown as { handleSubscriptionUpdated: (...args: any[]) => any }
     ).handleSubscriptionUpdated({ id: 'sub_1', status: 'canceled', cancel_at_period_end: false });
     expect(canceled.releaseToFreePlan).toHaveBeenCalledWith(4, 1);
     expect(canceled.subUpdate).not.toHaveBeenCalled();
@@ -218,7 +218,7 @@ describe('aviso da assinatura na Stripe (307 e 308)', () => {
       },
     });
     await (
-      controller as unknown as { handleInvoicePaymentFailed: Function }
+      controller as unknown as { handleInvoicePaymentFailed: (...args: any[]) => any }
     ).handleInvoicePaymentFailed({ subscription: 'sub_1' });
     expect(userUpdate.mock.calls[0][0].data.membership).toBe('PAST_DUE');
     expect(subUpdate).not.toHaveBeenCalled();
@@ -254,7 +254,7 @@ describe('aviso da assinatura na Stripe (307 e 308)', () => {
     const club = { status: 'INCOMPLETE', cancelAtPeriodEnd: false };
     const { controller, clubRow } = controllerFor('incomplete_expired', club);
     await (
-      controller as unknown as { handleSubscriptionUpdated: Function }
+      controller as unknown as { handleSubscriptionUpdated: (...args: any[]) => any }
     ).handleSubscriptionUpdated({
       id: 'sub_c',
       status: 'incomplete_expired',
@@ -306,8 +306,9 @@ describe('fatura atrasada do clube (309)', () => {
       period_end: sec(end),
       lines: { data: [{ period: { end: sec(end) } }] },
     });
-    const run = (controller as unknown as { handleClientSubscriptionInvoiceSucceeded: Function })
-      .handleClientSubscriptionInvoiceSucceeded;
+    const run = (
+      controller as unknown as { handleClientSubscriptionInvoiceSucceeded: (...args: any[]) => any }
+    ).handleClientSubscriptionInvoiceSucceeded;
     await run.call(controller, invoice('in_nov', '2026-12-01T00:00:00Z'), 'sub_c');
     sub.usedThisCycle = 2;
     await run.call(controller, invoice('in_oct', '2026-11-01T00:00:00Z'), 'sub_c');

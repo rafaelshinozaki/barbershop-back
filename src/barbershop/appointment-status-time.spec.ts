@@ -23,9 +23,15 @@ describe('"Faltou" e "concluído" só depois do início (item 260)', () => {
     expect(() => assertStatusFitsTime('COMPLETED', start, at(0))).not.toThrow();
   });
 
-  it('cancelar, confirmar e começar valem a qualquer hora', () => {
-    for (const status of ['CANCELLED', 'CONFIRMED', 'IN_PROGRESS', 'DRAFT']) {
+  it('cancelar e confirmar valem a qualquer hora', () => {
+    for (const status of ['CANCELLED', 'CONFIRMED', 'DRAFT']) {
       expect(() => assertStatusFitsTime(status, start, at(-24 * 60))).not.toThrow();
     }
+  });
+
+  it('começar vale a partir de 30 minutos antes do início (item 335)', () => {
+    expect(() => assertStatusFitsTime('IN_PROGRESS', start, at(-24 * 60))).toThrow();
+    expect(() => assertStatusFitsTime('IN_PROGRESS', start, at(-30))).not.toThrow();
+    expect(() => assertStatusFitsTime('IN_PROGRESS', start, at(10))).not.toThrow();
   });
 });
