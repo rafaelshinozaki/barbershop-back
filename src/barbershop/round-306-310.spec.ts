@@ -341,6 +341,7 @@ describe('resumo financeiro (310)', () => {
         chairRentPayout: {
           findMany: async () => [{ amount: 40, paidAt: new Date('2026-10-12T15:00:00Z') }],
         },
+        appointmentTip: { findMany: async () => [] },
       },
     });
     const summary = await shop.getFinancialSummary(

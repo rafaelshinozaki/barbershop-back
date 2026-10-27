@@ -7,7 +7,11 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { COMPLETED_TOO_EARLY_MESSAGE, NO_SHOW_TOO_EARLY_MESSAGE } from './appointment-status-time';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService, NO_SHOW_FEE_NOT_PENDING_MESSAGE } from './barbershop.service';
+import {
+  BarbershopService,
+  GIFT_CARD_SHOP_MESSAGE,
+  NO_SHOW_FEE_NOT_PENDING_MESSAGE,
+} from './barbershop.service';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -344,7 +348,11 @@ describe('Taxa de falta (integração)', () => {
       expect(euro.currency).toBe('EUR');
       await expect(shops.lookupGiftCard(ownerId, lisbon.id, euro.code)).resolves.toBeTruthy();
       await expect(
-        shops.createGiftCard(ownerId, networkId, { initialValue: 1e12 }),
+        shops.createGiftCard(ownerId, networkId, {
+          initialValue: 1e12,
+          barbershopId: shopId,
+          paymentMethod: 'CASH',
+        }),
       ).rejects.toThrow('Valor do cartão-presente inválido');
     } finally {
       await prisma.giftCard.deleteMany({ where: { networkId } });
@@ -490,5 +498,66 @@ describe('Taxa de falta (integração)', () => {
     expect(refunds.map((r) => r.minor)).toEqual([8000]);
     row = await prisma.appointment.findUniqueOrThrow({ where: { id: byShop } });
     expect(row.prepaidRefundedAt).not.toBeNull();
+  });
+
+  it('313: sinal recebido na mão desconta a taxa de falta e entra no faturamento do dia', async () => {
+    const id = await appointment();
+    await prisma.appointment.update({ where: { id }, data: { depositAmount: new Decimal(20) } });
+    await shops.setAppointmentDepositPaid(ownerId, shopId, id, true, 'PIX');
+    await started(id);
+    await shops.updateAppointment(ownerId, shopId, id, { status: 'NO_SHOW' });
+    expect(await waitFor(async () => !!(await feeOf(id)))).toBe(true);
+    // Taxa de 30 menos o sinal de 20 que a unidade já tem
+    expect(Number((await feeOf(id))!.amount)).toBe(10);
+
+    const { startAt } = await prisma.appointment.findUniqueOrThrow({ where: { id } });
+    const summary = await shops.getFinancialSummary(
+      ownerId,
+      shopId,
+      new Date(startAt.getTime() - 60_000),
+      new Date(startAt.getTime() + 60_000),
+    );
+    expect(summary.revenueByPaymentMethod).toContainEqual({ category: 'DEPOSIT', total: 20 });
+    expect(summary.totalRevenue).toBe(20);
+  });
+
+  it('312: caixinha que passou pela unidade entra na receita; a do profissional pelo app, não', async () => {
+    const id = await appointment();
+    const from = new Date(Date.now() - 1000);
+    const tip = (data: Record<string, unknown>) =>
+      prisma.appointmentTip.create({
+        data: {
+          appointmentId: id,
+          barbershopId: shopId,
+          currency: 'BRL',
+          ...data,
+        } as never,
+      });
+    // Do profissional, no cartão da unidade (sai depois no pagamento dele)
+    await tip({
+      barberId,
+      destination: 'professional',
+      method: 'CARD',
+      amount: 10,
+      receivedByUnit: true,
+    });
+    // Da unidade, em dinheiro
+    await tip({ destination: 'unit', method: 'CASH', amount: 5 });
+    // Do profissional pelo app: cai na conta dele, não passa pela unidade
+    await tip({ barberId, destination: 'professional', method: 'STRIPE', amount: 7 });
+    const summary = await shops.getFinancialSummary(
+      ownerId,
+      shopId,
+      from,
+      new Date(Date.now() + 60_000),
+    );
+    expect(summary.revenueByPaymentMethod).toContainEqual({ category: 'TIP', total: 15 });
+    await prisma.appointmentTip.deleteMany({ where: { appointmentId: id } });
+  });
+
+  it('311: cartão-presente sem a unidade que vendeu é recusado, também para o dono', async () => {
+    await expect(shops.createGiftCard(ownerId, networkId, { initialValue: 50 })).rejects.toThrow(
+      GIFT_CARD_SHOP_MESSAGE,
+    );
   });
 });
