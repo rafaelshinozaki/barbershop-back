@@ -3644,7 +3644,7 @@ Depois do código no cadastro (itens 344 e 345), foram revistos todos os lugares
 
      **Fazer:** mesma regra do backoffice-back: normalizar, recusar e-mail já usado com mensagem clara e zerar `emailVerifiedAt` quando o e-mail muda. Teste: trocar o e-mail deixa a conta sem confirmação; e-mail de outra conta é recusado.
 
-349. ⬜ **A conta de cliente criada a partir da conta da equipe pede de novo a confirmação do e-mail** (back: `ClientAuthService.validateCredentials`, `AccountLinkService.openClientArea`):
+349. ⬜ **A conta de cliente criada a partir da conta da equipe pede de novo a confirmação do e-mail** (back: `ClientAuthService.validateCredentials`, `AccountLinkService.clientAccountForStaff`):
      - Quem é da equipe e entra na área do cliente (com a senha da equipe, ou pelo botão da área da equipe) ganha uma conta de cliente ligada, mas sem `emailVerifiedAt`. Recebe o link de confirmação, e o histórico das barbearias só aparece depois.
      - Desde o item 344, a conta da equipe nasce com o e-mail confirmado pelo código. A senha da equipe prova que é a mesma pessoa.
      - O comentário do `AccountLinkService` ("a conta da equipe não confirma e-mail") ficou desatualizado.
