@@ -31,13 +31,17 @@ function stamp(d: Date) {
     .replace(/\.\d{3}/, '');
 }
 
-/** Texto com vírgula, ponto e vírgula, barra e quebra de linha escapados */
+/**
+ * Texto com vírgula, ponto e vírgula, barra e quebra de linha escapados. O \r
+ * sozinho também é quebra para vários apps: escapado, o texto não vira uma
+ * propriedade nova do evento (item 354)
+ */
 function text(value: string) {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+    .replace(/\r\n|\r|\n/g, '\\n');
 }
 
 /** Nome dentro de parâmetro (CN="..."): sem aspas nem quebra de linha */

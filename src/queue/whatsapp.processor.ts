@@ -37,11 +37,14 @@ export class WhatsappProcessor extends WorkerHost {
         break;
       case 'marketing':
         await this.whatsappService.sendMarketingBlast(data.to, data.message, data.lang);
+        // Já enviado: o contador que falha não faz a fila mandar de novo (item 355)
         if (data.campaignId) {
-          await this.prisma.marketingCampaign.update({
-            where: { id: data.campaignId },
-            data: { whatsappSentCount: { increment: 1 } },
-          });
+          await this.prisma.marketingCampaign
+            .update({
+              where: { id: data.campaignId },
+              data: { whatsappSentCount: { increment: 1 } },
+            })
+            .catch((err) => this.logger.warn(`Contador da campanha não somou: ${err.message}`));
         }
         break;
     }
