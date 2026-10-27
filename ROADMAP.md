@@ -3687,3 +3687,33 @@ Foram lidos no back os cupons (`CouponsService`), os planos (`PlanService`) e a 
      - Vários apps de agenda tratam o `\r` como fim de linha. Na agenda assinável da equipe, o texto depois dele vira uma propriedade nova do evento (por exemplo, outro horário ou outro título).
 
      **Fazer:** tratar `\r` sozinho como quebra de linha no escape (`/\r\n|\r|\n/g`). Teste: nome com `\r` sai numa linha só, com `\n` escapado.
+
+### Centésima trigésima segunda rodada (2026-10-27): filas de envio, e-mail da equipe e preços
+
+Foram lidos no back as filas de e-mail e WhatsApp (`EmailProcessor`, `WhatsappProcessor`, `DEFAULT_JOB_OPTIONS`), o envio de e-mail (`EmailService.renderAndSend`), os comandos da API do backoffice (`BackofficeCommandsProcessor`, `commands.ts`), o e-mail da equipe para contas do app (`BackofficeService.sendEmailNotification`), os avisos do sininho e os automáticos da equipe (`NotificationsService`, `ActivityNotificationsService`), os preços da plataforma (`PricingService`), o backup do banco (`BackupService`), as chaves de imagem dos envios, o tempo real e as métricas.
+
+355. ⬜ **Falha depois do envio faz a fila mandar o mesmo e-mail ou WhatsApp de novo, até 5 vezes** (back: `EmailService.renderAndSend`, `EmailProcessor`, `WhatsappProcessor`):
+     - As filas tentam 5 vezes (`DEFAULT_JOB_OPTIONS`). O job só termina quando tudo depois do envio também dá certo.
+     - No e-mail, o Mailgun já mandou e só depois vem a cópia no `EmailLogger`. Se a gravação falha (banco instável, conexão esgotada), o erro sai como "e-mail não enviado" e a fila manda de novo.
+     - Na campanha, o contador (`emailSentCount`, `whatsappSentCount`) é somado depois do envio. Se ele falha, a fila reenvia a mensagem de marketing ao mesmo cliente. A conta da Meta paga cada WhatsApp de marketing.
+
+     **Fazer:** o que vem depois do envio não derruba o job: a cópia e o contador ficam num `try` próprio, com aviso no log. O job só falha se o próprio envio falhar. Teste: com a cópia do e-mail falhando, o job termina e o envio sai uma vez só; o mesmo com o contador da campanha.
+
+356. ⬜ **O e-mail da equipe para várias contas para no primeiro erro, e a nova tentativa manda de novo para quem já recebeu** (back: `BackofficeService.sendEmailNotification`, comando `email.admin_notification`):
+     - O envio passa pelas pessoas uma a uma e espera cada e-mail. Um endereço que o Mailgun recusa derruba o resto: quem vinha depois não recebe.
+     - Pelo comando da API do backoffice (5 tentativas), cada nova tentativa começa do zero: quem estava antes do erro recebe o mesmo e-mail até 5 vezes. Pela tela do back, a reserva do limite de 24 h é devolvida inteira, mesmo com parte já enviada.
+     - A lista também não tira contas desativadas ou apagadas (LGPD).
+
+     **Fazer:** enfileirar um e-mail por pessoa (`notificationQueue.email`, com `jobId` por envio e pessoa) em vez de mandar na hora. Uma recusa fica só naquele e-mail, e a nova tentativa não repete os outros. Só contas ativas e não apagadas. Teste: com um endereço recusado no meio, os outros recebem uma vez só.
+
+357. ⬜ **O e-mail da equipe pelo back aceita qualquer link no botão** (back: `SendEmailNotificationInput`, `sendBackofficeEmail`, `sendEmailNotification`, pedido `email.mass` aprovado):
+     - O comando da API do backoffice só aceita link do próprio app (`safeAppLink` em `parseAdminNotificationEmail`). O mesmo e-mail pelas mutations do back, ou pelo pedido de confirmação aprovado, leva o `actionUrl` como veio.
+     - Qualquer pessoa da equipe com a área Operação manda, com o nome e o domínio da plataforma, um botão para um site de fora (página falsa de login, por exemplo) para até 1.000 contas por dia sem confirmação.
+
+     **Fazer:** passar o `actionUrl` por `safeAppLink` no `sendEmailNotification` (vale para os três caminhos) e recusar o pedido com link de fora. Teste: link de outro domínio é recusado; link do app passa.
+
+358. ⬜ **Salvar os preços pelo back pode desfazer a mudança que outro admin acabou de salvar** (back: `PricingService.update`):
+     - O back monta os preços novos a partir do cache em memória (`currentPricing()`), que só é relido a cada minuto. Salva o objeto inteiro, inclusive os campos que ninguém mexeu.
+     - Se outro admin salvou pelo backoffice-back (que lê a linha com `FOR UPDATE`) há menos de um minuto, os campos que ele mudou voltam ao valor antigo, sem aviso. Por exemplo, a taxa da plataforma volta para o valor de antes.
+
+     **Fazer:** ler a linha do banco com trava (`SELECT ... FOR UPDATE` numa transação), aplicar só os campos enviados e gravar, como no backoffice-back. Teste: preço salvo direto no banco e depois um campo diferente pelo back: os dois valem.
