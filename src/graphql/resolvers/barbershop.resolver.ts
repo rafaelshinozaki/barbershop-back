@@ -763,7 +763,9 @@ export class BarbershopResolver {
     @Args('input') input: AdjustInventoryInput,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.barbershopService.adjustInventory(user.id, barbershopId, input);
+    const result = await this.barbershopService.adjustInventory(user.id, barbershopId, input);
+    void this.activity.stockAdjusted(result.movementId, barbershopId);
+    return result;
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

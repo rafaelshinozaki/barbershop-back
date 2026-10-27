@@ -15,6 +15,8 @@ export type ShopImportResult = {
   errors: string[];
 };
 
+export const IMPORT_ALREADY_MESSAGE = 'horário já importado.';
+
 function messageOf(error: unknown) {
   return error instanceof Error && error.message ? error.message : 'não foi possível importar';
 }
@@ -214,6 +216,16 @@ export class ImportService {
       return bookable.length > 1
         ? `Linha ${row.line}: informe o profissional.`
         : `Linha ${row.line}: não há profissional para este horário.`;
+    }
+    // Planilha importada de novo: o mesmo horário (cliente, profissional e
+    // início) não é gravado outra vez. Falta não ocupa a agenda, então sem
+    // isso cada importação repetia as faltas (item 366)
+    if (customerId !== 0) {
+      const existing = await this.prisma.appointment.findFirst({
+        where: { barbershopId, customerId, barberId: barber.id, startAt: row.start },
+        select: { id: true },
+      });
+      if (existing) return `Linha ${row.line}: ${IMPORT_ALREADY_MESSAGE}`;
     }
     if (!apply || customerId === 0 || service.id === 0) return 'created';
     try {

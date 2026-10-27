@@ -553,7 +553,8 @@ describe('Lista de espera online (integração)', () => {
       date: addDays(monday, 2),
     });
 
-    // Quem já tem horário no dia: fecha e não é avisado de novo
+    // Marcou horário no dia (com quem pediu) depois de entrar: fecha e não é
+    // avisado de novo
     const day = addDays(monday, 28);
     const waiting = await barbershops.createWaitlistEntry(ownerId, shopId, {
       customerId: booked,
@@ -562,7 +563,7 @@ describe('Lista de espera online (integração)', () => {
     });
     await barbershops.createAppointment(ownerId, shopId, {
       customerId: booked,
-      barberId: beto,
+      barberId: ana,
       startAt: at(day, '09:00'),
       endAt: at(day, '09:30'),
       services: [{ serviceId, unitPrice: 50 }],
@@ -583,6 +584,48 @@ describe('Lista de espera online (integração)', () => {
     expect(closed.expired).toBeGreaterThanOrEqual(6);
     expect((await get(past.id)).status).toBe('EXPIRED');
     expect((await get(first.entryId)).status).toBe('WAITING');
+
+    // Já tinha horário no dia e entrou na fila por outro, com outra pessoa
+    // (item 365): a rotina não fecha a entrada
+    const sameDay = addDays(monday, 42);
+    const before = await barbershops.createAppointment(ownerId, shopId, {
+      customerId: booked,
+      barberId: beto,
+      startAt: at(sameDay, '18:00'),
+      endAt: at(sameDay, '18:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await prisma.appointment.update({
+      where: { id: before!.id },
+      data: { createdAt: new Date(Date.now() - 60_000) },
+    });
+    const wantsAna = await barbershops.createWaitlistEntry(ownerId, shopId, {
+      customerId: booked,
+      barberId: ana,
+      date: new Date(`${sameDay}T00:00:00Z`),
+    });
+    await barbershops.closeStaleWaitlistEntries();
+    expect((await get(wantsAna.id)).status).toBe('WAITING');
+    // Outro horário com o Beto depois de entrar também não é o que pediu
+    await barbershops.createAppointment(ownerId, shopId, {
+      customerId: booked,
+      barberId: beto,
+      startAt: at(sameDay, '16:00'),
+      endAt: at(sameDay, '16:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await barbershops.closeStaleWaitlistEntries();
+    expect((await get(wantsAna.id)).status).toBe('WAITING');
+    // Com a Ana, depois de entrar: fecha
+    await barbershops.createAppointment(ownerId, shopId, {
+      customerId: booked,
+      barberId: ana,
+      startAt: at(sameDay, '11:00'),
+      endAt: at(sameDay, '11:30'),
+      services: [{ serviceId, unitPrice: 50 }],
+    });
+    await barbershops.closeStaleWaitlistEntries();
+    expect((await get(wantsAna.id)).status).toBe('BOOKED');
 
     // Unidade pausada: cancelar não avisa ninguém
     const later = addDays(monday, 29);

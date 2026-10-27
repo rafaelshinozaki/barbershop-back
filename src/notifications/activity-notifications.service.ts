@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { currentEngagement } from '../barbershop/barbershop.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -695,13 +696,39 @@ export class ActivityNotificationsService {
   }
 
   /**
+   * Ajuste manual de estoque (perda, contagem, ajuste) que cruzou o mínimo:
+   * o mesmo aviso da venda (antes só a venda avisava, item 367)
+   */
+  stockAdjusted(movementId: number, barbershopId: number) {
+    return this.run('stockAdjusted', async () => {
+      await this.lowStock(
+        { id: movementId, referenceType: 'MANUAL' },
+        barbershopId,
+        (itemId) => `low-stock:${itemId}:m${movementId}`,
+      );
+    });
+  }
+
+  /**
    * Estoque baixo: só avisa o produto que CRUZOU o mínimo nesta venda
    * (antes acima, depois igual ou abaixo) — não repete a cada venda de um
    * produto que já estava baixo.
    */
-  private async lowStockAfterSale(saleId: number, barbershopId: number) {
+  private lowStockAfterSale(saleId: number, barbershopId: number) {
+    return this.lowStock(
+      { referenceType: 'SALE', referenceId: String(saleId) },
+      barbershopId,
+      (itemId) => `low-stock:${itemId}:${saleId}`,
+    );
+  }
+
+  private async lowStock(
+    where: Prisma.InventoryMovementWhereInput,
+    barbershopId: number,
+    keyOf: (inventoryItemId: number) => string,
+  ) {
     const movements = await this.prisma.inventoryMovement.findMany({
-      where: { referenceType: 'SALE', referenceId: String(saleId) },
+      where: { ...where, inventoryItem: { barbershopId } },
       select: {
         quantityBefore: true,
         quantityAfter: true,
@@ -721,7 +748,7 @@ export class ActivityNotificationsService {
         actorUserId: null,
         path: 'inventory',
         type: NotificationType.WARNING,
-        key: `low-stock:${m.inventoryItem.id}:${saleId}`,
+        key: keyOf(m.inventoryItem.id),
         build: (f, shop) => {
           const q = after.toLocaleString(LOCALE[f.lang]);
           const mn = Number(min).toLocaleString(LOCALE[f.lang]);
