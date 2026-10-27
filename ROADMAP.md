@@ -3834,3 +3834,63 @@ Foram lidos no back a importação de planilha (`ImportService`, `import-sheet`)
      **Fazer:** o ajuste manual que cruza o mínimo (antes acima, depois igual ou abaixo) dispara o mesmo aviso, com chave própria do movimento. Teste: produto com mínimo 5 e saldo 8; perda de 4 gera um aviso; outra perda com o saldo já baixo não gera outro.
 
      **Feito:** `adjustInventory` devolve o movimento e o resolver chama `ActivityNotificationsService.stockAdjusted`, que usa a mesma regra da venda (cruzou o mínimo) com a chave do movimento. Teste em `src/barbershop/round-365-367.int.spec.ts`.
+
+### Centésima trigésima sexta rodada (2026-10-27): campos de valor, formulários de edição e avisos
+
+Foram lidos no back a folha de pagamento (`PayrollService`), os convites da equipe, a conta de recebimento (`ConnectService`), as respostas às avaliações (`ReviewManagementService`), o aviso de Destaque vencendo e os avisos aos gerentes. No front, os campos de valor (venda, caixa, caixinha, estoque), os formulários de edição (cliente, produto, serviço, profissional), o fechamento do atendimento, a folga e a lista de espera.
+
+368. ⬜ **O preço do item na venda não deixa digitar** (front: `Sales.tsx`):
+     - O campo mostra `unitPrice.toFixed(2)` e reformata a cada tecla. Apagar "0.00" volta para "0.00", e digitar 3 e depois 5 vira "3.00" e em seguida "3.005", arredondado para 3,01. Não dá para digitar 35.
+     - A quantidade tem o mesmo problema: apagar o número volta para 1, e digitar 2 em seguida vira 12.
+
+     **Fazer:** o campo guarda o texto digitado e só converte ao calcular e ao salvar (como já fazem o caixa e o estoque). Teste: digitar 35,50 no preço e 2 na quantidade dá subtotal de 71,00.
+
+369. ⬜ **Caixinha pelo app: o "outro valor" some quando começa como um dos botões** (front: `AppTipCard`):
+     - O campo fica vazio sempre que o valor é 5, 10 ou 20 (os botões). Para digitar 50, o "5" apaga o campo e o "0" vira zero. 50, 100 e 200 não podem ser digitados.
+     - Os botões também são 5, 10 e 20 em qualquer moeda; em iene, 5 está abaixo do mínimo da caixinha pelo app.
+
+     **Fazer:** o campo guarda o texto digitado, separado da escolha dos botões. Os botões seguem o mínimo e a escala da moeda (`minAmount`). Teste: digitar 50 deixa o valor em 50.
+
+370. ⬜ **No estoque, "Ajuste" só soma; a contagem que achou menos vira "Perda"** (front: `Inventory.tsx`):
+     - A tela converte o tipo "Ajuste" sempre para positivo ("se quer corrigir pra baixo, usa Perda"). A contagem física que acha menos que o sistema só pode ser lançada como perda, o que distorce o relatório de perdas.
+     - Também não há como informar o total contado ("tenho 12"): a pessoa precisa calcular a diferença. Por isso `lastCountedAt` nunca é preenchido.
+
+     **Fazer:** o ajuste aceita o sinal (para mais ou para menos), ou um modo "contagem" em que se informa o total e o sistema lança a diferença e grava `lastCountedAt`. Teste: saldo 15, contagem 12, gera ajuste de −3 com tipo "Ajuste" e data da contagem.
+
+371. ⬜ **O mínimo e o local do estoque não podem ser apagados** (front: `Inventory.tsx`; back: `updateInventoryItem`):
+     - Com o campo vazio, a tela manda `undefined`, e o back só muda o que veio. Quem tira o mínimo (para parar o aviso de estoque baixo) ou o local continua com o valor antigo.
+
+     **Fazer:** campo esvaziado vai como `null` e o back grava `null`. Teste: mínimo 5, apagar e salvar deixa sem mínimo.
+
+372. ⬜ **Editar cliente, produto, serviço ou profissional não apaga campo opcional** (front: `Customers.tsx`, `Products.tsx`, `Services.tsx`, `Barbers.tsx`):
+     - Na edição, os campos vazios vão como `undefined` (`.trim() || undefined`), e o back mantém o valor antigo. Mesmo problema do item 361, em outras telas.
+     - Exemplos: o e-mail, o aniversário e a observação da ficha do cliente (a pessoa pede para tirar o e-mail e ele continua lá); o código, a descrição, a categoria e o custo do produto; a descrição e o ícone do serviço; o e-mail, a especialidade e a data de contratação do profissional.
+
+     **Fazer:** na edição, o campo que tinha valor e foi esvaziado vai como vazio ou `null`, e o back limpa o valor (e-mail vazio vira `null`). Teste: ficha com e-mail e observação; apagar os dois e salvar deixa os dois vazios.
+
+373. ⬜ **Valor com separador de milhar vira outro número** (front: 23 campos com `replace(',', '.')`):
+     - Os campos de dinheiro só trocam a primeira vírgula por ponto. "1.234,56" vira "1.234.56", e `parseFloat` lê 1,234. "1,234.56" (em inglês) também vira 1,234. Na contagem do caixa, R$ 1.234,56 vira R$ 1,23, e o fechamento mostra uma diferença enorme. No desconto do atendimento, `Number` dá `NaN`, e o desconto some sem aviso.
+     - Os campos estão no caixa, na despesa, na venda, nos produtos, nos serviços, nos pacotes, no clube, no cartão-presente, na comissão, na caixinha, no fechamento do atendimento, no estoque e na rede.
+
+     **Fazer:** uma função só para ler valores, que entende o separador de milhar e o decimal do idioma da tela (ou recusa o que for ambíguo), usada em todos esses campos. Teste da função: "1.234,56" é 1234,56 em pt; "1,234.56" é 1234,56 em en; "12,5" é 12,5.
+
+374. ⬜ **Avisos aos gerentes vão para quem já saiu da equipe pelo período de acesso** (back: `FeaturedPaymentService.remindExpiring`, `JobOpeningService.shopManagers`, `ModerationService`, aviso de profissional desligado com agenda):
+     - Esses avisos procuram gerentes com `isActive: true` e não usam `currentEngagement()`. O gerente temporário cujo período de acesso acabou (ou ainda não começou) continua recebendo o Destaque vencendo, as candidaturas das vagas, as decisões da moderação e a agenda de quem saiu. Ele não entra mais no painel, mas segue recebendo os dados da unidade.
+
+     **Fazer:** esses quatro lugares filtram os gerentes com `currentEngagement()`, como o resto do acesso. Teste: gerente com acesso até ontem não recebe o aviso de Destaque vencendo; o que está no período recebe.
+
+375. ⬜ **Apagar despesa do caixa, post agendado e termo assinado com um clique, sem confirmar** (front: `Cashier.tsx`, `Social.tsx`, `Customers.tsx`):
+     - O botão vermelho apaga na hora. A despesa some do caixa aberto (e muda o saldo esperado), o post agendado e a imagem dele são apagados, e o termo de consentimento assinado vai para o arquivo. As outras telas (foto, fechamento, cartão salvo) pedem confirmação antes.
+
+     **Fazer:** confirmar antes de apagar, como nas outras telas, dizendo o que acontece (para o termo assinado: "vai para o arquivo"). Teste: cancelar a confirmação não apaga.
+
+376. ⬜ **A resposta da unidade ocultada pela moderação volta salvando o mesmo texto, e o cliente recebe o e-mail de novo** (back: `ReviewManagementService.reply`):
+     - Toda resposta salva limpa `replyHiddenAt`, mesmo com o texto igual ao que a moderação ocultou. A unidade só precisa abrir e salvar de novo para a resposta ocultada voltar à página.
+     - Apagar a resposta e responder de novo conta como "primeira resposta" e manda outro e-mail ao cliente (a chave do envio leva `Date.now()`). Isso permite encher a caixa de quem deu nota baixa.
+
+     **Fazer:** texto igual ao ocultado continua oculto, e só texto diferente volta para a página. O e-mail da resposta sai uma vez por avaliação (chave fixa, ou uma data gravada na avaliação). Teste: resposta ocultada salva com o mesmo texto continua oculta; apagar e responder de novo não manda outro e-mail.
+
+377. ⬜ **O fechamento do atendimento usa o pacote mais novo, e o que vence primeiro perde as sessões** (front: `AppointmentCheckoutDialog`; back: `clientPackages`):
+     - A tela pega o primeiro pacote ativo da lista, que vem do mais novo para o mais antigo. O cliente com dois pacotes do mesmo serviço gasta o novo, e o antigo vence com sessões sobrando.
+
+     **Fazer:** usar o pacote ativo que vence primeiro (sem validade por último; empate, o mais antigo), e mostrar qual é. Teste: pacote A vence em 10 dias e pacote B em 6 meses; o fechamento desconta de A.
