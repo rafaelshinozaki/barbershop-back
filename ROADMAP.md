@@ -3539,26 +3539,32 @@ Foram lidos no front a agenda da equipe (`BarbershopDetail/Appointments`: criar,
 
      **Feito:** `withWaitlistOpening` (horário da unidade, escala, fechamento, folga desfeita) avisa `APPOINTMENT`/`UPDATED` depois de mudar; `deleteBarberSchedule` passa por ele. O `DepositPaymentService` avisa ao confirmar o sinal (tela, webhook ou rotina) e ao soltar a reserva vencida. Testes em `round-326-336.spec.ts`.
 
-337. ⬜ **A tela de agendar deixa escolher dias fora da janela e oferece a lista de espera onde o servidor recusa** (front: `PublicBooking/BookingDialog`):
+337. ✅ **A tela de agendar deixa escolher dias fora da janela e oferece a lista de espera onde o servidor recusa** (front: `PublicBooking/BookingDialog`):
      - O agendamento online vai até 90 dias (`PUBLIC_BOOKING_WINDOW_DAYS`), e a lista de espera até 60 (`WAITLIST_MAX_DAYS_AHEAD`). O seletor de data só tem o mínimo (hoje), sem máximo.
      - Um dia depois dos 90 aparece como "sem horários" com "Avisar se abrir vaga". O cliente preenche e recebe o erro do intervalo de dias. Entre 61 e 90 dias, um dia cheio também oferece a lista de espera que o servidor recusa.
      - Os fechamentos da página vêm só dos próximos 60 dias (`upcomingPublic`). Depois disso, um dia fechado aparece como aberto e cheio.
      
      **Fazer:** máximo do seletor em hoje + 90 dias, e "agenda ainda não aberta" além disso. Lista de espera só até 60 dias. Fechamentos carregados até o fim da janela. Teste (e2e): o dia 75 cheio não mostra o botão da lista de espera; o seletor não passa do dia 90.
 
+     **Feito:** no front, o seletor de data vai até hoje + 90 dias; dia além disso mostra "a agenda online ainda não abriu" (sem buscar horários nem oferecer a lista de espera), e a lista de espera só aparece até 60 dias. No back, os fechamentos da página pública (`upcomingPublic`) vêm até o fim da janela de 90 dias. Conferido no navegador.
+
 ### Centésima vigésima sétima rodada (2026-10-27): agendamento, sexta passada
 
 Foram lidos no back a conta do horário (`createSale` com `appointmentId`), o cancelamento pelo link do cliente com o estorno do sinal e do pago pelo app, o fechamento da unidade com cancelamento, a entrada do agendamento e da lista de espera pela página pública (`CreatePublicAppointmentInput`, `JoinPublicWaitlistInput`) e o código novo dos itens 326 a 336. No front, a área do cliente (próximos horários e histórico).
 
-338. ⬜ **Horário cobrado antes do início pode ser cancelado pelo link do cliente e pelo fechamento da unidade, e o sinal que a venda já descontou é estornado** (back: `cancelManagedAppointment`, `refundOnClientCancel`/`refundOnlineDeposit`, `refundPrepayment`, `ClosureService.set`):
+338. ✅ **Horário cobrado antes do início pode ser cancelado pelo link do cliente e pelo fechamento da unidade, e o sinal que a venda já descontou é estornado** (back: `cancelManagedAppointment`, `refundOnClientCancel`/`refundOnlineDeposit`, `refundPrepayment`, `ClosureService.set`):
      - A conta fechada antes do horário (o cliente pagou na chegada) deixa o horário confirmado (`createSale` só conclui o que já começou). A venda descontou o sinal pago online (`depositApplied`) e o pago antes pelo app (`prepaidApplied`).
      - Pela agenda, cancelar horário com venda é recusado ("Apague ou estorne a venda antes"). Pelo link, o cliente cancela normalmente: o horário vira cancelado com a venda ainda de pé, o sinal online é estornado e o pago pelo app também. A unidade fica com a venda no faturamento e o cliente recebe de volta um dinheiro que a conta já tinha usado.
      - O fechamento da unidade com "cancelar os horários afetados" faz o mesmo com os horários já cobrados daquele dia.
      
      **Fazer:** horário com venda não muda pelo link (`canChange` falso, com "fale com o estabelecimento") e fica fora do cancelamento do fechamento (como a série já faz, `sale: { is: null }`), aparecendo no aviso para a equipe resolver. `refundOnlineDeposit` e `refundPrepayment` não estornam o que uma venda descontou. Teste: horário com sinal online cobrado antes do início, cancelar pelo link é recusado e o sinal não volta; o fechamento não o cancela.
 
-339. ⬜ **Os campos do agendamento e da lista de espera pela página pública não têm tamanho máximo** (back: `CreatePublicAppointmentInput`, `JoinPublicWaitlistInput`, `createPublicAppointment`):
+     **Feito:** o link do cliente não cancela nem remarca horário com venda (`loadManagedAppointment` com `paid`; `MANAGED_PAID_MESSAGE`), e a tela do link mostra "já foi pago no estabelecimento" em vez do prazo. O fechamento da unidade não cancela horário com venda (fica no aviso, `affectedCount`). `refundOnlineDeposit` e `refundPrepayment` não estornam o que uma venda descontou. Testes em `round-337-339.spec.ts` e `closure.int.spec.ts`; conferido no navegador.
+
+339. ✅ **Os campos do agendamento e da lista de espera pela página pública não têm tamanho máximo** (back: `CreatePublicAppointmentInput`, `JoinPublicWaitlistInput`, `createPublicAppointment`):
      - O agendamento público (sem login) aceita nome, telefone, observação e código de indicação de qualquer tamanho, até o limite do corpo da requisição (100 KB). Só há mínimo (nome com 2 letras, telefone com 8).
      - O nome vira a ficha do cliente nova e aparece na agenda, na lista de clientes, nos e-mails e nas notificações da equipe; a observação vai para o horário. Um nome de dezenas de milhares de caracteres quebra a agenda e os e-mails da unidade.
      
      **Fazer:** máximo nos campos (nome 120, telefone 30, e-mail 254, observação 500, código 40) nos dois inputs públicos, com a mesma regra no serviço (corta ou recusa). Teste: agendamento público com nome de 5.000 caracteres é recusado.
+
+     **Feito:** limites em `PUBLIC_TEXT_LIMITS` (nome 120, telefone 30, e-mail 254, observação 500, código 40) nos dois inputs públicos (`@MaxLength`) e no serviço (`assertPublicTextLimits` em `createPublicAppointment` e `joinPublicWaitlist`). Testes em `round-337-339.spec.ts`.

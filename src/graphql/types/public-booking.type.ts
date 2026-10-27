@@ -730,6 +730,9 @@ export class ManagedAppointmentType {
   @Field({ description: 'Link da versão anterior: só status e estorno, sem ações' })
   readOnly: boolean;
 
+  @Field({ description: 'Conta já fechada no estabelecimento: o link não muda o horário' })
+  paid: boolean;
+
   @Field({ description: 'Até quando dá pra mudar pelo link (política de cancelamento)' })
   changeDeadline: string;
 

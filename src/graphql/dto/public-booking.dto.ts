@@ -9,9 +9,11 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import { PUBLIC_TEXT_LIMITS } from '../../barbershop/public-text-limits';
 import { TreatmentCategory } from '../types/enums';
 import { BOOKING_CHANNELS } from '../../barbershop/booking-channel';
 import { SEARCH_SORTS, type SearchSort } from '@/barbershop/search';
@@ -136,21 +138,25 @@ export class CreatePublicAppointmentInput {
   @Field()
   @IsString()
   @MinLength(2, { message: 'Nome muito curto' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.name, { message: 'Nome muito longo' })
   customerName: string;
 
   @Field()
   @IsString()
   @MinLength(8, { message: 'Telefone inválido' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.phone, { message: 'Telefone inválido' })
   customerPhone: string;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsEmail({}, { message: 'Email inválido' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.email, { message: 'Email inválido' })
   customerEmail?: string;
 
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(PUBLIC_TEXT_LIMITS.notes, { message: 'Observação muito longa' })
   notes?: string;
 
   // Código de indicação (base36 do id do Customer que indicou), lido do
@@ -159,6 +165,7 @@ export class CreatePublicAppointmentInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  @MaxLength(PUBLIC_TEXT_LIMITS.referralCode)
   referralCode?: string;
 
   /**
@@ -230,15 +237,18 @@ export class JoinPublicWaitlistInput {
   @Field()
   @IsString()
   @MinLength(2, { message: 'Nome muito curto' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.name, { message: 'Nome muito longo' })
   customerName: string;
 
   @Field()
   @IsString()
   @MinLength(8, { message: 'Telefone inválido' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.phone, { message: 'Telefone inválido' })
   customerPhone: string;
 
   /** Obrigatório: o aviso de vaga e o link de sair vão por e-mail */
   @Field()
   @IsEmail({}, { message: 'Email inválido' })
+  @MaxLength(PUBLIC_TEXT_LIMITS.email, { message: 'Email inválido' })
   customerEmail: string;
 }

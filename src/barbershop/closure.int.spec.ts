@@ -228,6 +228,32 @@ describe('Feriados e fechamentos (integração)', () => {
     expect(again).toMatchObject({ affectedCount: 1, cancelledCount: 0 });
   });
 
+  it('338: horário já cobrado não é cancelado pelo fechamento, só aparece no aviso', async () => {
+    const tuesday = addDays(monday, 1);
+    const paid = await book(ana, at(tuesday, '10:00'));
+    await prisma.sale.create({
+      data: {
+        barbershopId: shopId,
+        appointmentId: paid!.id,
+        saleType: 'SERVICE',
+        subtotal: 50,
+        total: 50,
+        paymentStatus: 'PAID',
+      },
+    });
+    const result = await closures.set(ownerId, shopId, {
+      date: tuesday,
+      reason: 'Reforma',
+      cancelAffected: true,
+    });
+    expect(result).toMatchObject({ affectedCount: 1, cancelledCount: 0 });
+    expect((await prisma.appointment.findUniqueOrThrow({ where: { id: paid!.id } })).status).toBe(
+      'CONFIRMED',
+    );
+    await prisma.sale.deleteMany({ where: { appointmentId: paid!.id } });
+    await closures.remove(ownerId, shopId, tuesday);
+  });
+
   it('vários dias de uma vez e validações', async () => {
     const r = await closures.set(ownerId, shopId, {
       date: monday,
