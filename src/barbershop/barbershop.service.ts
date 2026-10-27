@@ -391,6 +391,17 @@ export type DepositHolds = {
   settle(appointmentId: number): Promise<'paid' | 'released' | 'none'>;
   release(appointmentId: number): Promise<boolean>;
 };
+/** O sinal está com a unidade: pago online ou recebido pela equipe, sem estorno */
+export function depositKept(a: {
+  depositPaid?: boolean | null;
+  depositPaidAt?: Date | null;
+  depositReceivedAt?: Date | null;
+  depositRefundedAt?: Date | null;
+}) {
+  return !!a.depositPaid && !!(a.depositPaidAt || a.depositReceivedAt) && !a.depositRefundedAt;
+}
+
+export const GIFT_CARD_SHOP_MESSAGE = 'Escolha a unidade que está vendendo o cartão-presente';
 export const DEPOSIT_RECEIVED_DELETE_MESSAGE =
   'Este horário tem sinal recebido pela equipe. Cancele em vez de excluir, ou desmarque o sinal antes (com o caixa aberto).';
 export const DEPOSIT_CASH_CLOSED_MESSAGE =
@@ -5901,6 +5912,7 @@ export class BarbershopService {
       services: Array<{ unitPrice: Decimal; quantity: number }>;
       depositPaid?: boolean | null;
       depositPaidAt?: Date | null;
+      depositReceivedAt?: Date | null;
       depositAmount?: Decimal | null;
       depositRefundedAt?: Date | null;
     },
@@ -5932,12 +5944,10 @@ export class BarbershopService {
     } else if (network.noShowFeeType === 'FIXED' && network.noShowFeeValue) {
       feeAmount = network.noShowFeeValue;
     }
-    // O sinal pago online que a unidade reteve já é parte da taxa: cobra só o
-    // que falta (nada, se o sinal cobre). Em centavos da moeda da unidade.
-    const retained =
-      appointment.depositPaid && appointment.depositPaidAt && !appointment.depositRefundedAt
-        ? Number(appointment.depositAmount ?? 0)
-        : 0;
+    // O sinal que a unidade reteve (pago online ou recebido pela equipe, item
+    // 313) já é parte da taxa: cobra só o que falta (nada, se o sinal cobre).
+    // Em centavos da moeda da unidade.
+    const retained = depositKept(appointment) ? Number(appointment.depositAmount ?? 0) : 0;
     feeAmount = roundMoney(
       roundMoney(feeAmount, barbershop.currency) - retained,
       barbershop.currency,
@@ -5966,6 +5976,7 @@ export class BarbershopService {
       prepaidRefundedAmount?: Decimal | null;
       depositPaid?: boolean | null;
       depositPaidAt?: Date | null;
+      depositReceivedAt?: Date | null;
       depositAmount?: Decimal | null;
       depositRefundedAt?: Date | null;
     },
@@ -5994,6 +6005,7 @@ export class BarbershopService {
       customer: { id: number };
       depositPaid?: boolean | null;
       depositPaidAt?: Date | null;
+      depositReceivedAt?: Date | null;
       depositAmount?: Decimal | null;
       depositRefundedAt?: Date | null;
     },
@@ -9751,14 +9763,19 @@ export class BarbershopService {
       paymentMethod?: string | null;
     },
   ) {
-    // Dono da rede vende por qualquer unidade (ou sem unidade); da recepção
-    // para cima, só pela unidade onde trabalha (o valor entra no caixa dela)
+    // Dono da rede vende por qualquer unidade; da recepção para cima, só pela
+    // unidade onde trabalha (o valor entra no caixa dela)
     const network = await this.prisma.network.findUnique({ where: { id: networkId } });
     if (!network) throw new ForbiddenException('Sem acesso a esta rede');
-    if (network.ownerUserId !== userId) {
-      if (data.barbershopId == null) {
-        throw new ForbiddenException('Escolha a unidade que está vendendo o cartão-presente');
+    // Sempre com a unidade que vendeu: sem ela o valor não entrava no
+    // faturamento nem na venda do cartão nem no uso dele (item 311)
+    if (data.barbershopId == null) {
+      if (network.ownerUserId !== userId) {
+        throw new ForbiddenException(GIFT_CARD_SHOP_MESSAGE);
       }
+      throw new BadRequestException(GIFT_CARD_SHOP_MESSAGE);
+    }
+    if (network.ownerUserId !== userId) {
       const shop = await this.ensureBarbershopAccess(userId, data.barbershopId, 'reception');
       if (shop.networkId !== networkId) throw new ForbiddenException('Sem acesso a esta rede');
     }
@@ -12356,12 +12373,34 @@ export class BarbershopService {
       clubFromConnect + clubPayouts.reduce((sum, p) => sum + Number(p.amount), 0),
     );
     const chairCardIncome = round2(chairPayouts.reduce((sum, p) => sum + Number(p.amount), 0));
+    // Caixinhas que passaram pela unidade (item 312): a da unidade fica com ela;
+    // a do profissional recebida pela unidade sai no pagamento dele (despesa
+    // "Salário"), então entra aqui também e o lucro não cai por ela
+    const tips = (
+      await this.prisma.appointmentTip.findMany({
+        where: {
+          barbershopId,
+          refundedAt: null,
+          createdAt: { gte: from, lte: to },
+          OR: [{ destination: 'unit' }, { receivedByUnit: true }],
+        },
+        select: { amount: true, method: true, platformFeePercent: true, createdAt: true },
+      })
+    ).map((t) => {
+      const amount = Number(t.amount);
+      // Pelo app cai na conta de recebimento já sem a taxa da plataforma
+      const fee =
+        t.method === 'STRIPE' ? round2((amount * Number(t.platformFeePercent ?? feeNow)) / 100) : 0;
+      return { date: t.createdAt, value: round2(amount - fee) };
+    });
+    const tipIncome = round2(tips.reduce((sum, t) => sum + t.value, 0));
 
     const totalRevenue =
       sales.reduce((sum, s) => sum + saleRevenue(s), 0) +
       kept.reduce((sum, k) => sum + k.deposit + k.prepaid, 0) +
       clubIncome +
-      chairCardIncome;
+      chairCardIncome +
+      tipIncome;
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
     // Aluguel da cadeira que o espaço recebeu direto (PIX, dinheiro...). O
     // que entra pelo cartão fica na plataforma até o repasse
@@ -12393,6 +12432,7 @@ export class BarbershopService {
     });
     addTo('CLUB', clubIncome);
     addTo('CHAIR_RENT', chairCardIncome);
+    addTo('TIP', tipIncome);
 
     const byCategory = new Map<string, number>();
     expenses.forEach((e) => {
@@ -12420,6 +12460,10 @@ export class BarbershopService {
     for (const p of [...clubPayouts, ...chairPayouts]) {
       const key = toZonedParts(p.paidAt, timeZone).dateStr;
       byDay.set(key, round2((byDay.get(key) ?? 0) + Number(p.amount)));
+    }
+    for (const t of tips) {
+      const key = toZonedParts(t.date, timeZone).dateStr;
+      byDay.set(key, round2((byDay.get(key) ?? 0) + t.value));
     }
     const sortedDays = Array.from(byDay.keys()).sort();
 
@@ -12457,7 +12501,9 @@ export class BarbershopService {
         sale: null,
         startAt: range,
         OR: [
+          // Pago online ou recebido pela equipe (item 313)
           { depositPaid: true, depositPaidAt: { not: null }, depositRefundedAt: null },
+          { depositPaid: true, depositReceivedAt: { not: null }, depositRefundedAt: null },
           { prepaidAt: { not: null }, prepaidRefundedAt: null },
         ],
       },
@@ -12465,6 +12511,7 @@ export class BarbershopService {
         startAt: true,
         depositPaid: true,
         depositPaidAt: true,
+        depositReceivedAt: true,
         depositAmount: true,
         depositRefundedAt: true,
         prepaidAt: true,
@@ -12475,8 +12522,7 @@ export class BarbershopService {
     });
     return appts.map((a) => ({
       date: a.startAt,
-      deposit:
-        a.depositPaid && a.depositPaidAt && !a.depositRefundedAt ? Number(a.depositAmount ?? 0) : 0,
+      deposit: depositKept(a) ? Number(a.depositAmount ?? 0) : 0,
       prepaid:
         a.prepaidAt && !a.prepaidRefundedAt
           ? Math.max(0, Number(a.prepaidAmount ?? 0) - Number(a.prepaidRefundedAmount ?? 0))

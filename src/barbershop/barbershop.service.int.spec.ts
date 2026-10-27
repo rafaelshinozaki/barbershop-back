@@ -750,6 +750,8 @@ describe('BarbershopService (integração com o banco)', () => {
       await expect(
         service.createGiftCard(A.ownerId, A.networkId, {
           initialValue: 20,
+          barbershopId: A.shopId,
+          paymentMethod: 'CASH',
           expiresAt: new Date('2000-01-01'),
         }),
       ).rejects.toThrow('não pode ser no passado');

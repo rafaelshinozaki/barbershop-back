@@ -3285,26 +3285,32 @@ Foram lidos no back as despesas (lançamento, lista e exclusão), o resumo finan
 
 Foram lidos no back a venda inteira (criação com sinal, pago pelo app, cartão-presente, pontos, clube, pacote, estoque e indicação; edição; exclusão), a taxa de falta (cálculo, cobrança, perdão), o cartão-presente (venda e uso), a fidelidade e o bônus de indicação, a caixinha registrada à mão, o pagamento da equipe (lançamentos, vales, fechamento, desfazer), o sinal recebido na mão e o estorno do sinal online e do pago pelo app, o aluguel de cadeira (cobrança no cartão, recibo, cancelamento) e os relatórios de repasse.
 
-311. ⬜ **Cartão-presente vendido pelo dono "sem unidade" nunca aparece no faturamento, nem na venda nem no uso** (back: `createGiftCard`):
+311. ✅ **Cartão-presente vendido pelo dono "sem unidade" nunca aparece no faturamento, nem na venda nem no uso** (back: `createGiftCard`):
      - O dono da rede pode criar o cartão sem escolher a unidade. Aí `recordStandaloneSale` não roda: não há venda, e o dinheiro recebido não entra no faturamento nem no caixa de unidade nenhuma.
      - Quando o cliente usa o cartão numa unidade, a venda grava só o que faltou pagar (`total` já desconta `giftCardAmountApplied`). O serviço pago pelo cartão também não vira receita.
      - O valor do cartão some dos números da rede inteira: nem a venda do cartão nem o atendimento que ele pagou entram em lugar nenhum.
      
      **Fazer:** a venda do cartão sempre tem unidade (no app do dono, escolher a unidade que recebe). Se o "sem unidade" for para cortesia, gravar como cortesia (sem receita) e, no uso, contar o valor como desconto. Teste: o dono cria o cartão sem unidade e é recusado (ou ele fica marcado como cortesia).
 
-312. ⬜ **A caixinha que passa pela unidade sai como despesa no pagamento do profissional, mas nunca entrou como receita** (back: `TipService.add`, `getFinancialSummary`, `PayrollService.pay`):
+     **Feito:** `createGiftCard` exige a unidade que vendeu, também para o dono da rede (`GIFT_CARD_SHOP_MESSAGE`). Assim a venda do cartão sempre vira venda na unidade, e o uso dele continua só abatendo a conta. A tela da franquia já exigia a unidade. Teste em `no-show-fee.int.spec.ts`.
+
+312. ✅ **A caixinha que passa pela unidade sai como despesa no pagamento do profissional, mas nunca entrou como receita** (back: `TipService.add`, `getFinancialSummary`, `PayrollService.pay`):
      - A caixinha do profissional recebida pela unidade (a mais no cartão, ou dinheiro e Pix no balcão) vira lançamento `TIP` e entra no pagamento dele. O pagamento grava uma despesa "Salário" com o total, caixinhas incluídas. A caixinha da unidade (`destination = 'unit'`) fica com a unidade.
      - O resumo financeiro não soma nenhuma das duas na receita (só vendas, sinal e pago pelo app). O caixa confere a caixinha em dinheiro, mas o faturamento não a vê.
      - A caixinha do profissional que passou pela maquininha aparece só como despesa: o lucro do período cai pelo valor de todas elas, embora a unidade só tenha repassado o que recebeu. A caixinha da unidade, que é receita dela, não aparece.
      
      **Fazer:** no resumo, a caixinha recebida pela unidade entra como receita, numa linha "caixinhas" e por forma de pagamento. A do profissional pode entrar como receita e sair no pagamento, ou ficar fora dos dois. O que não pode é aparecer só de um lado. Teste: caixinha de 10 no cartão para o profissional e o pagamento dele no período; o lucro não cai 10.
 
-313. ⬜ **O sinal recebido na mão não é descontado da taxa de falta, e o cliente paga os dois** (back: `noShowFeeFor`, `retainedPrepayments`):
+     **Feito:** o resumo financeiro soma, numa linha "caixinhas" (`TIP`) e no gráfico por dia, as caixinhas que passaram pela unidade: as da unidade e as do profissional recebidas por ela (que saem depois no pagamento dele). A pelo app entra sem a taxa da plataforma. A do profissional pelo app, que não passa pela unidade, fica de fora. Rótulo nos três idiomas no front. Teste em `no-show-fee.int.spec.ts`.
+
+313. ✅ **O sinal recebido na mão não é descontado da taxa de falta, e o cliente paga os dois** (back: `noShowFeeFor`, `retainedPrepayments`):
      - O sinal pode ser recebido pela equipe, em dinheiro, Pix ou cartão (`setAppointmentDepositPaid`: `depositPaid = true`, `depositReceivedAt`, sem `depositPaidAt`).
      - A taxa de falta desconta só o sinal pago online (`depositPaid && depositPaidAt`). Com o sinal recebido na mão, a falta gera a taxa cheia, embora a unidade já esteja com o sinal. O cliente deve a taxa inteira mais o sinal que já pagou.
      - O resumo financeiro conta o sinal que ficou com a unidade só quando foi online (`retainedPrepayments` exige `depositPaidAt`). O sinal em dinheiro de quem faltou entra no caixa, mas não no faturamento.
      
      **Fazer:** tratar o sinal recebido na mão como o online nos dois lugares (`depositPaid` com `depositPaidAt` ou `depositReceivedAt`). Teste: sinal de 20 recebido na mão, taxa de falta de 30; fica devido 10, e os 20 entram no faturamento do dia.
+
+     **Feito:** `depositKept` (sinal pago online ou recebido pela equipe, sem estorno) vale na taxa de falta (`noShowFeeFor`) e no sinal retido do faturamento (`retainedPrepayments`). Teste em `no-show-fee.int.spec.ts`: sinal de 20 no Pix e taxa de 30 deixam 10 devido, e os 20 entram no faturamento do dia.
 
 314. ✅ **Dá para estornar o sinal online depois de a conta do horário ser fechada, e a venda continua contando o sinal como recebido** (back: `refundAppointmentDeposit`, `AppPaymentsService.refund` com `kind = 'deposit'`):
      - O estorno do pago pelo app já é recusado com a conta fechada ("estorne pelo painel do Stripe"), porque a venda descontou esse valor. O do sinal não tem essa trava, nem na unidade (gerente e dono) nem no Financeiro do backoffice.

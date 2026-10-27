@@ -163,6 +163,8 @@ describe('Itens 247 a 249 (integração)', () => {
   it('248: consulta do cartão-presente sem o contato de quem comprou para o barbeiro; recepção vende na unidade', async () => {
     const card = await shops.createGiftCard(ownerId, networkId, {
       initialValue: 100,
+      barbershopId: shopId,
+      paymentMethod: 'PIX',
       purchaserName: 'Comprador',
       purchaserPhone: '11988887777',
       purchaserEmail: 'comprador@test.local',
