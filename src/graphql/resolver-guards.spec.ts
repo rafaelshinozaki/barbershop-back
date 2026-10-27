@@ -13,6 +13,7 @@ const PUBLIC: Record<string, string> = {
   'auth.resolver.ts#login': 'login',
   'auth.resolver.ts#verify2FA': 'login em duas etapas',
   'auth.resolver.ts#createUser': 'cadastro',
+  'auth.resolver.ts#requestSignupCode': 'cadastro (código do e-mail)',
   'auth.resolver.ts#forgotPassword': 'recuperar senha',
   'auth.resolver.ts#forgotPasswordCheck': 'recuperar senha',
   'auth.resolver.ts#resetPassword': 'recuperar senha (token)',

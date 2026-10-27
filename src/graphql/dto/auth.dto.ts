@@ -333,6 +333,24 @@ export class CreateUserInput {
   @Field({ nullable: true })
   @IsOptional()
   professionalData?: ProfessionalSignupInput;
+
+  /** Código de 6 dígitos enviado por requestSignupCode (confirma o e-mail) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  emailCode?: string;
+}
+
+@InputType()
+export class RequestSignupCodeInput {
+  @Field()
+  @IsEmail()
+  email: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  language?: string;
 }
 
 @InputType()

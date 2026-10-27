@@ -14,6 +14,7 @@ import {
   LoginInput,
   Verify2FAInput,
   CreateUserInput,
+  RequestSignupCodeInput,
   BarbershopSignupData,
   ProfessionalSignupInput,
   ForgotPasswordInput,
@@ -120,6 +121,13 @@ export class AuthResolver {
     const dbUser = await this.userService.verifyLoginCode(verifyInput.loginId, verifyInput.code);
     await this.authService.login(dbUser, req, res, verifyInput.rememberMe ?? false);
     return toGraphQLUser(dbUser) as any;
+  }
+
+  // Primeiro passo do cadastro com senha: manda o código que confirma o e-mail
+  @Mutation(() => Boolean)
+  @ThrottleAuth()
+  async requestSignupCode(@Args('input') input: RequestSignupCodeInput): Promise<boolean> {
+    return this.userService.sendSignupCode(input.email, input.language ?? 'pt');
   }
 
   @Mutation(() => User)

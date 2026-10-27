@@ -511,7 +511,7 @@ export class EmployeeInviteService {
    * equipe de mais uma unidade, sem criar outra conta. O e-mail da conta
    * tem que ser o do convite.
    */
-  async acceptInviteAsUser(inviteToken: string, userId: number) {
+  async acceptInviteAsUser(inviteToken: string, userId: number, emailKey?: string) {
     const invite = await this.prisma.employeeInvite.findUnique({ where: { inviteToken } });
     if (!invite) throw new NotFoundException('Convite não encontrado');
     if (invite.status !== 'PENDING') {
@@ -532,6 +532,13 @@ export class EmployeeInviteService {
       throw new BadRequestException(
         'Este convite foi enviado para outro e-mail. Entre com a conta desse e-mail para aceitar.',
       );
+    }
+    // Conta que nunca confirmou o e-mail (ex.: criada com o e-mail de outra
+    // pessoa antes do código no cadastro) só aceita pelo link do e-mail
+    // convidado — o link compartilhado pelo gerente não prova que é dela
+    const keyOk = this.emailKeyMatches(invite.emailKeyHash, emailKey);
+    if (!user.emailVerifiedAt && !keyOk) {
+      throw new BadRequestException(INVITE_EMAIL_KEY_MESSAGE);
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -567,11 +574,13 @@ export class EmployeeInviteService {
       if (claimed.count !== 1) {
         throw new BadRequestException('Este convite já foi utilizado');
       }
-      // Abriu o link que chegou no e-mail da conta: e-mail confirmado
-      await tx.user.updateMany({
-        where: { id: userId, emailVerifiedAt: null },
-        data: { emailVerifiedAt: new Date() },
-      });
+      // Só a chave do link que chegou no e-mail confirma o e-mail da conta
+      if (keyOk) {
+        await tx.user.updateMany({
+          where: { id: userId, emailVerifiedAt: null },
+          data: { emailVerifiedAt: new Date() },
+        });
+      }
     });
     this.realtime.notify(invite.barbershopId, 'BARBER', 'UPDATED');
     void this.activity.memberJoined(invite.barberId, userId);
