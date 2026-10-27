@@ -9,6 +9,8 @@ import { BarbershopService, MARKETING_DAILY_LIMIT_MESSAGE } from './barbershop.s
 import { UserService } from '../auth/users/users.service';
 import { NetworkResolver } from '../graphql/resolvers/network.resolver';
 
+// O link de descadastro dos e-mails da campanha é assinado com ele
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
 describe('Itens 340 e 342 (integração)', () => {
