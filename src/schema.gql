@@ -1551,6 +1551,7 @@ input CreateUserInput {
   barbershopData: BarbershopSignupData
   birthdate: DateTime!
   email: String!
+  emailCode: String
   fullName: String!
   gender: String!
   idDocNumber: String!
@@ -2406,6 +2407,7 @@ type Mutation {
   reportReview(barbershopId: Int!, reason: String!, reviewId: Int!): Boolean!
   requestBarberPasswordReset(barbershopId: Int!, id: Int!): Boolean!
   requestChangePasswordCode(input: RequestChangePasswordCodeInput!): Boolean!
+  requestSignupCode(input: RequestSignupCodeInput!): Boolean!
   requestTwoFactorCode: Boolean!
   rescheduleManagedAppointment(startAt: String!, token: String!): ManagedAppointmentType!
   resetPassword(input: ResetPasswordInput!): Boolean!
@@ -3668,6 +3670,11 @@ type ReportReasonCountType {
 
 input RequestChangePasswordCodeInput {
   email: String!
+}
+
+input RequestSignupCodeInput {
+  email: String!
+  language: String
 }
 
 type RequestStatsType {

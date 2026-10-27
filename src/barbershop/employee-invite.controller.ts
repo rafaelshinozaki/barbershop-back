@@ -40,8 +40,13 @@ export class EmployeeInviteController {
   /** Aceita com a conta já existente (logado): entra em mais uma unidade */
   @Post('accept/:inviteToken/existing')
   @UseGuards(JwtAuthGuard)
-  async acceptInviteAsUser(@Request() req: any, @Param('inviteToken') inviteToken: string) {
-    return this.employeeInviteService.acceptInviteAsUser(inviteToken, req.user.id);
+  async acceptInviteAsUser(
+    @Request() req: any,
+    @Param('inviteToken') inviteToken: string,
+    // Chave do link do e-mail: exigida quando a conta ainda não confirmou o e-mail
+    @Query('k') emailKey?: string,
+  ) {
+    return this.employeeInviteService.acceptInviteAsUser(inviteToken, req.user.id, emailKey);
   }
 
   @Post('accept/:inviteToken')

@@ -42,9 +42,15 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     { notify: () => undefined } as never,
   );
   const sent: string[] = [];
+  const inviteUrls: string[] = [];
   const invites = new EmployeeInviteService(
     prisma,
-    { sendCustomerEmail: async (...args: unknown[]) => void sent.push(args[5] as string) } as never,
+    {
+      sendCustomerEmail: async (...args: unknown[]) => {
+        sent.push(args[5] as string);
+        inviteUrls.push((args[2] as { InviteUrl?: string }).InviteUrl ?? '');
+      },
+    } as never,
     { get: () => 'https://app.test' } as never,
     service,
     { notify: () => undefined } as never,
@@ -192,7 +198,25 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
       invites.acceptInviteAsUser(invite.inviteToken, shops[0].ownerId),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    await invites.acceptInviteAsUser(invite.inviteToken, proUserId);
+    // A conta dele nunca confirmou o e-mail: o link compartilhado (sem a
+    // chave) não basta, e uma chave errada também não (item 343)
+    expect(pro.emailVerifiedAt).toBeNull();
+    await expect(invites.acceptInviteAsUser(invite.inviteToken, proUserId)).rejects.toThrow(
+      INVITE_EMAIL_KEY_MESSAGE,
+    );
+    await expect(
+      invites.acceptInviteAsUser(invite.inviteToken, proUserId, 'x'.repeat(48)),
+    ).rejects.toThrow(INVITE_EMAIL_KEY_MESSAGE);
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: proUserId } })).emailVerifiedAt,
+    ).toBeNull();
+
+    const key = new URL(inviteUrls[sent.lastIndexOf(pro.email)]).searchParams.get('k') ?? '';
+    await invites.acceptInviteAsUser(invite.inviteToken, proUserId, key);
+    // Só a chave do e-mail confirma o e-mail da conta
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: proUserId } })).emailVerifiedAt,
+    ).not.toBeNull();
     expect(await prisma.user.count({ where: { email: pro.email } })).toBe(1);
     const mine = (await service.getUserBarbershops(proUserId)).map((b) => b.id);
     expect(mine).toEqual(expect.arrayContaining([shops[0].shopId, shops[1].shopId]));
@@ -562,6 +586,25 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
     expect(links.find((b) => b.barbershopId === first.id)?.takesAppointments).toBeNull();
     expect(links.find((b) => b.barbershopId === second.id)?.takesAppointments).toBe(false);
     await prisma.subscription.deleteMany({ where: { userId: owner.id } });
+  });
+
+  it('conta com e-mail já confirmado aceita o convite sem a chave do link (item 343)', async () => {
+    const confirmed = await prisma.user.update({
+      where: { id: (await createUser('confirmada')).id },
+      data: { emailVerifiedAt: new Date() },
+    });
+    const { barber } = await invites.createInvite(shops[1].ownerId, {
+      barbershopId: shops[1].shopId,
+      email: confirmed.email,
+      name: 'Confirmada',
+      phone: '11900000031',
+      role: 'BarbershopEmployee',
+      staffType: 'barber',
+    });
+    const invite = await prisma.employeeInvite.findFirstOrThrow({ where: { barberId: barber.id } });
+    await expect(
+      invites.acceptInviteAsUser(invite.inviteToken, confirmed.id),
+    ).resolves.toMatchObject({ success: true, barbershopId: shops[1].shopId });
   });
 
   it('criar conta pelo convite exige a chave que só vai no e-mail (item 212)', async () => {

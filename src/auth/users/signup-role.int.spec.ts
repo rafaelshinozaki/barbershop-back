@@ -9,21 +9,67 @@ import { UserService } from './users.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
+// Redis em memória: só o que o código do cadastro e o login usam
+function memoryRedis() {
+  const store = new Map<string, string>();
+  return {
+    store,
+    client: {
+      exists: async (k: string) => (store.has(k) ? 1 : 0),
+      get: async (k: string) => store.get(k) ?? null,
+      set: async (k: string, v: string, ...opts: unknown[]) => {
+        if (opts.includes('NX') && store.has(k)) return null;
+        store.set(k, v);
+        return 'OK';
+      },
+      del: async (...keys: string[]) => keys.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0),
+      incr: async (k: string) => {
+        const v = Number(store.get(k) ?? 0) + 1;
+        store.set(k, String(v));
+        return v;
+      },
+      ttl: async (k: string) => (store.has(k) ? 600 : -2),
+      expire: async () => 1,
+    },
+  };
+}
+
 describe('Cadastro: cargo (integração)', () => {
   const prisma = new PrismaService();
+  const redis = memoryRedis();
+  const sent: Array<{ to: string; code: string }> = [];
   const service = new UserService(
     prisma,
-    { sendTemplateEmail: async () => undefined } as never,
+    {
+      sendTemplateEmail: async () => undefined,
+      sendCustomerEmail: async (
+        _u: unknown,
+        _t: string,
+        ctx: { VerificationCode: string },
+        _s: unknown,
+        _m: string,
+        to: string,
+      ) => void sent.push({ to, code: ctx.VerificationCode }),
+    } as never,
     {} as never,
     { get: () => undefined } as never,
-    { client: { exists: async () => 0 } } as never,
+    redis as never,
   );
   let n = 0;
 
-  const signup = (roleName?: string, over: Record<string, unknown> = {}) => {
+  // Cadastro completo: pede o código e usa o que chegou no e-mail
+  const codeFor = async (email: string) => {
+    redis.store.delete(`auth:signup-code-sent:${email}`);
+    await service.sendSignupCode(email);
+    return sent[sent.length - 1].code;
+  };
+
+  const signup = async (roleName?: string, over: Record<string, unknown> = {}) => {
     n++;
+    const email = `role-${n}-${RUN}@test.local`;
     return service.createUser({
-      email: `role-${n}-${RUN}@test.local`,
+      email,
+      emailCode: await codeFor(email),
       password: 'Senha@1234',
       fullName: 'Teste Cargo',
       gender: 'male',
@@ -98,6 +144,103 @@ describe('Cadastro: cargo (integração)', () => {
     const row = await prisma.user.findUniqueOrThrow({ where: { id: created.id } });
     expect(row.readTerms).toBe(true);
     expect(row.termsAcceptedAt).not.toBeNull();
+  });
+
+  it('cadastro com senha só cria a conta com o código do e-mail, e a conta nasce confirmada', async () => {
+    const email = `code-${RUN}@test.local`;
+    const base = {
+      email,
+      password: 'Senha@1234',
+      fullName: 'Teste Codigo',
+      gender: 'male',
+      phone: `+5514${RUN}`.slice(0, 20),
+      idDocNumber: `cod${RUN}`.slice(-20),
+      readTerms: true,
+      birthdate: '1990-01-01',
+      userSystemConfig: { language: 'pt' },
+    };
+    const exists = () => prisma.user.count({ where: { email } });
+
+    // Sem código, ou com código de outro e-mail: nada é criado
+    await expect(service.createUser(base as never)).rejects.toThrow('verification code');
+    const other = await codeFor(`outro-${RUN}@test.local`);
+    await expect(service.createUser({ ...base, emailCode: other } as never)).rejects.toThrow(
+      'verification code',
+    );
+    expect(await exists()).toBe(0);
+
+    // Pedir de novo logo em seguida espera um minuto
+    await service.sendSignupCode(email);
+    await expect(service.sendSignupCode(email)).rejects.toThrow('Wait a minute');
+    const code = sent[sent.length - 1].code;
+    expect(sent[sent.length - 1].to).toBe(email);
+
+    // Erro de validação (senha fraca) não queima o código
+    await expect(
+      service.createUser({ ...base, emailCode: code, password: '1' } as never),
+    ).rejects.toThrow('complexity');
+    const created = await service.createUser({ ...base, emailCode: code } as never);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: created.id } });
+    expect(row.emailVerifiedAt).not.toBeNull();
+
+    // Uso único
+    await expect(service.createUser({ ...base, emailCode: code } as never)).rejects.toThrow(
+      'verification code',
+    );
+  });
+
+  it('código errado conta tentativas e, no limite, o código certo também deixa de valer', async () => {
+    const email = `tries-${RUN}@test.local`;
+    const code = await codeFor(email);
+    const wrong = code === '111111' ? '222222' : '111111';
+    const attempt = (c: string) =>
+      service.createUser({
+        email,
+        emailCode: c,
+        password: 'Senha@1234',
+        fullName: 'Teste Tentativa',
+        gender: 'male',
+        phone: `+5515${RUN}`.slice(0, 20),
+        idDocNumber: `try${RUN}`.slice(-20),
+        readTerms: true,
+        birthdate: '1990-01-01',
+        userSystemConfig: { language: 'pt' },
+      } as never);
+    for (let i = 0; i < 6; i++) await expect(attempt(wrong)).rejects.toThrow('verification code');
+    await expect(attempt(code)).rejects.toThrow('verification code');
+    expect(await prisma.user.count({ where: { email } })).toBe(0);
+  });
+
+  it('e-mail já cadastrado: sem o código, a resposta não diz que a conta existe', async () => {
+    await signup();
+    const email = `role-${n}-${RUN}@test.local`;
+    await expect(
+      service.createUser({
+        email,
+        emailCode: '000000',
+        password: 'Senha@1234',
+        fullName: 'Outra Pessoa',
+        gender: 'male',
+        phone: '+5512999999999',
+        idDocNumber: '',
+        readTerms: true,
+        birthdate: '1990-01-01',
+      } as never),
+    ).rejects.toThrow('verification code');
+    // Com o código (quem tem a caixa de entrada), aí sim o duplicado aparece
+    await expect(
+      service.createUser({
+        email,
+        emailCode: await codeFor(email),
+        password: 'Senha@1234',
+        fullName: 'Outra Pessoa',
+        gender: 'male',
+        phone: '+5512999999999',
+        idDocNumber: '',
+        readTerms: true,
+        birthdate: '1990-01-01',
+      } as never),
+    ).rejects.toThrow('Registration data already in use');
   });
 
   it('importação pela planilha: sem a senha, o aceite e o plano pago da planilha (item 256)', async () => {
