@@ -3617,3 +3617,36 @@ Foram lidos no back o convite de funcionário (validar, aceitar criando a conta,
      - A mesma resposta dizia, sem prova de nada, se o e-mail tinha conta.
 
      **Feito:** mesmo código do item 344, agora em `SignupCodes` (`src/auth/signup-code.ts`), usado pelos dois cadastros. `clientSignup` exige `emailCode`. A senha é conferida primeiro e o código antes de dizer se o e-mail tem conta. A conta nasce com o e-mail confirmado e já liga as fichas desse e-mail (sem o link de confirmação). O link continua para as contas antigas. No front, "Criar conta" confere a senha, manda o código e mostra o campo para digitá-lo, com reenvio e "Corrigir os dados". Testes em `client-auth.int.spec.ts`, `account-link.int.spec.ts` e `customer-link.int.spec.ts`; os e2e de cliente digitam o código lido no Redis (`confirmClientSignupCode`).
+
+### Centésima trigésima rodada (2026-10-27): onde mais o e-mail é aceito sem prova
+
+Depois do código no cadastro (itens 344 e 345), foram revistos todos os lugares que criam conta (equipe e cliente) ou mudam e marcam o e-mail: cadastro social, login social, convite da equipe, importação por planilha, ligação entre conta de cliente e da equipe, redefinição de senha, código do convite de amigo e edição pelo backoffice (no back e no backoffice-back). Estão certos: o login social (o provedor confirma), o convite (chave do e-mail), a redefinição de senha (link no e-mail), o código do convite de amigo e a edição do backoffice-back (zera a confirmação ao trocar o e-mail).
+
+346. ⬜ **`startSocialSignup` é pública e aceita qualquer e-mail: cria uma conta logada com o e-mail de outra pessoa, sem o código** (back: `AuthResolver.startSocialSignup` e `completeSocialSignup`):
+     - `startSocialSignup(provider, email, fullName)` não tem guarda nem prova do provedor: guarda o e-mail num `Map` em memória e devolve um token.
+     - Com esse token, `completeSocialSignup` cria a conta como social (`provider: 'google'`, sem o código do item 344) e já abre a sessão (`authService.login`).
+     - Qualquer um cria uma conta da equipe com o e-mail de outra pessoa e entra nela. Quando a pessoa de verdade entra com o Google, `findOrCreateSocialUser` acha a conta pelo e-mail e a usa: a sessão de quem criou continua aberta na conta dela.
+     - O fluxo de verdade não usa essas mutations: o retorno do OAuth (`AuthController`) já cria a conta e abre a sessão.
+
+     **Fazer:** apagar `startSocialSignup`, `completeSocialSignup` e o `Map`. Completar o cadastro social (item 347) só com a sessão aberta pelo provedor. Teste: as mutations não existem mais; o e-mail da conta vem da sessão, nunca do corpo do pedido.
+
+347. ⬜ **Quem se cadastra pelo Google fica preso na tela "completar cadastro"** (front: `social-signup.tsx`, `ProtectedRoute`; back: `AuthController`):
+     - O retorno do OAuth cria a conta, abre a sessão e manda para `/social-signup` sem parâmetros.
+     - A tela espera `token`, `email` e `fullName` na URL. Sem o token, "Concluir" só mostra "token inválido".
+     - Sem telefone, toda página protegida leva de volta a `/social-signup`. A pessoa não consegue usar o app nem terminar o cadastro.
+
+     **Fazer:** uma mutation logada (`completeSocialProfile`) preenche os dados que faltam (documento, telefone, nascimento, termos) e o tipo de cadastro (`attachSignup`) na conta da sessão. A tela usa o e-mail e o nome da sessão. Teste: conta social sem telefone completa o cadastro e passa a entrar no app; não dá para trocar o e-mail por ali.
+
+348. ⬜ **A edição de usuário pelo backoffice no back troca o e-mail e mantém a conta como confirmada** (back: `BackofficeResolver.updateUser` → `UserService.updateUser`):
+     - O e-mail novo é gravado como veio: sem normalizar (maiúsculas), sem checar se outra conta já usa (o erro do Postgres sai cru) e sem zerar `emailVerifiedAt`.
+     - O endereço novo, que ninguém confirmou, fica valendo como confirmado (convite da equipe sem a chave, item 343; ligação com a conta de cliente).
+     - O backoffice-back (`UsersWrites`) já faz certo: normaliza e zera a confirmação.
+
+     **Fazer:** mesma regra do backoffice-back: normalizar, recusar e-mail já usado com mensagem clara e zerar `emailVerifiedAt` quando o e-mail muda. Teste: trocar o e-mail deixa a conta sem confirmação; e-mail de outra conta é recusado.
+
+349. ⬜ **A conta de cliente criada a partir da conta da equipe pede de novo a confirmação do e-mail** (back: `ClientAuthService.validateCredentials`, `AccountLinkService.openClientArea`):
+     - Quem é da equipe e entra na área do cliente (com a senha da equipe, ou pelo botão da área da equipe) ganha uma conta de cliente ligada, mas sem `emailVerifiedAt`. Recebe o link de confirmação, e o histórico das barbearias só aparece depois.
+     - Desde o item 344, a conta da equipe nasce com o e-mail confirmado pelo código. A senha da equipe prova que é a mesma pessoa.
+     - O comentário do `AccountLinkService` ("a conta da equipe não confirma e-mail") ficou desatualizado.
+
+     **Fazer:** a conta de cliente criada ligada herda o `emailVerifiedAt` da conta da equipe (e liga as fichas). Só manda o link quando a conta da equipe também não tem o e-mail confirmado. Teste: equipe com e-mail confirmado abre a área do cliente já confirmada e vê o histórico; equipe sem confirmação continua recebendo o link.
