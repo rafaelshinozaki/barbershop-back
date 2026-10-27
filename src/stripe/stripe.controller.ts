@@ -468,12 +468,12 @@ export class StripeController {
       subscription.status === 'active'
         ? 'ACTIVE'
         : subscription.status === 'past_due'
-          ? 'PAST_DUE'
-          : subscription.status === 'incomplete_expired' ||
-              subscription.status === 'canceled' ||
-              subscription.status === 'unpaid'
-            ? 'CANCELED'
-            : null;
+        ? 'PAST_DUE'
+        : subscription.status === 'incomplete_expired' ||
+          subscription.status === 'canceled' ||
+          subscription.status === 'unpaid'
+        ? 'CANCELED'
+        : null;
     if (!status) return;
     await this.prisma.clientSubscription.updateMany({
       where: { stripeSubscriptionId: subscription.id },

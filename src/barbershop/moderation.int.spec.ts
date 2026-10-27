@@ -123,8 +123,10 @@ describe('Moderação de conteúdo público (integração)', () => {
         barbershopId: shopId,
         customerId: customer.id,
         barberId: barber.id,
-        startAt: new Date(Date.now() - 3 * 3_600_000),
-        endAt: new Date(Date.now() - 2 * 3_600_000),
+        // Fora do prazo de o profissional avaliar o cliente: a avaliação já
+        // está na página (às cegas até lá, item 319)
+        startAt: new Date(Date.now() - 40 * 86_400_000),
+        endAt: new Date(Date.now() - 40 * 86_400_000 + 3_600_000),
         status: 'COMPLETED',
       },
     });

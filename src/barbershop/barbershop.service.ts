@@ -20,6 +20,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Optional,
   Inject,
   forwardRef,
@@ -377,6 +378,21 @@ export const APPOINTMENT_DEPOSIT_MESSAGE =
 export const DEPOSIT_RECEPTION_MESSAGE =
   'O sinal recebido à mão é marcado pela recepção para cima.';
 export const DEPOSIT_METHOD_MESSAGE = 'Informe a forma em que o sinal foi recebido.';
+export const engagementStrandedMessage = (count: number) =>
+  `Esse profissional tem ${count} horário(s) marcado(s) fora do período novo. Remarque-os ou passe para outra pessoa antes de mudar o período.`;
+
+/** Mesmo mês no fuso da unidade */
+export function sameShopMonth(a: Date, b: Date, timeZone: string | null | undefined) {
+  const tz = safeTimeZone(timeZone);
+  return toZonedParts(a, tz).dateStr.slice(0, 7) === toZonedParts(b, tz).dateStr.slice(0, 7);
+}
+
+export type DepositHolds = {
+  settle(appointmentId: number): Promise<'paid' | 'released' | 'none'>;
+  release(appointmentId: number): Promise<boolean>;
+};
+export const DEPOSIT_RECEIVED_DELETE_MESSAGE =
+  'Este horário tem sinal recebido pela equipe. Cancele em vez de excluir, ou desmarque o sinal antes (com o caixa aberto).';
 export const DEPOSIT_CASH_CLOSED_MESSAGE =
   'Esse sinal entrou num caixa que já foi fechado e não pode mais ser desmarcado.';
 export const SERVICE_DEPOSIT_MESSAGE = 'O sinal não pode ser maior que o preço do serviço.';
@@ -1085,6 +1101,22 @@ export class BarbershopService {
     private readonly jobs?: JobOpeningService,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  /**
+   * Reservas aguardando o sinal online (o DepositPaymentService, que depende
+   * deste service, se registra aqui). `settle`: antes de a equipe mexer na
+   * reserva ('paid' = o sinal já tinha sido pago e o horário foi confirmado).
+   * `release`: solta a reserva (pago no meio do caminho, confirma).
+   */
+  private depositHolds?: DepositHolds;
+
+  registerDepositHolds(holds: DepositHolds) {
+    this.depositHolds = holds;
+  }
+
+  private async settleDepositHold(appointmentId: number) {
+    return this.depositHolds ? this.depositHolds.settle(appointmentId) : 'none';
+  }
 
   /**
    * Retorna o plano efetivo da barbearia (baseado na assinatura do dono).
@@ -3447,6 +3479,28 @@ export class BarbershopService {
           }
         : { blockedAt: null, blockedReason: null, blockedByUserId: null },
     });
+    // Bloqueado não agenda: sai da lista de espera da rede (as fichas do mesmo
+    // telefone e da mesma conta), e a vaga oferecida passa ao próximo (item 334)
+    if (blocked) {
+      const accountId = await this.clientAccountIdForCustomer(barbershop.networkId, customerId);
+      const phoneIds = customer.phone
+        ? await this.customerIdsByPhone(barbershop.networkId, customer.phone)
+        : [];
+      const entries = await this.prisma.waitlistEntry.findMany({
+        where: {
+          status: { in: ['WAITING', 'NOTIFIED'] },
+          barbershop: { networkId: barbershop.networkId },
+          customer: {
+            OR: [
+              { id: { in: [customerId, ...phoneIds] } },
+              ...(accountId ? [{ clientAccountId: accountId }] : []),
+            ],
+          },
+        },
+        include: { barbershop: { select: { timezone: true } } },
+      });
+      for (const entry of entries) await this.dropWaitlistEntry(entry);
+    }
     return this.hideContact(await this.contactVisibility(userId, barbershop), updated);
   }
 
@@ -3772,6 +3826,8 @@ export class BarbershopService {
     clientAccountId: number | null | undefined,
     startAt: Date,
     endAt: Date,
+    /** Remarcação: o próprio horário não conta */
+    excludeAppointmentId?: number,
   ) {
     const ids = new Set(await this.customerIdsByPhone(networkId, phone));
     if (clientAccountId) {
@@ -3783,8 +3839,10 @@ export class BarbershopService {
     }
     if (ids.size === 0) return;
     const customerId = { in: [...ids] };
+    const notThis = excludeAppointmentId != null ? { id: { not: excludeAppointmentId } } : {};
     const overlap = await client.appointment.findFirst({
       where: {
+        ...notThis,
         customerId,
         barbershop: { networkId },
         status: { notIn: ['CANCELLED', 'NO_SHOW'] },
@@ -3796,6 +3854,7 @@ export class BarbershopService {
     if (overlap) throw new BadRequestException('Você já tem um horário nesse período');
     const upcoming = await client.appointment.count({
       where: {
+        ...notThis,
         customerId,
         barbershop: { networkId },
         status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
@@ -3955,6 +4014,32 @@ export class BarbershopService {
         );
       }
     }
+    // Período novo na unidade: horário marcado fora dele ficaria num
+    // profissional que não está mais aqui, sem ninguém saber (item 333)
+    const sameMoment = (a: Date | null, b: Date | null) =>
+      (a?.getTime() ?? null) === (b?.getTime() ?? null);
+    if (
+      !sameMoment(period.accessStartsAt, barber.accessStartsAt) ||
+      !sameMoment(period.accessEndsAt, barber.accessEndsAt)
+    ) {
+      const outside: Prisma.AppointmentWhereInput[] = [
+        ...(period.accessEndsAt ? [{ startAt: { gt: period.accessEndsAt } }] : []),
+        ...(period.accessStartsAt ? [{ startAt: { lt: period.accessStartsAt } }] : []),
+      ];
+      const stranded = outside.length
+        ? await this.prisma.appointment.count({
+            where: {
+              barberId,
+              startAt: { gte: new Date() },
+              status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+              OR: outside,
+            },
+          })
+        : 0;
+      if (stranded > 0) {
+        throw new BadRequestException(engagementStrandedMessage(stranded));
+      }
+    }
     // Passou a ocupar vaga (começou a atender, voltou a ficar ativo ou o
     // vínculo encerrado foi estendido e voltou a valer)
     const now = new Date();
@@ -4020,7 +4105,7 @@ export class BarbershopService {
     userId: number,
     barber: {
       userId: number | null;
-      staffType: string;
+      staffType: string | null;
       isActive: boolean;
       accessStartsAt: Date | null;
       accessEndsAt: Date | null;
@@ -4046,10 +4131,13 @@ export class BarbershopService {
     const changes =
       (data.staffType !== undefined && data.staffType !== barber.staffType) ||
       (data.isActive !== undefined && data.isActive !== barber.isActive) ||
-      (data.accessStartsAt !== undefined && !sameTime(data.accessStartsAt, barber.accessStartsAt)) ||
+      (data.accessStartsAt !== undefined &&
+        !sameTime(data.accessStartsAt, barber.accessStartsAt)) ||
       (data.accessEndsAt !== undefined && !sameTime(data.accessEndsAt, barber.accessEndsAt));
     if (changes) {
-      throw new ForbiddenException('Só o dono altera o cargo, o prazo e a situação deste cadastro.');
+      throw new ForbiddenException(
+        'Só o dono altera o cargo, o prazo e a situação deste cadastro.',
+      );
     }
   }
 
@@ -4733,7 +4821,12 @@ export class BarbershopService {
     });
     if (!schedule) throw new NotFoundException('Horário não encontrado');
     await this.ensureCanManageBarber(userId, schedule.barber.barbershopId, schedule.barberId);
-    await this.prisma.barberSchedule.delete({ where: { id } });
+    // O dia volta ao horário da unidade: pode abrir vaga (e a agenda aberta recarrega)
+    await this.withWaitlistOpening(
+      schedule.barber.barbershopId,
+      { barberId: schedule.barberId },
+      () => this.prisma.barberSchedule.delete({ where: { id } }),
+    );
   }
 
   // ============ BARBER TIME OFF ============
@@ -4761,19 +4854,37 @@ export class BarbershopService {
     }
     const reason = input.reason ?? 'PERSONAL';
     if (!TIME_OFF_REASONS.includes(reason)) throw new BadRequestException('Motivo inválido');
-    const [timeOff, affectedAppointments] = await Promise.all([
-      this.prisma.barberTimeOff.create({
-        data: { barberId: input.barberId, startAt, endAt, reason },
-      }),
-      this.prisma.appointment.count({
-        where: {
-          barberId: barber.id,
-          status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
-          startAt: { lt: endAt },
-          endAt: { gt: startAt },
-        },
-      }),
-    ]);
+    const timeOff = await this.prisma.barberTimeOff.create({
+      data: { barberId: input.barberId, startAt, endAt, reason },
+    });
+    // Reserva aguardando o sinal dentro da folga (desta unidade ou de outra
+    // em que a pessoa atende) é solta, como no fechamento: ninguém paga um
+    // horário em que o profissional não vai estar (item 329)
+    const holds = await this.prisma.appointment.findMany({
+      where: {
+        barberId: { in: await this.samePersonBarberIds(barber.id, barber) },
+        status: 'PENDING_PAYMENT',
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+      select: { id: true, barbershopId: true },
+    });
+    for (const hold of holds) {
+      await this.depositHolds
+        ?.release(hold.id)
+        .catch((err) => this.logger.error(`Erro ao liberar a reserva de sinal #${hold.id}:`, err));
+      if (hold.barbershopId !== barber.barbershopId) {
+        this.realtime.notify(hold.barbershopId, 'APPOINTMENT', 'UPDATED');
+      }
+    }
+    const affectedAppointments = await this.prisma.appointment.count({
+      where: {
+        barberId: barber.id,
+        status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+    });
     this.realtime.notify(barber.barbershopId, 'APPOINTMENT', 'UPDATED');
     return { ...timeOff, affectedAppointments };
   }
@@ -5493,6 +5604,13 @@ export class BarbershopService {
     const newStart = new Date(data.startAt ?? appointment.startAt);
     const newEnd = new Date(data.endAt ?? appointment.endAt);
     if (newEnd <= newStart) throw new BadRequestException('O fim tem que ser depois do início');
+    // Remarcado para outro mês: a cota do plano solo de lá, como na criação (item 330)
+    if (
+      appointment.source !== 'HISTORY' &&
+      !sameShopMonth(appointment.startAt, newStart, barbershop.timezone)
+    ) {
+      await assertSoloBookingAllowed(this.prisma, barbershopId, newStart);
+    }
     if (data.status != null && data.status !== appointment.status) {
       assertStatusFitsTime(data.status, newStart);
     }
@@ -5510,6 +5628,26 @@ export class BarbershopService {
           'Apague ou estorne a venda antes de mudar a situação deste horário.',
         );
       }
+    }
+    // Reserva aguardando o sinal online que a equipe confirma, cancela ou
+    // marca de outro jeito: o pagamento aberto no Stripe é cancelado antes,
+    // e a reserva deixa de vencer. Pago no meio do caminho, o sinal vale e
+    // segue daqui como horário confirmado com sinal pago (item 327)
+    let confirmedByHand = false;
+    if (
+      appointment.status === 'PENDING_PAYMENT' &&
+      data.status != null &&
+      data.status !== 'PENDING_PAYMENT'
+    ) {
+      if ((await this.settleDepositHold(appointmentId)) === 'paid') {
+        Object.assign(
+          appointment,
+          await this.prisma.appointment.findUnique({ where: { id: appointmentId } }),
+        );
+      } else {
+        confirmedByHand = data.status === 'CONFIRMED';
+      }
+      data = { ...data, holdExpiresAt: null } as typeof data;
     }
     // Horário novo. Dentro de 24 h o e-mail de remarcação já é o lembrete;
     // mais longe, o lembrete de 24 h volta a valer.
@@ -5578,8 +5716,8 @@ export class BarbershopService {
           ...(customerChanged
             ? { linkVersion: { increment: 2 }, contactEmail: null }
             : data.status === 'CANCELLED' && appointment.status !== 'CANCELLED'
-              ? { linkVersion: { increment: 1 } }
-              : {}),
+            ? { linkVersion: { increment: 1 } }
+            : {}),
         },
         include: { services: { include: { service: true } }, customer: true, barber: true },
       });
@@ -5719,7 +5857,7 @@ export class BarbershopService {
       const cancelledNow = data.status === 'CANCELLED' && appointment.status !== 'CANCELLED';
       const template = cancelledNow
         ? 'appointment_cancelled'
-        : moved && updated.status === 'CONFIRMED'
+        : moved && updated.status === 'CONFIRMED' && !confirmedByHand
         ? 'appointment_rescheduled'
         : null;
       if (template) {
@@ -5729,12 +5867,21 @@ export class BarbershopService {
       }
     }
 
-    if (customerChanged && updated.status === 'CONFIRMED' && updated.startAt > new Date()) {
+    // Cliente novo, ou reserva do sinal confirmada pela equipe (item 327):
+    // a confirmação que o pagamento mandaria
+    if (
+      (customerChanged || confirmedByHand) &&
+      updated.status === 'CONFIRMED' &&
+      updated.startAt > new Date()
+    ) {
       const confirmationTo = appointmentContactEmail(updated);
       if (confirmationTo) {
         this.sendAppointmentEmail(updated.id, 'appointment_confirmation', confirmationTo).catch(
           (err) =>
-            this.logger.error(`Erro ao confirmar o horário #${appointmentId} ao cliente novo:`, err),
+            this.logger.error(
+              `Erro ao confirmar o horário #${appointmentId} ao cliente novo:`,
+              err,
+            ),
         );
       }
     }
@@ -5892,11 +6039,20 @@ export class BarbershopService {
       },
     });
     if (!appointment) throw new NotFoundException('Agendamento não encontrado');
-    if (appointment.depositPaid && appointment.depositPaidAt) {
+    // Reserva aguardando o sinal: o pagamento aberto no Stripe é cancelado
+    // antes de excluir. Pago no meio do caminho, vale a regra do sinal pago
+    // (item 327)
+    const paidMeanwhile =
+      appointment.status === 'PENDING_PAYMENT' &&
+      (await this.settleDepositHold(appointmentId)) === 'paid';
+    if (paidMeanwhile || (appointment.depositPaid && appointment.depositPaidAt)) {
       throw new BadRequestException(
         'Este horário tem sinal pago online. Cancele (o sinal é estornado) em vez de excluir.',
       );
     }
+    // Sinal recebido pela equipe: está no caixa e no faturamento por este
+    // horário (item 328)
+    if (appointment.depositPaid) throw new BadRequestException(DEPOSIT_RECEIVED_DELETE_MESSAGE);
     const happened =
       appointment.status === 'COMPLETED' ||
       appointment.status === 'IN_PROGRESS' ||
@@ -6283,6 +6439,20 @@ export class BarbershopService {
       include: { barbershop: { select: { timezone: true } } },
     });
     if (!entry) throw new NotFoundException('Entrada da lista de espera não encontrada');
+    await this.dropWaitlistEntry(entry);
+    return this.prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
+  }
+
+  /** Tira a entrada da fila; a vaga que estava oferecida a ela passa ao próximo */
+  private async dropWaitlistEntry(entry: {
+    id: number;
+    barbershopId: number;
+    status: string;
+    offeredStartAt: Date | null;
+    offeredBarberId: number | null;
+    offeredServiceIds: number[];
+    barbershop: { timezone: string | null };
+  }) {
     const now = new Date();
     const offer =
       entry.status === 'NOTIFIED' && entry.offeredStartAt && entry.offeredStartAt > now
@@ -6290,17 +6460,17 @@ export class BarbershopService {
         : null;
     const claimed = await this.prisma.waitlistEntry.updateMany({
       where: {
-        id,
+        id: entry.id,
         status: { in: ['WAITING', 'NOTIFIED'] },
         ...(offer ? { offeredStartAt: offer } : {}),
       },
       data: { status: 'CANCELLED', offeredStartAt: null, notifiedAt: null },
     });
-    if (claimed.count === 1) this.realtime.notify(barbershopId, 'WAITLIST', 'UPDATED');
+    if (claimed.count === 1) this.realtime.notify(entry.barbershopId, 'WAITLIST', 'UPDATED');
     if (claimed.count === 1 && offer) {
       try {
         await this.passWaitlistOffer({
-          barbershopId,
+          barbershopId: entry.barbershopId,
           offeredStartAt: offer,
           offeredBarberId: entry.offeredBarberId,
           offeredServiceIds: entry.offeredServiceIds,
@@ -6310,7 +6480,30 @@ export class BarbershopService {
         this.logger.error(`Erro ao passar a vaga da lista de espera #${entry.id}:`, err);
       }
     }
-    return this.prisma.waitlistEntry.findUniqueOrThrow({ where: { id } });
+  }
+
+  /**
+   * Quem está bloqueado na rede ou suspenso pela plataforma não pode agendar:
+   * a vaga não fica 30 minutos guardada para ele (item 334)
+   */
+  private async waitlistCustomerCanBook(entry: {
+    contactEmail?: string | null;
+    customer: { phone: string; email: string | null; clientAccountId: number | null };
+    barbershop: { networkId: number };
+  }) {
+    const who = {
+      customerPhone: entry.customer.phone || null,
+      customerEmails: [entry.customer.email, entry.contactEmail],
+      clientAccountId: entry.customer.clientAccountId,
+    };
+    try {
+      await this.ensureNotBlocked(entry.barbershop.networkId, who);
+      await this.ensureNotPlatformSuspended(who);
+      return true;
+    } catch (err) {
+      if (err instanceof HttpException) return false;
+      throw err;
+    }
   }
 
   /**
@@ -6616,6 +6809,7 @@ export class BarbershopService {
     for (const c of candidates) {
       if (c.serviceId != null && !serviceIds.includes(c.serviceId)) continue;
       if (await this.closeWaitlistIfBooked(c, shop.timezone)) continue;
+      if (!(await this.waitlistCustomerCanBook(c))) continue;
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: c.id, status: 'WAITING' },
         data: {
@@ -6866,6 +7060,7 @@ export class BarbershopService {
       const slot = slots.find((iso) => Date.parse(iso) > now && !had?.has(iso) && !taken.has(iso));
       if (!slot) continue;
       if (await this.closeWaitlistIfBooked(entry, entry.barbershop.timezone)) continue;
+      if (!(await this.waitlistCustomerCanBook(entry))) continue;
       // Condicional: a equipe pode ter mexido na entrada enquanto isso
       const claimed = await this.prisma.waitlistEntry.updateMany({
         where: { id: entry.id, status: 'WAITING' },
@@ -6905,6 +7100,9 @@ export class BarbershopService {
   ): Promise<T> {
     const before = await this.waitlistOpeningSnapshot(barbershopId, opts).catch(() => undefined);
     const result = await change();
+    // Expediente, escala ou fechamento mudou: a agenda aberta e a página
+    // pública recarregam os horários (item 336)
+    this.realtime.notify(barbershopId, 'APPOINTMENT', 'UPDATED');
     this.checkWaitlistOnOpening(barbershopId, opts, before).catch((err) =>
       this.logger.error(`Erro ao avisar a lista de espera (unidade #${barbershopId}):`, err),
     );
@@ -7009,7 +7207,9 @@ export class BarbershopService {
             meta: 'waitlist-slot-available',
             to,
           },
-          `waitlist-email-${match.id}`,
+          // Com o horário: a mesma entrada avisada de outra vaga no mesmo dia
+          // não é descartada como repetida (a fila guarda o id por 24 h, item 331)
+          `waitlist-email-${match.id}-${startAt.getTime()}`,
         );
       }
 
@@ -7032,7 +7232,7 @@ export class BarbershopService {
               time: timeStr,
             },
           },
-          `waitlist-whatsapp-${match.id}`,
+          `waitlist-whatsapp-${match.id}-${startAt.getTime()}`,
         );
       }
     } catch (err) {
@@ -7790,11 +7990,13 @@ export class BarbershopService {
     maxDays = NEXT_AVAILABLE_DAYS,
   ): Promise<{ date: string; startAt: string } | null> {
     const { durationMinutes } = await this.publicServices(barbershopId, serviceIds);
-    const shop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
+    // Pausada ou fora da página pública: sem próximo horário, como a lista
+    // do dia e a criação (item 326)
+    const shop = await this.prisma.barbershop.findFirst({
+      where: { id: barbershopId, isActive: true, ...ownerAcceptsPublic },
       select: { timezone: true, businessHours: true, minBookingLeadMinutes: true },
     });
-    if (!shop) throw new NotFoundException('Unidade não encontrada');
+    if (!shop) return null;
     const timeZone = safeTimeZone(shop.timezone);
     const notBefore = new Date(Date.now() + shop.minBookingLeadMinutes * 60_000);
     let barbers: Awaited<ReturnType<BarbershopService['publicBarbers']>>;
@@ -8006,6 +8208,8 @@ export class BarbershopService {
     dateStr: string,
     timeZone: string,
     notBefore?: Date,
+    /** Remarcação: o próprio horário não ocupa a agenda */
+    excludeAppointmentId?: number,
   ) {
     const window = await this.getWorkingWindowOn(barbershopId, barber.id, dateStr);
     if (!window) return [];
@@ -8019,6 +8223,7 @@ export class BarbershopService {
       this.prisma.appointment.findMany({
         where: {
           barberId: { in: barberIds },
+          ...(excludeAppointmentId != null ? { id: { not: excludeAppointmentId } } : {}),
           status: { notIn: ['CANCELLED', 'NO_SHOW'] },
           startAt: { lt: dayEnd },
           endAt: { gt: dayStart },
@@ -8681,6 +8886,43 @@ export class BarbershopService {
   }
 
   /**
+   * Horários para remarcar pelo link (item 332): o próprio horário não conta
+   * como ocupado, a duração é a do horário marcado e o serviço não precisa
+   * continuar na página. As mesmas regras de ensurePublicSlot, que a
+   * remarcação confere de novo.
+   */
+  async getManagedAppointmentSlots(token: string, dateStr: string) {
+    const { appt, canChange } = await this.loadManagedAppointment(token);
+    if (!canChange) return [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || isNaN(Date.parse(`${dateStr}T00:00:00Z`))) {
+      throw new BadRequestException('Data inválida');
+    }
+    const shop = await this.prisma.barbershop.findFirst({
+      where: { id: appt.barbershopId, isActive: true, ...ownerAcceptsPublic },
+      select: { timezone: true, minBookingLeadMinutes: true },
+    });
+    if (!shop) return [];
+    const timeZone = safeTimeZone(shop.timezone);
+    const today = toZonedParts(new Date(), timeZone).dateStr;
+    if (dateStr > addDaysStr(today, PUBLIC_BOOKING_WINDOW_DAYS)) return [];
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: appt.barberId, isActive: true, ...BOOKABLE_STAFF },
+    });
+    if (!barber) return [];
+    const slots = await this.slotsForBarber(
+      appt.barbershopId,
+      barber,
+      Math.round((appt.endAt.getTime() - appt.startAt.getTime()) / 60_000),
+      dateStr,
+      timeZone,
+      new Date(Date.now() + (shop.minBookingLeadMinutes ?? 0) * 60_000),
+      appt.id,
+    );
+    const current = appt.startAt.toISOString();
+    return slots.filter((slot) => slot !== current);
+  }
+
+  /**
    * Próximos horários do cliente logado (fichas ligadas à conta pelo e-mail
    * confirmado), com o mesmo link de gerenciar do e-mail — remarcar e
    * cancelar direto da conta, como no Booksy.
@@ -8738,6 +8980,17 @@ export class BarbershopService {
       customerEmail: appt.customer?.email,
       clientAccountId: appt.customer?.clientAccountId,
     });
+    // Unidade pausada ou fora da página pública não recebe horário novo,
+    // como na criação (item 330)
+    const open = await this.prisma.barbershop.findFirst({
+      where: { id: appt.barbershopId, isActive: true, ...ownerAcceptsPublic },
+      select: { id: true },
+    });
+    if (!open) {
+      throw new BadRequestException(
+        'Esta unidade não está aceitando agendamentos online agora. Fale com o estabelecimento.',
+      );
+    }
     const service = appt.services[0]?.service;
     if (!service)
       throw new BadRequestException('Este agendamento não pode ser remarcado pelo link');
@@ -8762,8 +9015,22 @@ export class BarbershopService {
     if (startAt.getTime() === appt.startAt.getTime()) {
       throw new BadRequestException('Escolha um horário diferente do atual');
     }
+    // Outro mês: a cota do plano solo de lá (item 330)
+    if (!sameShopMonth(appt.startAt, startAt, appt.barbershop.timezone)) {
+      await assertSoloBookingAllowed(this.prisma, appt.barbershopId, startAt);
+    }
 
     await this.prisma.$transaction(async (tx) => {
+      // Sem cruzar outro horário do mesmo cliente na rede, como na criação
+      await this.assertPublicCustomerCanBook(
+        tx,
+        appt.barbershop.networkId,
+        appt.customer?.phone ?? '',
+        appt.customer?.clientAccountId,
+        startAt,
+        endAt,
+        appt.id,
+      );
       await this.lockSchedule(tx, appt.barberId, appt.resourceId ?? undefined);
       await this.ensureBarberAvailable(
         appt.barbershopId,

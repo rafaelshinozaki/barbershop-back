@@ -3550,6 +3550,7 @@ type Query {
   loginHistory(limit: Int! = 10, page: Int! = 1): PaginatedLoginHistory!
   lookupGiftCard(barbershopId: Int!, code: String!): GiftCardType!
   managedAppointment(token: String!): ManagedAppointmentType!
+  managedAppointmentSlots(date: String!, token: String!): [String!]!
   managedReviews(barbershopId: Int!): [ManagedReviewType!]!
   marketingCampaigns(barbershopId: Int!): [MarketingCampaignType!]!
   marketplaceMetrics: MarketplaceMetrics!

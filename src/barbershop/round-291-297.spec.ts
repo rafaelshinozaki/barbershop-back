@@ -139,8 +139,10 @@ describe('clube só da ficha ligada ou do mesmo telefone', () => {
       ensureBarbershopAccess: async () => ({ networkId: 1, accessLevel: 'owner' }),
       contactVisibility: async () => true,
       hideContact: (_can: unknown, row: unknown) => row,
+      customerIdsByPhone: async () => [5],
       prisma: {
         customer: { findFirst: fichaSemConta(phone), update: jest.fn(async () => ({ id: 5 })) },
+        waitlistEntry: { findMany: async () => [] },
         clientAccount: {
           findFirst: jest.fn(async () => ({ id: 9, phone: accountPhone })),
         },

@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { RealtimeService } from '../realtime/realtime.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +27,8 @@ import { appointmentContactEmail } from './appointment-contact';
 import { payoutReport, type PayoutCharge } from './payout-report';
 
 const KIND = 'appointment_deposit';
+export const DEPOSIT_CHECK_FAILED_MESSAGE =
+  'Não foi possível conferir o sinal deste horário no Stripe agora. Tente de novo em instantes.';
 /** Lembra de pagar quem reservou e ainda não pagou depois desse tempo... */
 const REMIND_AFTER_MS = 5 * 60_000;
 /** ...se ainda der tempo de pagar */
@@ -50,7 +59,41 @@ export class DepositPaymentService {
     private readonly barbershopService: BarbershopService,
     private readonly notificationQueue: NotificationQueueService,
     private readonly connect: ConnectService,
-  ) {}
+    @Optional() private readonly realtime?: RealtimeService,
+  ) {
+    // A equipe mexendo na reserva (confirmar, cancelar, excluir) passa por aqui
+    barbershopService?.registerDepositHolds?.({
+      settle: (id) => this.settleForStaff(id),
+      // Horário que deixou de existir (folga): ninguém da lista é avisado
+      release: (id) => this.releaseUnpaidHold(id, false),
+    });
+  }
+
+  /**
+   * A equipe vai tirar o horário de "aguardando o sinal" (item 327): se o
+   * cliente já pagou, aplica o pagamento ('paid'); senão, cancela o pagamento
+   * aberto no Stripe, pra ninguém pagar um horário que não espera mais o
+   * sinal ('released'). Stripe fora do ar: recusa, sem saber se pagou.
+   */
+  async settleForStaff(appointmentId: number): Promise<'paid' | 'released' | 'none'> {
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { status: true, depositPaymentIntentId: true },
+    });
+    if (!appt || appt.status !== 'PENDING_PAYMENT' || !appt.depositPaymentIntentId) return 'none';
+    let intent: Stripe.PaymentIntent;
+    try {
+      intent = await this.stripe.retrievePaymentIntent(appt.depositPaymentIntentId);
+      if (intent.status === 'succeeded') {
+        return (await this.finalize(intent)) === 'CONFIRMED' ? 'paid' : 'released';
+      }
+      if (intent.status !== 'canceled') await this.stripe.cancelPaymentIntent(intent.id);
+    } catch (err) {
+      this.logger.error(`Erro ao conferir o sinal do agendamento #${appointmentId}:`, err);
+      throw new BadRequestException(DEPOSIT_CHECK_FAILED_MESSAGE);
+    }
+    return 'released';
+  }
 
   /** Liga/desliga o sinal online da unidade (gerente e dono). */
   async setOnlineDeposit(userId: number, barbershopId: number, enabled: boolean) {
@@ -180,7 +223,9 @@ export class DepositPaymentService {
       include: { customer: { select: { email: true } } },
     });
     if (!appt) {
-      this.logger.warn(`Sinal ${intent.id} pago sem agendamento`);
+      // Horário excluído: o dinheiro volta (antes ficava cobrado, sem registro)
+      this.logger.warn(`Sinal ${intent.id} pago sem agendamento; estornando`);
+      await this.refundUnapplied(intent);
       return 'NOT_FOUND';
     }
     const confirmed = await this.prisma.appointment.updateMany({
@@ -199,6 +244,9 @@ export class DepositPaymentService {
       },
     });
     if (confirmed.count === 1) {
+      // Pago (pela tela ou pelo webhook, com a aba já fechada): a agenda
+      // aberta deixa de mostrar "aguardando sinal" (item 336)
+      this.realtime?.notify(appt.barbershopId, 'APPOINTMENT', 'UPDATED');
       const to = appointmentContactEmail(appt);
       if (to) {
         this.barbershopService
@@ -226,7 +274,30 @@ export class DepositPaymentService {
       }
       return 'REFUNDED';
     }
-    return appt.status;
+    // Já aplicado (tela e webhook juntos) ou já estornado: nada a fazer
+    if (appt.depositPaymentIntentId === intent.id && (appt.depositPaid || appt.depositRefundedAt)) {
+      return appt.status;
+    }
+    // O horário não aguardava mais este sinal (a equipe confirmou à mão, ou já
+    // estava concluído): sem lugar para registrar, o dinheiro volta (item 327)
+    this.logger.warn(
+      `Sinal ${intent.id} pago para o horário #${appt.id} (${appt.status}); estornando`,
+    );
+    await this.refundUnapplied(intent);
+    return 'REFUNDED';
+  }
+
+  /** Estorno do sinal que não ficou registrado em horário nenhum (uma vez só, pela chave) */
+  private async refundUnapplied(intent: Stripe.PaymentIntent) {
+    await this.stripe
+      .createRefund(
+        intent.id,
+        undefined,
+        'requested_by_customer',
+        `deposit-refund-${intent.id}`,
+        !!intent.transfer_data?.destination,
+      )
+      .catch((err) => this.logger.error(`Erro ao estornar o sinal ${intent.id}:`, err));
   }
 
   /**
@@ -360,6 +431,8 @@ export class DepositPaymentService {
       where: { id: appt.id, status: 'PENDING_PAYMENT' },
       data: { status: 'CANCELLED', holdExpiresAt: null },
     });
+    // Vaga de volta: a agenda aberta e a página pública recarregam (item 336)
+    if (res.count) this.realtime?.notify(appt.barbershopId, 'APPOINTMENT', 'UPDATED');
     if (res.count && notifyWaitlist) {
       this.barbershopService
         .checkWaitlistOnCancellation(appt.barbershopId, appt)

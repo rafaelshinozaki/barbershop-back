@@ -32,8 +32,7 @@ const MIN_STRIPE_CHARGE = 0.5;
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
-export const CHECKOUT_HAS_PAID_PLAN =
-  'Você já tem um plano pago. Use a troca de plano.';
+export const CHECKOUT_HAS_PAID_PLAN = 'Você já tem um plano pago. Use a troca de plano.';
 
 /** Plano pago em vigor, ou cobrado pela Stripe: o checkout não substitui a troca. */
 export function blocksNewCheckout(
@@ -951,7 +950,11 @@ export class PaymentsService {
           include: { subscription: true },
         });
         if (existing?.subscription) {
-          return { subscription: existing.subscription, created: false, cancelStripeIds: [] as string[] };
+          return {
+            subscription: existing.subscription,
+            created: false,
+            cancelStripeIds: [] as string[],
+          };
         }
       }
 

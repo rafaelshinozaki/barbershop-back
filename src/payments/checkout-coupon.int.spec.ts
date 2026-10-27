@@ -6,6 +6,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PLANO_STATUS } from '../common/contants';
 import { CouponsService, COUPON_TYPE, COUPON_VALUE_MESSAGE } from './coupons.service';
 import { COUPON_REFUSED_MESSAGE, PaymentsService } from './payments.service';
 
@@ -81,6 +82,15 @@ describe('Cupom no checkout do plano (integração com o banco)', () => {
         data: { name: `Plano ${RUN}`, price: new Prisma.Decimal(100), billingCycle: 'MONTHLY' },
       })
     ).id;
+  });
+
+  // Cada caso começa sem plano pago ativo: com ele, o checkout manda para a
+  // troca de plano (item 306)
+  beforeEach(async () => {
+    await prisma.subscription.updateMany({
+      where: { userId, status: PLANO_STATUS.ACTIVE },
+      data: { status: PLANO_STATUS.INACTIVE },
+    });
   });
 
   afterAll(async () => {

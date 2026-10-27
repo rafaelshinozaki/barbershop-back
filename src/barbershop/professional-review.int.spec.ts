@@ -129,12 +129,22 @@ describe('Avaliação do profissional (integração)', () => {
   });
 
   it('página pública: nota e comentários das duas unidades; a ocultada não conta', async () => {
-    await reviewed(0, 5, 'Excelente');
-    await reviewed(1, 4, null);
+    const shown = [await reviewed(0, 5, 'Excelente'), await reviewed(1, 4, null)];
     const hidden = await reviewed(1, 1, 'Ofensa');
     await prisma.professionalReview.update({
       where: { id: hidden.id },
       data: { hiddenAt: new Date() },
+    });
+    // Às cegas até a nota do profissional ou o fim do prazo dela (item 319):
+    // aqui o prazo já passou (os outros casos voltam a ter atendimentos recentes)
+    const ids = [...shown, hidden].map((r) => r.appointmentId);
+    const recent = await prisma.appointment.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, endAt: true },
+    });
+    await prisma.appointment.updateMany({
+      where: { id: { in: ids } },
+      data: { endAt: new Date(Date.now() - 40 * 24 * HOUR) },
     });
 
     const page = await career.publicProfile(`bruna-${RUN}`);
@@ -145,6 +155,9 @@ describe('Avaliação do profissional (integração)', () => {
       reviewerName: 'Carlos S.',
       shopName: 'Unidade A',
     });
+    for (const row of recent) {
+      await prisma.appointment.update({ where: { id: row.id }, data: { endAt: row.endAt } });
+    }
   });
 
   it('esconder a nota e as avaliações tira as duas da página', async () => {

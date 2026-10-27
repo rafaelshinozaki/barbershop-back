@@ -283,6 +283,13 @@ export class PublicBookingResolver {
     return this.barbershopService.getManagedAppointment(token);
   }
 
+  /** Horários para remarcar pelo link (o próprio horário não conta como ocupado) */
+  @ThrottleSlotList()
+  @Query(() => [String])
+  async managedAppointmentSlots(@Args('token') token: string, @Args('date') date: string) {
+    return this.barbershopService.getManagedAppointmentSlots(token, date);
+  }
+
   @ThrottleAuth()
   @Mutation(() => ManagedAppointmentType)
   async cancelManagedAppointment(@Args('token') token: string) {

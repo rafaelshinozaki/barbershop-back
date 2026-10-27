@@ -3423,93 +3423,115 @@ Foram lidos no back a criação e a edição de horário pela equipe (`createApp
 
      **Feito:** o aviso percorre todos os horários futuros, em páginas de 500, e lista os que ficam fora. Sábado depois do 500º aparece. Teste em `round-318-325.spec.ts`.
 
-326. ⬜ **"Próximo horário livre" responde para unidade pausada ou fora da página pública** (back: `getPublicNextAvailableSlot`):
+326. ✅ **"Próximo horário livre" responde para unidade pausada ou fora da página pública** (back: `getPublicNextAvailableSlot`):
      - A lista de horários do dia (`getPublicAvailableSlots`) e a criação recusam unidade inativa ou cujo dono não aceita agendamento público (`isActive`, `ownerAcceptsPublic`). O "próximo horário livre" busca a unidade só pelo id.
      - A página mostra "próximo horário: amanhã 9h" de uma unidade pausada. O cliente escolhe o horário e recebe "Unidade não encontrada" ao confirmar.
      
      **Fazer:** a mesma busca da lista do dia (`isActive` e `ownerAcceptsPublic`), devolvendo null. Teste: unidade pausada não tem próximo horário.
 
+     **Feito:** `getPublicNextAvailableSlot` busca a unidade com `isActive` e `ownerAcceptsPublic`, como a lista do dia, e devolve null para unidade pausada ou fora da página. Teste em `round-326-336.spec.ts`.
+
 ### Centésima vigésima terceira rodada (2026-10-26): agendamento, segunda passada
 
 Foram lidos no back o sinal online (reserva aguardando pagamento, `DepositPaymentService`: começar, confirmar, lembrar, expirar e liberar), os fechamentos da unidade (`ClosureService`), as folgas do profissional, a exclusão de horário (`deleteAppointment`), o sinal recebido à mão, a fila por ordem de chegada (walk-in), a agenda da unidade e da franquia (`getAppointments`, `queryNetworkAppointments`), a janela de trabalho (`getWorkingWindowOn`) e o limite de horários do cliente na página pública.
 
-327. ⬜ **Horário aguardando o sinal online que a equipe confirma à mão ou exclui deixa o pagamento aberto, e o sinal pago depois some** (back: `updateAppointment`, `deleteAppointment`, `DepositPaymentService.finalize`):
+327. ✅ **Horário aguardando o sinal online que a equipe confirma à mão ou exclui deixa o pagamento aberto, e o sinal pago depois some** (back: `updateAppointment`, `deleteAppointment`, `DepositPaymentService.finalize`):
      - A reserva com sinal online nasce `PENDING_PAYMENT`, com um PaymentIntent que a tela do cliente usa para pagar. A equipe pode mudar a situação para confirmado (`CONFIRMED` está entre as situações da equipe) ou excluir o horário, que ainda não tem o sinal pago.
      - Nos dois casos o PaymentIntent fica aberto. Se o cliente paga depois (aba aberta, e-mail "falta pagar o sinal"), `finalize` não acha a reserva aguardando: no horário confirmado à mão devolve "CONFIRMED" sem marcar o sinal como pago; no excluído, só registra "pago sem agendamento". O dinheiro fica com a plataforma, sem sinal pago no horário e sem estorno.
      - O horário confirmado à mão também não manda a confirmação ao cliente e guarda o `holdExpiresAt`.
      
      **Fazer:** ao sair de `PENDING_PAYMENT` pela equipe (confirmar, cancelar ou excluir), cancelar o PaymentIntent no Stripe e limpar `holdExpiresAt`. Se ele já foi pago, aplicar o pagamento (`finalize`) em vez de mudar. Em `finalize`, pagamento de horário que não aguarda mais sinal, ou que não existe, é estornado. Confirmado à mão manda a confirmação. Teste: reserva confirmada pela equipe tem o PaymentIntent cancelado; pagamento aprovado de horário excluído é estornado.
 
-328. ⬜ **Excluir um horário com sinal recebido à mão apaga o recebimento do caixa e do faturamento** (back: `deleteAppointment`):
+     **Feito:** o `DepositPaymentService` se registra no `BarbershopService` (`registerDepositHolds`). Antes de a equipe tirar um horário de `PENDING_PAYMENT` (`updateAppointment`) ou excluir a reserva (`deleteAppointment`), `settleForStaff` confere o PaymentIntent: pago, aplica o pagamento (`finalize`) e o horário segue como confirmado com sinal pago (excluir é recusado); senão, cancela o PaymentIntent no Stripe (Stripe fora do ar recusa a mudança). A saída de `PENDING_PAYMENT` limpa `holdExpiresAt`, e o confirmado à mão manda a confirmação ao cliente. Em `finalize`, sinal pago para horário que não aguardava mais (ou que não existe) é estornado, com a chave `deposit-refund-<intent>`. Testes em `round-326-336.spec.ts`.
+
+328. ✅ **Excluir um horário com sinal recebido à mão apaga o recebimento do caixa e do faturamento** (back: `deleteAppointment`):
      - O sinal recebido pela equipe (dinheiro, Pix, cartão) fica no próprio horário (`depositPaid`, `depositManualMethod`, `depositCashSessionId`). O fechamento do caixa soma o sinal em dinheiro pelos horários ligados ao caixa.
      - Desmarcar o sinal recebido exige recepção para cima e o caixa ainda aberto. Excluir o horário (gerente) só recusa o sinal pago online.
      - Excluído o horário, o dinheiro continua na gaveta, mas sai da conta do caixa (sobra no fechamento) e do faturamento. Com o caixa já fechado, o relatório do dia muda depois de fechado.
      
      **Fazer:** recusar a exclusão de horário com sinal recebido à mão, com a mesma mensagem do sinal online ("cancele em vez de excluir"). Teste: horário com sinal de 20 em dinheiro não pode ser excluído; depois de desmarcar o sinal (caixa aberto), pode.
 
-329. ⬜ **Folga cadastrada por cima de uma reserva aguardando o sinal deixa o cliente pagar um horário em que o profissional não vai estar** (back: `createBarberTimeOff`):
+     **Feito:** `deleteAppointment` recusa horário com sinal recebido à mão (`DEPOSIT_RECEIVED_DELETE_MESSAGE`: cancele, ou desmarque o sinal com o caixa aberto). Teste em `round-326-336.spec.ts`.
+
+329. ✅ **Folga cadastrada por cima de uma reserva aguardando o sinal deixa o cliente pagar um horário em que o profissional não vai estar** (back: `createBarberTimeOff`):
      - O fechamento da unidade libera as reservas aguardando o sinal nos dias fechados (`releaseUnpaidHold`), para ninguém pagar por um horário que não existe mais.
      - A folga só conta os horários afetados e mantém a reserva. O cliente recebe o e-mail "falta pagar o sinal", paga e o horário fica confirmado durante as férias do profissional.
      
      **Fazer:** ao criar a folga, liberar as reservas `PENDING_PAYMENT` do profissional (e da mesma pessoa nas outras unidades) dentro do período, como o fechamento faz. Teste: reserva aguardando o sinal dentro da folga nova é cancelada, e o pagamento dela não é mais aceito.
 
-330. ⬜ **Remarcar não passa pelas regras de quem marca: unidade pausada, horário em cima de outro do mesmo cliente e cota do plano solo do outro mês** (back: `rescheduleManagedAppointment`, `updateAppointment`):
+     **Feito:** `createBarberTimeOff` solta as reservas `PENDING_PAYMENT` da pessoa (todas as unidades, `samePersonBarberIds`) dentro da folga, pelo `releaseUnpaidHold` (sem avisar a lista de espera; pago no meio do caminho, confirma), e avisa a agenda das outras unidades. Teste em `round-326-336.spec.ts`.
+
+330. ✅ **Remarcar não passa pelas regras de quem marca: unidade pausada, horário em cima de outro do mesmo cliente e cota do plano solo do outro mês** (back: `rescheduleManagedAppointment`, `updateAppointment`):
      - Pelo link do cliente, a remarcação confere o expediente, a folga e a agenda do profissional. Não confere se a unidade continua ativa e aberta à página pública (`isActive`, `ownerAcceptsPublic`), que a criação exige, nem se o cliente já tem outro horário na rede no mesmo período (`assertPublicCustomerCanBook`).
      - O plano solo sem assinatura tem cota de atendimentos por mês (`assertSoloBookingAllowed`), conferida na criação pela data do horário. A remarcação, pelo link ou pela agenda da equipe, leva o horário para outro mês sem conferir a cota de lá.
      
      **Fazer:** na remarcação pelo link, recusar unidade pausada ou fora da página pública e horário que cruze outro do mesmo cliente. Nas duas remarcações, conferir a cota do solo quando o mês muda. Teste: unidade pausada não aceita remarcação pelo link; remarcar para cruzar outro horário do mesmo cliente é recusado; solo com a cota do mês seguinte cheia não remarca para lá.
 
+     **Feito:** a remarcação pelo link recusa unidade pausada ou fora da página pública e confere, na transação, o cruzamento com outro horário do mesmo cliente (`assertPublicCustomerCanBook` com o próprio horário de fora). Remarcar para outro mês (no fuso da unidade, `sameShopMonth`), pelo link ou pela agenda, confere a cota do solo (`assertSoloBookingAllowed`). Testes em `round-326-336.spec.ts`.
+
 ### Centésima vigésima quarta rodada (2026-10-26): agendamento, terceira passada
 
 Foram lidos no back a agenda assinável e o "adicionar à agenda" (`CalendarService`), o pagamento do atendimento pelo app (`PrepaymentService`), a abertura de vagas e o aviso da lista de espera (`withWaitlistOpening`, `waitlistOpeningSlots`, `sendWaitlistNotice`), os recursos (sala, cadeira) e a fila de envio (`NotificationQueueService`). No front, a tela de agendar (`PublicBooking/BookingDialog`) e a de gerenciar o horário pelo link (`ManageAppointment`).
 
-331. ⬜ **O segundo aviso de vaga para a mesma pessoa da lista de espera não sai, e a vaga fica 30 minutos guardada para quem não sabe dela** (back: `sendWaitlistNotice`, `NotificationQueueService`):
+331. ✅ **O segundo aviso de vaga para a mesma pessoa da lista de espera não sai, e a vaga fica 30 minutos guardada para quem não sabe dela** (back: `sendWaitlistNotice`, `NotificationQueueService`):
      - O aviso vai pela fila com um id fixo por entrada (`waitlist-email-<id>` e `waitlist-whatsapp-<id>`). A fila ignora um envio com id repetido enquanto guarda o anterior (24 h, `removeOnComplete`).
      - Quem foi avisado e não agendou volta a esperar no mesmo lugar (`backToWaiting`) e é a primeira da fila na próxima vaga. Como a entrada é de um dia só, a próxima vaga quase sempre chega dentro das 24 h: a entrada vira "avisada" de novo, mas o e-mail e o WhatsApp são descartados.
      - A vaga fica reservada para essa pessoa por `WAITLIST_OFFER_MINUTES` (30) antes de passar ao próximo. Cada vaga nova do dia vai primeiro para quem nunca fica sabendo.
      
      **Fazer:** pôr o horário oferecido no id do envio (`waitlist-email-<id>-<offeredStartAt>`), como no lembrete e na remarcação. Teste: a mesma entrada avisada de duas vagas no mesmo dia gera dois envios.
 
-332. ⬜ **Remarcar pelo link não mostra os horários que encostam no horário atual, e para de funcionar quando um serviço sai da página** (front: `ManageAppointment`; back: `getPublicAvailableSlots`, `rescheduleManagedAppointment`):
+     **Feito:** o id do envio leva o horário oferecido (`waitlist-email-<id>-<início>` e `waitlist-whatsapp-<id>-<início>`). Teste em `round-326-336.spec.ts`.
+
+332. ✅ **Remarcar pelo link não mostra os horários que encostam no horário atual, e para de funcionar quando um serviço sai da página** (front: `ManageAppointment`; back: `getPublicAvailableSlots`, `rescheduleManagedAppointment`):
      - A tela de remarcar busca os horários com `publicAvailableSlots` (profissional e serviços do horário). Essa lista conta o próprio horário do cliente como ocupado: quem tem 10h às 11h não vê 9h30, 10h15 nem 10h30, embora a remarcação no servidor aceite (ela desconta o próprio horário).
      - A lista usa a duração atual dos serviços; a remarcação usa a duração do horário marcado. Com um horário esticado pela equipe, a lista mostra horários que a remarcação recusa por conflito.
      - Serviço desativado depois de marcado faz `publicServices` responder "Serviço não encontrado". A tela fica sem horários e o cliente não consegue remarcar, embora a remarcação em si não dependa do serviço estar ativo.
      
      **Fazer:** uma consulta de horários pelo token do link (`managedAppointmentSlots(token, date)`), que desconta o próprio horário, usa a duração dele e não exige o serviço ativo, com as mesmas regras de `ensurePublicSlot`. A tela de remarcar passa a usá-la. Teste: horário das 10h às 11h vê 10h30 na lista e remarca para lá; serviço desativado continua listando horários.
 
+     **Feito:** query pública `managedAppointmentSlots(token, date)` (`getManagedAppointmentSlots`): só para link que ainda pode mudar, unidade aberta à página e profissional que atende online; usa a duração do horário marcado, desconta o próprio horário (`slotsForBarber` com `excludeAppointmentId`) e não exige o serviço ativo. A tela de remarcar do front passa a usá-la. Testes em `round-326-336.spec.ts`; conferido no navegador (horário 9h30–10h30 lista 9h, 9h45, 10h e 10h15).
+
 ### Centésima vigésima quinta rodada (2026-10-26): agendamento, quarta passada
 
 Foram lidos no back o fim da unidade no app (`cancelFutureAppointmentsOfBarbershops`), a saída e a edição do profissional (`deleteBarber`, `updateBarber`, `warnFutureAppointments`), o bloqueio e a exclusão da ficha do cliente com horários marcados, a conferência de quem agenda para quem (`ensureCanBookForBarber`, `ensureCanManageBarber`), a leitura de um horário (`getAppointment`), as rotinas periódicas da agenda e o pedido de avaliação depois do atendimento (`ReviewRequestService`).
 
-333. ⬜ **Encerrar o período do profissional na unidade deixa os horários marcados depois da data, sem aviso** (back: `BarbershopService.updateBarber`):
+333. ✅ **Encerrar o período do profissional na unidade deixa os horários marcados depois da data, sem aviso** (back: `BarbershopService.updateBarber`):
      - O profissional pode ter um período na unidade (`accessStartsAt`/`accessEndsAt`). Fora dele não entra na agenda, não aparece na página pública e não recebe horário novo.
      - Desligar o profissional ("Ativo" desmarcado) avisa o dono e os gerentes dos horários que ficaram (`warnFutureAppointments`). Deixar de atender (cargo sem agenda) é recusado enquanto houver horário marcado.
      - Pôr ou antecipar o fim do período (ou adiar o início) não faz nem um nem outro. Os horários depois da data continuam confirmados, com lembrete ao cliente, num profissional que já não está na unidade. O cliente chega e não tem quem atenda.
      
      **Fazer:** ao mudar o período, contar os horários confirmados ou aguardando sinal que ficam fora dele. Recusar como no "deixar de atender", ou salvar e avisar como no desligamento. Teste: profissional com horário dia 20, fim do período dia 15, mostra o aviso (ou recusa) com 1 horário.
 
-334. ⬜ **Cliente bloqueado continua recebendo avisos da lista de espera, e cada vaga fica 30 minutos guardada para quem não pode agendar** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `setCustomerBlocked`):
+     **Feito:** `updateBarber` recusa mudar o período (início ou fim) quando sobram horários confirmados ou aguardando sinal fora dele (`engagementStrandedMessage`, com a quantidade). Período igual ao atual não confere. Testes em `round-326-336.spec.ts` e `multi-unit.int.spec.ts`.
+
+334. ✅ **Cliente bloqueado continua recebendo avisos da lista de espera, e cada vaga fica 30 minutos guardada para quem não pode agendar** (back: `checkWaitlistOnCancellation`, `checkWaitlistOnOpening`, `setCustomerBlocked`):
      - O bloqueio impede o cliente de agendar online e de entrar na lista de espera (`ensureNotBlocked` em `joinPublicWaitlist` e `createPublicAppointment`). As entradas que ele já tinha continuam aguardando.
      - Quando abre uma vaga, a entrada dele é avisada como qualquer outra. A vaga fica reservada para ele por 30 minutos, e o link do aviso termina em "não é possível agendar". O mesmo vale para quem foi suspenso pela plataforma.
      
      **Fazer:** ao bloquear, cancelar as entradas aguardando na lista de espera da rede (das fichas do mesmo telefone e da mesma conta). Na hora de avisar, pular entrada de cliente bloqueado ou suspenso. Teste: cliente com entrada aguardando, bloqueado, não é avisado; a vaga vai para o próximo.
 
-335. ⬜ **A equipe pode marcar como "em atendimento" um horário de outro dia, e ele some do lembrete, do link do cliente e do fechamento** (back: `assertStatusFitsTime`, `updateAppointment`):
+     **Feito:** bloquear o cliente tira da lista de espera as entradas aguardando ou avisadas das fichas do mesmo telefone e da mesma conta na rede (`dropWaitlistEntry`, que passa a vaga oferecida, como a tela da equipe). O aviso de vaga (cancelamento e horário novo) pula quem está bloqueado ou suspenso (`waitlistCustomerCanBook`). Testes em `round-326-336.spec.ts`.
+
+335. ✅ **A equipe pode marcar como "em atendimento" um horário de outro dia, e ele some do lembrete, do link do cliente e do fechamento** (back: `assertStatusFitsTime`, `updateAppointment`):
      - Desde o item 260, falta e concluído só valem para horário que já começou. "Em atendimento" (`IN_PROGRESS`) não tem regra: um clique errado no horário de amanhã é aceito.
      - Fora de "confirmado", o horário perde o lembrete de 24 h, o cliente não consegue mais cancelar ou remarcar pelo link e o fechamento da unidade não o cancela. Na agenda continua ocupando o lugar.
      
      **Fazer:** `IN_PROGRESS` só a partir de pouco antes do início (por exemplo, 30 minutos), com uma mensagem como as outras duas. Teste: horário de amanhã não vira "em atendimento"; o de daqui a 10 minutos vira.
 
+     **Feito:** `assertStatusFitsTime` aceita `IN_PROGRESS` a partir de 30 minutos antes do início (`IN_PROGRESS_TOO_EARLY_MESSAGE`). Testes em `appointment-status-time.spec.ts` e `round-326-336.spec.ts`.
+
 ### Centésima vigésima sexta rodada (2026-10-26): agendamento, quinta passada
 
 Foram lidos no front a agenda da equipe (`BarbershopDetail/Appointments`: criar, série, arrastar, esticar e editar no fuso da unidade), o agendamento rápido do painel e a tela de agendar da página pública (dias, horários ao vivo, próximo horário livre, lista de espera). No back, os avisos ao vivo (`RealtimeService.notify`, `publicSlotsChanged`) e quem os chama: resolvers de agendamento, série, fechamento e escala, o webhook do Stripe e as rotinas do sinal.
 
-336. ⬜ **A agenda aberta e a página pública não atualizam quando a reserva do sinal vence ou é paga pelo webhook, nem quando muda o horário da unidade, a escala ou um fechamento sem cancelamentos** (back: `DepositPaymentService.expireHolds`/`finalize`, `StripeController.handlePaymentIntentSucceeded`, `setBusinessHours`, `setBarberWeeklySchedule`, `setBarbershopClosure`, `deleteBarbershopClosure`):
+336. ✅ **A agenda aberta e a página pública não atualizam quando a reserva do sinal vence ou é paga pelo webhook, nem quando muda o horário da unidade, a escala ou um fechamento sem cancelamentos** (back: `DepositPaymentService.expireHolds`/`finalize`, `StripeController.handlePaymentIntentSucceeded`, `setBusinessHours`, `setBarberWeeklySchedule`, `setBarbershopClosure`, `deleteBarbershopClosure`):
      - A agenda da equipe e a tela de agendar recarregam os horários com o aviso ao vivo de agendamento (`notify(..., 'APPOINTMENT')`, que também publica `publicSlotsChanged`).
      - A reserva aguardando o sinal que vence (rotina de 1 minuto) é cancelada sem aviso. A vaga volta, mas a página pública aberta não mostra e a agenda da equipe continua com "aguardando sinal". O sinal confirmado pelo webhook (cliente fechou a aba depois de pagar) também não avisa: a agenda segue "aguardando" até alguém recarregar.
      - Mudar o horário da unidade ou a escala do profissional, e fechar um dia sem horários afetados (ou reabrir), não avisa. A página aberta continua oferecendo horários de um dia fechado ou de uma escala que mudou, e o cliente só descobre ao confirmar.
      
      **Fazer:** avisar (`APPOINTMENT`, `UPDATED`) ao liberar a reserva vencida, ao confirmar o sinal por qualquer caminho e depois de mudar o horário da unidade, a escala ou um fechamento. Teste: reserva vencida e sinal confirmado pelo webhook publicam `publicSlotsChanged` da unidade; fechar um dia sem horários também.
+
+     **Feito:** `withWaitlistOpening` (horário da unidade, escala, fechamento, folga desfeita) avisa `APPOINTMENT`/`UPDATED` depois de mudar; `deleteBarberSchedule` passa por ele. O `DepositPaymentService` avisa ao confirmar o sinal (tela, webhook ou rotina) e ao soltar a reserva vencida. Testes em `round-326-336.spec.ts`.
 
 337. ⬜ **A tela de agendar deixa escolher dias fora da janela e oferece a lista de espera onde o servidor recusa** (front: `PublicBooking/BookingDialog`):
      - O agendamento online vai até 90 dias (`PUBLIC_BOOKING_WINDOW_DAYS`), e a lista de espera até 60 (`WAITLIST_MAX_DAYS_AHEAD`). O seletor de data só tem o mínimo (hoje), sem máximo.

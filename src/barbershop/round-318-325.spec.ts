@@ -6,7 +6,7 @@ import { appointmentLinkMode, createAppointmentToken } from './appointment-link'
 
 process.env.JWT_SECRET ??= 'round-318-325';
 
-const logger = { log() {}, warn() {}, error() {} };
+const logger = { log: () => undefined, warn: () => undefined, error: () => undefined };
 
 describe('gerente e o vínculo (318)', () => {
   const barber = {
@@ -162,7 +162,9 @@ describe('troca de cliente e horário cancelado (321 e 323)', () => {
         linkVersion: 3,
       }),
     ).toBeNull();
-    expect(open.service.sendAppointmentEmail).toHaveBeenCalled();
+    expect(
+      (open.service as unknown as { sendAppointmentEmail: jest.Mock }).sendAppointmentEmail,
+    ).toHaveBeenCalled();
   });
 
   it('cancelado com a vaga ocupada muda a observação e vira falta, e não volta a confirmado', async () => {
@@ -183,7 +185,7 @@ describe('troca de cliente e horário cancelado (321 e 323)', () => {
       depositPaidAt: null,
       prepaidAt: null,
     });
-    service.update.mockImplementation(async ({ data }: { data: { status?: string } }) => ({
+    service.update.mockImplementation((async ({ data }: { data: { status?: string } }) => ({
       id: 5,
       status: data.status ?? 'CANCELLED',
       startAt: past,
@@ -191,7 +193,7 @@ describe('troca de cliente e horário cancelado (321 e 323)', () => {
       contactEmail: null,
       services: [],
       barber: { name: 'Leo' },
-    }));
+    })) as never);
     service.ensureBarberAvailable.mockImplementation(async () => {
       throw new BadRequestException('Este profissional já tem um agendamento nesse horário');
     });
@@ -212,7 +214,7 @@ describe('lista de espera (324)', () => {
     const start = new Date('2026-11-02T13:00:00Z');
     Object.assign(service, {
       logger,
-      realtime: { notify() {} },
+      realtime: { notify: () => undefined },
       ensureBarbershopAccess: async () => ({ id: 2 }),
       ensurePublicSlot: async () => ({
         startAt: start,

@@ -455,6 +455,18 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
 
   it('vínculo temporário: só entra e atende dentro do período', async () => {
     const shop = shops[1];
+    // Com horário marcado depois do fim, o período não muda (item 333):
+    // os horários dele na B saem antes
+    await expect(
+      service.updateBarber(shop.ownerId, shop.shopId, proInB, {
+        accessStartsAt: new Date(Date.now() - 10 * DAY).toISOString(),
+        accessEndsAt: new Date(Date.now() - DAY).toISOString(),
+      }),
+    ).rejects.toThrow(/fora do período novo/);
+    await prisma.appointment.updateMany({
+      where: { barberId: proInB, startAt: { gte: new Date() } },
+      data: { status: 'CANCELLED' },
+    });
     // Freelancer que já terminou
     await service.updateBarber(shop.ownerId, shop.shopId, proInB, {
       accessStartsAt: new Date(Date.now() - 10 * DAY).toISOString(),

@@ -10,7 +10,7 @@ jest.mock('../push/push-endpoint', () => ({
 }));
 
 const CLOSED = 'A conta deste horário já foi fechada: estorne pelo painel do Stripe';
-const logger = { log() {}, warn() {}, error() {} };
+const logger = { log: () => undefined, warn: () => undefined, error: () => undefined };
 
 describe('estorno do sinal com a conta fechada (314)', () => {
   it('a unidade recusa o estorno', async () => {
@@ -153,6 +153,7 @@ describe('conta desativada (317)', () => {
     await expect(user.verifyLoginCode('login-1', '123456')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    expect(findFirst.mock.calls[0][0].where.isActive).toBe(true);
+    const [args] = findFirst.mock.calls[0] as unknown as [{ where: { isActive: boolean } }];
+    expect(args.where.isActive).toBe(true);
   });
 });

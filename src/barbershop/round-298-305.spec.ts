@@ -168,8 +168,8 @@ describe('cobranças de plano vencidas (304)', () => {
       payment: { findMany },
     };
     (resolver as unknown as { logger: { error: () => void; log: () => void } }).logger = {
-      error() {},
-      log() {},
+      error: () => undefined,
+      log: () => undefined,
     };
     const rows = await resolver.allOverduePayments();
     expect(rows.map((r) => r.id)).toEqual([3]);
@@ -202,7 +202,11 @@ describe('estorno da diferença do plano (305)', () => {
       getDefaultPaymentMethodId: async () => 'pm_1',
       chargeOffSession: async () => ({ id: 'pi_up', status: 'succeeded' }),
     };
-    (svc as unknown as { logger: object }).logger = { warn() {}, error() {}, log() {} };
+    (svc as unknown as { logger: object }).logger = {
+      warn: () => undefined,
+      error: () => undefined,
+      log: () => undefined,
+    };
     await (
       svc as unknown as { chargeUpgrade: (...args: unknown[]) => Promise<Date> }
     ).chargeUpgrade(
@@ -254,8 +258,8 @@ describe('estorno da diferença do plano (305)', () => {
       cancelSubscription: cancel,
     };
     (svc as unknown as { logger: object; expireSubscription: jest.Mock }).logger = {
-      log() {},
-      warn() {},
+      log: () => undefined,
+      warn: () => undefined,
     };
     (svc as unknown as { expireSubscription: jest.Mock }).expireSubscription = expire;
     await (
