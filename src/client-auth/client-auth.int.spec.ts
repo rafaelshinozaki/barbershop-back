@@ -3,15 +3,19 @@
  *
  * Antes, cadastrar a conta com o e-mail (ou o telefone) de outra pessoa ligava
  * as fichas dela em todas as barbearias à conta nova — dava pra ver onde,
- * quando e quanto ela gastou. Agora só o e-mail confirmado pelo link liga.
+ * quando e quanto ela gastou. Agora só o e-mail confirmado liga: no cadastro,
+ * pelo código enviado ao e-mail (sem ele a conta nem é criada); nas contas
+ * antigas, pelo link.
  */
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountLinkService } from './account-link.service';
 import { ClientAuthService } from './client-auth.service';
 import { GraphQLClientJwtAuthGuard } from './guards/graphql-client-jwt-auth.guard';
+import { memoryRedis, presetSignupCode } from '../auth/signup-code.testing-spec';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const SECRET = 'segredo-de-teste';
@@ -43,6 +47,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
     cancelSubscription: async (id: string) => void stripeCalls.push(`cancel:${id}`),
     deleteCustomer: async (id: string) => void stripeCalls.push(`delete:${id}`),
   };
+  const redis = memoryRedis();
   const service = new ClientAuthService(
     prisma,
     jwt,
@@ -50,7 +55,16 @@ describe('Conta do cliente final (integração com o banco)', () => {
     email as never,
     stripe as never,
     new AccountLinkService(prisma, email as never),
+    redis as never,
   );
+  /** Cadastro de quem tem a caixa de entrada (com o código que chegou) */
+  const signup = (mail: string, password: string, name: string, phone?: string, lang?: string) =>
+    service.signup(mail, password, name, phone, lang, presetSignupCode(redis, mail));
+  /** Conta de antes do código no cadastro: e-mail nunca confirmado */
+  const legacyAccount = async (mail: string, name = 'Quem cadastrou') =>
+    prisma.clientAccount.create({
+      data: { email: mail, name, password: await bcrypt.hash(PASSWORD, 10) },
+    });
   // Contas excluídas mudam de e-mail (não batem mais com RUN na limpeza)
   const deletedIds: number[] = [];
   let shopId: number;
@@ -179,27 +193,29 @@ describe('Conta do cliente final (integração com o banco)', () => {
     await prisma.$disconnect();
   });
 
-  it('cadastro com o e-mail e o telefone de outra pessoa não mostra o histórico dela', async () => {
-    const account = await service.signup(victimEmail, PASSWORD, 'Atacante', victimPhone, 'es');
-    expect(await historyOf(account.id)).toEqual([]);
+  it('sem o código do e-mail, ninguém cria a conta com o e-mail (e o telefone) de outra pessoa', async () => {
+    await expect(
+      service.signup(victimEmail, PASSWORD, 'Atacante', victimPhone, 'es'),
+    ).rejects.toThrow('verification code');
+    await expect(
+      service.signup(victimEmail, PASSWORD, 'Atacante', victimPhone, 'es', '123456'),
+    ).rejects.toThrow('verification code');
+    expect(await prisma.clientAccount.count({ where: { email: victimEmail } })).toBe(0);
     const victim = await prisma.customer.findUnique({ where: { id: victimCustomerId } });
     expect(victim!.clientAccountId).toBeNull();
-
-    // Login também não liga nada enquanto o e-mail não for confirmado
-    await service.validateCredentials(victimEmail, PASSWORD);
-    expect(await historyOf(account.id)).toEqual([]);
-
-    // Link de confirmação foi pro e-mail (na língua do cadastro)
-    const mail = sent.find((m) => m.to === victimEmail && m.template === 'verify_email');
-    expect(mail?.lang).toBe('es');
-    expect(mail?.context.VerifyURL).toMatch(/^https:\/\/app\.test\/client\/verify-email\?token=/);
-    expect((await service.getById(account.id)).emailVerified).toBe(false);
   });
 
-  it('confirmar o e-mail pelo link liga as fichas desse e-mail; o link vale uma vez só', async () => {
-    const token = lastToken(victimEmail, 'verify_email');
-    const account = await service.verifyEmail(token);
+  it('com o código, a conta nasce com o e-mail confirmado e liga as fichas desse e-mail; o código vale uma vez', async () => {
+    const code = presetSignupCode(redis, victimEmail);
+    const account = await service.signup(victimEmail, PASSWORD, 'Vítima', victimPhone, 'es', code);
     expect(account.emailVerifiedAt).toBeTruthy();
+    expect((await service.getById(account.id)).emailVerified).toBe(true);
+    // Não manda mais o link de confirmação
+    expect(sent.some((m) => m.to === victimEmail && m.template === 'verify_email')).toBe(false);
+    await expect(
+      service.signup(victimEmail, PASSWORD, 'De novo', victimPhone, 'es', code),
+    ).rejects.toThrow('verification code');
+
     // Horário que ainda não aconteceu fica em "Próximos horários", não no histórico
     const barber = await prisma.barber.create({
       data: { barbershopId: shopId, name: 'Futuro', phone: '11944444444' },
@@ -220,7 +236,14 @@ describe('Conta do cliente final (integração com o banco)', () => {
     await prisma.barbershop.update({ where: { id: shopId }, data: { currency: 'BRL' } });
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ type: 'SALE', total: 80, currency: 'MXN' });
+  });
 
+  it('conta antiga, sem o e-mail confirmado: o link confirma; o link vale uma vez só', async () => {
+    const mail = `legado-${RUN}@test.local`;
+    const legacy = await legacyAccount(mail);
+    await service.resendVerificationEmail(legacy.id);
+    const token = lastToken(mail, 'verify_email');
+    expect((await service.verifyEmail(token)).emailVerifiedAt).toBeTruthy();
     await expect(service.verifyEmail(token)).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.verifyEmail('token-inventado')).rejects.toBeInstanceOf(
       BadRequestException,
@@ -284,7 +307,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
 
   it('redefinir a senha confirma o e-mail (quem tem o e-mail retoma a conta)', async () => {
     const other = `outra-${RUN}@test.local`;
-    await service.signup(other, PASSWORD, 'Quem cadastrou');
+    await legacyAccount(other);
     await service.requestPasswordReset(other);
     const account = await service.resetPassword(lastToken(other, 'password_reset'), 'Dona#Real4');
     expect(account.emailVerifiedAt).toBeTruthy();
@@ -292,7 +315,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
 
   it('login social com o e-mail de uma conta não confirmada: apaga a senha de quem cadastrou', async () => {
     const socialEmail = `social-${RUN}@test.local`;
-    const squatted = await service.signup(socialEmail, PASSWORD, 'Quem cadastrou');
+    const squatted = await legacyAccount(socialEmail);
     expect(await guardAccepts(squatted)).toBe(true);
 
     const account = await service.findOrCreateSocialAccount(
@@ -310,14 +333,14 @@ describe('Conta do cliente final (integração com o banco)', () => {
   });
 
   it('o cliente muda o próprio nome e telefone; vazio apaga o telefone', async () => {
-    const account = await service.signup(`perfil-${RUN}@test.local`, PASSWORD, 'Antes', undefined);
+    const account = await signup(`perfil-${RUN}@test.local`, PASSWORD, 'Antes', undefined);
     const updated = await service.updateProfile(account.id, '  Depois  ', ' 11 98888-7777 ');
     expect(updated).toMatchObject({ name: 'Depois', phone: '11 98888-7777' });
     expect((await service.updateProfile(account.id, 'Depois', '')).phone).toBeNull();
   });
 
   it('profissionais favoritos: favorita, lista com a unidade, desfavorita; inativo não entra', async () => {
-    const account = await service.signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', undefined);
+    const account = await signup(`favorito-${RUN}@test.local`, PASSWORD, 'Fã', undefined);
     const active = await prisma.barber.create({
       data: { barbershopId: shopId, name: 'Ana Tesoura', phone: '11966666666' },
     });
@@ -349,7 +372,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
   describe('exclusão da conta (LGPD)', () => {
     it('senha errada não apaga; certa cancela cobranças, apaga dados pessoais e libera o e-mail', async () => {
       const mail = `apagar-${RUN}@test.local`;
-      const account = await service.signup(mail, PASSWORD, 'Quem sai', '+5511900000000');
+      const account = await signup(mail, PASSWORD, 'Quem sai', '+5511900000000');
       deletedIds.push(account.id);
       await prisma.clientAccount.update({
         where: { id: account.id },
@@ -490,7 +513,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
         await prisma.clientSubscriptionPayment.count({ where: { subscriptionId: sub.id } }),
       ).toBe(1);
       // E-mail liberado pra uma conta nova
-      const again = await service.signup(mail, PASSWORD, 'Voltou');
+      const again = await signup(mail, PASSWORD, 'Voltou');
       expect(again.id).not.toBe(account.id);
     });
 

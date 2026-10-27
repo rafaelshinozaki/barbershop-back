@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountLinkService } from './account-link.service';
 import { ClientAuthService } from './client-auth.service';
+import { memoryRedis, presetSignupCode } from '../auth/signup-code.testing-spec';
 import { BarbershopService } from '../barbershop/barbershop.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -17,6 +18,7 @@ const PASSWORD = 'Senha#Forte1';
 
 describe('Ficha ligada à conta do cliente (integração)', () => {
   const prisma = new PrismaService();
+  const redis = memoryRedis();
   const config = {
     get: (key: string) =>
       ({ JWT_SECRET: SECRET, JWT_EXPIRATION: '3600', FRONTEND_URL: 'https://app.test' }[key]),
@@ -39,6 +41,7 @@ describe('Ficha ligada à conta do cliente (integração)', () => {
     email as never,
     {} as never,
     new AccountLinkService(prisma, email as never),
+    redis as never,
   );
   const stub = {} as never;
   const shops = new BarbershopService(
@@ -50,12 +53,6 @@ describe('Ficha ligada à conta do cliente (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
-  const verify = async (to: string) => {
-    const mail = [...sent].reverse().find((m) => m.to === to && m.template === 'verify_email');
-    const token = new URL(String(mail?.context.VerifyURL)).searchParams.get('token')!;
-    return clients.verifyEmail(token);
-  };
-
   let ownerId: number;
   let networkId: number;
   let shopId: number;
@@ -118,9 +115,16 @@ describe('Ficha ligada à conta do cliente (integração)', () => {
       data: { networkId, name: 'Maria Silva', phone: '+5511987650001', email: typo },
     });
 
-    // Dono do endereço (outra pessoa) confirma a conta: sem o telefone da ficha, nada liga
-    const other = await clients.signup(typo, PASSWORD, 'Outra Pessoa', '11 91234-0002');
-    await verify(typo);
+    // Dono do endereço (outra pessoa) cria a conta com o código do e-mail:
+    // sem o telefone da ficha, nada liga
+    const other = await clients.signup(
+      typo,
+      PASSWORD,
+      'Outra Pessoa',
+      '11 91234-0002',
+      undefined,
+      presetSignupCode(redis, typo),
+    );
     expect(
       (await prisma.customer.findUniqueOrThrow({ where: { id: maria.id } })).clientAccountId,
     ).toBeNull();

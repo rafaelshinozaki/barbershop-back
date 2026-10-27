@@ -6,33 +6,9 @@
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '../interfaces/roles';
 import { UserService } from './users.service';
+import { memoryRedis } from '../signup-code.testing-spec';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-
-// Redis em memória: só o que o código do cadastro e o login usam
-function memoryRedis() {
-  const store = new Map<string, string>();
-  return {
-    store,
-    client: {
-      exists: async (k: string) => (store.has(k) ? 1 : 0),
-      get: async (k: string) => store.get(k) ?? null,
-      set: async (k: string, v: string, ...opts: unknown[]) => {
-        if (opts.includes('NX') && store.has(k)) return null;
-        store.set(k, v);
-        return 'OK';
-      },
-      del: async (...keys: string[]) => keys.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0),
-      incr: async (k: string) => {
-        const v = Number(store.get(k) ?? 0) + 1;
-        store.set(k, String(v));
-        return v;
-      },
-      ttl: async (k: string) => (store.has(k) ? 600 : -2),
-      expire: async () => 1,
-    },
-  };
-}
 
 describe('Cadastro: cargo (integração)', () => {
   const prisma = new PrismaService();

@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountLinkService } from './account-link.service';
 import { ClientAuthService } from './client-auth.service';
+import { memoryRedis, presetSignupCode } from '../auth/signup-code.testing-spec';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const STAFF_PASSWORD = 'Equipe#Forte1';
@@ -35,6 +36,7 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
     ) => void sent.push({ template, to, context }),
   };
   const link = new AccountLinkService(prisma, email as never);
+  const redis = memoryRedis();
   const clients = new ClientAuthService(
     prisma,
     jwt,
@@ -42,7 +44,11 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
     email as never,
     {} as never,
     link,
+    redis as never,
   );
+  /** Cadastro com o código que chegou no e-mail */
+  const signup = (to: string, password: string, name: string) =>
+    clients.signup(to, password, name, undefined, undefined, presetSignupCode(redis, to));
 
   let roleId: number;
   const userIds: number[] = [];
@@ -116,7 +122,7 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
 
   it('as duas com a mesma senha: o login liga e avisa por e-mail', async () => {
     const u = await staff('mesma');
-    await clients.signup(mail('mesma-antes'), STAFF_PASSWORD, 'Outra'); // outro e-mail: não liga
+    await signup(mail('mesma-antes'), STAFF_PASSWORD, 'Outra'); // outro e-mail: não liga
     await prisma.clientAccount.create({
       data: {
         email: mail('mesma'),
@@ -131,24 +137,29 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
 
   it('cadastro de cliente com a senha da equipe já nasce ligado; com outra, não', async () => {
     const u = await staff('cadastro');
-    const linked = await clients.signup(mail('cadastro'), STAFF_PASSWORD, 'Cliente');
+    const linked = await signup(mail('cadastro'), STAFF_PASSWORD, 'Cliente');
     expect(linked).toMatchObject({ userId: u.id, password: null });
 
     await staff('cadastro-outra');
-    const loose = await clients.signup(mail('cadastro-outra'), CLIENT_PASSWORD, 'Cliente');
+    const loose = await signup(mail('cadastro-outra'), CLIENT_PASSWORD, 'Cliente');
     expect(loose.userId).toBeNull();
   });
 
   it('senhas diferentes: liga pela área do cliente digitando a senha da equipe', async () => {
     const u = await staff('diferente');
-    const account = await clients.signup(mail('diferente'), CLIENT_PASSWORD, 'Cliente');
+    const account = await signup(mail('diferente'), CLIENT_PASSWORD, 'Cliente');
     await clients.validateCredentials(mail('diferente'), CLIENT_PASSWORD);
     expect(
       (await prisma.clientAccount.findUnique({ where: { id: account.id } }))!.userId,
     ).toBeNull();
 
-    // Sem e-mail confirmado não conta que existe conta da equipe
+    // Conta antiga, sem e-mail confirmado: não conta que existe conta da equipe
+    await prisma.clientAccount.update({
+      where: { id: account.id },
+      data: { emailVerifiedAt: null },
+    });
     expect(await link.statusForClient(account.id)).toMatchObject({ linked: false, canLink: false });
+    await clients.resendVerificationEmail(account.id);
     await clients.verifyEmail(lastToken(mail('diferente'), 'verify_email'));
     expect(await link.statusForClient(account.id)).toMatchObject({ linked: false, canLink: true });
 
@@ -179,7 +190,7 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
 
   it('pela equipe: liga digitando a senha da conta de cliente', async () => {
     const u = await staff('pela-equipe');
-    await clients.signup(mail('pela-equipe'), CLIENT_PASSWORD, 'Cliente');
+    await signup(mail('pela-equipe'), CLIENT_PASSWORD, 'Cliente');
     expect(await link.statusForStaff(u.id)).toEqual({
       linked: false,
       canLink: true,
@@ -204,13 +215,13 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
 
     // Conta de cliente solta com o mesmo e-mail: precisa ligar antes
     const other = await staff('abre-solta');
-    await clients.signup(mail('abre-solta'), CLIENT_PASSWORD, 'Cliente');
+    await signup(mail('abre-solta'), CLIENT_PASSWORD, 'Cliente');
     await expect(link.clientAccountForStaff(other.id)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('esqueci a senha na área do cliente ligada troca a senha da equipe e derruba as sessões', async () => {
     const u = await staff('reset');
-    const account = await clients.signup(mail('reset'), STAFF_PASSWORD, 'Cliente');
+    const account = await signup(mail('reset'), STAFF_PASSWORD, 'Cliente');
     await prisma.activeSession.create({
       data: {
         userId: u.id,
@@ -236,7 +247,7 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
 
   it('abrir a área da equipe pela do cliente: não com verificação em duas etapas', async () => {
     const u = await staff('2fa', { twoFactorEnabled: true });
-    const account = await clients.signup(mail('2fa'), STAFF_PASSWORD, 'Cliente');
+    const account = await signup(mail('2fa'), STAFF_PASSWORD, 'Cliente');
     expect(account.userId).toBe(u.id);
     expect(await link.statusForClient(account.id)).toMatchObject({
       linked: true,
@@ -244,13 +255,13 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
     });
     await expect(link.staffForClient(account.id)).rejects.toBeInstanceOf(BadRequestException);
 
-    const solta = await clients.signup(mail('sem-equipe'), CLIENT_PASSWORD, 'Cliente');
+    const solta = await signup(mail('sem-equipe'), CLIENT_PASSWORD, 'Cliente');
     await expect(link.staffForClient(solta.id)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('excluir a conta de cliente ligada: confirma com a senha da equipe e a equipe fica', async () => {
     const u = await staff('exclui');
-    const account = await clients.signup(mail('exclui'), STAFF_PASSWORD, 'Cliente');
+    const account = await signup(mail('exclui'), STAFF_PASSWORD, 'Cliente');
     await expect(
       clients.deleteAccount(account.id, { password: CLIENT_PASSWORD }),
     ).rejects.toBeInstanceOf(BadRequestException);

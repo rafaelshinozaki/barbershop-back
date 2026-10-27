@@ -28,6 +28,7 @@ import { canonicalIdDoc } from '@/common/id-doc';
 import { idDocTaken } from '@/common/id-doc-lookup';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
+import { SignupCodes } from '../signup-code';
 import { v4 as uuidv4 } from 'uuid';
 import {
   PLANO_STATUS,
@@ -62,14 +63,6 @@ const IMPORT_PASSWORD_LINK_HOURS = 7 * 24;
 /** Pedir o código no login social só faz sentido com as duas etapas ligadas */
 export const SOCIAL_TWO_FACTOR_NEEDS_2FA_MESSAGE =
   'Ligue a verificação em duas etapas antes de pedir o código no login social.';
-// Cadastro com senha: o e-mail é confirmado por código antes de a conta existir
-export const SIGNUP_CODE_EXPIRY_MINUTES = 15;
-export const SIGNUP_CODE_RESEND_SECONDS = 60;
-export const SIGNUP_CODE_INVALID_MESSAGE =
-  'Invalid or expired email verification code. Request a new code.';
-export const SIGNUP_CODE_WAIT_MESSAGE =
-  'A code was just sent to this email. Wait a minute before requesting another.';
-
 export const TERMS_REQUIRED_MESSAGE =
   'Aceite os termos de uso e a política de privacidade para criar a conta.';
 
@@ -118,9 +111,6 @@ export class UserService {
     codeAttempts: (loginId: string) => `auth:login-code-attempts:${loginId}`,
     codeByUser: (email: string) => `auth:login-code-user:${email}`,
     enable2fa: (email: string, code: string) => `auth:2fa-enable:${email}:${code}`,
-    signupCode: (email: string) => `auth:signup-code:${email}`,
-    signupCodeAttempts: (email: string) => `auth:signup-code-attempts:${email}`,
-    signupCodeSent: (email: string) => `auth:signup-code-sent:${email}`,
   };
 
   constructor(
@@ -254,7 +244,7 @@ export class UserService {
         !!(userData as { provider?: string }).provider &&
         (userData as { provider?: string }).provider !== 'local';
       const emailCode = (userData as { emailCode?: string }).emailCode;
-      if (!socialSignup) await this.checkSignupCode(email, emailCode);
+      if (!socialSignup) await this.signupCodes.check(email, emailCode);
 
       // Verificar se o usuário já existe (maiúsculas não criam outra conta)
       const existingUser = await this.prisma.user.findFirst({
@@ -307,7 +297,7 @@ export class UserService {
       }
 
       // Uso único: só o primeiro cadastro com o código certo o consome
-      if (!socialSignup) await this.consumeSignupCode(email);
+      if (!socialSignup) await this.signupCodes.consume(email);
 
       // Criar usuário
       const newUser = await this.prisma.user.create({
@@ -2005,108 +1995,13 @@ export class UserService {
     throw new UnauthorizedException('Invalid verification code');
   }
 
-  /**
-   * Código de confirmação do e-mail no cadastro com senha. Responde igual
-   * para e-mail com ou sem conta (o cadastro em si é que recusa o
-   * duplicado, e só depois do código certo).
-   */
+  /** Código que confirma o e-mail no cadastro com senha (ver SignupCodes) */
   async sendSignupCode(rawEmail: string, lang = 'pt') {
-    const email = normalizeEmail(rawEmail);
-    if (!email) throw new BadRequestException('Invalid email');
-
-    // Um envio por minuto para o mesmo e-mail: o endpoint é público e
-    // mandaria e-mail para qualquer endereço quantas vezes quisessem
-    const fresh = await this.withRedis(() =>
-      this.redis.client.set(
-        UserService.KEY.signupCodeSent(email),
-        '1',
-        'EX',
-        SIGNUP_CODE_RESEND_SECONDS,
-        'NX',
-      ),
-    );
-    if (fresh !== 'OK') {
-      throw new HttpException(SIGNUP_CODE_WAIT_MESSAGE, 429);
-    }
-
-    const code = randomInt(100000, 1000000).toString();
-    // Código novo substitui o anterior e zera as tentativas
-    await this.withRedis(async () => {
-      await this.redis.client.set(
-        UserService.KEY.signupCode(email),
-        code,
-        'EX',
-        SIGNUP_CODE_EXPIRY_MINUTES * 60,
-      );
-      await this.redis.client.del(UserService.KEY.signupCodeAttempts(email));
-    });
-
-    try {
-      await this.emailService.sendCustomerEmail(
-        null,
-        'verification_code',
-        {
-          FullName: '',
-          AppName: 'Barbershop',
-          VerificationCode: code,
-          SupportEmail: supportEmail(),
-          Year: new Date().getFullYear(),
-        },
-        { pt: 'Código de verificação', en: 'Verification code', es: 'Código de verificación' },
-        'signup-code',
-        email,
-        ['pt', 'en', 'es'].includes(lang) ? lang : 'pt',
-      );
-    } catch (error) {
-      this.logger.error(`Failed to send signup code email: ${error.message}`);
-      // Mesmo cuidado do código de login: o código só vai pro log fora de produção
-      if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(`DEVELOPMENT: signup code for ${email} is ${code}`);
-      }
-    }
-    return true;
+    return this.signupCodes.send(rawEmail, lang);
   }
 
-  // Confere o código sem consumir (as validações do cadastro vêm depois e um
-  // erro nelas, ex. senha fraca, não deve queimar o código). Erros contam
-  // tentativas como no código de login; no limite o código some.
-  private async checkSignupCode(email: string, code: string | undefined) {
-    const codeKey = UserService.KEY.signupCode(email);
-    const attemptsKey = UserService.KEY.signupCodeAttempts(email);
-    if (!code || !/^\d{6}$/.test(code.trim())) {
-      throw new BadRequestException(SIGNUP_CODE_INVALID_MESSAGE);
-    }
-    const stored = await this.withRedis(async () => {
-      const used = Number((await this.redis.client.get(attemptsKey)) ?? 0);
-      if (used >= LOGIN_CODE_MAX_ATTEMPTS) {
-        await this.redis.client.del(codeKey, attemptsKey);
-        return null;
-      }
-      return this.redis.client.get(codeKey);
-    });
-    if (stored && stored === code.trim()) return;
-    if (stored) {
-      await this.withRedis(async () => {
-        const n = await this.redis.client.incr(attemptsKey);
-        if (n === 1) {
-          const ttl = await this.redis.client.ttl(codeKey);
-          if (ttl > 0) await this.redis.client.expire(attemptsKey, ttl);
-        }
-        if (n >= LOGIN_CODE_MAX_ATTEMPTS) await this.redis.client.del(codeKey, attemptsKey);
-      });
-    }
-    throw new BadRequestException(SIGNUP_CODE_INVALID_MESSAGE);
-  }
-
-  private async consumeSignupCode(email: string) {
-    const removed = await this.withRedis(() =>
-      this.redis.client.del(UserService.KEY.signupCode(email)),
-    );
-    // Dois cadastros simultâneos com o mesmo código: só um passa
-    if (removed === 0) throw new BadRequestException(SIGNUP_CODE_INVALID_MESSAGE);
-    await this.redis.client
-      .del(UserService.KEY.signupCodeAttempts(email), UserService.KEY.signupCodeSent(email))
-      .catch(() => undefined);
+  private get signupCodes() {
+    return new SignupCodes(this.redis, this.emailService);
   }
 
   async sendLoginCode(user: UserDTO, loginId: string) {
