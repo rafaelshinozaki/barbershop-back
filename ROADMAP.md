@@ -3622,7 +3622,7 @@ Foram lidos no back o convite de funcionário (validar, aceitar criando a conta,
 
 Depois do código no cadastro (itens 344 e 345), foram revistos todos os lugares que criam conta (equipe e cliente) ou mudam e marcam o e-mail: cadastro social, login social, convite da equipe, importação por planilha, ligação entre conta de cliente e da equipe, redefinição de senha, código do convite de amigo e edição pelo backoffice (no back e no backoffice-back). Estão certos: o login social (o provedor confirma), o convite (chave do e-mail), a redefinição de senha (link no e-mail), o código do convite de amigo e a edição do backoffice-back (zera a confirmação ao trocar o e-mail).
 
-346. ⬜ **`startSocialSignup` é pública e aceita qualquer e-mail: cria uma conta logada com o e-mail de outra pessoa, sem o código** (back: `AuthResolver.startSocialSignup` e `completeSocialSignup`):
+346. ✅ **`startSocialSignup` é pública e aceita qualquer e-mail: cria uma conta logada com o e-mail de outra pessoa, sem o código** (back: `AuthResolver.startSocialSignup` e `completeSocialSignup`):
      - `startSocialSignup(provider, email, fullName)` não tem guarda nem prova do provedor: guarda o e-mail num `Map` em memória e devolve um token.
      - Com esse token, `completeSocialSignup` cria a conta como social (`provider: 'google'`, sem o código do item 344) e já abre a sessão (`authService.login`).
      - Qualquer um cria uma conta da equipe com o e-mail de outra pessoa e entra nela. Quando a pessoa de verdade entra com o Google, `findOrCreateSocialUser` acha a conta pelo e-mail e a usa: a sessão de quem criou continua aberta na conta dela.
@@ -3630,37 +3630,47 @@ Depois do código no cadastro (itens 344 e 345), foram revistos todos os lugares
 
      **Fazer:** apagar `startSocialSignup`, `completeSocialSignup` e o `Map`. Completar o cadastro social (item 347) só com a sessão aberta pelo provedor. Teste: as mutations não existem mais; o e-mail da conta vem da sessão, nunca do corpo do pedido.
 
-347. ⬜ **Quem se cadastra pelo Google fica preso na tela "completar cadastro"** (front: `social-signup.tsx`, `ProtectedRoute`; back: `AuthController`):
+     **Feito:** `startSocialSignup`, `completeSocialSignup`, o `Map` em memória e o `SocialSignupInput` saíram. O cadastro social termina só pela sessão aberta pelo provedor (item 347). Teste em `src/auth/round-346-350.int.spec.ts`; conferido no app: a mutation antiga não existe mais.
+
+347. ✅ **Quem se cadastra pelo Google fica preso na tela "completar cadastro"** (front: `social-signup.tsx`, `ProtectedRoute`; back: `AuthController`):
      - O retorno do OAuth cria a conta, abre a sessão e manda para `/social-signup` sem parâmetros.
      - A tela espera `token`, `email` e `fullName` na URL. Sem o token, "Concluir" só mostra "token inválido".
      - Sem telefone, toda página protegida leva de volta a `/social-signup`. A pessoa não consegue usar o app nem terminar o cadastro.
 
      **Fazer:** uma mutation logada (`completeSocialProfile`) preenche os dados que faltam (documento, telefone, nascimento, termos) e o tipo de cadastro (`attachSignup`) na conta da sessão. A tela usa o e-mail e o nome da sessão. Teste: conta social sem telefone completa o cadastro e passa a entrar no app; não dá para trocar o e-mail por ali.
 
-348. ⬜ **A edição de usuário pelo backoffice no back troca o e-mail e mantém a conta como confirmada** (back: `BackofficeResolver.updateUser` → `UserService.updateUser`):
+     **Feito:** mutation logada `completeSocialProfile` (`CompleteSocialProfileInput`, sem e-mail nem provedor). Grava nome, documento (com a checagem de duplicado do cadastro), telefone, nascimento e o aceite dos termos (`termsAcceptedAt`), e o cargo do tipo de cadastro. Só vale para conta social ainda sem telefone; se a barbearia falhar, a conta volta a pedir os dados (`reopenSocialProfile`). A tela `/social-signup` usa o e-mail e o nome da sessão (o campo de e-mail fica travado). Testes em `round-346-350.int.spec.ts`; conferido no app com sessão de verdade (completa uma vez; a segunda é recusada).
+
+348. ✅ **A edição de usuário pelo backoffice no back troca o e-mail e mantém a conta como confirmada** (back: `BackofficeResolver.updateUser` → `UserService.updateUser`):
      - O e-mail novo é gravado como veio: sem normalizar (maiúsculas), sem checar se outra conta já usa (o erro do Postgres sai cru) e sem zerar `emailVerifiedAt`.
      - O endereço novo, que ninguém confirmou, fica valendo como confirmado (convite da equipe sem a chave, item 343; ligação com a conta de cliente).
      - O backoffice-back (`UsersWrites`) já faz certo: normaliza e zera a confirmação.
 
      **Fazer:** mesma regra do backoffice-back: normalizar, recusar e-mail já usado com mensagem clara e zerar `emailVerifiedAt` quando o e-mail muda. Teste: trocar o e-mail deixa a conta sem confirmação; e-mail de outra conta é recusado.
 
-349. ⬜ **A conta de cliente criada a partir da conta da equipe pede de novo a confirmação do e-mail** (back: `ClientAuthService.validateCredentials`, `AccountLinkService.clientAccountForStaff`):
+     **Feito:** `UserService.updateUser` normaliza o e-mail novo, recusa o de outra conta (`EMAIL_IN_USE_MESSAGE`) e zera `emailVerifiedAt` quando o e-mail muda. Mesmo e-mail com outras maiúsculas não mexe em nada. Teste em `round-346-350.int.spec.ts`.
+
+349. ✅ **A conta de cliente criada a partir da conta da equipe pede de novo a confirmação do e-mail** (back: `ClientAuthService.validateCredentials`, `AccountLinkService.clientAccountForStaff`):
      - Quem é da equipe e entra na área do cliente (com a senha da equipe, ou pelo botão da área da equipe) ganha uma conta de cliente ligada, mas sem `emailVerifiedAt`. Recebe o link de confirmação, e o histórico das barbearias só aparece depois.
      - Desde o item 344, a conta da equipe nasce com o e-mail confirmado pelo código. A senha da equipe prova que é a mesma pessoa.
      - O comentário do `AccountLinkService` ("a conta da equipe não confirma e-mail") ficou desatualizado.
 
      **Fazer:** a conta de cliente criada ligada herda o `emailVerifiedAt` da conta da equipe (e liga as fichas). Só manda o link quando a conta da equipe também não tem o e-mail confirmado. Teste: equipe com e-mail confirmado abre a área do cliente já confirmada e vê o histórico; equipe sem confirmação continua recebendo o link.
 
+     **Feito:** a conta de cliente criada a partir da equipe (login na área do cliente e `openClientArea`) herda o `emailVerifiedAt` da equipe. Com ele, as fichas ligam na hora (`welcomeLinkedAccount`); sem ele, segue o link de confirmação. `openClientArea` só avisa para confirmar quando falta. Comentário do `AccountLinkService` atualizado. Testes em `round-346-350.int.spec.ts`.
+
 ### Centésima trigésima primeira rodada (2026-10-27): cupons, planos, agenda assinável e guarda de dados
 
 Foram lidos no back os cupons (`CouponsService`), os planos (`PlanService`) e a renovação do plano (`renewSubscription`), os pagamentos da plataforma (`PaymentsController`), a agenda assinável e o "adicionar à agenda" (`CalendarService`, `ics.ts`), o sitemap e a prévia da página pública (`SitemapService`, `ShopSeoService`), a guarda de dados (`RetentionService`), as notificações no celular (`PushService`), o webhook do WhatsApp e a trilha do app (`AppActivityInterceptor`).
 
-350. ⬜ **O "1 mês grátis" do convite de amigo dá o ano inteiro de graça no plano anual** (back: `CouponsService.validateCoupon`, `PaymentsService.createPaymentIntentForCheckout`):
+350. ✅ **O "1 mês grátis" do convite de amigo dá o ano inteiro de graça no plano anual** (back: `CouponsService.validateCoupon`, `PaymentsService.createPaymentIntentForCheckout`):
      - O cupom `FREE_MONTH` (o do convite de amigo, `createFriendInviteCoupon`) vale para todos os planos, e o desconto é o preço inteiro do plano (`discountAmount = originalAmount`).
      - No plano anual (`billingCycle: 'YEARLY'`), o desconto cobre os 12 meses. Como o valor final fica abaixo do mínimo da Stripe, o plano é ativado sem cobrança, com um ano de período (`addCycle`).
      - Quem convida e quem é convidado ganham, cada um, um ano do plano anual no lugar de um mês.
 
      **Fazer:** no plano anual, o `FREE_MONTH` desconta um doze avos do preço (`monthlyPrice`) e cobra o resto. Teste: cupom do convite no plano mensal zera a cobrança; no anual, cobra 11/12 do preço.
+
+     **Feito:** no plano anual, o `FREE_MONTH` desconta um doze avos do preço (arredondado em centavos); no mensal continua zerando. Teste em `round-346-350.int.spec.ts`.
 
 351. ⬜ **Mudar o preço ou o ciclo de um plano muda a cobrança de quem já assina, sem aviso** (back: `PlanService.updatePlan`, `PaymentsService.renewSubscription`):
      - O comentário do `updatePlan` diz que "quem já assina continua no preço antigo", mas isso só vale para a assinatura cobrada pela Stripe.

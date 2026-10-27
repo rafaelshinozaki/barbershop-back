@@ -1191,6 +1191,19 @@ type CommonResponse {
   count: Int!
 }
 
+input CompleteSocialProfileInput {
+  barbershopData: BarbershopSignupData
+  birthdate: DateTime!
+  country: String
+  fullName: String
+  gender: String!
+  idDocNumber: String!
+  phone: String!
+  professionalData: ProfessionalSignupInput
+  readTerms: Boolean!
+  signupType: String
+}
+
 type CompletedPayment {
   amount: Float!
   createdAt: String!
@@ -2274,7 +2287,7 @@ type Mutation {
   ): Boolean!
   completeFakePaymentAccount(accountId: String!): Boolean!
   completeOnboardingStep(barbershopId: Int, step: String!): Boolean!
-  completeSocialSignup(input: SocialSignupInput!, token: String!): User!
+  completeSocialProfile(input: CompleteSocialProfileInput!): User!
   confirmAppTip(paymentIntentId: String!, token: String!): Boolean!
   confirmAppointmentPrepayment(token: String!): AppointmentPrepaymentType!
   confirmDepositPayment(token: String!): ManagedAppointmentType!
@@ -2475,7 +2488,6 @@ type Mutation {
   startIdentityVerification: IdentityVerificationStartType!
   startJobAcceptPayment(applicationId: Int!, barbershopId: Int!): JobFeeCheckoutType!
   startMyPaymentAccount: PaymentAccountLinkType!
-  startSocialSignup(email: String!, fullName: String!, provider: String!): String!
   startSoloPractice(input: StartSoloPracticeInput!): SoloPracticeType!
   submitReviewByLink(
     comment: String
@@ -4043,20 +4055,6 @@ type SocialPostType {
   publishedToInstagram: Boolean!
   scheduledFor: String!
   status: String!
-}
-
-input SocialSignupInput {
-  barbershopData: BarbershopSignupData
-  birthdate: DateTime!
-  email: String!
-  fullName: String!
-  gender: String!
-  idDocNumber: String!
-  phone: String!
-  professionalData: ProfessionalSignupInput
-  provider: String!
-  readTerms: Boolean!
-  signupType: String
 }
 
 type SoloPracticeType {

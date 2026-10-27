@@ -100,14 +100,16 @@ export class AccountLinkResolver {
 
   /**
    * Abre a área do cliente: ligada, entra; sem conta de cliente, cria uma já
-   * ligada. Devolve true quando criou (o front avisa pra confirmar o e-mail).
+   * ligada. Devolve true quando criou e o e-mail ainda precisa ser
+   * confirmado (o front avisa); com o e-mail da equipe já confirmado, a conta
+   * nasce confirmada (item 349).
    */
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async openClientArea(@CurrentUser() user: UserDTO, @Context() context: any) {
     const { account, created } = await this.accountLink.clientAccountForStaff(user.id);
-    if (created) await this.clientAuth.sendVerificationEmail(account);
+    if (created) await this.clientAuth.welcomeLinkedAccount(account);
     await this.clientAuth.issueCookie(account, context.res);
-    return created;
+    return created && !account.emailVerifiedAt;
   }
 }

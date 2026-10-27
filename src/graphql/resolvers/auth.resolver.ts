@@ -26,7 +26,7 @@ import {
   VerifyChangePasswordCodeInput,
   ResetPasswordWithCodeInput,
   CheckPasswordInput,
-  SocialSignupInput,
+  CompleteSocialProfileInput,
 } from '../dto/auth.dto';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
 import { CurrentUser } from '../../auth/current-user.decorator';
@@ -69,11 +69,6 @@ function toGraphQLUser(user: any) {
     loginId: user.loginId,
   };
 }
-
-const pendingSocialSignups = new Map<
-  string,
-  { email: string; fullName: string; provider: string }
->();
 
 @Resolver(() => User)
 @UseFilters(GqlHttpExceptionFilter)
@@ -379,70 +374,37 @@ export class AuthResolver {
   // UserResolver faz isso, já que o user de @CurrentUser() aqui só inclui
   // `role`, ver GraphQLJwtAuthGuard).
 
-  @Mutation(() => String)
-  async startSocialSignup(
-    @Args('provider') provider: string,
-    @Args('email') email: string,
-    @Args('fullName') fullName: string,
-  ): Promise<string> {
-    const token = randomUUID();
-    pendingSocialSignups.set(token, { email, fullName, provider });
-    return token;
-  }
-
+  /**
+   * Termina o cadastro de quem entrou pelo Google, Facebook ou Apple: o
+   * retorno do provedor já criou a conta e abriu a sessão; aqui entram os
+   * dados que faltam e o tipo de cadastro. O e-mail é o da sessão (o
+   * provedor confirmou), nunca o do pedido. Antes era startSocialSignup, que
+   * aceitava qualquer e-mail sem prova e abria a sessão na conta criada.
+   */
+  @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => User)
-  async completeSocialSignup(
-    @Args('input') input: SocialSignupInput,
-    @Args('token') token: string,
-    @Context() context: any,
+  @ThrottleAuth()
+  async completeSocialProfile(
+    @Args('input') input: CompleteSocialProfileInput,
+    @CurrentUser() user: UserDTO,
   ): Promise<any> {
-    const { req, res } = context;
-    const pending = pendingSocialSignups.get(token);
-    if (!pending || pending.email !== input.email || pending.provider !== input.provider) {
-      throw new Error('Invalid or expired social signup token');
-    }
-    pendingSocialSignups.delete(token);
     if (input.signupType === 'professional') this.assertProfessionalSignup(input.professionalData);
-    const userData = {
+    const updated = await this.userService.completeSocialProfile(user.id, {
       ...input,
-      provider: input.provider,
-      password: randomUUID(),
       roleName:
-        input.signupType === 'professional'
-          ? Role.BARBERSHOP_EMPLOYEE
-          : input.signupType === 'barbershop_owner'
-          ? Role.BARBERSHOP_OWNER
-          : undefined,
-      address: {
-        zipcode: '',
-        street: '',
-        city: '',
-        neighborhood: '',
-        state: '',
-        country: '',
-      },
-      userSystemConfig: {
-        theme: 'light',
-        accentColor: 'bronze',
-        grayColor: 'gray',
-        radius: 'medium',
-        scaling: '100%',
-        panelBackground: 'translucent',
-        language: 'en',
-      },
-    };
-    const dbUser = await this.userService.createUser(userData);
+        input.signupType === 'professional' ? Role.BARBERSHOP_EMPLOYEE : Role.BARBERSHOP_OWNER,
+    });
     if (input.signupType === 'professional' || input.signupType === 'barbershop_owner') {
       try {
-        await this.attachSignup(dbUser.id, input);
+        await this.attachSignup(user.id, input);
       } catch (error) {
-        await this.removeOrphanSignup(dbUser.id);
+        // A barbearia falhou (ex.: endereço em uso): volta a pedir os dados,
+        // sem deixar o cadastro pela metade
+        await this.userService.reopenSocialProfile(user.id);
         throw error;
       }
     }
-    // Acabou de criar a conta: fica lembrado (como o login social)
-    await this.authService.login(dbUser, req, res, true);
-    return toGraphQLUser(dbUser) as any;
+    return toGraphQLUser(updated) as any;
   }
 
   private assertProfessionalSignup(input?: ProfessionalSignupInput) {

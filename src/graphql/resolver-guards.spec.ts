@@ -17,8 +17,6 @@ const PUBLIC: Record<string, string> = {
   'auth.resolver.ts#forgotPassword': 'recuperar senha',
   'auth.resolver.ts#forgotPasswordCheck': 'recuperar senha',
   'auth.resolver.ts#resetPassword': 'recuperar senha (token)',
-  'auth.resolver.ts#startSocialSignup': 'cadastro por login social',
-  'auth.resolver.ts#completeSocialSignup': 'cadastro por login social (token)',
   'client-auth.resolver.ts#clientSignup': 'cadastro do cliente',
   'client-auth.resolver.ts#clientLogin': 'login do cliente',
   'client-auth.resolver.ts#clientVerifyEmail': 'confirmar e-mail (token)',

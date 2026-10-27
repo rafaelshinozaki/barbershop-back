@@ -63,6 +63,11 @@ const IMPORT_PASSWORD_LINK_HOURS = 7 * 24;
 /** Pedir o código no login social só faz sentido com as duas etapas ligadas */
 export const SOCIAL_TWO_FACTOR_NEEDS_2FA_MESSAGE =
   'Ligue a verificação em duas etapas antes de pedir o código no login social.';
+export const SOCIAL_PROFILE_ONLY_MESSAGE =
+  'Só a conta criada pelo login social completa o cadastro aqui.';
+export const SOCIAL_PROFILE_DONE_MESSAGE = 'O cadastro desta conta já está completo.';
+export const SOCIAL_PROFILE_PHONE_MESSAGE = 'Informe o telefone.';
+export const EMAIL_IN_USE_MESSAGE = 'Outra conta já usa este e-mail.';
 export const TERMS_REQUIRED_MESSAGE =
   'Aceite os termos de uso e a política de privacidade para criar a conta.';
 
@@ -467,7 +472,22 @@ export class UserService {
 
     const data: any = {};
 
-    if (userDto.email !== undefined) data.email = userDto.email;
+    // E-mail novo (pelo backoffice): normalizado, sem repetir o de outra
+    // conta e sem confirmação, até a pessoa confirmar o endereço novo
+    // (item 348). Antes ficava como veio e seguia "confirmado"
+    if (userDto.email !== undefined) {
+      const email = normalizeEmail(userDto.email);
+      if (!email) throw new BadRequestException('Invalid email');
+      if (email !== normalizeEmail(user.email)) {
+        const taken = await this.prisma.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' }, NOT: { id: user.id } },
+          select: { id: true },
+        });
+        if (taken) throw new BadRequestException(EMAIL_IN_USE_MESSAGE);
+        data.email = email;
+        data.emailVerifiedAt = null;
+      }
+    }
     if (userDto.password !== undefined) data.password = userDto.password;
     if (userDto.fullName !== undefined) data.fullName = userDto.fullName;
     // Identidade verificada vale pro nome do documento: outro nome, verifica de novo
@@ -1993,6 +2013,75 @@ export class UserService {
       return true;
     }
     throw new UnauthorizedException('Invalid verification code');
+  }
+
+  /**
+   * Conta criada pelo login social, ainda sem os dados do cadastro (sem
+   * telefone): grava documento, telefone, nascimento e o aceite dos termos.
+   * O e-mail não muda (veio confirmado pelo provedor).
+   */
+  async completeSocialProfile(
+    userId: number,
+    data: {
+      fullName?: string;
+      idDocNumber: string;
+      phone: string;
+      gender: string;
+      birthdate: Date | string;
+      readTerms: boolean;
+      country?: string;
+      roleName?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, provider: true, phone: true },
+    });
+    if (!user || !user.provider || user.provider === 'local') {
+      throw new BadRequestException(SOCIAL_PROFILE_ONLY_MESSAGE);
+    }
+    if (user.phone?.trim()) throw new BadRequestException(SOCIAL_PROFILE_DONE_MESSAGE);
+    if (data.readTerms !== true) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
+    const phone = data.phone?.trim();
+    if (!phone) throw new BadRequestException(SOCIAL_PROFILE_PHONE_MESSAGE);
+    const documentNumber = canonicalIdDoc(data.idDocNumber, data.country);
+    // Mesma regra (e mesma mensagem) do cadastro com senha
+    if (documentNumber && (await idDocTaken(this.prisma, documentNumber, data.country, userId))) {
+      throw new HttpException('Registration data already in use', 400);
+    }
+    const roleName = SIGNUP_ROLES.includes(data.roleName ?? '') ? data.roleName : undefined;
+    const role = roleName
+      ? await this.prisma.role.findFirst({ where: { name: roleName }, select: { id: true } })
+      : null;
+    const fullName = data.fullName?.trim();
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(fullName ? { fullName } : {}),
+        idDocNumber: documentNumber,
+        phone,
+        gender: data.gender,
+        birthdate: data.birthdate ? new Date(data.birthdate) : undefined,
+        readTerms: true,
+        termsAcceptedAt: new Date(),
+        ...(role ? { roleId: role.id } : {}),
+      },
+      include: {
+        role: true,
+        address: true,
+        userSystemConfig: true,
+        notificationPreference: true,
+      },
+    });
+    const { password: _pw, ...withoutPassword } = updated;
+    return withoutPassword;
+  }
+
+  /** O tipo de cadastro falhou depois dos dados: a conta volta a pedir o cadastro */
+  async reopenSocialProfile(userId: number) {
+    await this.prisma.user
+      .update({ where: { id: userId }, data: { phone: '' } })
+      .catch((err) => this.logger.error(`Cadastro social não reaberto: ${err.message}`));
   }
 
   /** Código que confirma o e-mail no cadastro com senha (ver SignupCodes) */

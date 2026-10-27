@@ -548,15 +548,13 @@ export class CheckPasswordInput {
   password: string;
 }
 
+/** Dados que faltam na conta criada pelo login social (o e-mail vem da sessão) */
 @InputType()
-export class SocialSignupInput {
-  @Field()
-  @IsEmail()
-  email: string;
-
-  @Field()
+export class CompleteSocialProfileInput {
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  fullName: string;
+  fullName?: string;
 
   @Field()
   @IsString()
@@ -577,11 +575,13 @@ export class SocialSignupInput {
   @IsBoolean()
   readTerms: boolean;
 
-  @Field()
+  /** País do documento (CPF de outro país não conta como duplicado) */
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  provider: string;
+  country?: string;
 
-  /** client fica no cadastro de cliente. Aqui: professional ou barbershop_owner. */
+  /** professional ou barbershop_owner (cliente fica no cadastro de cliente) */
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
