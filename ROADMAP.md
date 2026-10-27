@@ -3783,20 +3783,26 @@ Foram lidos no back as regras da rede (`updateNetwork`, `applyNetworkLimits`, `n
 
 Foram lidos no back a troca de plano (`changeUserPlan`, `changeMultipleUsersPlan`) e as buscas de plano depois das versões do item 351. No backoffice-back, a troca de plano (`AdminWrites.changeUserPlan`, `UsersWrites.bulk`), a edição de conta (`UsersWrites.update`), os repasses manuais (`recordSubscriptionPayout`, `recordDepositPayout`, `recordChairRentPayout`, `payoutBalances`) e as ações do suporte na unidade e na rede (`correctShop`, `setShopSuspended`, `setNetworkSuspended`).
 
-362. ⬜ **A correção do suporte aceita qualquer sigla de três letras como moeda da unidade** (backoffice-back: `assertShopBase`, `correctShop`):
+362. ✅ **A correção do suporte aceita qualquer sigla de três letras como moeda da unidade** (backoffice-back: `assertShopBase`, `correctShop`):
      - O back só aceita moedas da lista do `Intl` (`SUPPORTED_CURRENCIES`). O backoffice só confere o formato (`/^[A-Z]{3}$/`): "BRR", "XYZ" ou "REA" são gravados.
      - Com moeda que não existe, a Stripe recusa as cobranças da unidade (sinal, clube, aluguel por cartão) e os valores aparecem com a sigla crua nas telas e relatórios.
 
      **Fazer:** o backoffice confere a moeda com a mesma lista do back (`Intl.supportedValuesOf('currency')`). Teste: "XYZ" é recusado com "Moeda inválida"; "EUR" passa.
 
-363. ⬜ **Trocar o e-mail da conta pelo backoffice deixa duas contas com o mesmo e-mail** (backoffice-back: `UsersWrites.update`):
+     **Feito:** `assertShopBase` usa a lista de moedas do `Intl`, a mesma do back. Testes em `test/ops-base.spec.ts` (backoffice-back).
+
+363. ✅ **Trocar o e-mail da conta pelo backoffice deixa duas contas com o mesmo e-mail** (backoffice-back: `UsersWrites.update`):
      - O único aviso de e-mail repetido é o erro do índice único, que é por e-mail e provedor (`email`, `provider`). Conta com senha pode receber o e-mail de uma conta do Google, e e-mails antigos gravados com maiúsculas também não colidem.
      - O back recusa isso desde o item 348 (`EMAIL_IN_USE_MESSAGE`, busca sem diferenciar caixa e em todos os provedores). Pelo backoffice a regra não vale: as duas contas passam a disputar o login social, o código de recuperação de senha e a ligação com a área do cliente.
 
      **Fazer:** antes de gravar, procurar outra conta (não apagada) com o mesmo e-mail sem diferenciar caixa, em qualquer provedor, e recusar com "Outra conta já usa este e-mail". Teste: conta do Google com `a@x.com`; trocar o e-mail de outra conta para `A@x.com` é recusado.
 
-364. ⬜ **O repasse manual aceita data no futuro e é gravado duas vezes num clique repetido** (backoffice-back: `recordSubscriptionPayout`, `recordDepositPayout`, `recordChairRentPayout`):
+     **Feito:** antes de gravar, `UsersWrites.update` procura outra conta não apagada com o mesmo e-mail (sem diferenciar caixa, em qualquer provedor) e recusa com "E-mail já em uso por outra conta". Teste em `test/users-writes.spec.ts` (backoffice-back).
+
+364. ✅ **O repasse manual aceita data no futuro e é gravado duas vezes num clique repetido** (backoffice-back: `recordSubscriptionPayout`, `recordDepositPayout`, `recordChairRentPayout`):
      - A data só precisa ser válida: um repasse com data no ano que vem é aceito e já desconta do saldo devido de hoje.
      - Não há nada contra repetir. Clique duplo ou nova tentativa depois de uma resposta lenta grava o mesmo repasse duas vezes (mesma unidade, tipo, valor e data). O saldo devido cai em dobro e a unidade parece paga sem ter recebido.
 
      **Fazer:** recusar data depois de hoje. Recusar o mesmo repasse (unidade, tipo, valor, data) gravado há poucos minutos, com aviso de que já foi registrado (ou aceitar uma chave de envio vinda da tela). Teste: data de amanhã é recusada; o mesmo repasse duas vezes seguidas grava uma.
+
+     **Feito:** os três registros passam por `recordPayout`, que trava a unidade, recusa data depois de hoje no fuso da unidade e devolve 409 para o mesmo repasse (unidade, valor, data) gravado há menos de 10 minutos. Teste em `test/admin-writes.spec.ts` (backoffice-back).
