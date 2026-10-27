@@ -7,7 +7,7 @@ import {
   toZonedParts,
   zonedTimeToUtc,
 } from '../common/timezone.util';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, PUBLIC_BOOKING_WINDOW_DAYS } from './barbershop.service';
 import { appointmentContactEmail } from './appointment-contact';
 import { DepositPaymentService } from './deposit-payment.service';
 
@@ -250,9 +250,10 @@ export class ClosureService {
     const cancelledIds: number[] = [];
     if (input.cancelAffected) {
       for (const a of affected) {
-        // Condicional: não passa por cima de quem mudou no meio tempo
+        // Condicional: não passa por cima de quem mudou no meio tempo. Horário
+        // já cobrado (pagou antes) fica para a equipe resolver (item 338)
         const res = await this.prisma.appointment.updateMany({
-          where: { id: a.id, status: 'CONFIRMED' },
+          where: { id: a.id, status: 'CONFIRMED', sale: { is: null } },
           data: { status: 'CANCELLED', linkVersion: { increment: 1 } },
         });
         if (res.count === 0) continue;
@@ -295,8 +296,16 @@ export class ClosureService {
     return true;
   }
 
-  /** Próximos fechamentos pra página pública ("Fechado em 25/12 — Natal"). */
-  async upcomingPublic(barbershopId: number, timeZone?: string | null, days = 60) {
+  /**
+   * Próximos fechamentos pra página pública ("Fechado em 25/12 — Natal"), até
+   * o fim da janela do agendamento online (antes 60 dias: depois disso o dia
+   * fechado aparecia como aberto e cheio, item 337)
+   */
+  async upcomingPublic(
+    barbershopId: number,
+    timeZone?: string | null,
+    days = PUBLIC_BOOKING_WINDOW_DAYS,
+  ) {
     const today = toZonedParts(new Date(), safeTimeZone(timeZone)).dateStr;
     return this.prisma.barbershopClosure.findMany({
       where: { barbershopId, date: { gte: today, lte: addDaysStr(today, days) } },

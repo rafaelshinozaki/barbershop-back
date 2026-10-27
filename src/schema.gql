@@ -2070,6 +2070,9 @@ type ManagedAppointmentType {
   holdExpiresAt: String
   id: Int!
   manageToken: String
+
+  """Conta já fechada no estabelecimento: o link não muda o horário"""
+  paid: Boolean!
   price: Float!
 
   """Link da versão anterior: só status e estorno, sem ações"""

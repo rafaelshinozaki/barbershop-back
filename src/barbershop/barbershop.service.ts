@@ -14,6 +14,7 @@ import { reminderSentAtAfterMove } from './reminder-window';
 import { appointmentContactEmail } from './appointment-contact';
 import { localeGroups, moneyByCurrency } from './dashboard-locale';
 import { ownerAcceptsPublic, ownerAccountOpen } from './public-shop';
+import { assertPublicTextLimits } from './public-text-limits';
 import {
   Injectable,
   Logger,
@@ -401,6 +402,8 @@ export function depositKept(a: {
   return !!a.depositPaid && !!(a.depositPaidAt || a.depositReceivedAt) && !a.depositRefundedAt;
 }
 
+export const MANAGED_PAID_MESSAGE =
+  'Este horário já foi pago no estabelecimento. Para cancelar ou remarcar, fale com ele.';
 export const GIFT_CARD_SHOP_MESSAGE = 'Escolha a unidade que está vendendo o cartão-presente';
 export const DEPOSIT_RECEIVED_DELETE_MESSAGE =
   'Este horário tem sinal recebido pela equipe. Cancele em vez de excluir, ou desmarque o sinal antes (com o caixa aberto).';
@@ -6133,10 +6136,17 @@ export class BarbershopService {
   async refundOnlineDeposit(appointmentId: number) {
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
-      select: { depositPaymentIntentId: true, depositPaidAt: true, depositStripeAccountId: true },
+      select: {
+        depositPaymentIntentId: true,
+        depositPaidAt: true,
+        depositStripeAccountId: true,
+        sale: { select: { id: true } },
+      },
     });
     const intentId = appt?.depositPaymentIntentId;
     if (!intentId || !appt.depositPaidAt) return false;
+    // A venda do horário já descontou o sinal: não volta por aqui (item 338)
+    if (appt.sale) return false;
     const now = new Date();
     const claimed = await this.prisma.appointment.updateMany({
       where: {
@@ -6185,10 +6195,13 @@ export class BarbershopService {
         prepaidRefundedAt: true,
         prepaidRefundedAmount: true,
         barbershop: { select: { currency: true } },
+        sale: { select: { id: true } },
       },
     });
     const intentId = appt?.prepaidPaymentIntentId;
     if (!intentId || !appt.prepaidAt || appt.prepaidRefundedAt) return false;
+    // A venda do horário já descontou o pago pelo app: não volta por aqui (item 338)
+    if (appt.sale) return false;
     const paid = Number(appt.prepaidAmount ?? 0);
     const before = Number(appt.prepaidRefundedAmount ?? 0);
     const remaining = Math.round((paid - before) * 100) / 100;
@@ -6541,6 +6554,7 @@ export class BarbershopService {
     const name = input.customerName?.trim() ?? '';
     const phone = input.customerPhone?.trim() ?? '';
     const email = input.customerEmail?.trim().toLowerCase() ?? '';
+    assertPublicTextLimits({ name, phone, email });
     if (name.length < 2 || phone.length < 8) {
       throw new BadRequestException('Informe nome e telefone');
     }
@@ -8419,6 +8433,13 @@ export class BarbershopService {
     referralCode?: string;
     channel?: string;
   }) {
+    assertPublicTextLimits({
+      name: input.customerName,
+      phone: input.customerPhone,
+      email: input.customerEmail,
+      notes: input.notes,
+      referralCode: input.referralCode,
+    });
     const barbershop = await this.prisma.barbershop.findFirst({
       where: { id: input.barbershopId, isActive: true, ...ownerAcceptsPublic },
     });
@@ -8816,6 +8837,7 @@ export class BarbershopService {
             barber: true,
             barbershop: { include: { network: true } },
             services: { include: { service: true } },
+            sale: { select: { id: true } },
           },
         })
       : null;
@@ -8835,13 +8857,18 @@ export class BarbershopService {
       appt.startAt.getTime(),
     );
     const changeDeadline = new Date(Math.max(policyDeadline.getTime(), graceEnd));
-    const canChange = !readOnly && appt.status === 'CONFIRMED' && new Date() < changeDeadline;
-    return { appt, windowHours, changeDeadline, canChange, readOnly };
+    // Conta já fechada (pagou antes do horário): o sinal e o pago pelo app
+    // já foram descontados, então o link não cancela nem remarca (item 338)
+    const paid = appt.sale != null;
+    const canChange =
+      !readOnly && !paid && appt.status === 'CONFIRMED' && new Date() < changeDeadline;
+    return { appt, windowHours, changeDeadline, canChange, readOnly, paid };
   }
 
   private ensureChangeable(loaded: {
     canChange: boolean;
     readOnly: boolean;
+    paid?: boolean;
     appt: { status: string };
   }) {
     if (loaded.readOnly) {
@@ -8854,13 +8881,14 @@ export class BarbershopService {
     if (loaded.appt.status !== 'CONFIRMED') {
       throw new BadRequestException('Este agendamento não pode mais ser alterado');
     }
+    if (loaded.paid) throw new BadRequestException(MANAGED_PAID_MESSAGE);
     throw new BadRequestException(
       'O prazo para cancelar ou remarcar pelo link já passou. Fale com o estabelecimento.',
     );
   }
 
   async getManagedAppointment(token: string) {
-    const { appt, windowHours, changeDeadline, canChange, readOnly } =
+    const { appt, windowHours, changeDeadline, canChange, readOnly, paid } =
       await this.loadManagedAppointment(token);
     // Vários serviços no mesmo horário: nomes juntos, preço somado
     const services = appt.services.filter((s) => s.service);
@@ -8872,6 +8900,7 @@ export class BarbershopService {
       endAt: appt.endAt.toISOString(),
       canChange,
       readOnly,
+      paid,
       changeDeadline: changeDeadline.toISOString(),
       cancellationWindowHours: windowHours,
       // Só o primeiro nome: a ficha é achada pelo telefone (não confirmado) e
