@@ -4006,7 +4006,7 @@ Foram lidos no back a fila de chegada (`createWalkIn`, `getWalkIns`), o aviso de
      - Para reenviar o código, a tela do código recebe a senha pelo estado da navegação (`navigate(..., { state: { password } })`). O estado fica no histórico da aba: voltar, recarregar ou abrir as ferramentas do navegador mostra a senha em texto puro.
      - O login escreve no console a resposta inteira (`console.log('GraphQL Login response:', ...)` e os dados do usuário).
 
-     **Fazer:** o reenvio usa o `loginId` (o back reenvia o código sem a senha) e a senha não vai para o estado. Tirar os `console.log` do login. Teste: depois do login com código, `history.state` não tem a senha.
+     **Fazer:** o reenvio usa o `loginId` (o back ganha um reenvio do código por ele, sem a senha) e a senha não vai para o estado. Tirar os `console.log` do login. Teste: depois do login com código, `history.state` não tem a senha.
 
 396. ⬜ **O rascunho do cadastro guarda CPF, nascimento, telefone e endereço no navegador por 7 dias** (front: `useSignupPersistence`):
      - Para não perder o formulário, o cadastro salva tudo, menos a senha, no `localStorage` e só apaga quando o cadastro termina. Quem desiste num computador compartilhado (o da recepção da barbearia, por exemplo) deixa o documento e o endereço para o próximo.
