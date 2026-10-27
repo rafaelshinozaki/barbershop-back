@@ -1073,6 +1073,7 @@ input ClientResetPasswordInput {
 
 input ClientSignupInput {
   email: String!
+  emailCode: String
   language: String
   name: String!
   password: String!

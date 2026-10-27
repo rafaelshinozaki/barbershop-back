@@ -28,6 +28,13 @@ export class ClientSignupInput {
   @IsString()
   @MaxLength(10)
   language?: string;
+
+  /** Código de 6 dígitos enviado por requestSignupCode (confirma o e-mail) */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  emailCode?: string;
 }
 
 @InputType()

@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
@@ -12,6 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Response } from 'express';
 import { PrismaService } from '@/prisma/prisma.service';
+import { RedisService } from '@/redis/redis.service';
+import { SignupCodes } from '../auth/signup-code';
 import { EmailService } from '@/email/email.service';
 import { StripeService } from '@/stripe/stripe.service';
 import { normalizeLang } from '@/email/language';
@@ -118,6 +121,8 @@ export class ClientAuthService {
     private readonly emailService: EmailService,
     private readonly stripeService: StripeService,
     private readonly accountLink: AccountLinkService,
+    // Guarda o código que confirma o e-mail no cadastro
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   // Liga as fichas (Customer) órfãs de qualquer negócio da plataforma com
@@ -348,9 +353,22 @@ export class ClientAuthService {
     return updated;
   }
 
-  async signup(email: string, password: string, name: string, phone?: string, language?: string) {
+  async signup(
+    email: string,
+    password: string,
+    name: string,
+    phone?: string,
+    language?: string,
+    emailCode?: string,
+  ) {
     const normalizedEmail = email.trim().toLowerCase();
+    // A conta só é criada com o código enviado ao e-mail (requestSignupCode),
+    // conferido antes de dizer se o e-mail já tem conta. Antes, qualquer um
+    // criava a conta com o e-mail de outra pessoa (a confirmação vinha
+    // depois, por link, com a conta já ocupando o e-mail)
     validatePassword(password);
+    const codes = new SignupCodes(this.redis, this.emailService);
+    await codes.check(normalizedEmail, emailCode);
 
     const existing = await this.prisma.clientAccount.findUnique({
       where: { email: normalizedEmail },
@@ -363,9 +381,12 @@ export class ClientAuthService {
     const staff = await this.accountLink.staffByEmail(normalizedEmail);
     const sameAsStaff = !!staff && (await this.accountLink.staffPasswordMatches(staff, password));
     const passwordHash = await bcrypt.hash(password, 10);
+    await codes.consume(normalizedEmail);
     const account = await this.prisma.clientAccount.create({
       data: {
         email: normalizedEmail,
+        // E-mail confirmado pelo código
+        emailVerifiedAt: new Date(),
         password: sameAsStaff ? null : passwordHash,
         name: name.trim(),
         phone: phone?.trim() || null,
@@ -374,8 +395,8 @@ export class ClientAuthService {
       },
     });
 
-    // Nada é ligado ainda: o histórico aparece depois de confirmar o e-mail
-    await this.sendVerificationEmail(account);
+    // E-mail confirmado: as fichas com este e-mail já entram no histórico
+    await this.linkVerifiedCustomers(account);
 
     return account;
   }
