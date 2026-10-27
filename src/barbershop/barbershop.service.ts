@@ -4677,7 +4677,7 @@ export class BarbershopService {
       if (quantityAfter < 0) {
         throw new BadRequestException('Estoque não pode ficar negativo');
       }
-      await tx.inventoryMovement.create({
+      const movement = await tx.inventoryMovement.create({
         data: {
           inventoryItemId: item.id,
           movementType: data.movementType ?? 'ADJUSTMENT',
@@ -4687,11 +4687,14 @@ export class BarbershopService {
           referenceType: 'MANUAL',
           notes: data.notes,
         },
+        select: { id: true },
       });
-      return tx.inventoryItem.findUnique({
+      const updated = await tx.inventoryItem.findUniqueOrThrow({
         where: { id: item.id },
         include: { product: { include: { category: true } } },
       });
+      // Quem chama avisa o estoque baixo por este movimento (item 367)
+      return { ...updated, movementId: movement.id };
     });
   }
 
@@ -6877,11 +6880,20 @@ export class BarbershopService {
   }
 
   /**
-   * O cliente já tem horário na unidade no dia da entrada (agendou pelo
-   * aviso ou por conta própria): a entrada fecha (BOOKED) e não é avisada.
+   * O cliente marcou horário na unidade no dia da entrada depois de entrar
+   * na fila (pelo aviso ou por conta própria), com o profissional pedido se
+   * pediu: a entrada fecha (BOOKED) e não é avisada. Quem já tinha horário e
+   * queria outro continua na fila (item 365).
    */
   private async closeWaitlistIfBooked(
-    entry: { id: number; barbershopId: number; customerId: number; date: Date },
+    entry: {
+      id: number;
+      barbershopId: number;
+      customerId: number;
+      barberId: number | null;
+      date: Date;
+      createdAt: Date;
+    },
     timezone: string | null | undefined,
   ) {
     const day = entry.date.toISOString().slice(0, 10);
@@ -6890,6 +6902,8 @@ export class BarbershopService {
       where: {
         barbershopId: entry.barbershopId,
         customerId: entry.customerId,
+        ...(entry.barberId != null ? { barberId: entry.barberId } : {}),
+        createdAt: { gte: entry.createdAt },
         status: { in: WAITLIST_BOOKED_STATUSES },
         startAt: { gte: zonedTimeToUtc(day, 0, tz), lt: zonedTimeToUtc(nextDateStr(day), 0, tz) },
       },
@@ -6905,7 +6919,8 @@ export class BarbershopService {
 
   /**
    * Fecha o que ficou para trás na lista de espera: dia que já passou (no
-   * fuso da unidade) vira EXPIRED, e quem já tem horário no dia, BOOKED.
+   * fuso da unidade) vira EXPIRED, e quem marcou horário no dia depois de
+   * entrar na fila (com o profissional pedido, se pediu), BOOKED.
    * Antes ficavam "aguardando" para sempre e contavam no limite por cliente.
    */
   async closeStaleWaitlistEntries() {
@@ -6930,6 +6945,11 @@ export class BarbershopService {
             WHERE a."barbershopId" = w."barbershopId"
               AND a."customerId" = w."customerId"
               AND a.status IN ('CONFIRMED', 'PENDING_PAYMENT', 'COMPLETED')
+              -- Só o horário marcado depois de entrar na lista e, se a entrada
+              -- pede um profissional, com ele: quem já tinha horário e queria
+              -- outro (mais cedo, com outra pessoa) continua na fila (item 365)
+              AND a."createdAt" >= w."createdAt"
+              AND (w."barberId" IS NULL OR a."barberId" = w."barberId")
               AND (a."startAt" AT TIME ZONE 'UTC' AT TIME ZONE
                     COALESCE(t.name, 'UTC'))::date
                   = w.date::date)`;
