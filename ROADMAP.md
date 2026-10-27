@@ -3650,3 +3650,40 @@ Depois do código no cadastro (itens 344 e 345), foram revistos todos os lugares
      - O comentário do `AccountLinkService` ("a conta da equipe não confirma e-mail") ficou desatualizado.
 
      **Fazer:** a conta de cliente criada ligada herda o `emailVerifiedAt` da conta da equipe (e liga as fichas). Só manda o link quando a conta da equipe também não tem o e-mail confirmado. Teste: equipe com e-mail confirmado abre a área do cliente já confirmada e vê o histórico; equipe sem confirmação continua recebendo o link.
+
+### Centésima trigésima primeira rodada (2026-10-27): cupons, planos, agenda assinável e guarda de dados
+
+Foram lidos no back os cupons (`CouponsService`), os planos (`PlanService`) e a renovação do plano (`renewSubscription`), os pagamentos da plataforma (`PaymentsController`), a agenda assinável e o "adicionar à agenda" (`CalendarService`, `ics.ts`), o sitemap e a prévia da página pública (`SitemapService`, `ShopSeoService`), a guarda de dados (`RetentionService`), as notificações no celular (`PushService`), o webhook do WhatsApp e a trilha do app (`AppActivityInterceptor`).
+
+350. ⬜ **O "1 mês grátis" do convite de amigo dá o ano inteiro de graça no plano anual** (back: `CouponsService.validateCoupon`, `PaymentsService.createPaymentIntentForCheckout`):
+     - O cupom `FREE_MONTH` (o do convite de amigo, `createFriendInviteCoupon`) vale para todos os planos, e o desconto é o preço inteiro do plano (`discountAmount = originalAmount`).
+     - No plano anual (`billingCycle: 'YEARLY'`), o desconto cobre os 12 meses. Como o valor final fica abaixo do mínimo da Stripe, o plano é ativado sem cobrança, com um ano de período (`addCycle`).
+     - Quem convida e quem é convidado ganham, cada um, um ano do plano anual no lugar de um mês.
+
+     **Fazer:** no plano anual, o `FREE_MONTH` desconta um doze avos do preço (`monthlyPrice`) e cobra o resto. Teste: cupom do convite no plano mensal zera a cobrança; no anual, cobra 11/12 do preço.
+
+351. ⬜ **Mudar o preço ou o ciclo de um plano muda a cobrança de quem já assina, sem aviso** (back: `PlanService.updatePlan`, `PaymentsService.renewSubscription`):
+     - O comentário do `updatePlan` diz que "quem já assina continua no preço antigo", mas isso só vale para a assinatura cobrada pela Stripe.
+     - A renovação feita por nós (`renewSubscription`, sem `stripeSubscriptionId`) cobra `sub.plan.price` e avança o período por `sub.plan.billingCycle`, lidos na hora da renovação. Um aumento no backoffice é cobrado de todos os assinantes na próxima renovação, sem e-mail avisando. Trocar o ciclo de mensal para anual cobra o preço novo e dá um ano a quem pagava por mês.
+     - O `billingCycle` também não é conferido: um valor fora de `MONTHLY`/`YEARLY` vira mensal na Stripe e 30 dias na renovação.
+
+     **Fazer:** a assinatura guarda o preço e o ciclo contratados, e a renovação cobra esses. Mudança de preço vale para as assinaturas novas; levar os antigos para o preço novo é uma ação à parte, com aviso por e-mail antes da renovação. Aceitar só `MONTHLY` e `YEARLY`. Teste: aumentar o preço do plano não muda a próxima cobrança de quem já assina.
+
+352. ⬜ **O cupom com "mínimo de meses de assinatura" conta o plano gratuito e o tempo depois do fim do plano** (back: `CouponsService.validateCoupon`):
+     - Todo cadastro ganha a assinatura do plano gratuito (`Free`, ativa desde o primeiro dia). A conta de meses (`minSubscriptionMonths`) soma todas as assinaturas, inclusive essa.
+     - Uma assinatura sem `cancelationDate` conta até hoje, mesmo vencida ou trocada por outra. Assinaturas ao mesmo tempo (o gratuito e o pago) contam em dobro.
+     - Um cupom de fidelidade ("assinantes há 6 meses") vale para quem nunca pagou: basta a conta ter 6 meses.
+
+     **Fazer:** contar só os planos pagos, de `startSubDate` até `cancelationDate`, `currentPeriodEnd` ou hoje, o que vier primeiro, sem contar duas vezes os períodos que se sobrepõem. Teste: conta de 6 meses só no gratuito não usa o cupom de 6 meses; com 6 meses de plano pago, usa.
+
+353. ⬜ **Dados de terceiros que nunca saem: convites vencidos e links do cliente já usados** (back: `RetentionService`):
+     - O convite de amigo guarda o e-mail de quem foi convidado (`FriendInvite.friendEmail`), e o convite da equipe guarda nome, e-mail e telefone da pessoa (`EmployeeInvite`). Vencidos ou recusados, ficam no banco para sempre. Só saem com a conta de quem convidou ou com a unidade encerrada (os pendentes).
+     - Os links da conta do cliente (`ClientAccountToken`: confirmar e-mail, redefinir senha, excluir conta) também ficam depois de usados ou vencidos. Os da equipe (`PasswordResetToken`, `VerificationCode`) já saem na guarda diária.
+
+     **Fazer:** a guarda diária apaga os convites vencidos ou recusados há mais de 90 dias (o aceito fica: liga a recompensa e o vínculo) e os `ClientAccountToken` usados ou vencidos. Teste: convite vencido há 100 dias sai; aceito fica; link do cliente usado sai.
+
+354. ⬜ **O arquivo de agenda (.ics) não escapa o retorno de carro sozinho** (back: `ics.ts`, função `text`):
+     - O escape troca só `\n` e `\r\n` por `\n` literal. Um `\r` sozinho no nome do cliente ou na observação (vindos da página pública ou da ficha) passa cru.
+     - Vários apps de agenda tratam o `\r` como fim de linha. Na agenda assinável da equipe, o texto depois dele vira uma propriedade nova do evento (por exemplo, outro horário ou outro título).
+
+     **Fazer:** tratar `\r` sozinho como quebra de linha no escape (`/\r\n|\r|\n/g`). Teste: nome com `\r` sai numa linha só, com `\n` escapado.
