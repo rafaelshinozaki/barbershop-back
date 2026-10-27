@@ -3592,3 +3592,14 @@ Foram lidos no back a importação de planilha (`ImportService`), o chat do aten
      - O dono manda para a rede inteira (`networkWide`) a partir de qualquer unidade. Com cinco unidades, são cinco campanhas por dia para todos os clientes da rede, e cinco vezes o limite mensal de e-mails. Os limites existem para proteger a reputação de envio do domínio da plataforma.
      
      **Fazer:** campanha para a rede inteira conta no limite da rede (todas as unidades). Teste: o dono manda uma campanha da rede pela unidade A; pela unidade B, no mesmo dia, é recusada.
+
+### Centésima vigésima nona rodada (2026-10-27): varredura geral, segunda passada
+
+Foram lidos no back o convite de funcionário (validar, aceitar criando a conta, aceitar com a conta que já existe, reenviar), os posts agendados nas redes sociais (`SocialService`), o perfil público do profissional (`CareerService`), o Destaque pago (`FeaturedPaymentService`) e a verificação de identidade. No backoffice-back, as escritas da área Usuários (`UsersWrites`: editar, ativar e desativar em lote, trocar plano, derrubar sessões).
+
+343. ⬜ **Aceitar o convite com uma conta que já existe confirma o e-mail dela sem a chave do link, e entra na equipe com o link que o gerente compartilhou** (back: `EmployeeInviteService.acceptInviteAsUser`):
+     - O convite tem uma chave que só vai no e-mail convidado (`emailKey`). Criar a conta pelo convite exige essa chave: quem abriu o link compartilhado pelo gerente (o "copiar link" da equipe) não provou ser dono do e-mail.
+     - Aceitar com a conta já existente (`POST /employee-invite/accept/:token/existing`) só confere se o e-mail da conta é o do convite. Não pede a chave e ainda marca o e-mail da conta como confirmado (`emailVerifiedAt`).
+     - O login da equipe não exige e-mail confirmado. Quem cria uma conta com o e-mail de outra pessoa (sem confirmar) e recebe o link do convite pelo gerente entra na equipe no lugar dela, com o e-mail dado como confirmado. A pessoa de verdade, ao abrir o convite, ouve que "já existe uma conta com este e-mail".
+     
+     **Fazer:** o aceite com conta existente exige a chave do e-mail quando a conta ainda não tem o e-mail confirmado (e só a chave confirma o e-mail). Sem a chave, a tela pede o reenvio, como no aceite que cria a conta. Teste: conta com e-mail não confirmado aceita sem a chave e é recusada; com a chave, entra e o e-mail fica confirmado; conta com e-mail já confirmado continua aceitando sem a chave.
