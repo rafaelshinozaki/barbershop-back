@@ -241,6 +241,36 @@ describe('Vagas para freelancer (integração)', () => {
     for (const b of hired) await barbershops.deleteBarber(ownerId, shopId, b.id);
   });
 
+  it('dois aceites ao mesmo tempo numa vaga de 1 lugar: só um passa (item 341)', async () => {
+    const job = await opening({ title: 'Um lugar, dois aceites', slots: 1 });
+    const a = await jobs.apply(pro2Id, job.id);
+    const b = await jobs.apply(pro3Id, job.id);
+    const seatsBefore = await prisma.barber.findMany({
+      where: { barbershopId: shopId },
+      select: { id: true },
+    });
+    const results = await Promise.allSettled([
+      jobs.accept(ownerId, shopId, a.id),
+      jobs.accept(ownerId, shopId, b.id),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(
+      await prisma.jobApplication.count({ where: { jobOpeningId: job.id, status: 'accepted' } }),
+    ).toBe(1);
+    expect(
+      await prisma.employeeInvite.count({
+        where: { barbershopId: shopId, barber: { id: { notIn: seatsBefore.map((x) => x.id) } } },
+      }),
+    ).toBe(1);
+    const hired = await prisma.barber.findMany({
+      where: { barbershopId: shopId, id: { notIn: seatsBefore.map((x) => x.id) } },
+      select: { id: true },
+    });
+    for (const h of hired) await barbershops.deleteBarber(ownerId, shopId, h.id);
+    // O convite do aceito sai junto (o teste da taxa conta os convites)
+    await prisma.employeeInvite.deleteMany({ where: { barberId: { in: hired.map((h) => h.id) } } });
+  });
+
   it('desistir e se candidatar de novo; recusar avisa; encerrar recusa quem esperava', async () => {
     const job = await opening({ title: 'Manicure para a semana', category: null, slots: 2 });
     const a = await jobs.apply(pro2Id, job.id);

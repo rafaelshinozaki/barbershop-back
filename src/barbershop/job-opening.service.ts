@@ -33,6 +33,7 @@ type Notice = Record<Lang, { title: string; message: string }>;
 
 const FEE_KIND = 'job_fill_fee';
 
+export const JOB_OPENING_FULL_MESSAGE = 'Os lugares desta vaga já foram preenchidos.';
 export const JOB_OPENING_ENDED_MESSAGE = 'O período desta vaga já acabou.';
 
 /** Vaga encerrada porque o período acabou (item 282) */
@@ -525,10 +526,28 @@ export class JobOpeningService {
     const accessEndsAt = new Date(
       zonedTimeToUtc(nextDateStr(opening.endDate), 0, timeZone).getTime() - 1,
     );
-    // Condicional: dois gerentes aceitando ao mesmo tempo não criam dois convites
-    const claimed = await this.prisma.jobApplication.updateMany({
-      where: { id: applicationId, status: 'pending' },
-      data: { status: 'accepted', decidedAt: new Date() },
+    // Sob a trava da vaga: aceites ao mesmo tempo (dois gerentes, duas abas,
+    // a taxa paga pelo webhook) contam um de cada vez e não passam dos
+    // lugares (item 341). A candidatura também só é aceita uma vez.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'job-opening:' + opening.id}))`;
+      const current = await tx.jobOpening.findUnique({
+        where: { id: opening.id },
+        select: { status: true, slots: true },
+      });
+      if (current?.status !== 'open') {
+        throw new BadRequestException('A vaga não está mais aberta');
+      }
+      const alreadyAccepted = await tx.jobApplication.count({
+        where: { jobOpeningId: opening.id, status: 'accepted' },
+      });
+      if (alreadyAccepted >= current.slots) {
+        throw new BadRequestException(JOB_OPENING_FULL_MESSAGE);
+      }
+      return tx.jobApplication.updateMany({
+        where: { id: applicationId, status: 'pending' },
+        data: { status: 'accepted', decidedAt: new Date() },
+      });
     });
     if (claimed.count === 0) throw new BadRequestException('Esta candidatura já foi respondida');
     let inviteId: number;

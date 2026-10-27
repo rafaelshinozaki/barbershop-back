@@ -1,6 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { SmartLogger } from '../common/logger.util';
@@ -97,6 +103,33 @@ export class S3Service {
   /** Apaga o arquivo (ex.: foto de perfil na exclusão de conta). */
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  /**
+   * Apaga tudo sob o prefixo (ex.: `users/12/`, as fotos de uma conta na
+   * exclusão). Devolve quantos arquivos saíram.
+   */
+  async deletePrefix(prefix: string): Promise<number> {
+    if (!prefix.endsWith('/') || prefix.length < 3) throw new Error(`Prefixo inválido: ${prefix}`);
+    let removed = 0;
+    let token: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }),
+      );
+      const keys = (page.Contents ?? []).map((o) => o.Key).filter((k): k is string => !!k);
+      if (keys.length) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        removed += keys.length;
+      }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+    return removed;
   }
 
   async getDownloadUrl(key: string): Promise<string> {

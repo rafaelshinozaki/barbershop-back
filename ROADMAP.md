@@ -3573,7 +3573,7 @@ Foram lidos no back a conta do horário (`createSale` com `appointmentId`), o ca
 
 Foram lidos no back a importação de planilha (`ImportService`), o chat do atendimento (`ChatService`), a ficha do cliente (criar, editar, buscar), os pacotes (venda, baixa, desfazer), as campanhas de marketing (segmento, limites, descadastro), as vagas para freelancer (taxa, aceite), o espaço compartilhado, os envios de imagem (`S3Service`, `MediaService`, foto de perfil, logo da franquia, posts), as notificações, o estoque, a verificação de identidade e a exclusão de conta (equipe e cliente). No front, a busca de datas calculadas em UTC no lugar do fuso da unidade.
 
-340. ⬜ **A foto de perfil e a logo da franquia trocam de chave antes do envio; envio que falha deixa a imagem quebrada, e a anterior fica no S3 para sempre** (back: `UserService.generatePhotoUploadUrl`, `NetworkResolver.getNetworkLogoUploadUrl`, `AccountDeletionService.erase`):
+340. ✅ **A foto de perfil e a logo da franquia trocam de chave antes do envio; envio que falha deixa a imagem quebrada, e a anterior fica no S3 para sempre** (back: `UserService.generatePhotoUploadUrl`, `NetworkResolver.getNetworkLogoUploadUrl`, `AccountDeletionService.erase`):
      - A capa, a foto do profissional e a galeria seguem o caminho certo: o link de envio é gerado, o navegador envia, e só depois a tela confirma a chave (`setCover`, `setAvatar`), que apaga a anterior.
      - A foto de perfil grava o `photoKey` novo no mesmo pedido que gera o link de envio. Se o envio não acontece (imagem acima do limite, que o S3 recusa; rede caiu; aba fechada), a conta aponta para um arquivo que não existe e a foto some. A anterior não é apagada.
      - A logo da franquia faz o mesmo (`logoKey`), com o caminho fixo `networks/<id>/logo.<ext>`: trocar de PNG para JPG deixa as duas, e envio que falha quebra a logo do menu de toda a rede.
@@ -3581,17 +3581,23 @@ Foram lidos no back a importação de planilha (`ImportService`), o chat do aten
      
      **Fazer:** mesmo caminho da capa: o link de envio não grava nada; uma mutation confirma a chave (conferindo o prefixo da conta ou da rede) e apaga a anterior. Na exclusão da conta, apagar tudo sob `users/<id>/`. Teste: gerar o link e não enviar mantém a foto anterior; confirmar a nova apaga a antiga.
 
-341. ⬜ **Dois gerentes aceitando candidatos ao mesmo tempo passam do número de vagas** (back: `JobOpeningService.acceptNow`):
+     **Feito:** os links de envio da foto de perfil (`getPhotoUploadUrl`, `POST /user/me/photo-url`) e da logo da rede (`getNetworkLogoUploadUrl`) não gravam nada. A foto e a logo trocam só nas mutations novas `setUserPhoto(key)` e `setNetworkLogo(key)`, chamadas pela tela depois do envio. Elas conferem o prefixo (`users/<id>/`, `networks/<id>/`) e apagam o arquivo anterior. A logo ganha nome novo a cada envio (`logo-<uuid>`). Tirar a foto ou a logo também apaga o arquivo. Na exclusão da conta, sai tudo sob `users/<id>/` (`S3Service.deletePrefix`). Testes em `src/barbershop/round-340-342.int.spec.ts` e `account-deletion.int.spec.ts`; conferido no navegador com o envio ao S3 simulado: envio recusado mantém a foto antiga, envio aceito troca.
+
+341. ✅ **Dois gerentes aceitando candidatos ao mesmo tempo passam do número de vagas** (back: `JobOpeningService.acceptNow`):
      - O aceite trava só a candidatura (`status: 'pending'` → `accepted`). A conta de quantos já foram aceitos (`accepted >= opening.slots`) vem depois do convite criado.
      - Vaga com 1 lugar e dois candidatos aceitos ao mesmo tempo (dois gerentes, ou duas abas, ou a taxa paga pelo webhook enquanto alguém aceita outro): os dois passam pela vaga aberta e recebem convite. Com taxa por vaga preenchida, a unidade paga duas.
      
      **Fazer:** aceitar sob uma trava da vaga (`pg_advisory_xact_lock` ou contagem condicional) e recusar quando os aceitos já somam os lugares. Teste: vaga de 1 lugar, dois aceites em paralelo, só um passa.
 
-342. ⬜ **O dono dispara a campanha para a rede inteira uma vez por unidade, contornando os limites diário e mensal** (back: `sendMarketingBlast`):
+     **Feito:** o aceite trava a vaga (`pg_advisory_xact_lock`), confere de novo se ela está aberta e se os aceitos ainda não somam os lugares (`JOB_OPENING_FULL_MESSAGE`), e só então aceita a candidatura. Taxa paga com o aceite recusado volta para o cartão, como antes. Teste em `job-opening.int.spec.ts` (dois aceites em paralelo numa vaga de 1 lugar: só um passa).
+
+342. ✅ **O dono dispara a campanha para a rede inteira uma vez por unidade, contornando os limites diário e mensal** (back: `sendMarketingBlast`):
      - Os limites da campanha (uma por dia, `MARKETING_MIN_INTERVAL_HOURS`; e-mails por 30 dias, `MARKETING_EMAILS_PER_30_DAYS`) contam por unidade.
      - O dono manda para a rede inteira (`networkWide`) a partir de qualquer unidade. Com cinco unidades, são cinco campanhas por dia para todos os clientes da rede, e cinco vezes o limite mensal de e-mails. Os limites existem para proteger a reputação de envio do domínio da plataforma.
      
      **Fazer:** campanha para a rede inteira conta no limite da rede (todas as unidades). Teste: o dono manda uma campanha da rede pela unidade A; pela unidade B, no mesmo dia, é recusada.
+
+     **Feito:** a campanha guarda `networkWide` (migração `20261231160000_marketing_campaign_network_wide`; as que já existiam e foram disparadas pelo dono contam como da rede). A da rede inteira conta nos limites de todas as unidades da rede; a de uma unidade conta as dela e as da rede inteira. A conferência e a criação ficam sob a trava da rede. Teste em `round-340-342.int.spec.ts`.
 
 ### Centésima vigésima nona rodada (2026-10-27): varredura geral, segunda passada
 

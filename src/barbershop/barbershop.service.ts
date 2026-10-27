@@ -7470,6 +7470,38 @@ export class BarbershopService {
     });
   }
 
+  /**
+   * Campanhas que contam no limite de quem dispara (item 342). Para a rede
+   * inteira: as de todas as unidades da rede. Para uma unidade: as dela e as
+   * da rede inteira (que também chegaram aos clientes dela).
+   */
+  private marketingLimitScope(
+    networkId: number,
+    barbershopId: number,
+    networkWide: boolean,
+  ): Prisma.MarketingCampaignWhereInput {
+    return networkWide
+      ? { barbershop: { networkId } }
+      : { OR: [{ barbershopId }, { networkWide: true, barbershop: { networkId } }] };
+  }
+
+  private async assertMarketingDailyLimit(
+    db: Pick<Prisma.TransactionClient, 'marketingCampaign'>,
+    networkId: number,
+    barbershopId: number,
+    networkWide: boolean,
+  ) {
+    const since = new Date(Date.now() - MARKETING_MIN_INTERVAL_HOURS * 3_600_000);
+    const recent = await db.marketingCampaign.findFirst({
+      where: {
+        ...this.marketingLimitScope(networkId, barbershopId, networkWide),
+        createdAt: { gte: since },
+      },
+      select: { id: true },
+    });
+    if (recent) throw new BadRequestException(MARKETING_DAILY_LIMIT_MESSAGE);
+  }
+
   async sendMarketingBlast(
     userId: number,
     barbershopId: number,
@@ -7487,20 +7519,23 @@ export class BarbershopService {
     if (barbershop.platformSuspendedAt || barbershop.network?.platformSuspendedAt) {
       throw new BadRequestException(MARKETING_SUSPENDED_MESSAGE);
     }
-    // Uma campanha por dia por unidade: disparos repetidos derrubam a
-    // reputação de envio do domínio da plataforma (todas as unidades)
-    const since = new Date(Date.now() - MARKETING_MIN_INTERVAL_HOURS * 3_600_000);
-    const recent = await this.prisma.marketingCampaign.findFirst({
-      where: { barbershopId, createdAt: { gte: since } },
-      select: { id: true },
-    });
-    if (recent) throw new BadRequestException(MARKETING_DAILY_LIMIT_MESSAGE);
+    // O dono manda para a rede inteira: conta nos limites da rede toda
+    const networkWide = barbershop.accessLevel === 'owner';
+    // Uma campanha por dia: disparos repetidos derrubam a reputação de envio
+    // do domínio da plataforma (todas as unidades). Conferido aqui (resposta
+    // rápida) e de novo sob a trava, na hora de criar
+    await this.assertMarketingDailyLimit(
+      this.prisma,
+      barbershop.networkId,
+      barbershopId,
+      networkWide,
+    );
     const customers = await this.resolveMarketingSegment(
       barbershop.networkId,
       barbershopId,
       data.segment,
       data.inactiveDays,
-      barbershop.accessLevel === 'owner',
+      networkWide,
       barbershop.country,
     );
 
@@ -7535,33 +7570,44 @@ export class BarbershopService {
     const waOptedOut = await whatsappOptedOut(this.prisma, candidatePhones);
     const whatsappPhones = candidatePhones.filter((phone) => !waOptedOut.has(phone));
 
-    if (emailRecipients.length > 0) {
-      const sent = await this.prisma.marketingCampaign.aggregate({
-        where: { barbershopId, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
-        _sum: { emailQueuedCount: true },
-      });
-      if (
-        (sent._sum.emailQueuedCount ?? 0) + emailRecipients.length >
-        MARKETING_EMAILS_PER_30_DAYS
-      ) {
-        throw new BadRequestException(MARKETING_MONTHLY_LIMIT_MESSAGE);
+    // Limites conferidos e campanha criada sob a trava da rede: duas
+    // campanhas ao mesmo tempo (ou uma por unidade) não passam juntas
+    const campaign = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${
+        'marketing:' + barbershop.networkId
+      }))`;
+      await this.assertMarketingDailyLimit(tx, barbershop.networkId, barbershopId, networkWide);
+      if (emailRecipients.length > 0) {
+        const sent = await tx.marketingCampaign.aggregate({
+          where: {
+            ...this.marketingLimitScope(barbershop.networkId, barbershopId, networkWide),
+            createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) },
+          },
+          _sum: { emailQueuedCount: true },
+        });
+        if (
+          (sent._sum.emailQueuedCount ?? 0) + emailRecipients.length >
+          MARKETING_EMAILS_PER_30_DAYS
+        ) {
+          throw new BadRequestException(MARKETING_MONTHLY_LIMIT_MESSAGE);
+        }
       }
-    }
-
-    const campaign = await this.prisma.marketingCampaign.create({
-      data: {
-        barbershopId,
-        createdByUserId: userId,
-        subject: data.subject,
-        message: data.message,
-        segment: data.segment,
-        inactiveDays: data.inactiveDays,
-        sentByEmail: data.sendEmail,
-        sentByWhatsapp: data.sendWhatsapp,
-        recipientCount: customers.length,
-        emailQueuedCount: emailRecipients.length,
-        whatsappQueuedCount: whatsappPhones.length,
-      },
+      return tx.marketingCampaign.create({
+        data: {
+          networkWide,
+          barbershopId,
+          createdByUserId: userId,
+          subject: data.subject,
+          message: data.message,
+          segment: data.segment,
+          inactiveDays: data.inactiveDays,
+          sentByEmail: data.sendEmail,
+          sentByWhatsapp: data.sendWhatsapp,
+          recipientCount: customers.length,
+          emailQueuedCount: emailRecipients.length,
+          whatsappQueuedCount: whatsappPhones.length,
+        },
+      });
     });
 
     await this.notificationQueue.emailBulk(
