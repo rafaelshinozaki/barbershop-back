@@ -245,6 +245,7 @@ export class BackofficeGovernanceResolver {
     @Args('input') input: SendEmailNotificationInput,
     @CurrentUser() user: UserDTO,
   ) {
+    this.backoffice.assertSafeActionUrl(input.actionUrl);
     const actor = staffActor(user);
     const reserved = actor.admin
       ? null
@@ -270,6 +271,7 @@ export class BackofficeGovernanceResolver {
     @Args('input') input: SendEmailNotificationInput,
     @CurrentUser() user: UserDTO,
   ) {
+    this.backoffice.assertSafeActionUrl(input.actionUrl);
     const actor = staffActor(user);
     const reserved = actor.admin
       ? null

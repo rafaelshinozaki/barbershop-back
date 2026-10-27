@@ -282,7 +282,12 @@ export class PaymentsService {
       throw new NotFoundException('You do not have any active subscription');
     }
 
-    const newPlan = await this.prisma.plan.findUnique({ where: { id: newPlanId } });
+    // O próprio plano pode ter saído da lista (versão nova com outro preço,
+    // item 351): escolher o atual continua valendo para desfazer o agendado
+    const newPlan =
+      subscription.planId === newPlanId
+        ? subscription.plan
+        : await this.prisma.plan.findUnique({ where: { id: newPlanId } });
     if (!newPlan) {
       throw new BadRequestException('Plan not found');
     }
@@ -1207,6 +1212,8 @@ export class PaymentsService {
         data: { planId: sub.pendingPlanId, pendingPlanId: null },
       });
       if (switched.count > 0) {
+        // findUniqueOrThrow não passa pelo filtro de apagados: o plano
+        // agendado que saiu da lista depois (versão nova, item 351) vale
         sub.plan = await this.prisma.plan.findUniqueOrThrow({ where: { id: sub.pendingPlanId } });
         sub.planId = sub.pendingPlanId;
       }

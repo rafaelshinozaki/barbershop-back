@@ -3672,81 +3672,103 @@ Foram lidos no back os cupons (`CouponsService`), os planos (`PlanService`) e a 
 
      **Feito:** no plano anual, o `FREE_MONTH` desconta um doze avos do preço (arredondado em centavos); no mensal continua zerando. Teste em `round-346-350.int.spec.ts`.
 
-351. ⬜ **Mudar o preço ou o ciclo de um plano muda a cobrança de quem já assina, sem aviso** (back: `PlanService.updatePlan`, `PaymentsService.renewSubscription`):
+351. ✅ **Mudar o preço ou o ciclo de um plano muda a cobrança de quem já assina, sem aviso** (back: `PlanService.updatePlan`, `PaymentsService.renewSubscription`):
      - O comentário do `updatePlan` diz que "quem já assina continua no preço antigo", mas isso só vale para a assinatura cobrada pela Stripe.
      - A renovação feita por nós (`renewSubscription`, sem `stripeSubscriptionId`) cobra `sub.plan.price` e avança o período por `sub.plan.billingCycle`, lidos na hora da renovação. Um aumento no backoffice é cobrado de todos os assinantes na próxima renovação, sem e-mail avisando. Trocar o ciclo de mensal para anual cobra o preço novo e dá um ano a quem pagava por mês.
      - O `billingCycle` também não é conferido: um valor fora de `MONTHLY`/`YEARLY` vira mensal na Stripe e 30 dias na renovação.
 
      **Fazer:** a assinatura guarda o preço e o ciclo contratados, e a renovação cobra esses. Mudança de preço vale para as assinaturas novas; levar os antigos para o preço novo é uma ação à parte, com aviso por e-mail antes da renovação. Aceitar só `MONTHLY` e `YEARLY`. Teste: aumentar o preço do plano não muda a próxima cobrança de quem já assina.
 
-352. ⬜ **O cupom com "mínimo de meses de assinatura" conta o plano gratuito e o tempo depois do fim do plano** (back: `CouponsService.validateCoupon`):
+     **Feito:** em vez de copiar o preço em cada assinatura, o plano com assinantes (ativos ou com troca agendada para ele) não muda de preço nem de ciclo: `updatePlan` tira o plano da lista (como removido) e cria uma versão nova com o preço novo para quem assinar depois. Quem já assina segue no plano dele, e a renovação continua lendo o plano da assinatura. Cupons só para aquele plano passam a valer também para a versão nova. Escolher o próprio plano (desfazer o agendado) vale mesmo com ele fora da lista. O ciclo só aceita `MONTHLY` e `YEARLY`, na criação e na edição. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+352. ✅ **O cupom com "mínimo de meses de assinatura" conta o plano gratuito e o tempo depois do fim do plano** (back: `CouponsService.validateCoupon`):
      - Todo cadastro ganha a assinatura do plano gratuito (`Free`, ativa desde o primeiro dia). A conta de meses (`minSubscriptionMonths`) soma todas as assinaturas, inclusive essa.
      - Uma assinatura sem `cancelationDate` conta até hoje, mesmo vencida ou trocada por outra. Assinaturas ao mesmo tempo (o gratuito e o pago) contam em dobro.
      - Um cupom de fidelidade ("assinantes há 6 meses") vale para quem nunca pagou: basta a conta ter 6 meses.
 
      **Fazer:** contar só os planos pagos, de `startSubDate` até `cancelationDate`, `currentPeriodEnd` ou hoje, o que vier primeiro, sem contar duas vezes os períodos que se sobrepõem. Teste: conta de 6 meses só no gratuito não usa o cupom de 6 meses; com 6 meses de plano pago, usa.
 
-353. ⬜ **Dados de terceiros que nunca saem: convites vencidos e links do cliente já usados** (back: `RetentionService`):
+     **Feito:** `paidSubscriptionMonths` soma só assinaturas de plano pago, cada uma de `startSubDate` até o primeiro entre `cancelationDate`, `currentPeriodEnd` e hoje, juntando os trechos que se sobrepõem. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+353. ✅ **Dados de terceiros que nunca saem: convites vencidos e links do cliente já usados** (back: `RetentionService`):
      - O convite de amigo guarda o e-mail de quem foi convidado (`FriendInvite.friendEmail`), e o convite da equipe guarda nome, e-mail e telefone da pessoa (`EmployeeInvite`). Vencidos ou recusados, ficam no banco para sempre. Só saem com a conta de quem convidou ou com a unidade encerrada (os pendentes).
      - Os links da conta do cliente (`ClientAccountToken`: confirmar e-mail, redefinir senha, excluir conta) também ficam depois de usados ou vencidos. Os da equipe (`PasswordResetToken`, `VerificationCode`) já saem na guarda diária.
 
      **Fazer:** a guarda diária apaga os convites vencidos ou recusados há mais de 90 dias (o aceito fica: liga a recompensa e o vínculo) e os `ClientAccountToken` usados ou vencidos. Teste: convite vencido há 100 dias sai; aceito fica; link do cliente usado sai.
 
-354. ⬜ **O arquivo de agenda (.ics) não escapa o retorno de carro sozinho** (back: `ics.ts`, função `text`):
+     **Feito:** a guarda diária apaga convites de amigo e da equipe não aceitos e vencidos há mais de 90 dias (`RETENTION_DAYS.staleInvite`), menos o convite pendente de uma vaga ainda ativa (o gerente reenvia por ele), e os links da conta do cliente usados ou vencidos. O nome e o telefone da pessoa ficam na vaga (`Barber`), não no convite. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+354. ✅ **O arquivo de agenda (.ics) não escapa o retorno de carro sozinho** (back: `ics.ts`, função `text`):
      - O escape troca só `\n` e `\r\n` por `\n` literal. Um `\r` sozinho no nome do cliente ou na observação (vindos da página pública ou da ficha) passa cru.
      - Vários apps de agenda tratam o `\r` como fim de linha. Na agenda assinável da equipe, o texto depois dele vira uma propriedade nova do evento (por exemplo, outro horário ou outro título).
 
      **Fazer:** tratar `\r` sozinho como quebra de linha no escape (`/\r\n|\r|\n/g`). Teste: nome com `\r` sai numa linha só, com `\n` escapado.
 
+     **Feito:** o escape de texto troca `\r\n`, `\r` e `\n` por `\n` literal. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
 ### Centésima trigésima segunda rodada (2026-10-27): filas de envio, e-mail da equipe e preços
 
 Foram lidos no back as filas de e-mail e WhatsApp (`EmailProcessor`, `WhatsappProcessor`, `DEFAULT_JOB_OPTIONS`), o envio de e-mail (`EmailService.renderAndSend`), os comandos da API do backoffice (`BackofficeCommandsProcessor`, `commands.ts`), o e-mail da equipe para contas do app (`BackofficeService.sendEmailNotification`), os avisos do sininho e os automáticos da equipe (`NotificationsService`, `ActivityNotificationsService`), os preços da plataforma (`PricingService`), o backup do banco (`BackupService`), as chaves de imagem dos envios, o tempo real e as métricas.
 
-355. ⬜ **Falha depois do envio faz a fila mandar o mesmo e-mail ou WhatsApp de novo, até 5 vezes** (back: `EmailService.renderAndSend`, `EmailProcessor`, `WhatsappProcessor`):
+355. ✅ **Falha depois do envio faz a fila mandar o mesmo e-mail ou WhatsApp de novo, até 5 vezes** (back: `EmailService.renderAndSend`, `EmailProcessor`, `WhatsappProcessor`):
      - As filas tentam 5 vezes (`DEFAULT_JOB_OPTIONS`). O job só termina quando tudo depois do envio também dá certo.
      - No e-mail, o Mailgun já mandou e só depois vem a cópia no `EmailLogger`. Se a gravação falha (banco instável, conexão esgotada), o erro sai como "e-mail não enviado" e a fila manda de novo.
      - Na campanha, o contador (`emailSentCount`, `whatsappSentCount`) é somado depois do envio. Se ele falha, a fila reenvia a mensagem de marketing ao mesmo cliente. A conta da Meta paga cada WhatsApp de marketing.
 
      **Fazer:** o que vem depois do envio não derruba o job: a cópia e o contador ficam num `try` próprio, com aviso no log. O job só falha se o próprio envio falhar. Teste: com a cópia do e-mail falhando, o job termina e o envio sai uma vez só; o mesmo com o contador da campanha.
 
-356. ⬜ **O e-mail da equipe para várias contas para no primeiro erro, e a nova tentativa manda de novo para quem já recebeu** (back: `BackofficeService.sendEmailNotification`, comando `email.admin_notification`):
+     **Feito:** depois do envio, a cópia no `EmailLogger` e os contadores da campanha (e-mail e WhatsApp) ficam num `try` próprio, com aviso no log. O job só falha se o envio falhar. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+356. ✅ **O e-mail da equipe para várias contas para no primeiro erro, e a nova tentativa manda de novo para quem já recebeu** (back: `BackofficeService.sendEmailNotification`, comando `email.admin_notification`):
      - O envio passa pelas pessoas uma a uma e espera cada e-mail. Um endereço que o Mailgun recusa derruba o resto: quem vinha depois não recebe.
      - Pelo comando da API do backoffice (5 tentativas), cada nova tentativa começa do zero: quem estava antes do erro recebe o mesmo e-mail até 5 vezes. Pela tela do back, a reserva do limite de 24 h é devolvida inteira, mesmo com parte já enviada.
      - A lista também não tira contas desativadas ou apagadas (LGPD).
 
      **Fazer:** enfileirar um e-mail por pessoa (`notificationQueue.email`, com `jobId` por envio e pessoa) em vez de mandar na hora. Uma recusa fica só naquele e-mail, e a nova tentativa não repete os outros. Só contas ativas e não apagadas. Teste: com um endereço recusado no meio, os outros recebem uma vez só.
 
-357. ⬜ **O e-mail da equipe pelo back aceita qualquer link no botão** (back: `SendEmailNotificationInput`, `sendBackofficeEmail`, `sendEmailNotification`, pedido `email.mass` aprovado):
+     **Feito:** `sendEmailNotification` põe um e-mail por pessoa na fila (`notificationQueue.email`), com id fixo pelo conteúdo, pelo dia e pela pessoa: um endereço recusado fica só no e-mail dele, e a nova tentativa do comando não repete os outros. Só contas ativas e não apagadas. Sem a fila (testes), manda na hora sem um erro parar os outros. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+357. ✅ **O e-mail da equipe pelo back aceita qualquer link no botão** (back: `SendEmailNotificationInput`, `sendBackofficeEmail`, `sendEmailNotification`, pedido `email.mass` aprovado):
      - O comando da API do backoffice só aceita link do próprio app (`safeAppLink` em `parseAdminNotificationEmail`). O mesmo e-mail pelas mutations do back, ou pelo pedido de confirmação aprovado, leva o `actionUrl` como veio.
      - Qualquer pessoa da equipe com a área Operação manda, com o nome e o domínio da plataforma, um botão para um site de fora (página falsa de login, por exemplo) para até 1.000 contas por dia sem confirmação.
 
      **Fazer:** passar o `actionUrl` por `safeAppLink` no `sendEmailNotification` (vale para os três caminhos) e recusar o pedido com link de fora. Teste: link de outro domínio é recusado; link do app passa.
 
-358. ⬜ **Salvar os preços pelo back pode desfazer a mudança que outro admin acabou de salvar** (back: `PricingService.update`):
+     **Feito:** `sendEmailNotification` passa o link por `safeAppLink` (vale para as mutations, o comando e o pedido aprovado), e `sendBackofficeEmail` e `sendEmailNotification` recusam link de fora antes de enviar ou pedir confirmação (`ADMIN_EMAIL_LINK_MESSAGE`). Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+358. ✅ **Salvar os preços pelo back pode desfazer a mudança que outro admin acabou de salvar** (back: `PricingService.update`):
      - O back monta os preços novos a partir do cache em memória (`currentPricing()`), que só é relido a cada minuto. Salva o objeto inteiro, inclusive os campos que ninguém mexeu.
      - Se outro admin salvou pelo backoffice-back (que lê a linha com `FOR UPDATE`) há menos de um minuto, os campos que ele mudou voltam ao valor antigo, sem aviso. Por exemplo, a taxa da plataforma volta para o valor de antes.
 
      **Fazer:** ler a linha do banco com trava (`SELECT ... FOR UPDATE` numa transação), aplicar só os campos enviados e gravar, como no backoffice-back. Teste: preço salvo direto no banco e depois um campo diferente pelo back: os dois valem.
 
+     **Feito:** `PricingService.update` lê a linha com `SELECT ... FOR UPDATE` numa transação, aplica só os campos enviados e grava, como o backoffice-back. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
 ### Centésima trigésima terceira rodada (2026-10-27): rede, clube, cadastro de clientes e "Minha conta"
 
 Foram lidos no back as regras da rede (`updateNetwork`, `applyNetworkLimits`, `noShowFeeFor`), o catálogo de serviços (`checkServiceValues`), as fichas de cliente (criar, editar, buscar), os pacotes (oferta, venda) e os planos do clube (`updateSubscriptionPlan`, `toClientSubscriptionResult`). No backoffice-back, o login e a equipe (`StaffAuth`, `StaffTeam`), a moderação e o saldo de repasses (`payoutBalances`). No front, as datas (dia do calendário e fuso) e o formulário "Minha conta".
 
-359. ⬜ **Trocar o tipo da taxa de falta sem mexer no valor transforma reais em porcentagem (e o contrário)** (back: `applyNetworkLimits`, `noShowFeeFor`):
+359. ✅ **Trocar o tipo da taxa de falta sem mexer no valor transforma reais em porcentagem (e o contrário)** (back: `applyNetworkLimits`, `noShowFeeFor`):
      - O valor (`noShowFeeValue`) só é conferido quando vem no pedido. Trocar só o tipo mantém o número antigo, que passa a valer na outra unidade de medida.
      - Taxa fixa de R$ 150 vira 150% do serviço quando o tipo passa para porcentagem: o cliente que falta num corte de R$ 40 paga R$ 60. Na volta, 50% vira R$ 50 fixos.
      - A taxa fixa também não tem teto: R$ 100 de falta num serviço de R$ 30 é aceito e cobrado.
 
      **Fazer:** trocar o tipo exige mandar o valor junto (ou confere o valor atual com as regras do tipo novo). A taxa cobrada não passa do valor dos serviços do horário. Teste: com taxa fixa de 150, mudar só o tipo para porcentagem é recusado; taxa fixa maior que o serviço cobra o valor do serviço.
 
-360. ⬜ **O clube mostra a quem já assina o preço novo do plano, mas a Stripe continua cobrando o antigo** (back: `updateSubscriptionPlan`, `toClientSubscriptionResult`):
+     **Feito:** trocar o tipo da taxa sem mandar o valor é recusado quando já há valor (`NETWORK_FEE_TYPE_NEEDS_VALUE_MESSAGE`). A taxa cobrada nunca passa do valor dos serviços do horário. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+360. ✅ **O clube mostra a quem já assina o preço novo do plano, mas a Stripe continua cobrando o antigo** (back: `updateSubscriptionPlan`, `toClientSubscriptionResult`):
      - Mudar o preço do plano cria um preço novo na Stripe só para quem assinar depois. Quem já assina continua no antigo, como diz o comentário.
      - Mas a assinatura mostra `price: s.plan.price`, o preço atual do plano: na área do cliente e na lista de assinantes da unidade aparece o valor novo. O cliente vê "R$ 120/mês" e é cobrado R$ 100, ou o contrário. O limite de sessões já fica copiado na assinatura; o preço não.
 
      **Fazer:** a assinatura guarda o preço contratado ao assinar (como `sessionsPerCycle`), e a tela mostra esse. Teste: plano de R$ 100 com assinante; o preço muda para R$ 120; o assinante segue vendo R$ 100, e quem assina depois vê R$ 120.
 
-361. ⬜ **"Minha conta" não deixa apagar um campo: complemento, telefone e outros continuam com o valor antigo** (front: `EditMyAccount`):
+     **Feito:** `ClientSubscription.price` (migração `20261231140000_client_subscription_price`) guarda o preço na assinatura. As que já existiam recebem o último pagamento que entrou (ou o preço do plano, sem pagamento). A tela mostra esse preço. Testes em `src/barbershop/round-351-360.int.spec.ts`.
+
+361. ✅ **"Minha conta" não deixa apagar um campo: complemento, telefone e outros continuam com o valor antigo** (front: `EditMyAccount`):
      - O formulário só manda os campos preenchidos (`trim() !== ''`). Apagar o complemento, o segundo complemento ou outro campo opcional não chega ao back, que mantém o valor antigo.
      - A tela mostra "salvo com sucesso" e, ao abrir de novo, o valor apagado está lá.
 
      **Fazer:** mandar os campos opcionais que a pessoa esvaziou como vazio (o back já grava o que vier em `complement1` e `complement2`). Os obrigatórios continuam sem aceitar vazio, com aviso. Teste: apagar o complemento e salvar deixa o campo vazio ao abrir de novo.
+
+     **Feito:** os complementos vão vazios quando a pessoa apaga o que existia. No navegador apareceu um problema maior: os dois campos de complemento tinham o valor preso ao estado da tela e não aceitavam digitação. Agora são campos do formulário, como os outros. Conferido no navegador: digitar, salvar, apagar e salvar; o valor fica certo ao abrir de novo.

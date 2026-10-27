@@ -1852,6 +1852,9 @@ model ClientSubscription {
   // Copiado do plano na assinatura. Mudar o plano depois não mexe em quem
   // já assinou (como o preço no Stripe). Vazio = ilimitado.
   sessionsPerCycle     Int?
+  // Preço contratado (o do Price da Stripe na assinatura): mudar o preço do
+  // plano depois vale só para quem assinar a partir dali (item 360)
+  price                Decimal?
   cancelAtPeriodEnd    Boolean   @default(false)
   canceledAt           DateTime?
   // A unidade foi pausada pelo dono: a cobrança na Stripe fica suspensa

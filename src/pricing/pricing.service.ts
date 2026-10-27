@@ -14,6 +14,7 @@ import {
   Pricing,
   currentPricing,
   setCurrentPricing,
+  sanitizePricing,
 } from './pricing';
 
 const KEY = 'pricing';
@@ -52,9 +53,13 @@ export class PricingService implements OnModuleInit, OnModuleDestroy {
     return { ...currentPricing(), defaults: DEFAULT_PRICING };
   }
 
-  /** Admin: salva só o que veio, validando cada valor */
+  /**
+   * Admin: salva só o que veio, validando cada valor. Parte da linha do banco
+   * (com trava), não do cache: o cache é relido a cada minuto, e partir dele
+   * desfazia o que outro admin salvou pelo backoffice-back há pouco (item 358)
+   */
   async update(adminUserId: number, patch: Partial<Pricing>) {
-    const next: Pricing = { ...currentPricing() };
+    const changes: Partial<Pricing> = {};
     for (const [key, value] of Object.entries(patch) as [keyof Pricing, unknown][]) {
       if (value == null) continue;
       if (!(key in PRICING_LIMITS)) throw new BadRequestException(`Campo desconhecido: ${key}`);
@@ -66,12 +71,18 @@ export class PricingService implements OnModuleInit, OnModuleDestroy {
             : `${key} deve ficar entre ${min} e ${max}`,
         );
       }
-      next[key] = PERCENT_KEYS.has(key) ? Math.round(value * 100) / 100 : Math.round(value);
+      changes[key] = PERCENT_KEYS.has(key) ? Math.round(value * 100) / 100 : Math.round(value);
     }
-    await this.prisma.platformSetting.upsert({
-      where: { key: KEY },
-      create: { key: KEY, value: next, updatedByUserId: adminUserId },
-      update: { value: next, updatedByUserId: adminUserId },
+    const next = await this.prisma.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ value: unknown }[]>`
+        SELECT value FROM "PlatformSetting" WHERE key = ${KEY} FOR UPDATE`;
+      const merged: Pricing = { ...sanitizePricing(row?.value ?? {}), ...changes };
+      await tx.platformSetting.upsert({
+        where: { key: KEY },
+        create: { key: KEY, value: merged, updatedByUserId: adminUserId },
+        update: { value: merged, updatedByUserId: adminUserId },
+      });
+      return merged;
     });
     setCurrentPricing(next);
     this.logger.log(`Preços atualizados pelo admin #${adminUserId}`);

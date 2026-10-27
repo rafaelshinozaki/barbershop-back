@@ -44,11 +44,14 @@ export class EmailProcessor extends WorkerHost {
         data.headers,
         data.attachments,
       );
+      // Já enviado: o contador que falha não faz a fila mandar de novo (item 355)
       if (data.campaignId) {
-        await this.prisma.marketingCampaign.update({
-          where: { id: data.campaignId },
-          data: { emailSentCount: { increment: 1 } },
-        });
+        await this.prisma.marketingCampaign
+          .update({
+            where: { id: data.campaignId },
+            data: { emailSentCount: { increment: 1 } },
+          })
+          .catch((err) => this.logger.warn(`Contador da campanha não somou: ${err.message}`));
       }
     }
   }

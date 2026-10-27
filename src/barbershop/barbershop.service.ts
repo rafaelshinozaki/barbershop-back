@@ -771,6 +771,8 @@ export function resolveShopLocale(input: {
 }
 
 export const NETWORK_FEE_TYPE_MESSAGE = 'Tipo da taxa de falta inválido. Use PERCENT ou FIXED.';
+export const NETWORK_FEE_TYPE_NEEDS_VALUE_MESSAGE =
+  'Ao trocar o tipo da taxa de falta, informe também o valor (em % ou em dinheiro).';
 export const NETWORK_FEE_PERCENT_MESSAGE = 'A taxa de falta percentual vai de 0 a 100.';
 export const NETWORK_FEE_FIXED_MESSAGE = 'Taxa de falta inválido';
 export const NETWORK_WINDOW_MESSAGE = 'A janela de cancelamento vai de 0 a 72 horas.';
@@ -1586,7 +1588,12 @@ export class BarbershopService {
 
   /** Regras da rede: nada fora do limite vira política, moeda ou logo público. */
   private async applyNetworkLimits(
-    network: { id: number; currency: string; noShowFeeType: string | null },
+    network: {
+      id: number;
+      currency: string;
+      noShowFeeType: string | null;
+      noShowFeeValue?: Prisma.Decimal | number | null;
+    },
     data: Record<string, unknown>,
   ) {
     const text = (key: string, max: number, message: string) => {
@@ -1656,6 +1663,16 @@ export class BarbershopService {
         throw new BadRequestException(NETWORK_FEE_TYPE_MESSAGE);
       }
       data.noShowFeeType = feeType;
+      // Tipo novo com o número antigo: R$ 150 viravam 150% (item 359). Sem o
+      // valor junto, só passa se o atual servir para o tipo novo
+      if (
+        data.noShowFeeValue === undefined &&
+        feeType !== network.noShowFeeType &&
+        network.noShowFeeValue != null &&
+        Number(network.noShowFeeValue) > 0
+      ) {
+        throw new BadRequestException(NETWORK_FEE_TYPE_NEEDS_VALUE_MESSAGE);
+      }
     }
     if (data.noShowFeeValue !== undefined) {
       const value = Number(data.noShowFeeValue);
@@ -5947,6 +5964,8 @@ export class BarbershopService {
     } else if (network.noShowFeeType === 'FIXED' && network.noShowFeeValue) {
       feeAmount = network.noShowFeeValue;
     }
+    // A taxa nunca passa do valor dos serviços do horário (item 359)
+    feeAmount = Math.min(feeAmount, serviceTotal);
     // O sinal que a unidade reteve (pago online ou recebido pela equipe, item
     // 313) já é parte da taxa: cobra só o que falta (nada, se o sinal cobre).
     // Em centavos da moeda da unidade.
@@ -10515,7 +10534,8 @@ export class BarbershopService {
       planName: s.plan?.name ?? null,
       serviceId: s.plan?.serviceId ?? null,
       serviceName: s.plan?.service?.name ?? null,
-      price: s.plan ? Number(s.plan.price) : null,
+      // O preço contratado; assinatura de antes da coluna cai no do plano
+      price: s.price != null ? Number(s.price) : s.plan ? Number(s.plan.price) : null,
       sessionsPerCycle: s.sessionsPerCycle ?? null,
       status: s.status,
       currentPeriodStart: s.currentPeriodStart?.toISOString(),
@@ -10649,6 +10669,7 @@ export class BarbershopService {
             connectAccountId: destination,
             applicationFeePercent: destination != null ? new Decimal(feePercent) : null,
             sessionsPerCycle: plan.sessionsPerCycle,
+            price: plan.price,
           },
         });
         return { stripeSubscription, subscription };

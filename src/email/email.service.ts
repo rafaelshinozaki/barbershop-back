@@ -156,15 +156,21 @@ export class EmailService {
         attachments,
       });
 
-      await this.prisma.emailLogger.create({
-        data: {
-          userId,
-          body: JSON.stringify(redactSecrets(context)),
-          sentTo: to,
-          subject,
-          meta: `[${meta}] -> ${JSON.stringify(emailResponse)}`,
-        },
-      });
+      // O e-mail já saiu: a cópia que não grava não pode virar "não enviado"
+      // (a fila tentaria de novo e a pessoa receberia outra vez, item 355)
+      try {
+        await this.prisma.emailLogger.create({
+          data: {
+            userId,
+            body: JSON.stringify(redactSecrets(context)),
+            sentTo: to,
+            subject,
+            meta: `[${meta}] -> ${JSON.stringify(emailResponse)}`,
+          },
+        });
+      } catch (logError) {
+        this.logger.warn(`E-mail enviado, mas a cópia não foi gravada: ${logError.message}`);
+      }
 
       this.logger.log(JSON.stringify(emailResponse));
       return 'Email sent successfully';

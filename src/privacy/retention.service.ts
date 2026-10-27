@@ -235,6 +235,34 @@ export class RetentionService {
       BATCH,
     );
 
+    // Convites que ninguém aceitou, vencidos há mais de 90 dias: o de amigo
+    // guarda o e-mail de quem foi convidado e o da equipe, nome, e-mail e
+    // telefone. O aceito fica (liga a recompensa e o vínculo); o pendente de
+    // uma vaga ainda ativa na equipe também (o gerente reenvia por ele)
+    const inviteBefore = cutoffBefore(now, RETENTION_DAYS.staleInvite);
+    const friendInvites = (
+      await this.prisma.friendInvite.deleteMany({
+        where: { status: { not: 'ACCEPTED' }, expiresAt: { lt: inviteBefore } },
+      })
+    ).count;
+    const employeeInvites = (
+      await this.prisma.employeeInvite.deleteMany({
+        where: {
+          status: { not: 'ACCEPTED' },
+          expiresAt: { lt: inviteBefore },
+          NOT: { status: 'PENDING', barber: { isActive: true } },
+        },
+      })
+    ).count;
+
+    // Links da conta do cliente (confirmar e-mail, nova senha, excluir) já
+    // usados ou vencidos, como os da equipe
+    const clientTokens = (
+      await this.prisma.clientAccountToken.deleteMany({
+        where: { OR: [{ usedAt: { not: null } }, { expiresAt: { lt: now } }] },
+      })
+    ).count;
+
     // Sessão do cliente parada além do prazo (30 dias) já não entra: sai
     const clientSessions = (
       await this.prisma.clientSession.deleteMany({
@@ -243,6 +271,9 @@ export class RetentionService {
     ).count;
 
     const result = {
+      friendInvites,
+      employeeInvites,
+      clientTokens,
       clientSessions,
       backofficeAudit,
       changeLog,

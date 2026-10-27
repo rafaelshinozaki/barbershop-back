@@ -167,29 +167,19 @@ export class CouponsService {
       }
     }
 
-    // Verificar meses mínimos de assinatura
+    // Meses mínimos de assinatura: só plano pago conta (todo cadastro já
+    // nasce no gratuito), cada assinatura até onde valeu (cancelamento, fim do
+    // período ou hoje) e sem contar duas vezes o tempo em que duas se
+    // sobrepõem (item 352)
     if (coupon.minSubscriptionMonths) {
-      const userSubscriptions = await this.prisma.subscription.findMany({
-        where: { userId },
-        orderBy: { startSubDate: 'desc' },
-      });
-
-      if (userSubscriptions.length === 0) {
-        return { isValid: false, error: 'Cupom requer assinatura prévia' };
-      }
-
-      const totalMonths = userSubscriptions.reduce((total, sub) => {
-        const endDate = sub.cancelationDate || new Date();
-        const months = Math.floor(
-          (endDate.getTime() - sub.startSubDate.getTime()) / (1000 * 60 * 60 * 24 * 30),
-        );
-        return total + months;
-      }, 0);
-
-      if (totalMonths < coupon.minSubscriptionMonths) {
+      const months = await this.paidSubscriptionMonths(userId);
+      if (months < coupon.minSubscriptionMonths) {
         return {
           isValid: false,
-          error: `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura`,
+          error:
+            months === 0
+              ? 'Cupom requer assinatura prévia'
+              : `Cupom requer mínimo de ${coupon.minSubscriptionMonths} meses de assinatura`,
         };
       }
     }
@@ -235,6 +225,37 @@ export class CouponsService {
       discountAmount,
       originalAmount,
     };
+  }
+
+  /** Meses (de 30 dias) em plano pago, sem sobreposição */
+  async paidSubscriptionMonths(userId: number, now = new Date()) {
+    const subs = await this.prisma.subscription.findMany({
+      where: { userId, plan: { price: { gt: 0 } } },
+      select: { startSubDate: true, cancelationDate: true, currentPeriodEnd: true },
+    });
+    const spans = subs
+      .map((s) => {
+        const ends = [s.cancelationDate, s.currentPeriodEnd, now].filter(
+          (d): d is Date => d != null,
+        );
+        return [s.startSubDate.getTime(), Math.min(...ends.map((d) => d.getTime()))];
+      })
+      .filter(([start, end]) => end > start)
+      .sort((a, b) => a[0] - b[0]);
+    let total = 0;
+    let curStart = -Infinity;
+    let curEnd = -Infinity;
+    for (const [start, end] of spans) {
+      if (start > curEnd) {
+        if (curEnd > curStart) total += curEnd - curStart;
+        curStart = start;
+        curEnd = end;
+      } else if (end > curEnd) {
+        curEnd = end;
+      }
+    }
+    if (curEnd > curStart) total += curEnd - curStart;
+    return Math.floor(total / (30 * 86_400_000));
   }
 
   /** Usos que as cobranças em aberto de outras pessoas seguram */

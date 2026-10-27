@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { Role } from '../auth/interfaces/roles';
 import {
@@ -13,6 +14,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartLogger } from '../common/logger.util';
 import { EmailService } from '../email/email.service';
+import { NotificationQueueService } from '../queue/notification-queue.service';
+import { safeAppLink } from '../common/app-urls';
 import { PAGAMENTO_STATUS } from '../common/contants';
 import { takesAppointments } from '../barbershop/staff-roles';
 import {
@@ -36,11 +39,18 @@ const ROLE_NAME_TO_ENUM: Record<string, string> = {
   BarbershopEmployee: 'BARBERSHOP_EMPLOYEE',
 };
 
+export const ADMIN_EMAIL_LINK_MESSAGE =
+  'O botão do e-mail só pode levar para uma página do próprio app.';
+
 @Injectable()
 export class BackofficeService {
   private readonly logger = new SmartLogger('BackofficeService');
 
-  constructor(private prisma: PrismaService, private emailService: EmailService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+    @Optional() private readonly notificationQueue?: NotificationQueueService,
+  ) {}
 
   // Roles vindas de dados corrompidos/nulos caem no `fallback` em vez de quebrar o gráfico/enum
   private mapRoleNameToEnum(roleName: string | undefined | null, fallback: string): string {
@@ -672,6 +682,23 @@ export class BackofficeService {
     };
   }
 
+  /**
+   * O botão do e-mail da equipe só leva para o próprio app (item 357): o
+   * comando do backoffice-back já confere; aqui vale para as mutations do
+   * back e para o pedido de confirmação.
+   */
+  assertSafeActionUrl(actionUrl?: string | null) {
+    if (actionUrl?.trim() && !safeAppLink(actionUrl)) {
+      throw new BadRequestException(ADMIN_EMAIL_LINK_MESSAGE);
+    }
+  }
+
+  /**
+   * E-mail da equipe para contas do app. Cada pessoa vira um envio na fila,
+   * com id fixo pelo conteúdo e pela pessoa: um endereço recusado não
+   * derruba os outros, e repetir o mesmo envio (nova tentativa do comando)
+   * não manda de novo para quem já recebeu (item 356). Só contas ativas.
+   */
   async sendEmailNotification(input: {
     userIds: number[];
     subject: string;
@@ -680,32 +707,61 @@ export class BackofficeService {
     actionText?: string;
     type?: string;
   }) {
-    // Busca os usuários
     const users = await this.prisma.user.findMany({
-      where: { id: { in: input.userIds } },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        userSystemConfig: { select: { language: true } },
-      },
+      where: { id: { in: input.userIds }, isActive: true, deleted_at: null },
+      select: { id: true, email: true, fullName: true },
     });
+    // Link de fora não sai (pedido aprovado antes desta regra, por exemplo)
+    const actionUrl = safeAppLink(input.actionUrl) ?? undefined;
+    const sendKey = createHash('sha256')
+      .update(
+        JSON.stringify([
+          input.subject,
+          input.message,
+          actionUrl ?? null,
+          input.actionText ?? null,
+          input.type ?? null,
+          new Date().toISOString().slice(0, 10),
+        ]),
+      )
+      .digest('hex')
+      .slice(0, 24);
     for (const user of users) {
-      await this.emailService.sendTemplateEmail(
-        user.id,
-        'admin_notification',
-        {
-          title: input.subject,
-          message: input.message,
-          actionUrl: input.actionUrl,
-          actionText: input.actionText,
-          type: input.type || 'info',
-          fullName: user.fullName,
-        },
-        input.subject,
-        'admin_notification',
-        user.email,
-      );
+      if (!user.email) continue;
+      const context = {
+        title: input.subject,
+        message: input.message,
+        actionUrl,
+        actionText: actionUrl ? input.actionText : undefined,
+        type: input.type || 'info',
+        fullName: user.fullName,
+      };
+      if (this.notificationQueue) {
+        await this.notificationQueue.email(
+          {
+            kind: 'user',
+            userId: user.id,
+            template: 'admin_notification',
+            context,
+            subject: input.subject,
+            meta: 'admin_notification',
+            to: user.email,
+          },
+          `admin-email-${sendKey}-${user.id}`,
+        );
+        continue;
+      }
+      // Sem a fila (testes): manda na hora, sem um erro parar os outros
+      await this.emailService
+        .sendTemplateEmail(
+          user.id,
+          'admin_notification',
+          context,
+          input.subject,
+          'admin_notification',
+          user.email,
+        )
+        .catch((err) => this.logger.warn(`E-mail da equipe não saiu (#${user.id}): ${err}`));
     }
     return true;
   }
