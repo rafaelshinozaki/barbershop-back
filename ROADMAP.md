@@ -3717,3 +3717,26 @@ Foram lidos no back as filas de e-mail e WhatsApp (`EmailProcessor`, `WhatsappPr
      - Se outro admin salvou pelo backoffice-back (que lê a linha com `FOR UPDATE`) há menos de um minuto, os campos que ele mudou voltam ao valor antigo, sem aviso. Por exemplo, a taxa da plataforma volta para o valor de antes.
 
      **Fazer:** ler a linha do banco com trava (`SELECT ... FOR UPDATE` numa transação), aplicar só os campos enviados e gravar, como no backoffice-back. Teste: preço salvo direto no banco e depois um campo diferente pelo back: os dois valem.
+
+### Centésima trigésima terceira rodada (2026-10-27): rede, clube, cadastro de clientes e "Minha conta"
+
+Foram lidos no back as regras da rede (`updateNetwork`, `applyNetworkLimits`, `noShowFeeFor`), o catálogo de serviços (`checkServiceValues`), as fichas de cliente (criar, editar, buscar), os pacotes (oferta, venda) e os planos do clube (`updateSubscriptionPlan`, `toClientSubscriptionResult`). No backoffice-back, o login e a equipe (`StaffAuth`, `StaffTeam`), a moderação e o saldo de repasses (`payoutBalances`). No front, as datas (dia do calendário e fuso) e o formulário "Minha conta".
+
+359. ⬜ **Trocar o tipo da taxa de falta sem mexer no valor transforma reais em porcentagem (e o contrário)** (back: `applyNetworkLimits`, `noShowFeeFor`):
+     - O valor (`noShowFeeValue`) só é conferido quando vem no pedido. Trocar só o tipo mantém o número antigo, que passa a valer na outra unidade de medida.
+     - Taxa fixa de R$ 150 vira 150% do serviço quando o tipo passa para porcentagem: o cliente que falta num corte de R$ 40 paga R$ 60. Na volta, 50% vira R$ 50 fixos.
+     - A taxa fixa também não tem teto: R$ 100 de falta num serviço de R$ 30 é aceito e cobrado.
+
+     **Fazer:** trocar o tipo exige mandar o valor junto (ou confere o valor atual com as regras do tipo novo). A taxa cobrada não passa do valor dos serviços do horário. Teste: com taxa fixa de 150, mudar só o tipo para porcentagem é recusado; taxa fixa maior que o serviço cobra o valor do serviço.
+
+360. ⬜ **O clube mostra a quem já assina o preço novo do plano, mas a Stripe continua cobrando o antigo** (back: `updateSubscriptionPlan`, `toClientSubscriptionResult`):
+     - Mudar o preço do plano cria um preço novo na Stripe só para quem assinar depois. Quem já assina continua no antigo, como diz o comentário.
+     - Mas a assinatura mostra `price: s.plan.price`, o preço atual do plano: na área do cliente e na lista de assinantes da unidade aparece o valor novo. O cliente vê "R$ 120/mês" e é cobrado R$ 100, ou o contrário. O limite de sessões já fica copiado na assinatura; o preço não.
+
+     **Fazer:** a assinatura guarda o preço contratado ao assinar (como `sessionsPerCycle`), e a tela mostra esse. Teste: plano de R$ 100 com assinante; o preço muda para R$ 120; o assinante segue vendo R$ 100, e quem assina depois vê R$ 120.
+
+361. ⬜ **"Minha conta" não deixa apagar um campo: complemento, telefone e outros continuam com o valor antigo** (front: `EditMyAccount`):
+     - O formulário só manda os campos preenchidos (`trim() !== ''`). Apagar o complemento, o segundo complemento ou outro campo opcional não chega ao back, que mantém o valor antigo.
+     - A tela mostra "salvo com sucesso" e, ao abrir de novo, o valor apagado está lá.
+
+     **Fazer:** mandar os campos opcionais que a pessoa esvaziou como vazio (o back já grava o que vier em `complement1` e `complement2`). Os obrigatórios continuam sem aceitar vazio, com aviso. Teste: apagar o complemento e salvar deixa o campo vazio ao abrir de novo.
