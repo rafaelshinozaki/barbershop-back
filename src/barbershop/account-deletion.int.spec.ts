@@ -30,7 +30,11 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
   };
   const emails: any[] = [];
   const s3Deleted: string[] = [];
-  const s3 = { deleteObject: async (key: string) => void s3Deleted.push(key) };
+  const s3 = {
+    deleteObject: async (key: string) => void s3Deleted.push(key),
+    // Todas as fotos da conta (item 340): registra o prefixo apagado
+    deletePrefix: async (prefix: string) => (s3Deleted.push(prefix), 0),
+  };
   const stub = {} as never;
   const barbershopService = new BarbershopService(
     prisma,
@@ -249,6 +253,7 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
       ]),
     );
     expect(s3Deleted).toContain(`users/dono-${RUN}.jpg`);
+    expect(s3Deleted).toContain(`users/${owner.id}/`);
 
     // Negócio apagado
     expect(await prisma.network.findUnique({ where: { id: network.id } })).toBeNull();

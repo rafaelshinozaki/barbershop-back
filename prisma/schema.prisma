@@ -1453,6 +1453,9 @@ model MarketingCampaign {
   whatsappSentCount   Int      @default(0)
   emailFailedCount    Int      @default(0)
   whatsappFailedCount Int      @default(0)
+  // Para os clientes da rede inteira (o dono): conta nos limites de todas as
+  // unidades da rede, não só na que disparou (item 342)
+  networkWide       Boolean  @default(false)
   barbershop        Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
 
   @@index([barbershopId, createdAt])

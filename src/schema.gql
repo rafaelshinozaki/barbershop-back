@@ -2464,6 +2464,7 @@ type Mutation {
   setCustomerBlocked(barbershopId: Int!, blocked: Boolean!, cancelSubscriptions: Boolean, customerId: Int!, reason: String, refundUnused: Boolean): BarbershopCustomer!
   setGiftCardActive(giftCardId: Int!, isActive: Boolean!, networkId: Int!): GiftCardType!
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
+  setNetworkLogo(key: String!): String
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
   setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
   setSharedLocationInviteBlock(barbershopId: Int!, blocked: Boolean!, id: Int!): Boolean!
@@ -2472,6 +2473,7 @@ type Mutation {
   setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
+  setUserPhoto(key: String!): String
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   staffContactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   startAppTip(

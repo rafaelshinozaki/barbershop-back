@@ -411,26 +411,21 @@ export class UserResolver {
     @CurrentUser() user: UserDTO,
     @Args('contentType', { nullable: true }) contentType?: string,
   ): Promise<PresignedUploadType> {
-    const upload = await this.s3Service.createImageUpload(
-      `users/${user.id}/profile-photo`,
-      contentType,
-    );
+    // Só o link: a foto troca em setUserPhoto, depois do envio (item 340)
+    return this.userService.generatePhotoUploadUrl(user.id, contentType);
+  }
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { photoKey: upload.key },
-    });
-
-    return upload;
+  /** Confirma a foto enviada; devolve o link dela (a anterior sai do S3) */
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => String, { nullable: true })
+  async setUserPhoto(@CurrentUser() user: UserDTO, @Args('key') key: string) {
+    return this.userService.setPhoto(user.id, key);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
   @Mutation(() => Boolean)
   async removeUserPhoto(@CurrentUser() user: UserDTO): Promise<boolean> {
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { photoKey: null },
-    });
+    await this.userService.setPhoto(user.id, null);
     return true;
   }
 

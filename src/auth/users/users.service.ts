@@ -2477,14 +2477,34 @@ export class UserService {
     });
   }
 
+  /**
+   * Link para enviar a foto de perfil. Não grava nada: a foto só troca
+   * quando a tela confirma o arquivo enviado (setPhoto). Antes a chave nova
+   * era gravada aqui, e um envio que falhava deixava a foto quebrada e a
+   * anterior esquecida no S3 (item 340).
+   */
   async generatePhotoUploadUrl(userId: number, contentType?: string): Promise<PresignedUpload> {
     // Tipo e tamanho validados no S3Service (a extensão sai do tipo)
-    const upload = await this.s3Service.createImageUpload(
-      `users/${userId}/${uuidv4()}`,
-      contentType,
-    );
-    await this.prisma.user.update({ where: { id: userId }, data: { photoKey: upload.key } });
-    return upload;
+    return this.s3Service.createImageUpload(`users/${userId}/${uuidv4()}`, contentType);
+  }
+
+  /** Confirma a foto enviada (ou null para tirar); a anterior sai do S3 */
+  async setPhoto(userId: number, key: string | null) {
+    const prefix = `users/${userId}/`;
+    if (key && (!key.startsWith(prefix) || key.includes('..'))) {
+      throw new BadRequestException('Arquivo inválido');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { photoKey: true },
+    });
+    await this.prisma.user.update({ where: { id: userId }, data: { photoKey: key } });
+    if (user?.photoKey && user.photoKey !== key) {
+      this.s3Service
+        .deleteObject(user.photoKey)
+        .catch((err) => this.logger.warn(`Não apagou ${user.photoKey} do S3: ${String(err)}`));
+    }
+    return key ? this.s3Service.getDownloadUrl(key) : null;
   }
 
   async getPhotoDownloadUrl(userId: number): Promise<string> {

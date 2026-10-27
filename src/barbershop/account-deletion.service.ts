@@ -177,8 +177,12 @@ export class AccountDeletionService {
         if (e?.code !== 'resource_missing') throw e;
       });
     }
-    if (user.photoKey) {
-      // Arquivo que ficar pra trás não impede a exclusão
+    // Todas as fotos da conta, não só a atual: as antigas também têm o rosto
+    // da pessoa (item 340). Arquivo que ficar pra trás não impede a exclusão
+    await this.s3Service
+      .deletePrefix(`users/${userId}/`)
+      .catch((e) => this.logger.warn(`Fotos do usuário ${userId} não saíram do S3: ${e}`));
+    if (user.photoKey && !user.photoKey.startsWith(`users/${userId}/`)) {
       await this.s3Service.deleteObject(user.photoKey).catch((e) => {
         this.logger.warn(`Foto do usuário ${userId} não foi apagada do S3: ${e}`);
       });
