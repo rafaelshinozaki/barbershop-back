@@ -3806,3 +3806,25 @@ Foram lidos no back a troca de plano (`changeUserPlan`, `changeMultipleUsersPlan
      **Fazer:** recusar data depois de hoje. Recusar o mesmo repasse (unidade, tipo, valor, data) gravado há poucos minutos, com aviso de que já foi registrado (ou aceitar uma chave de envio vinda da tela). Teste: data de amanhã é recusada; o mesmo repasse duas vezes seguidas grava uma.
 
      **Feito:** os três registros passam por `recordPayout`, que trava a unidade, recusa data depois de hoje no fuso da unidade e devolve 409 para o mesmo repasse (unidade, valor, data) gravado há menos de 10 minutos. Teste em `test/admin-writes.spec.ts` (backoffice-back).
+
+### Centésima trigésima quinta rodada (2026-10-27): importação, lista de espera, estoque e rotinas
+
+Foram lidos no back a importação de planilha (`ImportService`, `import-sheet`), os fechamentos (`ClosureService`), as séries (`AppointmentSeriesService`), o chat do atendimento, a galeria e a capa (`BarbershopMediaService`), a indicação do Pro, os posts nas redes, o cartão-presente, o estoque (`adjustInventory`, `moveStock`, aviso de estoque baixo), a caixinha pelo app, a nota do cliente e as rotinas de hora em hora (lista de espera, fila do dia, vagas). No front, os valores com moeda fixa.
+
+365. ⬜ **A lista de espera fecha como "já agendou" quem só queria um horário melhor no mesmo dia** (back: `closeStaleWaitlistEntries`):
+     - A rotina de hora em hora marca `BOOKED` toda entrada cujo cliente tem qualquer horário na unidade naquele dia. Ela não olha se o horário é anterior à entrada nem se é com o profissional pedido.
+     - Quem tem 18h com o Pedro e entra na lista para um horário com o João (ou mais cedo) sai da lista em até uma hora. Ninguém avisa, e a vaga que abrir vai para o próximo.
+
+     **Fazer:** só conta o horário marcado depois de entrar na lista (`createdAt` do horário depois do da entrada) e, quando a entrada pede um profissional, só o horário com ele. Teste: cliente com horário às 18h entra na lista para o mesmo dia; a rotina não fecha a entrada. Ele marca outro horário depois; a rotina fecha como `BOOKED`.
+
+366. ⬜ **Importar a mesma planilha de novo duplica as faltas** (back: `ImportService.importAppointment`):
+     - Clientes e serviços são reaproveitados, e o horário concluído repetido é recusado porque ocupa a agenda. Mas a falta (`NO_SHOW`) não ocupa a agenda (`ensureBarberAvailable` ignora `CANCELLED` e `NO_SHOW`), então cada nova importação grava as mesmas faltas outra vez.
+     - As faltas entram no comparecimento do cliente (nota do cliente) e nos números do profissional (carreira). Importar duas vezes, por exemplo para corrigir uma linha, dobra as faltas de todo mundo. A pré-visualização conta como "criado" o que já existe.
+
+     **Fazer:** antes de criar, procurar horário do mesmo cliente, profissional e início na unidade. Se já existe, pular com aviso ("já importado"), também na pré-visualização. Teste: importar a mesma planilha com uma falta duas vezes deixa uma falta só, e a segunda importação mostra a linha como pulada.
+
+367. ⬜ **Estoque baixo só avisa depois de venda; perda e ajuste que derrubam o saldo não avisam** (back: `adjustInventory`, `ActivityNotificationsService.lowStockAfterSale`):
+     - O aviso de estoque baixo só procura movimentos de venda (`referenceType: 'SALE'`). A baixa manual (perda, contagem, ajuste) que cruza o mínimo não avisa ninguém.
+     - Quem lança uma perda de 10 unidades e deixa o produto abaixo do mínimo fica sem o aviso que receberia se fosse uma venda, e a preferência "Estoque" das notificações não vale para esse caso.
+
+     **Fazer:** o ajuste manual que cruza o mínimo (antes acima, depois igual ou abaixo) dispara o mesmo aviso, com chave própria do movimento. Teste: produto com mínimo 5 e saldo 8; perda de 4 gera um aviso; outra perda com o saldo já baixo não gera outro.
