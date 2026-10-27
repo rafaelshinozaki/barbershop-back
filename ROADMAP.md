@@ -3568,3 +3568,27 @@ Foram lidos no back a conta do horário (`createSale` com `appointmentId`), o ca
      **Fazer:** máximo nos campos (nome 120, telefone 30, e-mail 254, observação 500, código 40) nos dois inputs públicos, com a mesma regra no serviço (corta ou recusa). Teste: agendamento público com nome de 5.000 caracteres é recusado.
 
      **Feito:** limites em `PUBLIC_TEXT_LIMITS` (nome 120, telefone 30, e-mail 254, observação 500, código 40) nos dois inputs públicos (`@MaxLength`) e no serviço (`assertPublicTextLimits` em `createPublicAppointment` e `joinPublicWaitlist`). Testes em `round-337-339.spec.ts`.
+
+### Centésima vigésima oitava rodada (2026-10-27): varredura geral
+
+Foram lidos no back a importação de planilha (`ImportService`), o chat do atendimento (`ChatService`), a ficha do cliente (criar, editar, buscar), os pacotes (venda, baixa, desfazer), as campanhas de marketing (segmento, limites, descadastro), as vagas para freelancer (taxa, aceite), o espaço compartilhado, os envios de imagem (`S3Service`, `MediaService`, foto de perfil, logo da franquia, posts), as notificações, o estoque, a verificação de identidade e a exclusão de conta (equipe e cliente). No front, a busca de datas calculadas em UTC no lugar do fuso da unidade.
+
+340. ⬜ **A foto de perfil e a logo da franquia trocam de chave antes do envio; envio que falha deixa a imagem quebrada, e a anterior fica no S3 para sempre** (back: `UserService.generatePhotoUploadUrl`, `NetworkResolver.getNetworkLogoUploadUrl`, `AccountDeletionService.erase`):
+     - A capa, a foto do profissional e a galeria seguem o caminho certo: o link de envio é gerado, o navegador envia, e só depois a tela confirma a chave (`setCover`, `setAvatar`), que apaga a anterior.
+     - A foto de perfil grava o `photoKey` novo no mesmo pedido que gera o link de envio. Se o envio não acontece (imagem acima do limite, que o S3 recusa; rede caiu; aba fechada), a conta aponta para um arquivo que não existe e a foto some. A anterior não é apagada.
+     - A logo da franquia faz o mesmo (`logoKey`), com o caminho fixo `networks/<id>/logo.<ext>`: trocar de PNG para JPG deixa as duas, e envio que falha quebra a logo do menu de toda a rede.
+     - Na exclusão da conta só a foto atual é apagada. As fotos antigas (`users/<id>/<uuid>`) ficam no bucket com o rosto da pessoa.
+     
+     **Fazer:** mesmo caminho da capa: o link de envio não grava nada; uma mutation confirma a chave (conferindo o prefixo da conta ou da rede) e apaga a anterior. Na exclusão da conta, apagar tudo sob `users/<id>/`. Teste: gerar o link e não enviar mantém a foto anterior; confirmar a nova apaga a antiga.
+
+341. ⬜ **Dois gerentes aceitando candidatos ao mesmo tempo passam do número de vagas** (back: `JobOpeningService.acceptNow`):
+     - O aceite trava só a candidatura (`status: 'pending'` → `accepted`). A conta de quantos já foram aceitos (`accepted >= opening.slots`) vem depois do convite criado.
+     - Vaga com 1 lugar e dois candidatos aceitos ao mesmo tempo (dois gerentes, ou duas abas, ou a taxa paga pelo webhook enquanto alguém aceita outro): os dois passam pela vaga aberta e recebem convite. Com taxa por vaga preenchida, a unidade paga duas.
+     
+     **Fazer:** aceitar sob uma trava da vaga (`pg_advisory_xact_lock` ou contagem condicional) e recusar quando os aceitos já somam os lugares. Teste: vaga de 1 lugar, dois aceites em paralelo, só um passa.
+
+342. ⬜ **O dono dispara a campanha para a rede inteira uma vez por unidade, contornando os limites diário e mensal** (back: `sendMarketingBlast`):
+     - Os limites da campanha (uma por dia, `MARKETING_MIN_INTERVAL_HOURS`; e-mails por 30 dias, `MARKETING_EMAILS_PER_30_DAYS`) contam por unidade.
+     - O dono manda para a rede inteira (`networkWide`) a partir de qualquer unidade. Com cinco unidades, são cinco campanhas por dia para todos os clientes da rede, e cinco vezes o limite mensal de e-mails. Os limites existem para proteger a reputação de envio do domínio da plataforma.
+     
+     **Fazer:** campanha para a rede inteira conta no limite da rede (todas as unidades). Teste: o dono manda uma campanha da rede pela unidade A; pela unidade B, no mesmo dia, é recusada.
