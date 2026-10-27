@@ -241,6 +241,23 @@ export class ClientAuthService {
     }
   }
 
+  /**
+   * Conta de cliente recém-criada a partir da conta da equipe: com o e-mail
+   * já confirmado, liga as fichas na hora; sem, manda o link de confirmação
+   * (o histórico das barbearias só aparece depois de confirmar)
+   */
+  async welcomeLinkedAccount(account: {
+    id: number;
+    email: string;
+    name: string;
+    language: string | null;
+    emailVerifiedAt: Date | null;
+    phone: string | null;
+  }) {
+    if (account.emailVerifiedAt) await this.linkVerifiedCustomers(account);
+    else await this.sendVerificationEmail(account);
+  }
+
   async resendVerificationEmail(clientAccountId: number) {
     const account = await this.prisma.clientAccount.findUnique({ where: { id: clientAccountId } });
     if (!account) throw new UnauthorizedException('Conta não encontrada.');
@@ -422,8 +439,6 @@ export class ClientAuthService {
         if (!staff) await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
         throw invalid();
       }
-      // O e-mail da equipe nunca foi confirmado: o histórico das barbearias
-      // só aparece depois de confirmar (mesma regra do cadastro)
       account = await this.prisma.clientAccount.create({
         data: {
           email: normalizedEmail,
@@ -431,9 +446,11 @@ export class ClientAuthService {
           phone: staff.phone || null,
           userId: staff.id,
           linkedAt: new Date(),
+          // E-mail da equipe confirmado vale aqui (item 349)
+          emailVerifiedAt: staff.emailVerifiedAt ?? null,
         },
       });
-      await this.sendVerificationEmail(account);
+      await this.welcomeLinkedAccount(account);
       return account;
     }
 

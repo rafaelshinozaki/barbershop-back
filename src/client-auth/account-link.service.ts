@@ -13,15 +13,17 @@ type StaffUser = {
   fullName: string;
   phone: string;
   twoFactorEnabled: boolean;
+  emailVerifiedAt: Date | null;
 };
 
 /**
  * A mesma pessoa com conta de cliente e conta da equipe (mesmo e-mail):
  * as duas ficam ligadas e a senha que vale nas duas telas é a da equipe.
  *
- * Só liga com prova dos dois lados: a conta da equipe não confirma e-mail,
- * então "mesmo e-mail" sozinho deixaria alguém criar uma conta da equipe com
- * o e-mail de outra pessoa e herdar a área de cliente dela. A prova é a
+ * Só liga com prova dos dois lados: as contas da equipe antigas (de antes do
+ * código no cadastro, item 344) podem não ter o e-mail confirmado, então
+ * "mesmo e-mail" sozinho deixaria alguém criar uma conta da equipe com o
+ * e-mail de outra pessoa e herdar a área de cliente dela. A prova é a
  * senha: a mesma nos dois lados liga no login; senhas diferentes ligam
  * quando a pessoa, logada num lado, digita a senha do outro.
  */
@@ -50,6 +52,7 @@ export class AccountLinkService {
         fullName: true,
         phone: true,
         twoFactorEnabled: true,
+        emailVerifiedAt: true,
       },
     });
   }
@@ -66,6 +69,7 @@ export class AccountLinkService {
         fullName: true,
         phone: true,
         twoFactorEnabled: true,
+        emailVerifiedAt: true,
       },
     });
   }
@@ -238,6 +242,8 @@ export class AccountLinkService {
         phone: staff.phone || null,
         userId: staff.id,
         linkedAt: new Date(),
+        // E-mail da equipe já confirmado vale para a conta de cliente (item 349)
+        emailVerifiedAt: staff.emailVerifiedAt ?? null,
       },
     });
     return { account, created: true };

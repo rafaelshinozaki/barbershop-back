@@ -206,10 +206,19 @@ export class CouponsService {
         discountAmount = Number(coupon.value);
         break;
 
-      case COUPON_TYPE.FREE_MONTH:
-        // Para o próximo mês gratuito, o desconto é o valor da mensalidade
-        discountAmount = originalAmount;
+      case COUPON_TYPE.FREE_MONTH: {
+        // Um mês do plano: no anual, um doze avos do preço (antes o desconto
+        // era o preço inteiro e o "1 mês grátis" virava o ano todo, item 350)
+        const plan = await this.prisma.plan.findUnique({
+          where: { id: planId },
+          select: { billingCycle: true },
+        });
+        discountAmount =
+          plan?.billingCycle === 'YEARLY'
+            ? Math.round((originalAmount / 12) * 100) / 100
+            : originalAmount;
         break;
+      }
 
       case COUPON_TYPE.FREE_SUBSCRIPTION:
         // Para assinatura gratuita, o desconto é o valor total
