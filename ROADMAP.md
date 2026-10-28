@@ -4156,3 +4156,122 @@ Foram lidos no back o cadastro da equipe e do cliente (idade, senha, termos), o 
      - Ao reenviar, a tela copia o link do convite (que cria a conta da pessoa na equipe) para a área de transferência do gerente, mesmo quando o e-mail saiu. O gerente pode colar o link num lugar errado sem saber que ele está ali.
 
      **Fazer:** copiar só quando o gerente clicar em "copiar link" (como no envio que falhou), e não quando o e-mail saiu. Teste: reenviar com sucesso não mexe na área de transferência.
+
+### Centésima quadragésima rodada (2026-10-28): dados no navegador, endereços de produção, itens inativos, buscas e históricos
+
+Foram lidos no front a sessão guardada no navegador, os endereços padrão, as ações de um clique (falta, taxa de falta, caixinha), os seletores de serviço, produto e profissional, a ficha do cliente e a lista de vendas. No back, o endereço da página (subdomínio), o `/health`, a exclusão da conta do cliente, as avaliações, o plano (e-mails e rotas antigas do admin), as buscas por texto, o cadastro de clientes, as campanhas, o histórico do app do cliente, as avaliações públicas e os números do backoffice. No backoffice-back, as dependências (`pnpm audit`).
+
+423. ⬜ **O login guarda os dados pessoais no navegador, e o devtools fica ligado em produção** (front: `src/store/auth.store.ts`):
+     - O `persist` grava o usuário inteiro no `localStorage` (CPF, telefone, data de nascimento). Qualquer script na página, extensão ou pessoa no mesmo computador lê esses dados, e eles ficam lá depois que a sessão vence.
+     - O `devtools` do zustand está ligado sem conferir o ambiente: em produção, quem tem a extensão vê e altera o estado.
+
+     **Fazer:** guardar só o necessário (id, nome, papel), buscar o resto pela API, e ligar o `devtools` só fora de produção. Teste: depois do login, o `localStorage` não tem CPF nem telefone.
+
+424. ⬜ **Endereços de teste e de localhost como padrão em produção** (front: `src/constants/payment.ts`, `src/config.ts`; back: `app.module.ts`):
+     - O link do portal de cobrança do Stripe cai num endereço de teste quando a variável não existe. O `BACKOFFICE_URL` cai em `localhost`.
+     - No back, o Joi aceita `FRONTEND_URL` vazio e usa `localhost`: e-mails de convite, de senha e de avaliação saem com links para `localhost` se a variável faltar no deploy.
+
+     **Fazer:** sem padrão em produção: o back não sobe sem `FRONTEND_URL` quando `NODE_ENV=production`, e o build do front falha sem as variáveis. Teste: subir o back em produção sem `FRONTEND_URL` dá erro na validação.
+
+425. ⬜ **Dependências do backoffice-back com falhas de segurança conhecidas** (backoffice-back: `pnpm audit --prod`):
+     - Avisos altos em `follow-redirects`, `body-parser` e `multer`, e moderado em `qs`. O `body-parser` e o `multer` recebem pedidos de fora.
+
+     **Fazer:** atualizar para as versões corrigidas (como no item 421 do back) e pôr o `pnpm audit --prod --audit-level high` no CI. Teste: `pnpm audit --prod` sem avisos altos.
+
+426. ⬜ **Marcar falta, perdoar a taxa de falta e tirar a caixinha são um clique, sem confirmação** (front: `Appointments.tsx`, `NoShowCharges.tsx`, `TipPanel`):
+     - "Faltou" no agendamento lança a falta (e a taxa, quando a unidade cobra) na hora. Um toque errado no celular marca a falta de quem está na cadeira.
+     - "Perdoar" a taxa de falta (`handleWaive`) e "remover" a caixinha (`drop`) também não pedem confirmação, e a taxa perdoada não volta.
+
+     **Fazer:** confirmação com o nome do cliente e o valor ("Marcar falta de Davi? A taxa de R$ 30 será cobrada"). Teste: cancelar a confirmação não muda nada.
+
+427. ⬜ **Serviço, produto e profissional inativos aparecem para vender e agendar** (front: `Sales.tsx`, `Appointments`, `QuickAppointment`, `Packages`, `Subscriptions`; back: `ensureItemsOfBarbershop`, `ensureBarberOfBarbershop`):
+     - Os seletores de Vendas, do agendamento, do pacote e do clube listam também o que foi desativado. O back confere só se o item é da unidade, não se está ativo.
+     - O serviço desativado (preço antigo, que não existe mais) continua sendo vendido e agendado, e o profissional desligado recebe horário.
+
+     **Fazer:** filtrar os inativos nas telas e recusar no back o item ou profissional inativo em venda, agendamento, pacote e clube novos (editar o que já existe continua igual). Teste: vender um serviço desativado dá erro.
+
+428. ⬜ **A lista de subdomínios reservados é pequena** (back: `resolveSubdomainUpdate`):
+     - Só alguns nomes são bloqueados. Uma unidade pode pegar `admin`, `suporte`, `pagamento`, `login`, `status` ou o nome da própria plataforma, e usar o endereço para enganar clientes.
+
+     **Fazer:** lista maior (contas, suporte, pagamento, login, termos, status, mail, app, api, www e variações com a marca), comparando sem acento e sem hífen. Teste: `suporte` e `pagamentos` são recusados.
+
+429. ⬜ **O `/health` público chama a API do Stripe a cada acesso** (back: `HealthController`, `/stripe/health`):
+     - Os dois endereços são abertos e consultam o Stripe toda vez, sem cache. Quem chama em loop gasta o limite de chamadas da conta do Stripe da plataforma.
+     - Com o Stripe fora do ar, o `/health` fica "error" e o monitor ou o balanceador pode tirar o servidor do ar, mesmo com o banco e o resto funcionando.
+
+     **Fazer:** o `/health` público confere só o banco e o Redis. O Stripe fica num endereço protegido, com o resultado guardado por um minuto. Teste: dez chamadas seguidas ao `/health` não chamam o Stripe.
+
+430. ⬜ **Excluir a conta do cliente apaga a conversa em moderação e as avaliações denunciadas** (back: `client-auth.service.ts`, exclusão da conta):
+     - A exclusão apaga as conversas, inclusive a que está retida para análise de denúncia, e as avaliações com denúncia aberta. Quem foi denunciado apaga a prova antes da análise.
+
+     **Fazer:** o que está em análise fica guardado (sem os dados da pessoa) até a moderação decidir, e depois sai. Teste: excluir a conta com uma conversa retida mantém a conversa para a moderação.
+
+431. ⬜ **A unidade pode avaliar a si mesma** (back: `ensureVerifiedCustomer`):
+     - Conta como "cliente atendido" o horário vindo de importação ou histórico (`HISTORY`, `IMPORT`), que a própria unidade lança, e não confere se quem avalia é da equipe. O dono importa uma planilha com o próprio e-mail e avalia a unidade com 5 estrelas.
+
+     **Fazer:** só horários atendidos de verdade (agendados pelo app ou pela equipe e concluídos), e quem é da equipe da unidade (ou dono da rede) não avalia. Teste: a conta do dono não consegue avaliar a própria unidade.
+
+432. ⬜ **Plano: o e-mail de confirmação prometido não sai, e não há aviso antes da renovação** (back: pagamento do plano; front: tela de sucesso):
+     - Depois de pagar, a tela diz que um e-mail de confirmação foi enviado, e nenhum é mandado.
+     - Os modelos `plan_expiring_email` e `reactivation_email` existem e não são usados. O dono é cobrado na renovação sem aviso prévio.
+
+     **Fazer:** mandar o e-mail de confirmação com o recibo e o aviso alguns dias antes da renovação (ou tirar a promessa da tela). Teste: pagar o plano enfileira o e-mail de confirmação.
+
+433. ⬜ **Rotas antigas do admin mudam o plano sem o Stripe e desativam a conta** (back: REST e GraphQL antigos do admin):
+     - Trocar o plano por elas muda só o banco: o Stripe continua cobrando o plano antigo, e a troca agendada (`pendingPlanId`) não é limpa.
+     - `update-payment-status` com `FREE` ou `PAST_DUE` põe `isActive = false`: a conta inteira (e a página da unidade) sai do ar por um atraso de pagamento.
+
+     **Fazer:** tirar as rotas antigas (o backoffice já tem as suas) ou fazer passar pelo mesmo caminho do backoffice, e não desativar a conta por status de pagamento. Teste: a rota antiga responde que não existe, ou a troca sincroniza com o Stripe.
+
+434. ⬜ **A ficha do cliente para em 50 atendimentos, vendas e pacotes** (front: ficha do cliente; back: consultas com `take` padrão):
+     - As abas e os números da ficha (gasto total, visitas) usam as listas que vêm com no máximo 50 itens, sem "ver mais". O cliente fiel com 80 visitas aparece com 50, e o gasto total sai menor.
+
+     **Fazer:** números calculados no banco (soma e contagem) e listas com paginação. Teste: cliente com 60 vendas mostra 60 visitas e o gasto total certo.
+
+435. ⬜ **Vendas do mês filtradas pela data de criação, receita pela data de pagamento** (back: lista de vendas; front: `Sales.tsx`):
+     - A lista do mês filtra por `createdAt` e o resumo de receita usa `paidAt`. A venda criada no dia 31 e paga no dia 1 aparece num mês e entra na receita do outro.
+     - O fim do período é `'23:59:59'` com `lte`, e a venda do último segundo (com milissegundos) fica de fora.
+
+     **Fazer:** a mesma data nas duas (pagamento, ou criação para as pendentes) e fim do período como início do dia seguinte com `lt`, no fuso da unidade. Teste: venda criada às 23:59:59.500 do último dia entra no mês.
+
+436. ⬜ **A busca por texto não trata `%` e `_`** (back: `searchNetworks`, `getCustomers`, busca pública):
+     - O Prisma não escapa `%` e `_` no `contains` (conferido: buscar `%` traz todos os clientes). Na busca da equipe isso lista a base inteira de uma vez; na busca pública de redes, traz todas.
+
+     **Fazer:** escapar `%`, `_` e `\` antes do `contains` (uma função comum). Teste: buscar `%` não traz ninguém (ou só quem tem `%` no nome).
+
+437. ⬜ **O histórico do app do cliente mostra o atendimento duas vezes** (back: `ClientAuthService.getHistory`):
+     - O atendimento fechado no caixa aparece como "agendamento" (sem valor) e de novo como "venda" (com o valor), porque a venda tem o `appointmentId` e a lista não junta os dois.
+     - Cada lista vem com no máximo 50 e só depois é cortada em 50, e a venda é ordenada pela criação, não pelo pagamento.
+
+     **Fazer:** a venda ligada a um agendamento entra como o valor dele (uma linha só), e a lista é paginada. Teste: atendimento fechado no caixa aparece uma vez, com o valor.
+
+438. ⬜ **Campanha para "inativos" pega quem já tem horário marcado e ignora as outras unidades** (back: `resolveMarketingSegment`, `INACTIVE`):
+     - O "inativo" é só quem não teve atendimento na unidade nos últimos dias. Quem já tem horário marcado para a semana que vem recebe "sentimos sua falta".
+     - Na campanha para a rede inteira, a conta usa só a unidade de onde se dispara: quem vai toda semana a outra unidade da rede entra como inativo.
+
+     **Fazer:** tirar quem tem horário futuro e, na campanha da rede, contar os atendimentos em todas as unidades da rede. Teste: cliente com horário marcado não entra no segmento.
+
+439. ⬜ **Cliente cadastrado à mão sem padronizar o telefone e sem conferir se já existe** (back: `createCustomer`):
+     - O telefone é gravado como foi digitado (os outros caminhos usam `normalizePhoneToE164`), e não há conferência de ficha com o mesmo telefone ou e-mail na rede. O mesmo cliente fica com duas fichas, e os pontos, o histórico e o pacote se dividem.
+     - Sem telefone, a ficha recebe o texto `(sem telefone)` no campo do telefone.
+
+     **Fazer:** padronizar o telefone e, se já houver ficha com o mesmo telefone ou e-mail, avisar e oferecer a existente. Teste: cadastrar "(11) 99999-0000" quando já existe "+5511999990000" devolve aviso de duplicado.
+
+440. ⬜ **Buscar cliente pelo telefone formatado não acha, e a lista não tem limite** (back: `getCustomers`):
+     - A busca compara o texto digitado com o telefone gravado (`+5511999990000`). "(11) 99999-0000" ou "11 99999" não acham ninguém. A coluna `phoneDigits` (só os números) existe e não é usada aqui.
+     - O `limit` vem de quem chama e não tem teto: um pedido com `limit: 1000000` traz a base inteira.
+
+     **Fazer:** buscar pelos dígitos em `phoneDigits` e limitar o `limit` (por exemplo 100). Teste: buscar "(11) 99999-0000" acha a ficha.
+
+441. ⬜ **Avaliações públicas de qualquer unidade, inclusive suspensa ou fora do ar** (back: `barbershopReviews`):
+     - A consulta é aberta e aceita qualquer `barbershopId`, sem conferir se a unidade está ativa, publicada e não suspensa. Basta percorrer os números para ler as avaliações de unidades que saíram do ar.
+     - Traz no máximo 50, sem paginação, enquanto a contagem mostra o total.
+
+     **Fazer:** só unidade com a página pública no ar, e paginação. Teste: unidade suspensa devolve lista vazia.
+
+442. ⬜ **Faixas de idade erradas no painel do backoffice** (back: `BackofficeService`, demografia dos usuários):
+     - A idade é só a diferença de anos: quem ainda não fez aniversário no ano entra um ano mais velho (e muda de faixa).
+     - Menores de 18 (a equipe pode ter aprendiz a partir da idade mínima de trabalho) não entram em faixa nenhuma, e o total do gráfico fica menor que o de usuários.
+     - O resolver tem outra conta de faixas (`getAgeRange`), sem uso, em que menor de 18 cai em "18-24".
+
+     **Fazer:** idade pela data completa (como `work-age.ts`), faixa "menos de 18", e apagar a função sem uso. Teste: quem nasceu em 30/12/2000 tem 25 anos em 28/10/2026.
