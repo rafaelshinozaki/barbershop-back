@@ -4475,7 +4475,7 @@ Foram lidos no back as campanhas, a exclusão de conta, o espaço compartilhado,
      - O login leva o e-mail e a senha para a tela do código no `state` da rota, que o navegador guarda no histórico da aba. Para reenviar o código, a tela faz o login de novo com essa senha. A senha fica em texto, acessível a qualquer script da página e ao voltar no histórico.
      - O erro "Unexpected response from server" está fixo em inglês.
 
-     **Fazer:** reenviar o código com o `loginId` (o back gera outro código sem pedir a senha) e não guardar a senha. Teste: depois do login, o `history.state` não tem a senha.
+     **Fazer:** criar no back um reenvio do código pelo `loginId` (sem pedir a senha de novo) e não guardar a senha na tela. Teste: depois do login, o `history.state` não tem a senha.
 
 476. ⬜ **Telas de teste no ar, e links secretos fora do `robots.txt`** (front: `App.tsx`, `api/robots.js`):
      - `/connect/fake`, `/identity/fake` e `/signup-refactored` estão nas rotas de produção. O back recusa as ações falsas, mas as telas abrem.
