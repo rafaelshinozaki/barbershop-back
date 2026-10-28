@@ -4553,8 +4553,8 @@ Foram lidos no back o login social da equipe e do cliente, o login do cliente co
 
      **Fazer:** respeitar a preferência pelo tipo do envio, pôr o descadastro (link e `List-Unsubscribe`), escapar o texto (ou aceitar só um formato simples) e filtrar contas ativas nos avisos. Teste: quem desligou "novidades por e-mail" não recebe o envio de novidades.
 
-488. ⬜ **O período de teste não libera nada do que o banner promete** (back: `UserService.getTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
-     - O banner diz "Explore todas as funcionalidades premium", "Análises avançadas ilimitadas", "Exportação em PDF" e "Suporte prioritário". Os módulos dependem só do plano (`ensureModuleAccess`); o teste não libera nenhum, e não há exportação em PDF.
+488. ⬜ **O período de teste não libera nada do que o banner promete** (back: `UserService.checkAndUpdateTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
+     - O banner diz "Explore todas as funcionalidades premium", "Análises avançadas ilimitadas", "Exportação em PDF" e "Suporte prioritário". Os módulos dependem só do plano (`ensureModuleAccess`); o teste não libera nenhum, e não há exportação de relatórios em PDF.
      - O fim do teste liga o "modo visualização" e manda um e-mail, mas nada no app usa esse modo.
      - O e-mail de fim de teste sai na consulta de status (uma leitura com efeito colateral).
      - A conta criada pelo convite da equipe ganha 365 dias de teste; o cadastro normal, 30.
