@@ -4516,3 +4516,125 @@ Foram lidos no back as campanhas, a exclusão de conta, o espaço compartilhado,
      - O e-mail não confere as preferências de notificação da pessoa: não há como parar de recebê-lo.
 
      **Fazer:** mandar por fuso (no fim do dia de cada unidade) e respeitar uma preferência de e-mail (por exemplo a de avaliações). Teste: profissional com o e-mail de avaliações desligado não recebe o resumo.
+
+### Centésima quadragésima terceira rodada (2026-10-28): login social da equipe, senha pelo login do cliente, e-mails e planos
+
+Foram lidos no back o login social da equipe e do cliente, o login do cliente com a senha da equipe, os links do suporte, o pedido de avaliação, a escala, a lista de espera pública, o post no Instagram, a resposta do profissional, o período de teste, os módulos dos planos, o e-mail em massa e a lista de cidades. No front, os botões de excluir, o fechamento do atendimento, os fechamentos da unidade e a campanha. No backoffice-back, os resultados do mês e a lista de usuários.
+
+483. ⬜ **Login social da equipe sem `state`: dá para ligar o Google de outra pessoa à conta logada** (back: `GoogleAuthGuard`, `FacebookAuthGuard`, `AppleAuthGuard`, `AuthController.completeSocialLogin`):
+     - O login social da equipe não manda nem confere `state`. Na volta, se o navegador tem um cookie de sessão, a conta do provedor é ligada à conta logada (`linkSocialAccountToUser`).
+     - Ataque: a pessoa começa o login com o próprio Google, guarda o link de volta (com o `code`) e faz a vítima logada abrir esse link. O cookie da equipe é `SameSite=None` em produção, então vai junto. O Google da atacante fica ligado à conta da vítima, e ela entra na conta da vítima pelo Google.
+     - `getCurrentSessionUserId` só confere a assinatura do JWT, não se a sessão ainda existe: um cookie de uma sessão encerrada também liga.
+     - O lado do cliente já tem a proteção (`client-auth/oauth-state.ts`).
+
+     **Fazer:** usar o mesmo `state` em cookie curto nos três provedores da equipe e conferir a sessão ativa antes de ligar. Teste: a volta do Google com um `state` que não é o do cookie dá erro e não liga nada.
+
+484. ⬜ **O login do cliente serve para chutar a senha da equipe sem o bloqueio por e-mail** (back: `ClientAuthService.validateCredentials`, `clientLogin`):
+     - O login do cliente aceita a senha da conta da equipe com o mesmo e-mail (e cria a conta de cliente ligada). Ele só tem limite por IP (`ThrottleLogin`); o bloqueio por e-mail depois de várias falhas (`isLoginBlocked`) é só do login da equipe. Com vários IPs, dá para testar senhas de dono e gerente por aqui.
+     - Quem tem verificação em duas etapas na equipe entra na área do cliente só com a senha.
+
+     **Fazer:** contar as falhas pelo mesmo bloqueio por e-mail da equipe quando a senha conferida é a da equipe, e pedir o código do 2FA nesse caminho. Teste: errar a senha da equipe pelo login do cliente conta para o bloqueio da conta da equipe.
+
+485. ⬜ **"Desconectar o Google" não impede o login pelo Google** (back: `UserService.unlinkSocialAccount`, `findOrCreateSocialUser`; `ClientAuthService.findOrCreateSocialAccount`):
+     - Desconectar apaga a ligação, mas o próximo login pelo Google acha a conta pelo e-mail e cria a ligação de novo. Quem desconecta porque o Google foi invadido continua com a porta aberta.
+     - Vale para a equipe e para o cliente.
+
+     **Fazer:** guardar o provedor desconectado e não religar sozinho pelo e-mail (pedir a senha ou um código por e-mail para ligar de novo). Teste: depois de desconectar, o login pelo Google com o mesmo e-mail não entra.
+
+486. ⬜ **O link do pedido de suporte não vence nem pode ser revogado** (back: `createSupportToken`, `SupportService.byToken`):
+     - O link do e-mail (`/support/ticket?t=`) é só o id assinado, sem prazo e sem versão. Quem recebe o e-mail encaminhado (ou acha o link) lê a conversa e responde para sempre, inclusive depois de fechado (responder reabre).
+
+     **Fazer:** prazo para o link (por exemplo 90 dias depois da última mensagem) e uma versão que a equipe troca para revogar; quem está logado continua vendo pela conta. Teste: o link de um pedido parado há mais do prazo não abre.
+
+487. ⬜ **E-mail em massa do backoffice ignora as preferências, sem descadastro e com HTML livre** (back: `BackofficeService.sendEmailNotification`, `admin_notification.hbs`; backoffice-back: `NotifyWrites.createMany`):
+     - O envio não confere as preferências de e-mail da pessoa (novidades, promoções), e o e-mail não tem link nem cabeçalho de descadastro, que o Gmail e o Yahoo exigem em envios grandes.
+     - O modelo usa `{{{message}}}`: o texto da equipe entra como HTML sem escape (dá para pôr qualquer link ou formulário num e-mail com o domínio da plataforma).
+     - O aviso em massa no app (`createMany`) vai também para contas desativadas e apagadas.
+
+     **Fazer:** respeitar a preferência pelo tipo do envio, pôr o descadastro (link e `List-Unsubscribe`), escapar o texto (ou aceitar só um formato simples) e filtrar contas ativas nos avisos. Teste: quem desligou "novidades por e-mail" não recebe o envio de novidades.
+
+488. ⬜ **O período de teste não libera nada do que o banner promete** (back: `UserService.checkAndUpdateTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
+     - O banner diz "Explore todas as funcionalidades premium", "Análises avançadas ilimitadas", "Exportação em PDF" e "Suporte prioritário". Os módulos dependem só do plano (`ensureModuleAccess`); o teste não libera nenhum, e não há exportação de relatórios em PDF.
+     - O fim do teste liga o "modo visualização" e manda um e-mail, mas nada no app usa esse modo.
+     - O e-mail de fim de teste sai na consulta de status (uma leitura com efeito colateral).
+     - A conta criada pelo convite da equipe ganha 365 dias de teste; o cadastro normal, 30.
+
+     **Fazer:** decidir o que o teste dá (por exemplo o Premium por 30 dias) e aplicar em `canAccessModule`, ou tirar o banner e o e-mail. Mandar o e-mail por uma tarefa agendada e igualar o prazo do convite. Teste: conta em teste abre os relatórios, ou o banner não aparece.
+
+489. ⬜ **Os planos vendem recursos que qualquer plano já usa** (back: `barbershop-plan.constants.ts`, `ensureModuleAccess`; front: telas da unidade):
+     - O Standard anuncia "catálogo de produtos" e o Premium "fluxo de caixa" e "ficha de anamnese", mas o back só bloqueia estoque, pacotes, relatórios e clube. O Basic usa produtos, caixa e ficha de anamnese de graça.
+     - A lista de módulos do Basic não tem "appointments", e o plano anuncia "Agenda de atendimentos" (funciona porque nada confere).
+     - O front não esconde nem marca o que está fora do plano: a pessoa abre "Estoque" no Basic e recebe um erro.
+
+     **Fazer:** uma tabela única do que cada plano libera (igual ao anúncio), conferida no back em todas as telas e usada no front para esconder ou marcar com cadeado. Teste: no Basic, abrir produtos dá "faça upgrade", e a agenda funciona.
+
+490. ⬜ **O cliente recebe dois pedidos de avaliação do mesmo atendimento** (back: `ReviewRequestService.enqueueDueRequests`, `staffReviewLink`):
+     - O envio automático (2 horas depois) confere só `reviewRequestSentAt` e se já avaliou. O pedido que a equipe manda na hora grava `staffReviewRequestedAt`, que o automático não olha. Quem recebeu o link da equipe e ainda não avaliou recebe outro e-mail.
+     - O automático também sai para unidade encerrada ou suspensa.
+
+     **Fazer:** o automático pula quem já recebeu o pedido da equipe e unidade fora do ar. Teste: pedir pela equipe e rodar o automático não manda outro e-mail.
+
+491. ⬜ **A escala do profissional pode passar do horário da unidade, e a página pública oferece esses horários** (back: `ScheduleService.setWeeklySchedule`, `getWorkingWindowOn`):
+     - O dia "personalizado" aceita qualquer horário, inclusive antes da abertura, depois do fechamento ou num dia em que a unidade não abre. Só o fechamento especial do dia corta.
+     - A página pública oferece esses horários enquanto mostra a unidade "fechada" ("aberto agora" e horário da semana vêm do horário da unidade).
+
+     **Fazer:** limitar a escala própria ao horário da unidade (ou avisar e mostrar o horário do profissional na página). Teste: escala das 6h às 23h numa unidade das 9h às 18h dá erro ou aviso.
+
+492. ⬜ **A lista de espera pública guarda só o primeiro serviço** (back: `joinPublicWaitlist`):
+     - O cliente escolhe "corte + barba", e a entrada guarda só um serviço (`findFirst`). A vaga oferecida depois tem a duração de um serviço só e não cabe os dois.
+     - O serviço não precisa estar ativo.
+
+     **Fazer:** guardar todos os serviços (ou a duração somada) e só aceitar serviços ativos da unidade. Teste: entrar na lista com dois serviços e abrir uma vaga curta não manda o aviso.
+
+493. ⬜ **O post agendado aceita imagens que o Instagram recusa** (back: `SocialService.createPost`, `getPostImageUploadUrl`):
+     - O Instagram só publica JPEG pela API. O envio aceita PNG, WebP e GIF, e a falha só aparece na hora de publicar.
+
+     **Fazer:** com "Instagram" marcado, aceitar só JPEG (ou converter) e avisar na hora de agendar. Teste: agendar para o Instagram com PNG dá erro na hora.
+
+494. ⬜ **A moderação não consegue ocultar só a resposta do profissional** (back: `ProfessionalReviewService.reply`; backoffice-back: moderação):
+     - A resposta da unidade tem "ocultar resposta" (`replyHiddenAt`); a do profissional não tem esse campo. Para tirar uma resposta abusiva do profissional, a moderação precisa ocultar a avaliação inteira, que é do cliente.
+
+     **Fazer:** `replyHiddenAt` na avaliação do profissional, a ação "ocultar resposta" para ela, e a mesma regra do item 461 (texto igual continua oculto). Teste: ocultar a resposta do profissional mantém a avaliação do cliente.
+
+495. ⬜ **Um fechamento de vários dias só sai um dia por vez** (front: `ClosuresDialog.tsx`; back: `ClosureService.remove`):
+     - O fechamento de 30 dias de férias vira 30 linhas, e cada uma sai com um clique e uma confirmação. Não há como desfazer o período inteiro.
+
+     **Fazer:** agrupar os dias seguidos com o mesmo motivo na lista e aceitar remover um período (data inicial e final). Teste: remover um fechamento de 10 dias apaga os 10 com uma confirmação.
+
+496. ⬜ **Cancelar agendamento, apagar despesa, apagar post e arquivar termo assinado são um clique** (front: `Appointments.tsx`, `Cashier.tsx`, `Social.tsx`, `Customers.tsx`):
+     - "Cancelar" no agendamento cancela na hora, avisa o cliente e pode estornar o pago pelo app, sem confirmação.
+     - Apagar despesa do caixa, apagar post agendado e arquivar o termo assinado da ficha também não pedem confirmação.
+
+     **Fazer:** confirmação nesses quatro, dizendo o que acontece ("o cliente recebe aviso", "R$ X volta para o cartão"). Teste: cancelar a confirmação não muda nada.
+
+497. ⬜ **Desconto no fechamento que deixa a conta abaixo do sinal só falha no back** (front: `AppointmentCheckoutDialog.tsx`):
+     - A tela aceita qualquer desconto até o subtotal e mostra o sinal limitado ao total. O back recusa quando o sinal (ou o pago pelo app) passa do total (`SALE_BELOW_APPLIED_MESSAGE`), e a tela só mostra o erro depois de enviar.
+
+     **Fazer:** limitar o desconto para o total não ficar abaixo do que já foi pago, com o aviso na tela. Teste: com sinal de R$ 30 e serviço de R$ 50, o desconto máximo é R$ 20.
+
+498. ⬜ **No backoffice, a comparação de "este mês" pega dias do mês atual** (backoffice-back: `resultsWindow`):
+     - O período anterior começa no dia 1º do mês passado e tem o mesmo tamanho do período atual. Quando o mês passado é mais curto, ele passa do fim: no dia 31 de março, o "anterior" vai de 1º de fevereiro a 3 de março e conta de novo os três primeiros dias de março.
+
+     **Fazer:** limitar o período anterior ao fim do mês passado (ou comparar com os mesmos dias do mês). Teste: em 31 de março, o anterior termina em 1º de março.
+
+499. ⬜ **"Último login" na lista de usuários do backoffice é a data da última alteração** (backoffice-back: `UsersQueries.detailed`):
+     - A coluna usa `u."updatedAt"` (comentário: "aproximação"). Qualquer mudança na conta (plano, foto, preferência) muda o "último login", e quem entra todo dia sem mexer em nada parece inativo. O histórico de acessos (`LoginHistory`) existe.
+
+     **Fazer:** usar o último registro de `LoginHistory` (ou da sessão). Teste: entrar sem mudar nada atualiza a coluna.
+
+500. ⬜ **Buscar profissional por cidade só acha com o nome exato** (back: `searchPublicProfessionals`):
+     - A cidade é comparada com `cities: { has: query }`: maiúsculas e acentos têm que ser iguais. "sao paulo" e "São paulo" não acham quem pôs "São Paulo".
+
+     **Fazer:** comparar sem caixa nem acento (guardar uma versão normalizada das cidades, como o slug da busca de unidades). Teste: buscar "sao paulo" acha o profissional de "São Paulo".
+
+501. ⬜ **A lista pública de cidades repete grafias e ordena errado** (back: `getPublicCities`):
+     - O `distinct` é pelo texto exato: "São Paulo", "Sao Paulo" e "são paulo" aparecem como três cidades.
+     - O `sort()` sem idioma põe "Águas de Lindóia" depois de "Zé Doca".
+     - A cidade de uma unidade oculta pela moderação (`searchHiddenAt`) entra na lista e, escolhida, não traz resultado.
+
+     **Fazer:** agrupar pelo slug da cidade (como `slugifyCity`), ordenar com `Intl.Collator`, e usar o mesmo filtro da busca. Teste: duas grafias de "São Paulo" viram uma só.
+
+502. ⬜ **Textos da campanha fixos em português** (front: `Marketing.tsx`):
+     - A confirmação do envio monta os canais com `'e-mail'` e `.join(' e ')` fixos. Em inglês e espanhol sai "e-mail e WhatsApp" no meio da frase traduzida.
+
+     **Fazer:** os nomes dos canais e o "e" pelas traduções (ou `Intl.ListFormat`). Teste: em inglês, a confirmação diz "email and WhatsApp".
