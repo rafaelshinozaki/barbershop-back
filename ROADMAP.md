@@ -4219,7 +4219,7 @@ Foram lidos no front a sessão guardada no navegador, os endereços padrão, as 
 
 433. ⬜ **Rotas antigas do admin mudam o plano sem o Stripe e desativam a conta** (back: REST e GraphQL antigos do admin):
      - Trocar o plano por elas muda só o banco: o Stripe continua cobrando o plano antigo, e a troca agendada (`pendingPlanId`) não é limpa.
-     - `update-payment-status` com `FREE` ou `PAST_DUE` põe `isActive = false`: a conta inteira (e a página da unidade) sai do ar por um atraso de pagamento.
+     - `update-payment-status` com `FREE` ou `PAST_DUE` põe `User.isActive = false` (só `PAID` fica ativo): a conta do dono é desativada por um atraso de pagamento. A troca de plano (`changeUserPlan`) busca o plano pelo nome e muda só o `planId`.
 
      **Fazer:** tirar as rotas antigas (o backoffice já tem as suas) ou fazer passar pelo mesmo caminho do backoffice, e não desativar a conta por status de pagamento. Teste: a rota antiga responde que não existe, ou a troca sincroniza com o Stripe.
 
