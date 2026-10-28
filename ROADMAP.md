@@ -3954,3 +3954,93 @@ Foram lidos no back os avisos de atividade (`ActivityNotificationsService.delive
      - O campo de data e hora usa o relógio do navegador (`new Date(valor)` e `getTimezoneOffset`), e a lista mostra os horários no fuso do navegador. As outras telas da unidade (agenda, folga, fechamento) usam o fuso da unidade (`shopClock`). O dono que agenda de outro fuso (em viagem, ou rede em outro país) publica na hora errada.
 
      **Fazer:** ler e mostrar a data do post no fuso da unidade, como na agenda. Teste: unidade em São Paulo e navegador em Lisboa; agendar 18:00 publica às 18:00 de São Paulo.
+
+### Centésima trigésima oitava rodada (2026-10-27): fila do dia, e-mails, imagens, buscas e dados guardados no navegador
+
+Foram lidos no back a fila de chegada (`createWalkIn`, `getWalkIns`), o aviso de saldo antes da exclusão, os links de envio de logo e de foto de produto, os valores do serviço (`checkServiceValues`), o fim do espaço compartilhado, o público das campanhas (`marketingRecipients`), a busca de clientes, de redes (área do cliente) e de estabelecimentos, a validade do pacote, as listas com `limit` vindo da tela e a troca de endereço da unidade. No front, a fila do dia, o login com código, o rascunho do cadastro e a lista de vendas. Também foram procurados hooks e consultas sem uso, links para rotas inexistentes e variáveis de e-mail sem valor.
+
+388. ⬜ **A fila de chegada só mostra a lista: não dá para pôr alguém, chamar, concluir nem tirar** (front: `WalkIns.tsx`; back: `getWalkIns`):
+     - As mutations `createWalkIn` e `updateWalkInStatus` existem no back e as consultas estão escritas no front (`CREATE_WALK_IN`, `UPDATE_WALK_IN_STATUS`), mas nenhuma tela usa. A página só lista quem está "aguardando".
+     - Quem passa para "em atendimento" (por outro caminho) some da página. Sem concluir, o atendimento da fila não entra no histórico do cliente nem nos números.
+     - No back, a lista ordena por `status` em ordem alfabética (cancelados e concluídos antes de "aguardando") e corta em 50. Num dia cheio, quem espera fica fora da lista.
+
+     **Fazer:** botões na fila (pôr cliente com serviço e profissional, chamar, concluir, não atendido, cancelar), mostrar também "em atendimento", e a ordem por situação ativa e posição. Teste: pôr dois clientes, chamar o primeiro e concluir; a fila mostra o segundo como próximo.
+
+389. ⬜ **O e-mail "saldo antes da exclusão" põe o nome da unidade sem escapar o HTML** (back: aviso de pacote e cartão-presente antes de excluir a conta):
+     - O modelo `admin_notification` mostra `{{{message}}}` sem escapar, e o aviso aos clientes monta a mensagem com o nome do estabelecimento direto no texto. Os avisos de atividade já escapam (`escapeHtml`); este não.
+     - Um nome de unidade com HTML (link, imagem, formulário) vira conteúdo do e-mail enviado pela plataforma aos clientes, com cara de mensagem oficial.
+
+     **Fazer:** escapar o nome antes de montar a mensagem, ou trocar `{{{message}}}` por `{{message}}` nos usos que não precisam de HTML. Teste: unidade com `<a href="x">` no nome gera e-mail com o texto literal.
+
+390. ⬜ **Logo da unidade e foto do produto: gerar o link de envio já grava a imagem** (back: `getBarbershopPhotoUploadUrl`, `getProductPhotoUploadUrl`):
+     - O mesmo problema do item 340, em outros dois lugares. Pedir o link grava a chave nova (e tira o "ocultado pela moderação" do logo) antes de o arquivo chegar ao S3. Se o envio falha ou a pessoa desiste, a página fica com imagem quebrada.
+     - A foto do produto usa sempre a mesma chave (`products/.../photo`): o navegador e a CDN seguem mostrando a foto antiga depois da troca.
+     - Tirar o logo não apaga o arquivo.
+
+     **Fazer:** como no item 340: o link usa chave nova a cada envio, e uma confirmação (`setBarbershopLogo`, `setProductPhoto`) grava a chave e apaga a anterior. Teste: pedir o link sem enviar não muda a imagem; confirmar troca e apaga a antiga.
+
+391. ⬜ **Baixar o preço do serviço deixa o sinal maior que o preço** (back: `checkServiceValues`):
+     - A regra "sinal não passa do preço" só olha o sinal quando ele vem no pedido. Com preço 100 e sinal 50, mudar só o preço para 30 passa, e o agendamento online cobra R$ 50 de sinal por um serviço de R$ 30.
+
+     **Fazer:** conferir o sinal atual quando só o preço muda (o `current` leva o sinal também) e recusar, ou pedir para ajustar o sinal. Teste: serviço 100/50; mudar o preço para 30 é recusado; para 60 passa.
+
+392. ⬜ **Encerrar o espaço compartilhado deixa a mensalidade futura em aberto** (back: `SharedLocationService.end`):
+     - Encerrar pela tela (o espaço remove ou o profissional sai) cancela o aluguel no cartão, mas não apaga a mensalidade manual já gerada com vencimento futuro. O encerramento da unidade apaga (`endSharedLocationsOfBarbershops`).
+     - Essa mensalidade vira "atrasada" depois que o vínculo acabou: aparece como devida no histórico do aluguel e na prévia de exclusão.
+
+     **Fazer:** no `end`, apagar as mensalidades `DUE` com vencimento depois de agora, como no encerramento da unidade. Teste: vínculo com mensalidade que vence em 5 dias; encerrar remove essa mensalidade e mantém a já vencida.
+
+393. ⬜ **Campanha da rede inteira para "inativos" olha só a unidade de onde saiu** (back: público da campanha, segmento `INACTIVE`):
+     - Desde o item 342, a campanha do dono vai para os clientes da rede. Mas o segmento "inativos" usa o histórico só da unidade (`serviceHistory` com `barbershopId`).
+     - Quem passou a ir em outra unidade da rede recebe "sentimos sua falta". Quem nunca foi nesta unidade não entra, mesmo estando inativo na rede.
+
+     **Fazer:** na campanha da rede, o histórico é o da rede inteira (todas as unidades). Teste: cliente que foi na unidade A há 6 meses e na B semana passada não entra em "inativos" da campanha da rede.
+
+394. ⬜ **A busca de clientes por telefone só acha com a mesma pontuação** (back: `getCustomers`):
+     - A busca usa `phone contains texto`. O telefone fica gravado como veio ("+5511999990000" pelo agendamento online, "(11) 99999-0000" pela equipe). Digitar "11 99999" ou "999990000" não acha quem está gravado com outro formato.
+     - A coluna `phoneDigits` (só os dígitos) já existe e tem índice.
+
+     **Fazer:** quando a busca tem dígitos, procurar também em `phoneDigits` com os dígitos digitados. Teste: ficha "+5511999990000" aparece buscando "(11) 99999-0000" e "999990000".
+
+395. ⬜ **No login com código, a senha fica guardada no histórico do navegador e a resposta do login vai para o console** (front: `LoginGraphQL.tsx`, `VerificationCode.tsx`):
+     - Para reenviar o código, a tela do código recebe a senha pelo estado da navegação (`navigate(..., { state: { password } })`). O estado fica no histórico da aba: voltar, recarregar ou abrir as ferramentas do navegador mostra a senha em texto puro.
+     - O login escreve no console a resposta inteira (`console.log('GraphQL Login response:', ...)` e os dados do usuário).
+
+     **Fazer:** o reenvio usa o `loginId` (o back ganha um reenvio do código por ele, sem a senha) e a senha não vai para o estado. Tirar os `console.log` do login. Teste: depois do login com código, `history.state` não tem a senha.
+
+396. ⬜ **O rascunho do cadastro guarda CPF, nascimento, telefone e endereço no navegador por 7 dias** (front: `useSignupPersistence`):
+     - Para não perder o formulário, o cadastro salva tudo, menos a senha, no `localStorage` e só apaga quando o cadastro termina. Quem desiste num computador compartilhado (o da recepção da barbearia, por exemplo) deixa o documento e o endereço para o próximo.
+
+     **Fazer:** guardar só na aba (`sessionStorage`) ou sem os dados pessoais (documento, nascimento, endereço), e com prazo curto. Teste: começar o cadastro, fechar a aba; os dados pessoais não estão no `localStorage`.
+
+397. ⬜ **Listas aceitam qualquer `limit` vindo da tela** (back: `getCustomers`, `getBarbershopAppointments`, `getWalkIns`, `getSales`):
+     - O `take` usa o `limit` do pedido sem teto. Qualquer pessoa da equipe (até barbeiro básico, nas fichas) pode pedir `limit: 1000000` e trazer a base inteira com os itens, o que pesa no banco e no servidor. Um `limit` negativo inverte a ordem no Prisma.
+
+     **Fazer:** limitar (por exemplo de 1 a 200; na agenda, o máximo do período que já existe) e recusar número negativo. Teste: `limit: 100000` traz no máximo 200.
+
+398. ⬜ **O pacote vence na hora exata da compra, não no fim do dia** (back: venda de pacote, `expiresAt`):
+     - A validade é `agora + N dias` em milissegundos. Pacote vendido às 15h vence às 15h do último dia: o cliente que chega às 16h desse dia não pode usar a sessão.
+
+     **Fazer:** vencer no fim do último dia, no fuso da unidade. Teste: pacote de 30 dias vendido às 15h ainda vale às 23h do 30º dia.
+
+399. ⬜ **O filtro "preço até" da busca compara valores de moedas diferentes** (back: busca de estabelecimentos e profissionais):
+     - Sem cidade, a busca traz unidades de vários países, e `maxPrice` compara o número cru: 50 vale para R$ 50, € 50 e ¥ 50. A ordem por preço também mistura moedas.
+
+     **Fazer:** o filtro e a ordem por preço usam a moeda de quem busca (as unidades em outra moeda ficam fora do filtro), ou a busca pede a moeda junto. Teste: "até 50" em reais não traz unidade em ienes com preço 3.000 nem em euros com preço 45.
+
+400. ⬜ **Trocar o endereço da página (slug) quebra os links e QR codes antigos** (back: edição da unidade e correção do suporte):
+     - O slug muda sem guardar o anterior. Links compartilhados, QR codes impressos na unidade e resultados do Google passam a dar "não encontrado".
+
+     **Fazer:** guardar os slugs anteriores e redirecionar para o atual (e recusar usar o slug antigo de outra unidade por um tempo). Teste: trocar de `barba-a` para `barba-b`; `/u/barba-a` abre a página de `barba-b`.
+
+401. ⬜ **A busca de redes na área do cliente mostra rede suspensa ou sem unidade ativa, e favoritar rede que não existe dá erro 500** (back: `ClientAuthService.searchNetworks`, `addFavorite`):
+     - A busca procura só pelo nome. Rede suspensa pela plataforma, encerrada ou sem nenhuma unidade ativa aparece e pode ser favoritada.
+     - `addFavorite` com uma rede que não existe cai na chave estrangeira e responde erro interno.
+
+     **Fazer:** buscar só redes com unidade ativa e sem suspensão; `addFavorite` confere a rede e responde "não encontrada". Teste: rede suspensa não aparece; favoritar id inexistente dá 404.
+
+402. ⬜ **Vendas: "carregar mais" repete venda quando entra uma nova, e a lista volta ao começo** (front: `Sales.tsx`):
+     - A paginação é por posição (`offset`), do mais novo para o mais antigo. Uma venda nova entre duas páginas empurra a lista, e a primeira venda da próxima página repete a última da anterior (chave duplicada na tabela).
+     - A atualização ao vivo (`refetch`) troca a lista pelas primeiras 50 e perde o que já foi carregado.
+
+     **Fazer:** paginar pelo cursor (data e id da última venda carregada) e, na atualização ao vivo, juntar a venda nova no topo sem descartar o resto. Teste: carregar 50, criar uma venda, carregar mais; nenhuma venda repete.
