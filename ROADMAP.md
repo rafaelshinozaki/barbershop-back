@@ -4115,14 +4115,14 @@ Foram lidos no back o cadastro da equipe e do cliente (idade, senha, termos), o 
      **Fazer:** campo esvaziado vai como vazio ou `null`, e o back limpa. Teste: apagar a missão e salvar deixa a missão vazia.
 
 415. ⬜ **Excluir o cartão da renovação não avisa que o plano vai deixar de renovar** (back: `deletePaymentMethod`; front: `PaymentMethods.tsx`):
-     - A renovação do plano cobra o cartão padrão do cliente na Stripe. Excluir esse cartão (o único, ou o padrão) passa só pela confirmação genérica. Na renovação seguinte não há cartão, a cobrança falha e a conta cai para o plano gratuito depois do prazo.
+     - A renovação do plano cobra o cartão padrão do cliente na Stripe. Excluir esse cartão (o único, ou o padrão) passa só pela confirmação genérica. Na renovação seguinte não há cartão padrão e a cobrança falha (`getDefaultPaymentMethodId` volta vazio).
 
      **Fazer:** com plano pago renovando por cartão, avisar antes de excluir o cartão padrão e pedir outro, ou recusar excluir o único cartão. Teste: plano pago com um cartão; excluir mostra o aviso da renovação.
 
 416. ⬜ **Página de nota fiscal de exemplo está no ar** (front: `InvoiceId.tsx`, rota `/invoice/:invoiceId`):
      - A rota mostra sempre um pagamento inventado ("txn_mock_123", R$ 99,90, pago hoje), qualquer que seja o número na URL, com um botão "Abrir Invoice". Quem abre esse link vê uma cobrança falsa com a cara do sistema.
 
-     **Fazer:** tirar a rota (as notas reais já abrem pela lista de pagamentos) ou carregar a nota de verdade pelo id, só do próprio usuário. Teste: `/invoice/1` não mostra dados inventados.
+     **Fazer:** tirar a rota ou carregar a nota de verdade pelo id, só do próprio usuário. Teste: `/invoice/1` não mostra dados inventados.
 
 417. ⬜ **Despesa e lançamento da equipe ficam sempre com a data de hoje** (front: `Cashier.tsx`, `Payroll.tsx`):
      - O back aceita a data da despesa (`expenseDate`, até hoje) e do lançamento (`date`), mas as telas não têm o campo. A conta de luz paga ontem ou o vale dado no fim do mês passado entram no dia de hoje: o resultado do mês e o fechamento da equipe ficam errados.
