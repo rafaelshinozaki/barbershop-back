@@ -1,10 +1,23 @@
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  Optional,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
 import { assertNotSuspended } from './suspension';
 import { supportEmail } from '../common/app-urls';
+import { RedisService } from '@/redis/redis.service';
+import { clearFailedLogins, isLoginBlocked, recordFailedLogin } from '@/auth/login-lockout';
+
+export const STAFF_LOGIN_BLOCKED_MESSAGE =
+  'Muitas tentativas de senha nesta conta. Tente de novo em alguns minutos.';
 
 type StaffUser = {
   id: number;
@@ -34,6 +47,7 @@ export class AccountLinkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   /** Conta da equipe ativa (login por senha) com este e-mail */
@@ -81,8 +95,28 @@ export class AccountLinkService {
     });
   }
 
-  staffPasswordMatches(staff: { password: string }, password: string) {
-    return bcrypt.compare(password, staff.password);
+  /**
+   * A senha digitada é a da conta da equipe? Quando ela é a credencial (o
+   * login do cliente com a senha da equipe, ligar pela área do cliente), a
+   * tentativa conta no mesmo bloqueio por e-mail do login da equipe (item
+   * 484). `count: false` só compara (ex.: a senha do cliente já entrou e o
+   * sistema vê se é a mesma pra ligar): senha diferente aí não é chute.
+   */
+  async staffPasswordMatches(
+    staff: { email: string; password: string },
+    password: string,
+    { count = true }: { count?: boolean } = {},
+  ) {
+    if (!count) return bcrypt.compare(password, staff.password);
+    if (this.redis && (await isLoginBlocked(this.redis.client, staff.email))) {
+      throw new HttpException(STAFF_LOGIN_BLOCKED_MESSAGE, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const ok = await bcrypt.compare(password, staff.password);
+    if (this.redis) {
+      if (ok) await clearFailedLogins(this.redis.client, staff.email);
+      else await recordFailedLogin(this.redis.client, staff.email);
+    }
+    return ok;
   }
 
   /**

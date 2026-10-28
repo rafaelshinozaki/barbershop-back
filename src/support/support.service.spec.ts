@@ -20,6 +20,7 @@ function build() {
     id: number;
     status: string;
     email: string;
+    lastActivityAt: Date;
     messages: { side: string; createdAt: Date }[];
   } | null = null;
   const prisma = {
@@ -36,7 +37,13 @@ function build() {
     },
     supportTicket: {
       create: async ({ data }: { data: { email: string } }) => {
-        ticket = { id: 3, status: 'open', email: data.email, messages: [] };
+        ticket = {
+          id: 3,
+          status: 'open',
+          email: data.email,
+          lastActivityAt: new Date(),
+          messages: [],
+        };
         return { id: 3, name: 'Bruno', email: data.email, subject: input.subject, language: 'pt' };
       },
       findUnique: async () => ticket,
@@ -114,6 +121,7 @@ describe('Fale com a gente: e-mail da conta e aviso agrupado', () => {
       id: 3,
       status: 'answered',
       email: 'outro@ataque.test',
+      lastActivityAt: new Date(),
       messages: [{ side: 'requester', createdAt: new Date() }],
     });
     await answered.support.requesterReply(token, 'Continua igual.');
@@ -131,6 +139,7 @@ describe('Fale com a gente: e-mail da conta e aviso agrupado', () => {
       id: 3,
       status: 'open',
       email: 'outro@ataque.test',
+      lastActivityAt: new Date(),
       messages,
     });
     await expect(support.requesterReply(createSupportToken(3), 'de novo')).rejects.toBeInstanceOf(

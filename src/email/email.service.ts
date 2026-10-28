@@ -37,14 +37,15 @@ export class EmailService {
     context: Record<string, any>, // ex: { FullName, AppName, … } — valores podem ser Localized
     subject: string | Localized, // ex: { pt: 'Bem-vindo', en: 'Welcome', es: 'Bienvenido' }
     meta: string, // string genérica só para log
-    to: string, // ex: 'rafaelsinosak@gmail.com'
+    to: string, // ex: 'cliente@exemplo.com'
+    headers?: Record<string, string>, // ex.: List-Unsubscribe do e-mail em massa
   ) {
     const user = await this.prisma.user.findFirst({
       where: { id: userId },
       select: { userSystemConfig: { select: { language: true } } },
     });
     const lang = normalizeLang(user?.userSystemConfig?.language);
-    return this.renderAndSend(userId, template, context, subject, meta, to, lang);
+    return this.renderAndSend(userId, template, context, subject, meta, to, lang, headers);
   }
 
   /**

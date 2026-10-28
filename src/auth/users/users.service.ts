@@ -23,6 +23,7 @@ import { faker } from '@faker-js/faker';
 import { NewUserSchema } from './models/new-user.schema';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
 import { normalizeEmail } from '@/common/email';
+import { clearFailedLogins, isLoginBlocked, recordFailedLogin } from '../login-lockout';
 import { pickSocialLink } from '../social-link';
 import { canonicalIdDoc } from '@/common/id-doc';
 import { idDocTaken } from '@/common/id-doc-lookup';
@@ -36,8 +37,6 @@ import {
   CHANGE_PASSWORD_CODE_EXPIRY_MINUTES,
   TWO_FACTOR_CODE_EXPIRY_MINUTES,
   CHANGE_PASSWORD_MAX_ATTEMPTS,
-  LOGIN_MAX_ATTEMPTS,
-  LOGIN_BLOCK_MINUTES,
   LOGIN_CODE_MAX_ATTEMPTS,
 } from '@/common';
 import { createHash, randomInt, randomUUID } from 'crypto';
@@ -70,6 +69,9 @@ export const SOCIAL_PROFILE_PHONE_MESSAGE = 'Informe o telefone.';
 export const EMAIL_IN_USE_MESSAGE = 'Outra conta já usa este e-mail.';
 export const TERMS_REQUIRED_MESSAGE =
   'Aceite os termos de uso e a política de privacidade para criar a conta.';
+
+export const SOCIAL_UNLINKED_MESSAGE =
+  'Este login social foi desconectado da conta. Entre com a senha e ligue de novo pela sua conta.';
 
 @Injectable()
 export class UserService {
@@ -110,8 +112,6 @@ export class UserService {
   // ficam no Redis (com expiração), não em Map na memória: com mais de uma
   // instância do back, o código gerado numa era validado na outra.
   private static readonly KEY = {
-    fails: (email: string) => `auth:login-fails:${email}`,
-    blocked: (email: string) => `auth:login-blocked:${email}`,
     code: (loginId: string) => `auth:login-code:${loginId}`,
     codeAttempts: (loginId: string) => `auth:login-code-attempts:${loginId}`,
     codeByUser: (email: string) => `auth:login-code-user:${email}`,
@@ -145,27 +145,14 @@ export class UserService {
     }
   }
 
-  // Conta falhas por email; na LOGIN_MAX_ATTEMPTS-ésima dentro da janela,
-  // bloqueia por LOGIN_BLOCK_MINUTES. As chaves expiram sozinhas (antes um
-  // Map que precisava de limpeza periódica pra não crescer sem limite).
-  // Com o Redis fora, o login por senha continua funcionando — só o
-  // contador de tentativas/bloqueio fica suspenso (logado). Derrubar o login
-  // de todo mundo por causa do contador seria pior.
-  private async isLoginBlocked(email: string): Promise<boolean> {
-    try {
-      return (await this.redis.client.exists(UserService.KEY.blocked(email))) === 1;
-    } catch (error) {
-      this.logger.error(`Redis indisponível (bloqueio de login ignorado): ${error.message}`);
-      return false;
-    }
+  // Bloqueio por tentativas: login-lockout.ts (o login do cliente com a
+  // senha da equipe usa o mesmo, item 484)
+  private isLoginBlocked(email: string): Promise<boolean> {
+    return isLoginBlocked(this.redis.client, email);
   }
 
-  private async recordFailedLogin(email: string) {
-    try {
-      await this.incrementFailedLogin(email);
-    } catch (error) {
-      this.logger.error(`Redis indisponível (tentativa de login não contada): ${error.message}`);
-    }
+  private recordFailedLogin(email: string) {
+    return recordFailedLogin(this.redis.client, email);
   }
 
   // Código de login/2FA não tem como funcionar sem o Redis: erro claro em
@@ -179,19 +166,6 @@ export class UserService {
       throw new ServiceUnavailableException(
         'Verification temporarily unavailable. Please try again in a few minutes.',
       );
-    }
-  }
-
-  private async incrementFailedLogin(email: string) {
-    const failsKey = UserService.KEY.fails(email);
-    const fails = await this.redis.client.incr(failsKey);
-    if (fails === 1) await this.redis.client.expire(failsKey, LOGIN_BLOCK_MINUTES * 60);
-    if (fails >= LOGIN_MAX_ATTEMPTS) {
-      await this.redis.client
-        .multi()
-        .set(UserService.KEY.blocked(email), '1', 'EX', LOGIN_BLOCK_MINUTES * 60)
-        .del(failsKey)
-        .exec();
     }
   }
 
@@ -664,6 +638,7 @@ export class UserService {
   private readonly socialUserSelect = {
     id: true,
     email: true,
+    socialUnlinkedProviders: true,
     emailVerifiedAt: true,
     fullName: true,
     phone: true,
@@ -741,8 +716,25 @@ export class UserService {
     });
   }
 
+  /**
+   * Desconectar não é só apagar a ligação: o próximo login por esse provedor
+   * acharia a conta pelo e-mail e ligaria de novo. O provedor fica anotado
+   * até a pessoa ligar outra vez, logada (item 485).
+   */
   async unlinkSocialAccount(userId: number, provider: string) {
-    await this.prisma.linkedSocialAccount.deleteMany({ where: { userId, provider } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.linkedSocialAccount.deleteMany({ where: { userId, provider } });
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { socialUnlinkedProviders: true },
+      });
+      if (user && !user.socialUnlinkedProviders.includes(provider)) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { socialUnlinkedProviders: { push: provider } },
+        });
+      }
+    });
   }
 
   // Chamado quando o usuário JÁ está logado (por senha ou outro provider) e
@@ -794,7 +786,24 @@ export class UserService {
       create: { userId, provider, providerEmail: email, providerUserId: id },
       update: { providerEmail: email, ...(id ? { providerUserId: id } : {}) },
     });
+    // Ligou de novo, logada: o provedor volta a valer no login
+    await this.allowSocialProviderAgain(userId, provider);
     return { ok: true };
+  }
+
+  private async allowSocialProviderAgain(userId: number, provider: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { socialUnlinkedProviders: true },
+    });
+    if (user?.socialUnlinkedProviders.includes(provider)) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          socialUnlinkedProviders: user.socialUnlinkedProviders.filter((p) => p !== provider),
+        },
+      });
+    }
   }
 
   async findOrCreateSocialUser(
@@ -836,6 +845,12 @@ export class UserService {
     // login por senha (item 270)
     if (user && !user.isActive) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // A pessoa desconectou este provedor: o mesmo e-mail não religa sozinho
+    // (item 485). Ela entra de outro jeito e liga de novo pela conta
+    if (user && !existingLink && user.socialUnlinkedProviders.includes(provider)) {
+      throw new UnauthorizedException(SOCIAL_UNLINKED_MESSAGE);
     }
 
     if (user && !existingLink) {
@@ -1531,7 +1546,7 @@ export class UserService {
 
     // Senha correta: zera o contador de tentativas falhas deste email (antes
     // ficava preso até expirar ou até o próximo bloqueio resetá-lo sozinho).
-    await this.redis.client.del(UserService.KEY.fails(email)).catch(() => undefined);
+    await clearFailedLogins(this.redis.client, email);
 
     // Histórico de login e sessão ativa são gravados em AuthService.login(),
     // não aqui — aqui a senha pode ter batido mas o 2FA ainda pode ser

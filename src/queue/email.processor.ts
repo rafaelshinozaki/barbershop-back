@@ -31,6 +31,7 @@ export class EmailProcessor extends WorkerHost {
         data.subject,
         data.meta,
         data.to,
+        data.headers,
       );
     } else {
       await this.emailService.sendCustomerEmail(

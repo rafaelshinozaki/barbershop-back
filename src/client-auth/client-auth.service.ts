@@ -110,6 +110,22 @@ function toDTO(account: {
   };
 }
 
+export const CLIENT_SOCIAL_UNLINKED_MESSAGE =
+  'Este login social foi desconectado da conta. Entre com a senha (ou outro login) e ligue de novo pela sua conta.';
+
+export const STAFF_TWO_FACTOR_CLIENT_LOGIN_MESSAGE =
+  'Esta conta usa verificação em duas etapas. Entre pela área da equipe e abra a área do cliente por lá.';
+
+/**
+ * Senha da equipe com verificação em duas etapas: o login do cliente não pede
+ * o código, então não entra por aqui (item 484). A conta abre a área do
+ * cliente pela área da equipe, depois do código.
+ */
+function assertNoStaffTwoFactor(staff: { twoFactorEnabled: boolean }) {
+  if (staff.twoFactorEnabled)
+    throw new UnauthorizedException(STAFF_TWO_FACTOR_CLIENT_LOGIN_MESSAGE);
+}
+
 @Injectable()
 export class ClientAuthService {
   private readonly logger = new Logger(ClientAuthService.name);
@@ -396,7 +412,8 @@ export class ClientAuthService {
 
     // Quem já é da equipe e cadastra a mesma senha: nasce ligada (a senha é a prova)
     const staff = await this.accountLink.staffByEmail(normalizedEmail);
-    const sameAsStaff = !!staff && (await this.accountLink.staffPasswordMatches(staff, password));
+    const sameAsStaff =
+      !!staff && (await this.accountLink.staffPasswordMatches(staff, password, { count: false }));
     const passwordHash = await bcrypt.hash(password, 10);
     await codes.consume(normalizedEmail);
     const account = await this.prisma.clientAccount.create({
@@ -439,6 +456,7 @@ export class ClientAuthService {
         if (!staff) await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
         throw invalid();
       }
+      assertNoStaffTwoFactor(staff);
       account = await this.prisma.clientAccount.create({
         data: {
           email: normalizedEmail,
@@ -460,6 +478,7 @@ export class ClientAuthService {
         if (!staff) await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
         throw invalid();
       }
+      assertNoStaffTwoFactor(staff);
     } else {
       if (!account.password) {
         throw new UnauthorizedException(
@@ -470,7 +489,10 @@ export class ClientAuthService {
       if (!matches) throw invalid();
       // A mesma senha na conta da equipe com este e-mail: prova que é a mesma pessoa
       const staff = await this.accountLink.staffByEmail(normalizedEmail);
-      if (staff && (await this.accountLink.staffPasswordMatches(staff, password))) {
+      if (
+        staff &&
+        (await this.accountLink.staffPasswordMatches(staff, password, { count: false }))
+      ) {
         const taken = await this.prisma.clientAccount.findFirst({
           where: { userId: staff.id },
           select: { id: true },
@@ -531,6 +553,12 @@ export class ClientAuthService {
     // ainda não estava confirmada, a senha dela pode ter sido criada por
     // outra pessoa (cadastro com o e-mail alheio): apaga a senha e derruba as
     // sessões, e o dono de verdade fica com a conta.
+    // A pessoa desconectou este provedor: o mesmo e-mail não religa sozinho
+    // (item 485). Ela entra de outro jeito e liga de novo pela conta
+    if (account && !existingLink && account.socialUnlinkedProviders.includes(provider)) {
+      throw new UnauthorizedException(CLIENT_SOCIAL_UNLINKED_MESSAGE);
+    }
+
     if (account && !account.emailVerifiedAt && account.email === normalizedEmail) {
       account = await this.prisma.clientAccount.update({
         where: { id: account.id },
@@ -705,9 +733,20 @@ export class ClientAuthService {
     });
   }
 
+  /** Desconectar anota o provedor: o login por ele não religa pelo e-mail (item 485) */
   async unlinkSocialAccount(clientAccountId: number, provider: string) {
-    await this.prisma.clientLinkedSocialAccount.deleteMany({
-      where: { clientAccountId, provider },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.clientLinkedSocialAccount.deleteMany({ where: { clientAccountId, provider } });
+      const account = await tx.clientAccount.findUnique({
+        where: { id: clientAccountId },
+        select: { socialUnlinkedProviders: true },
+      });
+      if (account && !account.socialUnlinkedProviders.includes(provider)) {
+        await tx.clientAccount.update({
+          where: { id: clientAccountId },
+          data: { socialUnlinkedProviders: { push: provider } },
+        });
+      }
     });
   }
 
@@ -766,6 +805,19 @@ export class ClientAuthService {
       },
       update: { providerEmail: normalizedEmail, ...(id ? { providerUserId: id } : {}) },
     });
+    // Ligou de novo, logada: o provedor volta a valer no login
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+      select: { socialUnlinkedProviders: true },
+    });
+    if (account?.socialUnlinkedProviders.includes(provider)) {
+      await this.prisma.clientAccount.update({
+        where: { id: clientAccountId },
+        data: {
+          socialUnlinkedProviders: account.socialUnlinkedProviders.filter((p) => p !== provider),
+        },
+      });
+    }
     return { ok: true };
   }
 

@@ -43,6 +43,8 @@ model User {
   viewerModeStartDate DateTime?
   roleId              Int
   twoFactorEnabled    Boolean            @default(false)
+  // Login social desconectado: não religa sozinho pelo e-mail (item 485)
+  socialUnlinkedProviders String[]       @default([])
   // Quem tem as duas etapas ligadas escolhe se o login social (Google,
   // Facebook, Apple) também pede o código. Desligado: vale a verificação do
   // próprio provedor (item 315)
@@ -831,6 +833,8 @@ model ClientAccount {
   emailVerifiedAt      DateTime?
   language             String?                     // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
   sessionVersion       Int                         @default(0) // sobe ao trocar a senha: derruba as sessões antigas
+  // Login social desconectado: não religa sozinho pelo e-mail (item 485)
+  socialUnlinkedProviders String[]                    @default([])
   // Conta excluída pelo próprio cliente (LGPD): dados pessoais apagados, a
   // linha fica só pra não levar junto os pagamentos que a barbearia recebeu
   deletedAt            DateTime?

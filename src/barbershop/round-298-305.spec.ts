@@ -50,6 +50,8 @@ describe('conectar grava o id do provedor (298)', () => {
         ...prisma.linkedSocialAccount,
         findFirst: async () => null,
       },
+      // Ligar lê a conta (provedor desconectado volta a valer, item 485)
+      user: { findFirst: async () => null, findUnique: jest.fn(async () => null) },
     };
     await fresh.linkSocialAccountToUser(4, 'ana@x.com', 'google', 'pessoa-a');
     expect(upserts[0].create?.providerUserId).toBe('pessoa-a');
@@ -97,7 +99,7 @@ describe('conectar grava o id do provedor (298)', () => {
           return args;
         },
       },
-      clientAccount: { findFirst: async () => null },
+      clientAccount: { findFirst: async () => null, findUnique: async () => null },
     };
     await fresh.linkSocialAccountToClient(4, 'ana@x.com', 'google', 'pessoa-a');
     expect(upserts[0].create?.providerUserId).toBe('pessoa-a');

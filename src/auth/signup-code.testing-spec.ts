@@ -22,6 +22,16 @@ export function memoryRedis() {
       },
       ttl: async (k: string) => (store.has(k) ? 600 : -2),
       expire: async () => 1,
+      // Só o que o bloqueio de login usa: set e del em sequência
+      multi() {
+        const ops: Array<() => void> = [];
+        const chain = {
+          set: (k: string, v: string) => (ops.push(() => store.set(k, v)), chain),
+          del: (k: string) => (ops.push(() => store.delete(k)), chain),
+          exec: async () => ops.map((op) => op()),
+        };
+        return chain;
+      },
     },
   };
 }
