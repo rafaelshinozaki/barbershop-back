@@ -4320,11 +4320,11 @@ Foram lidos no back a conexão com Facebook e Instagram (login e posts agendados
 
      **Fazer:** tirar o botão (o link só vai no e-mail do amigo, por segurança) ou trocar por um link de indicação de verdade. Mostrar a mensagem do back e traduzir o status "recusado". Teste: convidar o mesmo e-mail duas vezes mostra "você já convidou este e-mail".
 
-450. ⬜ **Apagar o cartão que paga o plano não avisa, e o erro some** (front: `PaymentMethods.tsx`; back: `deletePaymentMethod`):
+450. ⬜ **Apagar o cartão que paga o plano não avisa** (front: `PaymentMethods.tsx`; back: `deletePaymentMethod`):
      - Dá para apagar o cartão padrão da renovação com o plano ativo. A renovação seguinte falha e o plano entra em atraso, sem aviso na hora de apagar.
-     - `handleDeletePaymentMethod` não tem `try/catch`: se a remoção falha, nada aparece na tela.
+     - Este item dizia também que o erro da remoção não aparecia. Aparece: a mutação mostra o erro pelo `onError` (corrigido na rodada 142).
 
-     **Fazer:** avisar quando o cartão é o da renovação (e pedir outro antes, ou deixar apagar só com outro cartão salvo). Mostrar o erro. Teste: apagar o único cartão com o plano ativo mostra o aviso.
+     **Fazer:** avisar quando o cartão é o da renovação (e pedir outro antes, ou deixar apagar só com outro cartão salvo). Teste: apagar o único cartão com o plano ativo mostra o aviso.
 
 451. ⬜ **Em Mensagens, o aviso de outra conversa não troca a conversa aberta** (front: `Messages.tsx`):
      - A tela só escolhe a conversa do `?appointment=` quando nenhuma está aberta. Com uma conversa aberta, clicar no aviso de outra muda o endereço e a tela continua na primeira.
@@ -4396,3 +4396,123 @@ Foram lidos no back a conexão com Facebook e Instagram (login e posts agendados
      - O sininho só mostra o botão de abrir quando o aviso tem `actionUrl` e `actionText`. Os avisos de mensagem nova, candidatura, Destaque, suporte e outros dois gravam só o `actionUrl`. Eles aparecem sem botão, e o cartão não é clicável: a pessoa não chega à conversa ou à candidatura pelo aviso.
 
      **Fazer:** texto padrão do botão ("Abrir") quando há link, ou o cartão inteiro clicável. Teste: o aviso de mensagem nova abre a conversa.
+
+### Centésima quadragésima segunda rodada (2026-10-28): valores digitados, contas apagadas, planos, clube e telas no fuso errado
+
+Foram lidos no back as campanhas, a exclusão de conta, o espaço compartilhado, a localização das unidades, o agendamento público, a edição de usuário antiga, a troca de plano, o clube do cliente, a lista de espera, o resumo diário de avaliação e a leitura do aparelho nas sessões. No front, os campos de valor, o login com dois fatores, o login do cliente, as rotas e o `robots.txt`, a lista de espera, as avaliações e as telas com data. No backoffice-back, a lista de cupons.
+
+463. ⬜ **Campanha por WhatsApp sem limite de destinatários** (back: `sendMarketingBlast`):
+     - O e-mail tem teto por 30 dias (`MARKETING_EMAILS_PER_30_DAYS`); o WhatsApp não tem nenhum. Uma rede com 20 mil clientes dispara 20 mil mensagens de modelo, e quem paga cada uma à Meta é a plataforma (o número de envio é um só).
+
+     **Fazer:** teto de mensagens de WhatsApp por rede em 30 dias (como o do e-mail), e, se o custo for repassado, cobrar pelo Stripe antes de enfileirar. Teste: campanha acima do teto do WhatsApp dá erro.
+
+464. ⬜ **Valor digitado com separador de milhar vira outro número** (front: `Services`, `Products`, `Packages`, `Subscriptions`, `Sales`, `Cashier`, `Inventory`, `Commissions`, `AppointmentCheckoutDialog`, `Appointments`, `ServiceTemplatesDialog`, `FranchiseGiftCards`, `EditFranchise`, `TipPanel`, `SearchBarbershopsPage`):
+     - As telas fazem `parseFloat(valor.replace(',', '.'))`. "1.250,00" vira "1.250.00", que o `parseFloat` lê como 1,25. O pacote de R$ 1.200,00 é salvo por R$ 1,20, e o caixa contado em "1.250,00" fecha com diferença de mais de mil reais.
+     - A importação de planilha do back já entende os dois formatos (`import-sheet.ts`); o front não.
+
+     **Fazer:** uma função comum no front que aceita "1.250,00", "1,250.00" e "1250,5" (como a do back) e recusa o que for ambíguo, usada em todos esses campos. Teste: "1.250,00" vira 1250.
+
+465. ⬜ **Excluir a conta do dono da rede apaga as unidades de outros donos, e apaga o histórico** (back: `AccountDeletionService.erase`):
+     - `ownedBarbershops` pega todas as unidades da rede, inclusive as que têm dono próprio (franqueado). Quando o dono da rede exclui a conta, a unidade do franqueado é apagada junto, sem ele ser consultado.
+     - A exclusão apaga de vez as unidades e as redes (`barbershop.deleteMany`), com vendas, pagamentos e repasses. "Excluir unidade" já encerra em vez de apagar, justamente para não perder a contabilidade.
+
+     **Fazer:** unidade com outro dono não sai junto (fica com ele, ou a exclusão é recusada até ele decidir), e as unidades do titular são encerradas como em `deleteBarbershop`, sem apagar o histórico. Teste: excluir a conta do dono da rede mantém a unidade do franqueado.
+
+466. ⬜ **Desfazer um convite de espaço compartilhado trava novos convites por 30 dias** (back: `SharedLocationService.end`):
+     - Encerrar um convite ainda pendente grava `REMOVED`. Convidar de novo exige esperar 30 dias depois de "recusar ou encerrar", então o espaço que mandou o convite errado e o cancelou não consegue convidar a mesma pessoa por um mês.
+     - `end` cancela os aluguéis antes de conferir se o vínculo já estava encerrado.
+
+     **Fazer:** cancelar convite pendente vira um status próprio (ou apaga o convite), sem o prazo de 30 dias, e conferir o status antes de mexer nos aluguéis. Teste: convidar, cancelar e convidar de novo funciona na hora.
+
+467. ⬜ **A localização das unidades emperra nas mesmas 200** (back: `GeocodingService.backfill`):
+     - O preenchimento pega as primeiras 200 unidades sem coordenada, sempre na mesma ordem. As que o Nominatim não acha voltam todas as horas e ocupam o lote, e as unidades depois delas nunca são localizadas (não aparecem na busca "perto de mim").
+     - Cada instância do servidor roda o próprio `setInterval`. Com várias, os pedidos somados passam de um por segundo, o limite do Nominatim, que pode bloquear o IP.
+
+     **Fazer:** guardar a tentativa que falhou (e tentar de novo só depois de dias), ordenar pelas nunca tentadas, e rodar pela fila (uma execução no cluster), como as outras tarefas. Teste: 201 unidades com endereço não encontrado não impedem a 202ª de ser localizada.
+
+468. ⬜ **Telefone sem número passa no agendamento público e escapa dos limites** (back: `createPublicAppointment`, lista de espera pública):
+     - O telefone só tem limite de tamanho. "aaaaaaaa" é aceito. Sem dígitos, `customerIdsByPhone` não acha ninguém: o limite de 5 horários futuros, a checagem de horário no mesmo período e o bloqueio da unidade (por telefone) não valem. Cada agendamento cria uma ficha nova.
+     - O front aceita qualquer texto com 8 caracteres.
+
+     **Fazer:** exigir um telefone válido (`normalizePhoneToE164` com o país da unidade) no agendamento e na lista de espera públicos. Teste: agendar com "aaaaaaaa" dá erro.
+
+469. ⬜ **A edição de usuário do back antigo ignora gênero e ativar/desativar** (back: `BackofficeResolver.updateUser`, `UserService.updateUser`):
+     - O resolver repassa `gender` e `isActive`, mas `updateUser` não grava nenhum dos dois e responde `true`. Quem usa essa rota acha que desativou a conta, e ela continua ativa.
+     - A mesma edição no backoffice-back (`users-writes.ts`) grava os dois e derruba as sessões. As duas versões fazem coisas diferentes.
+
+     **Fazer:** tirar a rota antiga (o backoffice usa a do backoffice-back) ou fazer as duas iguais. Teste: desativar pela rota antiga desativa a conta, ou a rota não existe mais.
+
+470. ⬜ **A lista de cupons do backoffice traz tudo, inclusive os cupons individuais do convite** (backoffice-back: `CatalogQueries.coupons`):
+     - A lista não tem paginação nem filtro. Cada convite de amigo aceito cria um ou dois cupons `FRIEND_*` (um por pessoa), então a lista cresce sem parar e esconde os cupons de campanha.
+     - "Usuários únicos" nas estatísticas conta quem recebeu o cupom (`UserCoupon`), não quem usou.
+
+     **Fazer:** paginação, busca por código, e os cupons do convite fora da lista padrão (com um filtro para vê-los). Contar como uso só quem usou. Teste: com 500 cupons de convite, a primeira página mostra os de campanha.
+
+471. ⬜ **No app do cliente, cancelar o clube é um clique e não tem volta** (front: `ClientAccount.tsx`; back: cancelamento da assinatura do cliente):
+     - "Cancelar" na assinatura do clube cancela na hora (no fim do ciclo), sem confirmação. Não há como desfazer enquanto o ciclo não acaba; para voltar, o cliente precisa assinar de novo depois.
+
+     **Fazer:** confirmação com a data em que o clube acaba e um "manter assinatura" enquanto o ciclo não termina (`cancel_at_period_end: false`). Teste: cancelar e desfazer deixa a assinatura ativa, sem cobrança nova.
+
+472. ⬜ **Tirar alguém da lista de espera e apagar a resposta de uma avaliação são um clique** (front: `Waitlist.tsx`, `Reviews.tsx`):
+     - "Remover" na lista de espera tira o cliente na hora, sem confirmação, e ele perde o lugar.
+     - "Remover resposta" na avaliação apaga a resposta publicada na hora.
+
+     **Fazer:** confirmação nos dois, com o nome do cliente. Teste: cancelar a confirmação não muda nada.
+
+473. ⬜ **Desfazer a troca para um plano menor deixa o preço menor na Stripe** (back: `PaymentsService.changePlan`):
+     - Ao agendar o plano menor, o preço da assinatura na Stripe já muda (`proration_behavior: 'none'`). Escolher de novo o plano atual só limpa `pendingPlanId` no banco e, se houver, o cancelamento. O preço na Stripe continua o menor: a renovação cobra o plano menor e o webhook troca o plano da conta.
+
+     **Fazer:** ao desfazer, voltar o preço da Stripe para o do plano atual (sem cobrar diferença). Teste: agendar o menor e desfazer deixa a assinatura da Stripe no preço do plano atual.
+
+474. ⬜ **A lista de sessões mostra o aparelho errado** (back: `AuthService.parseUserAgent`):
+     - O navegador do Android tem "Linux; Android" no identificador, e a busca acha "linux" primeiro: o celular aparece como Linux (e "Desktop" quando não tem "Mobile").
+     - O Edge aparece como Chrome (o identificador dele tem "Chrome" e "Edg/", não "edge"). O iPad recente se apresenta como Mac.
+     - Quem confere as sessões para achar um acesso estranho vê informações erradas.
+
+     **Fazer:** usar uma biblioteca de leitura do identificador (ou tratar Android e `Edg/` antes). Teste: um identificador de Android aparece como Android.
+
+475. ⬜ **No login com verificação em duas etapas, a senha fica guardada no histórico do navegador** (front: `LoginGraphQL.tsx`, `VerificationCode.tsx`):
+     - O login leva o e-mail e a senha para a tela do código no `state` da rota, que o navegador guarda no histórico da aba. Para reenviar o código, a tela faz o login de novo com essa senha. A senha fica em texto, acessível a qualquer script da página e ao voltar no histórico.
+     - O erro "Unexpected response from server" está fixo em inglês.
+
+     **Fazer:** criar no back um reenvio do código pelo `loginId` (sem pedir a senha de novo) e não guardar a senha na tela. Teste: depois do login, o `history.state` não tem a senha.
+
+476. ⬜ **Telas de teste no ar, e links secretos fora do `robots.txt`** (front: `App.tsx`, `api/robots.js`):
+     - `/connect/fake`, `/identity/fake` e `/signup-refactored` estão nas rotas de produção. O back recusa as ações falsas, mas as telas abrem.
+     - O `robots.txt` bloqueia `/booking/manage` e `/review`, mas não `/support/ticket`, `/waitlist/leave`, `/forgot-password/`, `/invite/` e `/accept-employee-invite/`, que também são links secretos. As páginas não têm `noindex`.
+
+     **Fazer:** carregar as telas de teste só fora de produção, completar o `robots.txt` e pôr `noindex` nas páginas de link secreto. Teste: em produção, `/connect/fake` cai na página não encontrada.
+
+477. ⬜ **Desligar um profissional deixa os clientes esperando por ele na lista de espera** (back: `deleteBarber`, `updateBarber`):
+     - Os pedidos da lista de espera com aquele profissional continuam "esperando". Nenhuma vaga com ele vai abrir, e o cliente não é avisado. O encerramento da unidade já cancela a lista; o desligamento de uma pessoa não.
+
+     **Fazer:** ao desligar, passar esses pedidos para "qualquer profissional" (avisando o cliente) ou cancelá-los com aviso. Teste: desligar o profissional muda os pedidos dele na lista de espera.
+
+478. ⬜ **Primeiro pagamento do clube recusado trava uma nova tentativa por quase um dia** (back: `subscribeToPlan`; front: `SubscribePlanDialog`):
+     - A assinatura nasce `INCOMPLETE` quando o primeiro pagamento precisa de confirmação (3DS) ou falha. Se o cliente fecha a janela ou o cartão é recusado, tentar de novo dá "Você já tem uma assinatura ativa neste plano", porque `INCOMPLETE` conta como ativa. Só depois que a Stripe expira a tentativa (cerca de 23 horas) e o webhook chega dá para assinar.
+
+     **Fazer:** com uma `INCOMPLETE` do mesmo plano, cancelar na Stripe e começar outra (ou retomar o pagamento dela). Teste: cartão recusado e nova tentativa com outro cartão assina na hora.
+
+479. ⬜ **O login do cliente sempre leva à "Minha conta", não de volta à unidade** (front: `ClientLogin.tsx`, `ClientSignup.tsx`, `SubscribePlanDialog`):
+     - O cliente que clica em "Entrar" para assinar o clube (ou vindo da página da unidade) cai na "Minha conta" depois do login e precisa achar a unidade de novo.
+
+     **Fazer:** levar o endereço de volta (`?next=`, só caminhos internos) e voltar para ele depois do login e do cadastro. Teste: entrar a partir da assinatura do clube volta para a página da unidade.
+
+480. ⬜ **Telas com data no fuso do navegador, não no da unidade** (front: `RateClients.tsx`, `Career.tsx`, `Payroll.tsx`, `Social.tsx`):
+     - "Avaliar clientes" e o histórico da carreira mostram o horário do atendimento no fuso do navegador. O período padrão do pagamento da equipe ("este mês") e o horário dos posts agendados também usam o fuso do navegador.
+     - O resto do app usa o fuso da unidade (`shopClock`). Quem trabalha numa unidade de outro fuso, ou viaja, vê horários e meses trocados.
+
+     **Fazer:** usar o fuso da unidade nessas telas (`formatShopDateTime`, `shopPeriodRange`, `shopWallToInstant`). Teste: com o navegador em outro fuso, o horário mostrado é o da unidade.
+
+481. ⬜ **Campanha aceita segmento e prazo inválidos** (back: `sendMarketingBlast`, `resolveMarketingSegment`):
+     - `inactiveDays` não é conferido. Com 0 ou um número negativo, o corte fica no futuro, ninguém conta como "recente" e todos os clientes entram como inativos.
+     - Segmento desconhecido cai em "todos".
+     - O texto e o assunto do e-mail não têm limite de tamanho (só o WhatsApp tem).
+
+     **Fazer:** conferir o segmento (lista fechada), `inactiveDays` entre 1 e 365, e limite de tamanho no assunto e no texto. Teste: `inactiveDays: -5` dá erro.
+
+482. ⬜ **O resumo "avalie seus clientes" sai às 21h de Brasília para todos e não pode ser desligado** (back: `CustomerRatingService.sendDailyDigest`, `AppointmentReminderScheduler`):
+     - A tarefa roda uma vez por dia às 21h de São Paulo. Para a unidade em Portugal, o e-mail chega à 1h da manhã.
+     - O e-mail não confere as preferências de notificação da pessoa: não há como parar de recebê-lo.
+
+     **Fazer:** mandar por fuso (no fim do dia de cada unidade) e respeitar uma preferência de e-mail (por exemplo a de avaliações). Teste: profissional com o e-mail de avaliações desligado não recebe o resumo.
