@@ -179,17 +179,22 @@ export class AuthController {
   // trata como "conectar mais um método de login" à conta já logada, em vez
   // de logar/criar outra conta — é o que permite um usuário entrar tanto por
   // senha quanto por Google/Facebook/Apple na mesma conta.
-  private getCurrentSessionUserId(req: Request): number | null {
+  // A sessão tem que existir ainda: um cookie de sessão encerrada (sair,
+  // "terminar sessão") não liga nada (item 483)
+  private async getCurrentSessionUserId(req: Request): Promise<number | null> {
     const token = req.cookies?.Authentication;
     if (!token) return null;
+    let claims: ReturnType<typeof staffClaims>;
     try {
-      const decoded = this.jwtService.verify(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-      });
-      return staffClaims(decoded)?.userId ?? null;
+      claims = staffClaims(
+        this.jwtService.verify(token, { secret: this.configService.get<string>('JWT_SECRET') }),
+      );
     } catch {
       return null;
     }
+    if (!claims) return null;
+    const session = await this.userService.findActiveSessionByToken(claims.sessionToken);
+    return session?.userId === claims.userId ? claims.userId : null;
   }
 
   private async completeSocialLogin(
@@ -199,7 +204,7 @@ export class AuthController {
     res: Response,
   ) {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-    const currentUserId = this.getCurrentSessionUserId(req);
+    const currentUserId = await this.getCurrentSessionUserId(req);
 
     if (currentUserId) {
       const result = await this.userService.linkSocialAccountToUser(

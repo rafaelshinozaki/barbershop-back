@@ -13,6 +13,8 @@ export interface UserEmailJob {
   subject: string | Localized;
   meta: string;
   to: string;
+  /** Cabeçalhos extras (ex.: List-Unsubscribe do e-mail em massa) */
+  headers?: Record<string, string>;
 }
 
 /** E-mail pra cliente final sem conta (lembrete, lista de espera, campanha). */

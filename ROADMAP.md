@@ -4521,7 +4521,7 @@ Foram lidos no back as campanhas, a exclusão de conta, o espaço compartilhado,
 
 Foram lidos no back o login social da equipe e do cliente, o login do cliente com a senha da equipe, os links do suporte, o pedido de avaliação, a escala, a lista de espera pública, o post no Instagram, a resposta do profissional, o período de teste, os módulos dos planos, o e-mail em massa e a lista de cidades. No front, os botões de excluir, o fechamento do atendimento, os fechamentos da unidade e a campanha. No backoffice-back, os resultados do mês e a lista de usuários.
 
-483. ⬜ **Login social da equipe sem `state`: dá para ligar o Google de outra pessoa à conta logada** (back: `GoogleAuthGuard`, `FacebookAuthGuard`, `AppleAuthGuard`, `AuthController.completeSocialLogin`):
+483. ✅ **Login social da equipe sem `state`: dá para ligar o Google de outra pessoa à conta logada** (back: `GoogleAuthGuard`, `FacebookAuthGuard`, `AppleAuthGuard`, `AuthController.completeSocialLogin`):
      - O login social da equipe não manda nem confere `state`. Na volta, se o navegador tem um cookie de sessão, a conta do provedor é ligada à conta logada (`linkSocialAccountToUser`).
      - Ataque: a pessoa começa o login com o próprio Google, guarda o link de volta (com o `code`) e faz a vítima logada abrir esse link. O cookie da equipe é `SameSite=None` em produção, então vai junto. O Google da atacante fica ligado à conta da vítima, e ela entra na conta da vítima pelo Google.
      - `getCurrentSessionUserId` só confere a assinatura do JWT, não se a sessão ainda existe: um cookie de uma sessão encerrada também liga.
@@ -4529,29 +4529,39 @@ Foram lidos no back o login social da equipe e do cliente, o login do cliente co
 
      **Fazer:** usar o mesmo `state` em cookie curto nos três provedores da equipe e conferir a sessão ativa antes de ligar. Teste: a volta do Google com um `state` que não é o do cookie dá erro e não liga nada.
 
-484. ⬜ **O login do cliente serve para chutar a senha da equipe sem o bloqueio por e-mail** (back: `ClientAuthService.validateCredentials`, `clientLogin`):
+     **Feito:** `oauth-state` virou comum (`common/oauth-state.ts`): a equipe usa o cookie `StaffOAuthState` (caminho `/auth`) nos guards do Google, Facebook e Apple. A ligação na volta do login só vale com a sessão ainda ativa (`ActiveSession`). Teste em `src/auth/round-483-487.int.spec.ts`.
+
+484. ✅ **O login do cliente serve para chutar a senha da equipe sem o bloqueio por e-mail** (back: `ClientAuthService.validateCredentials`, `clientLogin`):
      - O login do cliente aceita a senha da conta da equipe com o mesmo e-mail (e cria a conta de cliente ligada). Ele só tem limite por IP (`ThrottleLogin`); o bloqueio por e-mail depois de várias falhas (`isLoginBlocked`) é só do login da equipe. Com vários IPs, dá para testar senhas de dono e gerente por aqui.
      - Quem tem verificação em duas etapas na equipe entra na área do cliente só com a senha.
 
      **Fazer:** contar as falhas pelo mesmo bloqueio por e-mail da equipe quando a senha conferida é a da equipe, e pedir o código do 2FA nesse caminho. Teste: errar a senha da equipe pelo login do cliente conta para o bloqueio da conta da equipe.
 
-485. ⬜ **"Desconectar o Google" não impede o login pelo Google** (back: `UserService.unlinkSocialAccount`, `findOrCreateSocialUser`; `ClientAuthService.findOrCreateSocialAccount`):
+     **Feito:** O bloqueio por e-mail saiu para `auth/login-lockout.ts` e vale também em `AccountLinkService.staffPasswordMatches` quando a senha da equipe é a credencial (o cadastro e a comparação para ligar não contam). Conta da equipe com 2FA não entra pelo login do cliente (abre a área do cliente pela da equipe). Teste em `src/auth/round-483-487.int.spec.ts`.
+
+485. ✅ **"Desconectar o Google" não impede o login pelo Google** (back: `UserService.unlinkSocialAccount`, `findOrCreateSocialUser`; `ClientAuthService.findOrCreateSocialAccount`):
      - Desconectar apaga a ligação, mas o próximo login pelo Google acha a conta pelo e-mail e cria a ligação de novo. Quem desconecta porque o Google foi invadido continua com a porta aberta.
      - Vale para a equipe e para o cliente.
 
      **Fazer:** guardar o provedor desconectado e não religar sozinho pelo e-mail (pedir a senha ou um código por e-mail para ligar de novo). Teste: depois de desconectar, o login pelo Google com o mesmo e-mail não entra.
 
-486. ⬜ **O link do pedido de suporte não vence nem pode ser revogado** (back: `createSupportToken`, `SupportService.byToken`):
+     **Feito:** Nova coluna `socialUnlinkedProviders` (equipe e cliente). Desconectar anota o provedor; o login por ele não religa pelo e-mail até a pessoa ligar de novo, logada. Teste em `src/auth/round-483-487.int.spec.ts`.
+
+486. ✅ **O link do pedido de suporte não vence nem pode ser revogado** (back: `createSupportToken`, `SupportService.byToken`):
      - O link do e-mail (`/support/ticket?t=`) é só o id assinado, sem prazo e sem versão. Quem recebe o e-mail encaminhado (ou acha o link) lê a conversa e responde para sempre, inclusive depois de fechado (responder reabre).
 
      **Fazer:** prazo para o link (por exemplo 90 dias depois da última mensagem) e uma versão que a equipe troca para revogar; quem está logado continua vendo pela conta. Teste: o link de um pedido parado há mais do prazo não abre.
 
-487. ⬜ **E-mail em massa do backoffice ignora as preferências, sem descadastro e com HTML livre** (back: `BackofficeService.sendEmailNotification`, `admin_notification.hbs`; backoffice-back: `NotifyWrites.createMany`):
+     **Feito:** O link vence 90 dias depois da última mensagem do pedido (`SUPPORT_LINK_DAYS`). A revogação pela equipe (versão do link) ficou de fora: precisa de uma coluna e de um botão no backoffice. Teste em `src/auth/round-483-487.int.spec.ts`.
+
+487. ✅ **E-mail em massa do backoffice ignora as preferências, sem descadastro e com HTML livre** (back: `BackofficeService.sendEmailNotification`, `admin_notification.hbs`; backoffice-back: `NotifyWrites.createMany`):
      - O envio não confere as preferências de e-mail da pessoa (novidades, promoções), e o e-mail não tem link nem cabeçalho de descadastro, que o Gmail e o Yahoo exigem em envios grandes.
      - O modelo usa `{{{message}}}`: o texto da equipe entra como HTML sem escape (dá para pôr qualquer link ou formulário num e-mail com o domínio da plataforma).
      - O aviso em massa no app (`createMany`) vai também para contas desativadas e apagadas.
 
      **Fazer:** respeitar a preferência pelo tipo do envio, pôr o descadastro (link e `List-Unsubscribe`), escapar o texto (ou aceitar só um formato simples) e filtrar contas ativas nos avisos. Teste: quem desligou "novidades por e-mail" não recebe o envio de novidades.
+
+     **Feito:** O envio pula quem desligou "Novidades por e-mail", leva o link e o `List-Unsubscribe` de um clique (`/notifications/unsubscribe-news`, que desliga a preferência), e o modelo escapa o texto (`{{message}}`, com as quebras de linha). Falta no backoffice-back: o aviso em massa no app (`createMany`) ainda não filtra as contas desativadas. Teste em `src/auth/round-483-487.int.spec.ts`.
 
 488. ⬜ **O período de teste não libera nada do que o banner promete** (back: `UserService.checkAndUpdateTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
      - O banner diz "Explore todas as funcionalidades premium", "Análises avançadas ilimitadas", "Exportação em PDF" e "Suporte prioritário". Os módulos dependem só do plano (`ensureModuleAccess`); o teste não libera nenhum, e não há exportação de relatórios em PDF.

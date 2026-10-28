@@ -568,6 +568,10 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Link inválido ou vencido. Peça um novo.': 'INVALID_OR_EXPIRED_LINK_2',
   'Já existe uma conta com este email.': 'ACCOUNT_WITH_EMAIL_ALREADY_EXISTS',
   'Email ou senha inválidos.': 'INVALID_EMAIL_OR_PASSWORD',
+  'Muitas tentativas de senha nesta conta. Tente de novo em alguns minutos.': 'STAFF_LOGIN_BLOCKED',
+  'Esta conta usa verificação em duas etapas. Entre pela área da equipe e abra a área do cliente por lá.':
+    'STAFF_TWO_FACTOR_CLIENT_LOGIN',
+  'Este link venceu. Abra um pedido novo pela página de suporte.': 'SUPPORT_LINK_EXPIRED',
   'Esta conta usa login social. Entre com Google, Facebook ou Apple.': 'ACCOUNT_USES_SOCIAL_LOGIN',
   'Cliente não autenticado.': 'CLIENT_NOT_SIGNED',
   'Sessão de cliente inválida.': 'INVALID_CLIENT_SESSION',

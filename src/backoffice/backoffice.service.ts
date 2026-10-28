@@ -16,6 +16,7 @@ import { SmartLogger } from '../common/logger.util';
 import { EmailService } from '../email/email.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
 import { safeAppLink } from '../common/app-urls';
+import { newsUnsubscribeLinks } from '../notifications/news-unsubscribe';
 import { PAGAMENTO_STATUS } from '../common/contants';
 import { takesAppointments } from '../barbershop/staff-roles';
 import {
@@ -707,8 +708,15 @@ export class BackofficeService {
     actionText?: string;
     type?: string;
   }) {
+    // Quem desligou "Novidades por e-mail" não recebe (item 487); sem
+    // preferência gravada, vale o padrão (recebe)
     const users = await this.prisma.user.findMany({
-      where: { id: { in: input.userIds }, isActive: true, deleted_at: null },
+      where: {
+        id: { in: input.userIds },
+        isActive: true,
+        deleted_at: null,
+        NOT: { notificationPreference: { is: { newsEmail: false } } },
+      },
       select: { id: true, email: true, fullName: true },
     });
     // Link de fora não sai (pedido aprovado antes desta regra, por exemplo)
@@ -728,13 +736,17 @@ export class BackofficeService {
       .slice(0, 24);
     for (const user of users) {
       if (!user.email) continue;
+      // Link e cabeçalho de descadastro (o Gmail e o Yahoo exigem em envio em massa)
+      const unsubscribe = newsUnsubscribeLinks(user.id);
       const context = {
         title: input.subject,
+        // Texto puro: o modelo escapa (antes entrava como HTML, item 487)
         message: input.message,
         actionUrl,
         actionText: actionUrl ? input.actionText : undefined,
         type: input.type || 'info',
         fullName: user.fullName,
+        unsubscribeUrl: unsubscribe.url,
       };
       if (this.notificationQueue) {
         await this.notificationQueue.email(
@@ -746,6 +758,7 @@ export class BackofficeService {
             subject: input.subject,
             meta: 'admin_notification',
             to: user.email,
+            headers: unsubscribe.headers,
           },
           `admin-email-${sendKey}-${user.id}`,
         );
@@ -760,6 +773,7 @@ export class BackofficeService {
           input.subject,
           'admin_notification',
           user.email,
+          unsubscribe.headers,
         )
         .catch((err) => this.logger.warn(`E-mail da equipe não saiu (#${user.id}): ${err}`));
     }

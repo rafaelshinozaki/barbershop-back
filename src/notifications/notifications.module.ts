@@ -3,6 +3,7 @@ import { NotificationsService } from './notifications.service';
 import { ActivityNotificationsService } from './activity-notifications.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { NewsUnsubscribeController } from './news-unsubscribe.controller';
 
 // O REST controller foi removido (sem chamadores desde a migração para
 // GraphQL, ver src/graphql/resolvers/notifications.resolver.ts) e o
@@ -10,6 +11,8 @@ import { AuthModule } from '../auth/auth.module';
 // (padrão usado por todos os outros módulos de resolver deste app).
 @Module({
   imports: [PrismaModule, AuthModule],
+  // Descadastro dos e-mails de novidades pelo link do e-mail (item 487)
+  controllers: [NewsUnsubscribeController],
   providers: [NotificationsService, ActivityNotificationsService],
   exports: [NotificationsService, ActivityNotificationsService],
 })

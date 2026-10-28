@@ -10,7 +10,7 @@
       rgba(0,0,0,0.1); } .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid
       #007bff; padding-bottom: 20px; } .logo { font-size: 24px; font-weight: bold; color: #007bff;
       margin-bottom: 10px; } .title { font-size: 20px; font-weight: bold; color: #333;
-      margin-bottom: 20px; } .content { margin-bottom: 30px; } .message { background-color: #f8f9fa;
+      margin-bottom: 20px; } .content { margin-bottom: 30px; } .message { white-space: pre-line; background-color: #f8f9fa;
       padding: 20px; border-radius: 6px; border-left: 4px solid #007bff; margin-bottom: 20px; }
       .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;
       color: #666; font-size: 14px; } .action-button { display: inline-block; background-color:
@@ -32,9 +32,7 @@
       <div class='content'>
         <div class='title'>{{title}}</div>
 
-        <div class='message'>
-          {{{message}}}
-        </div>
+        <div class='message'>{{message}}</div>
 
         {{#if actionUrl}}
           <div style='text-align: center;'>
@@ -50,6 +48,9 @@
       </div>
 
       <div class='footer'>
+        {{#if unsubscribeUrl}}
+          <p><a href='{{unsubscribeUrl}}'>Dejar de recibir estos correos</a></p>
+        {{/if}}
         <p>Esta es una notificación administrativa de Barbershop.</p>
         <p>Si no deseas recibir este tipo de notificación, puedes ajustar tu configuración de email
           en tu perfil.</p>

@@ -2830,11 +2830,8 @@ export class BarbershopService {
     }
     for (const [to, shop] of notices) {
       const lang = langForCountry(shop.country);
-      // A mensagem do modelo é HTML: o nome entra escapado
-      const name = shop.name.replace(
-        /[&<>"']/g,
-        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c),
-      );
+      // O modelo escapa a mensagem (item 487): o nome vai como texto
+      const name = shop.name;
       const text = {
         pt: {
           subject: `${shop.name} encerrou o atendimento pelo app`,

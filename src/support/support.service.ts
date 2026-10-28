@@ -34,6 +34,10 @@ const PUBLIC_TICKET_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REPLIES_PER_TICKET_HOUR = 10;
 const REPLY_WINDOW_MS = 60 * 60 * 1000;
 const QUEUE_SIZE = 200;
+/** O link do e-mail vale até este prazo depois da última mensagem do pedido */
+export const SUPPORT_LINK_DAYS = 90;
+export const SUPPORT_LINK_EXPIRED_MESSAGE =
+  'Este link venceu. Abra um pedido novo pela página de suporte.';
 
 const ADMIN_TEXT = {
   pt: { title: 'Novo pedido de suporte', message: 'Há um pedido novo na fila.' },
@@ -157,6 +161,11 @@ export class SupportService {
         })
       : null;
     if (!ticket) throw new NotFoundException('Pedido não encontrado');
+    // O link não tem prazo nem versão: sem isto, o e-mail encaminhado (ou o
+    // link achado) abria e respondia o pedido para sempre (item 486)
+    if (Date.now() - ticket.lastActivityAt.getTime() > SUPPORT_LINK_DAYS * 86_400_000) {
+      throw new NotFoundException(SUPPORT_LINK_EXPIRED_MESSAGE);
+    }
     return ticket;
   }
 
