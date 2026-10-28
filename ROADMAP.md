@@ -4044,3 +4044,115 @@ Foram lidos no back a fila de chegada (`createWalkIn`, `getWalkIns`), o aviso de
      - A atualização ao vivo (`refetch`) troca a lista pelas primeiras 50 e perde o que já foi carregado.
 
      **Fazer:** paginar pelo cursor (data e id da última venda carregada) e, na atualização ao vivo, juntar a venda nova no topo sem descartar o resto. Teste: carregar 50, criar uma venda, carregar mais; nenhuma venda repete.
+
+### Centésima trigésima nona rodada (2026-10-28): venda rápida, cadastros, termos e telas que não deixam fazer
+
+Foram lidos no back o cadastro da equipe e do cliente (idade, senha, termos), o aceite do convite, o perfil ("Minha conta"), a assinatura dos termos da ficha, os valores do serviço e os textos livres, o cartão salvo da renovação, as candidaturas às vagas e as dependências (`pnpm audit`). No front, a venda rápida do painel, a nota fiscal de exemplo, as datas de aniversário, o cadastro de unidade (endereço da página), a rede, o cartão-presente, o caixa e o fechamento do atendimento.
+
+403. ⬜ **A "venda rápida" do painel sempre falha** (front: `QuickSaleModal`):
+     - A tela manda `paymentStatus: 'COMPLETED'`, e o back só aceita `PENDING` ou `PAID` (`STAFF_PAYMENT_STATUSES`). Toda venda pelo painel volta com erro, e o produto vendido no balcão não é registrado.
+     - A tela também deixa a forma de pagamento vazia.
+
+     **Fazer:** mandar `PAID` (ou `PENDING` sem forma de pagamento) e exigir a forma quando é paga, como em Vendas. Teste: venda rápida de um produto em dinheiro aparece em Vendas e no caixa.
+
+404. ⬜ **Data de aniversário aparece um dia antes na ficha do cliente** (front: `Customers.tsx`):
+     - O aniversário é gravado como meia-noite UTC, e a ficha formata com `toLocaleDateString` no fuso do navegador. No Brasil (UTC−3), 10/05 aparece como 09/05. A campanha de aniversariantes já usa o mês em UTC; a tela não.
+
+     **Fazer:** formatar datas de calendário (aniversário) em UTC, como a lista de espera já faz (`timeZone: 'UTC'`). Teste: aniversário 1990-05-10 mostra 10/05/1990 com o navegador em São Paulo.
+
+405. ⬜ **Cadastrar unidade com "&" ou acento no nome dá erro ou gera endereço errado** (front: `Barbershops/index.tsx`):
+     - O endereço da página é gerado no navegador sem tirar acentos: "São João" vira `so-joo`. "Barba & Cia" vira `barba--cia`, que o back recusa (`SHOP_SLUG` não aceita `--`), e a unidade não é criada.
+     - O back já tem `slugifyName` (tira acentos e junta os hífens) para o perfil do profissional.
+
+     **Fazer:** usar a mesma regra do back (sem acento, hífens únicos, sem hífen nas pontas). Teste: "São João & Cia" vira `sao-joao-cia` e a unidade é criada.
+
+406. ⬜ **A "assinatura" da ficha (anamnese, termos) é o nome digitado pela equipe** (back: `signConsentForm`; front: `Customers.tsx`):
+     - Qualquer pessoa da equipe, até o barbeiro básico, marca a ficha como assinada digitando o nome do cliente. Não fica registrado quem marcou, e não há nenhuma confirmação do próprio cliente (link, código, conta).
+     - Como prova de consentimento (dados de saúde, uso de foto), isso não vale.
+
+     **Fazer:** a assinatura do cliente pelo link do agendamento ou pela área do cliente (com data, IP e versão do texto). A marcação pela equipe fica registrada como "registrada por fulano no balcão", com o nome de quem marcou. Teste: ficha assinada pelo link mostra "assinada pelo cliente"; pela equipe, mostra quem registrou.
+
+407. ⬜ **Aceitar o convite da equipe cria conta sem a regra de senha** (back: `EmployeeInviteService.acceptInvite`):
+     - A entrada é uma interface sem validação, e o aceite só faz o `hash` da senha. "1" ou "senha" são aceitas. O cadastro, a troca e a recuperação de senha usam `validatePassword` (8 caracteres, maiúscula, minúscula, número e símbolo).
+
+     **Fazer:** aplicar `validatePassword` no aceite. Teste: senha "1" é recusada; "Equipe#2026" passa.
+
+408. ⬜ **Quem aceita o convite "aceita os termos" sem ver os termos** (back: `acceptInvite`; front: `AcceptEmployeeInvite.tsx`):
+     - A conta nasce com `readTerms: true`, mas a tela do convite não mostra nem pede o aceite dos termos de uso e da política de privacidade. O cadastro normal exige (`TERMS_REQUIRED_MESSAGE`).
+
+     **Fazer:** a tela mostra os links e a caixa de aceite, e o back exige o aceite e grava a data e a versão. Teste: aceitar sem marcar é recusado.
+
+409. ⬜ **O cadastro da área do cliente não mostra termos nem política de privacidade** (front: `ClientSignup.tsx`; back: `ClientAuthService.signup`):
+     - A conta de cliente é criada sem nenhum aceite ou aviso dos termos e da política, e o back não grava esse aceite. Pela LGPD, a pessoa precisa saber como os dados são usados ao criar a conta.
+
+     **Fazer:** links e aceite no cadastro do cliente (e no login social do cliente), gravando a data e a versão. Teste: cadastro sem aceite é recusado.
+
+410. ⬜ **O cadastro da equipe aceita 13 anos; o convite exige 16** (front: `birthdate-field.tsx`; back: `createUser`):
+     - O cadastro de dono e de profissional recusa só menores de 13 (na tela). O back não confere a idade nesse cadastro. O convite da equipe usa `WORK_MINIMUM_AGE` (16).
+     - Uma pessoa de 13 anos abre uma unidade ou um perfil profissional e passa a receber pagamentos.
+
+     **Fazer:** a mesma idade mínima (`WORK_MINIMUM_AGE`) no cadastro de dono e de profissional, na tela e no back. Teste: cadastro com 14 anos é recusado no back.
+
+411. ⬜ **"Minha conta" aceita nome vazio, nascimento no futuro e telefone em qualquer formato** (back: `updateUserProfile`; também `ClientAuthService.updateProfile`):
+     - O nome só precisa ser texto: vazio passa (e é o nome que aparece na agenda e nos e-mails). A data de nascimento só precisa ser uma data: no futuro passa, e a idade mínima do item 410 pode ser contornada depois do cadastro. O telefone não é conferido.
+     - Na área do cliente, o nome também pode ficar vazio.
+
+     **Fazer:** nome com pelo menos 2 letras, nascimento entre 120 anos atrás e a idade mínima, telefone no mesmo formato do cadastro. Teste: nome "  " é recusado; nascimento no ano que vem é recusado.
+
+412. ⬜ **Salvar parte do endereço em "Minha conta" sem endereço cadastrado dá erro** (back: `updateUserProfile`):
+     - A troca do endereço é um `upsert` que cria o endereço só com os campos enviados. Rua, cidade, bairro, estado, país e CEP são obrigatórios no banco. A conta sem endereço (por exemplo, a criada pelo login social) que preenche só a cidade recebe erro interno.
+
+     **Fazer:** sem endereço, exigir os campos obrigatórios juntos (com mensagem clara) ou guardar o endereço parcial. Teste: conta sem endereço salva só a cidade e recebe a mensagem de campos faltando, não erro 500.
+
+413. ⬜ **Nome de serviço, produto e cliente pode ficar vazio, e os textos não têm limite** (back: `createService`, `updateService`, `createProduct`, `createCustomer`, observações do agendamento e da venda):
+     - O serviço "   " aparece em branco na página pública. A descrição, a observação da ficha e a do agendamento aceitam qualquer tamanho. A unidade, a despesa e o recurso já têm limites (`SHOP_TEXT_MAX`, `EXPENSE_DESCRIPTION_MAX`, `RESOURCE_NAME_MAX`).
+
+     **Fazer:** nome obrigatório (sem espaços só) com limite, e limite para descrição e observações, nos dois lados. Teste: serviço com nome "  " é recusado; descrição com 10.000 caracteres é recusada.
+
+414. ⬜ **A rede não deixa apagar descrição, missão, cidade e ano** (front: `EditFranchise.tsx`):
+     - Mesmo problema dos itens 361 e 372, em outra tela: campo vazio vai como `undefined`, e o back mantém o valor antigo. Também não dá para tirar o valor do ponto, os pontos por real, o bônus de indicação e a taxa de falta.
+
+     **Fazer:** campo esvaziado vai como vazio ou `null`, e o back limpa. Teste: apagar a missão e salvar deixa a missão vazia.
+
+415. ⬜ **Excluir o cartão da renovação não avisa que o plano vai deixar de renovar** (back: `deletePaymentMethod`; front: `PaymentMethods.tsx`):
+     - A renovação do plano cobra o cartão padrão do cliente na Stripe. Excluir esse cartão (o único, ou o padrão) passa só pela confirmação genérica. Na renovação seguinte não há cartão, a cobrança falha e a conta cai para o plano gratuito depois do prazo.
+
+     **Fazer:** com plano pago renovando por cartão, avisar antes de excluir o cartão padrão e pedir outro, ou recusar excluir o único cartão. Teste: plano pago com um cartão; excluir mostra o aviso da renovação.
+
+416. ⬜ **Página de nota fiscal de exemplo está no ar** (front: `InvoiceId.tsx`, rota `/invoice/:invoiceId`):
+     - A rota mostra sempre um pagamento inventado ("txn_mock_123", R$ 99,90, pago hoje), qualquer que seja o número na URL, com um botão "Abrir Invoice". Quem abre esse link vê uma cobrança falsa com a cara do sistema.
+
+     **Fazer:** tirar a rota (as notas reais já abrem pela lista de pagamentos) ou carregar a nota de verdade pelo id, só do próprio usuário. Teste: `/invoice/1` não mostra dados inventados.
+
+417. ⬜ **Despesa e lançamento da equipe ficam sempre com a data de hoje** (front: `Cashier.tsx`, `Payroll.tsx`):
+     - O back aceita a data da despesa (`expenseDate`, até hoje) e do lançamento (`date`), mas as telas não têm o campo. A conta de luz paga ontem ou o vale dado no fim do mês passado entram no dia de hoje: o resultado do mês e o fechamento da equipe ficam errados.
+
+     **Fazer:** campo de data (padrão hoje, no fuso da unidade) nas duas telas. Teste: despesa com data de ontem aparece no resumo de ontem e não sai do caixa aberto.
+
+418. ⬜ **O fechamento do atendimento não deixa incluir outro serviço ou um produto** (front: `AppointmentCheckoutDialog`):
+     - A tela monta a venda só com os serviços marcados no agendamento. O cliente que fez a barba além do corte, ou comprou uma pomada, precisa de uma venda separada. A comissão, os pontos e o recibo ficam divididos.
+
+     **Fazer:** permitir adicionar serviço e produto no fechamento (como em Vendas), mantendo o desconto do clube ou do pacote no serviço do agendamento. Teste: fechar com corte (agendado) e pomada gera uma venda com os dois itens e a baixa no estoque.
+
+419. ⬜ **Cartão-presente: sem validade na tela e desativar com um clique** (front: `FranchiseGiftCards.tsx`):
+     - O back aceita validade (`expiresAt`) e e-mail de quem compra, mas a tela não tem esses campos. Todo cartão sai sem validade e sem como mandar o código por e-mail.
+     - Desativar ou ativar um cartão com saldo é um clique, sem confirmação, e o erro não aparece (a chamada não tem `try/catch`).
+
+     **Fazer:** campos de validade e e-mail na emissão, confirmação ao desativar ("o saldo de R$ X deixa de valer") e mensagem de erro. Teste: emitir com validade mostra a data na lista; desativar pede confirmação.
+
+420. ⬜ **Candidatar-se de novo à vaga repete o aviso aos gerentes, sem limite** (back: `JobOpeningService.apply`, `withdraw`):
+     - Retirar a candidatura e se candidatar de novo volta para "pendente" e manda o aviso "Nova candidatura" outra vez. Repetindo, o candidato enche o sininho e o celular dos gerentes.
+     - A vaga de unidade suspensa pela plataforma continua recebendo candidaturas (só `isActive` é conferido).
+
+     **Fazer:** limite de novas candidaturas à mesma vaga (por exemplo uma volta depois de retirar) e aviso só na primeira. A unidade suspensa não recebe candidatura. Teste: retirar e se candidatar de novo não manda o segundo aviso.
+
+421. ⬜ **Dependências com falhas de segurança conhecidas** (back: `pnpm audit --prod`):
+     - 16 avisos: 2 críticos (`handlebars` 4.7.9, usado nos e-mails), 7 altos (`@graphql-tools/utils`, `body-parser` 2.3.0 do Apollo, com negação de serviço por bytes sobrando no corpo, `multer` com negação de serviço, `follow-redirects` do axios) e outros.
+     - Os modelos de e-mail são arquivos do servidor, mas o `body-parser` e o `multer` recebem pedidos de fora.
+
+     **Fazer:** atualizar para as versões corrigidas (handlebars ≥ 4.7.10, body-parser ≥ 2.4.0, multer ≥ 2.5.0, follow-redirects ≥ 1.16.1, @graphql-tools/utils ≥ 12.0.2) e pôr o `pnpm audit --prod --audit-level high` no CI. Teste: o audit não acusa nada alto nem crítico.
+
+422. ⬜ **Reenviar o convite copia o link secreto para a área de transferência sem avisar** (front: `Barbers.tsx`):
+     - Ao reenviar, a tela copia o link do convite (que cria a conta da pessoa na equipe) para a área de transferência do gerente, mesmo quando o e-mail saiu. O gerente pode colar o link num lugar errado sem saber que ele está ali.
+
+     **Fazer:** copiar só quando o gerente clicar em "copiar link" (como no envio que falhou), e não quando o e-mail saiu. Teste: reenviar com sucesso não mexe na área de transferência.
