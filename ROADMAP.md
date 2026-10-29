@@ -3919,61 +3919,81 @@ Foram lidos no back a folha de pagamento (`PayrollService`), os convites da equi
 
 Foram lidos no back os avisos de atividade (`ActivityNotificationsService.deliver`), a fila de envios (`NotificationQueueService`), o perfil público do profissional (`CareerService`), o cadastro de ficha (`createCustomer`), as despesas, o aceite do convite com conta existente e o chat. No front, o pagamento da equipe, o aluguel de cadeira, a área do cliente, a página de indicar amigos, a importação, a agenda (série e edição) e os posts nas redes.
 
-378. ⬜ **Os avisos de atividade da equipe não saem: o BullMQ recusa o identificador do envio** (back: `ActivityNotificationsService.deliver`):
+378. ✅ **Os avisos de atividade da equipe não saem: o BullMQ recusa o identificador do envio** (back: `ActivityNotificationsService.deliver`):
      - O e-mail vai para a fila com `jobId` igual a `activity:${key}:${userId}`, e as chaves já têm dois-pontos (`sale:12`, `appt-created:5`, `low-stock:3:m9`). O BullMQ só aceita identificador com dois-pontos se ele tiver exatamente três partes. `activity:sale:12:7` tem quatro, e o `add` dá erro "Custom Id cannot contain :" (conferido contra o Redis local).
      - O erro acontece dentro do laço de destinatários, antes de gravar os avisos no app. `run` engole o erro com um log. Quando alguém da lista quer o aviso por e-mail, ninguém recebe nada, nem no app.
      - Estoque e equipe têm e-mail ligado por padrão. Na prática, estoque baixo e "entrou na equipe" nunca chegam. Agendamento, venda e avaliação falham para quem ligou o e-mail. Os testes não pegam porque trocam a fila por um falso.
 
      **Fazer:** o identificador sem dois-pontos (por exemplo trocar `:` por `-`), e o erro de um envio não derruba os outros nem os avisos no app. O teste confere o formato do `jobId` com a mesma regra do BullMQ. Teste: venda nova com o dono querendo e-mail gera o aviso no app e o e-mail com identificador aceito.
 
-379. ⬜ **Salário fixo, lançamentos e aluguel de cadeira leem "2.500" como 2,50** (front: `Payroll.tsx`, `SharedLocationRent.tsx`):
+     **Feito:** `activityEmailJobId` troca `:` por `-` (`activity-sale-12-7`). O aviso no app é gravado antes da fila, e cada e-mail falho só é logado. O teste da venda confere o identificador com a mesma regra do BullMQ e mostra que a falha do gerente não tira o aviso nem o e-mail do dono.
+
+379. ✅ **Salário fixo, lançamentos e aluguel de cadeira leem "2.500" como 2,50** (front: `Payroll.tsx`, `SharedLocationRent.tsx`):
      - Esses campos usam `Number(texto)` direto. "2.500" (dois mil e quinhentos, como se escreve no Brasil) vira 2,5, e "1500,50" vira `NaN`. No lançamento, o botão fica desligado sem explicação.
      - O salário fixo é gravado como R$ 2,50, e o aluguel da cadeira passa a cobrar R$ 1,20 por mês no cartão.
 
      **Fazer:** usar a mesma leitura de valor do item 373 (separador de milhar e decimal do idioma) e avisar quando o texto não é um valor. Teste: "2.500" é 2500; "1.500,50" é 1500,5; "abc" mostra aviso.
 
-380. ⬜ **O cliente cancela o clube com um clique e não tem como voltar atrás** (front: `ClientAccount.tsx`; back: assinatura do clube):
+     **Feito:** salário fixo, lançamento e aluguel usam `parseLocaleNumber`. Texto que não é valor mostra "Informe um valor válido" e não grava. "2.500" é 2500; "1.500,50" é 1500,5; "abc" não é número.
+
+380. ✅ **O cliente cancela o clube com um clique e não tem como voltar atrás** (front: `ClientAccount.tsx`; back: assinatura do clube):
      - O botão "Cancelar assinatura" da área do cliente cancela direto, sem perguntar. Não existe "manter assinatura": quem clicou sem querer precisa esperar o fim do ciclo e assinar de novo, pagando outra vez e pelo preço atual do plano (o contratado se perde, item 360).
 
      **Fazer:** confirmar antes ("fica ativa até DD/MM, depois não cobra mais") e permitir desfazer enquanto o ciclo não acabou (`cancelAtPeriodEnd` volta a falso, e a Stripe também). Teste: cancelar e desfazer deixa a assinatura ativa, com a mesma renovação e o mesmo preço.
 
-381. ⬜ **A ficha nova não confere telefone repetido nem e-mail** (back: `createCustomer`, `updateCustomer`):
+     **Feito:** cancelar pede confirmação com a data do fim do ciclo. "Manter assinatura" chama `resumeMySubscription`, que devolve `cancel_at_period_end` para falso na Stripe e no banco, sem mexer no preço nem na renovação. Teste: cancelar e desfazer deixa ACTIVE, com o mesmo `currentPeriodEnd` e o mesmo preço.
+
+381. ✅ **A ficha nova não confere telefone repetido nem e-mail** (back: `createCustomer`, `updateCustomer`):
      - A equipe cadastra a mesma pessoa duas vezes (mesmo telefone) sem aviso. O histórico, os pontos e o clube se dividem entre as fichas. A importação já reaproveita a ficha pelo telefone; o cadastro manual não.
      - O e-mail é gravado como veio: sem conferir o formato e sem minúsculas. "joao@gmail" ou "Joao@Gmail.com" vão para a ficha. A ligação com a área do cliente e as campanhas usam esse e-mail.
 
      **Fazer:** no cadastro e na edição, e-mail em minúsculas e com formato válido. Telefone que já existe na rede devolve aviso com a ficha existente (a tela oferece abrir essa ficha). Teste: ficha com 11999990000; cadastrar outra com (11) 99999-0000 avisa; e-mail "a@b" é recusado.
 
-382. ⬜ **"Copiar link" na página de indicar amigos copia um link sem código** (front: `InviteFriends.tsx`):
+     **Feito:** e-mail vai em minúsculas e "a@b" é recusado. Telefone que já existe na rede devolve a ficha (id e nome); a tela pergunta se abre essa ficha. A própria ficha pode manter o mesmo número. Teste no spec da rodada.
+
+382. ✅ **"Copiar link" na página de indicar amigos copia um link sem código** (front: `InviteFriends.tsx`):
      - O botão copia `${origin}/invite/`, sem o código de quem indica. A rota é `/invite/:inviteToken`: o amigo cai numa página que não existe, e a indicação não conta.
      - Toda falha ao convidar por e-mail mostra a mesma mensagem genérica, mesmo quando o motivo é outro (já convidado, e-mail inválido).
 
      **Fazer:** copiar o link com o código da pessoa (o mesmo do convite por e-mail) e mostrar a mensagem que o servidor devolve. Teste: o link copiado abre a página de convite com o nome de quem indicou.
 
-383. ⬜ **O perfil público do profissional conta atendimentos importados de planilha** (back: `CareerService.profileFacts`, `clientCounts`):
+     **Feito:** "Copiar link" pede o e-mail e grava o convite em `POST /friend-invites/link`, sem mandar o e-mail. O endereço copiado é `/invite/{código}`. A falha mostra a mensagem do servidor. Teste: o código abre a página com o nome de quem indicou; "a@b" é recusado.
+
+383. ✅ **O perfil público do profissional conta atendimentos importados de planilha** (back: `CareerService.profileFacts`, `clientCounts`):
      - "Atendimentos", "clientes", "clientes que voltaram" e os selos contam todo horário concluído, inclusive os importados (`source` `HISTORY` ou `IMPORT`). Importar uma planilha com 500 atendimentos inventados dá ao profissional números e selos públicos que ele não tem. A nota do cliente já ignora esses horários (`RATEABLE_SOURCE`).
 
      **Fazer:** os números e selos públicos só contam horários feitos pelo app (fora `HISTORY` e `IMPORT`). O painel do próprio profissional pode mostrar os dois, separados. Teste: profissional com 3 atendimentos do app e 50 importados mostra 3 no perfil público.
 
-384. ⬜ **Aceitar o convite da equipe com uma conta que já existe pula a idade mínima** (back: `EmployeeInviteService.acceptInviteAsUser`):
+     **Feito:** perfil público e selos ignoram `HISTORY` e `IMPORT`. O painel da própria carreira mostra os importados à parte (`importedAppointments`). Teste: 3 do app e 50 importados; a página pública mostra 3.
+
+384. ✅ **Aceitar o convite da equipe com uma conta que já existe pula a idade mínima** (back: `EmployeeInviteService.acceptInviteAsUser`):
      - O cadastro novo pelo convite confere a idade mínima para trabalhar (`WORK_MINIMUM_AGE`). Quem já tem conta (por exemplo uma conta social, ou uma conta criada com outra data) aceita sem nenhuma conferência de idade e entra na equipe.
 
      **Fazer:** a mesma conferência no aceite com conta existente, pela data de nascimento da conta. Sem data, pede para completar o cadastro. Teste: conta com 16 anos não entra na equipe pelo convite; com 18, entra.
 
-385. ⬜ **A planilha salva pelo Excel chega com os acentos quebrados** (front: `Import.tsx`):
+     **Feito:** o aceite com conta existente usa a mesma idade mínima do cadastro novo (16 anos). Sem data de nascimento, pede para completar o cadastro. Quem tem 15 não entra; quem tem 18 entra. Quem completa 16 entra, como no cadastro novo.
+
+385. ✅ **A planilha salva pelo Excel chega com os acentos quebrados** (front: `Import.tsx`):
      - O arquivo é lido com `readAsText(file)`, que supõe UTF-8. O Excel em português salva CSV em Windows-1252: "João" vira "Jo�o" e "Escova progressiva" perde o acento. Os nomes entram errados nas fichas, e o profissional da planilha não é encontrado ("Jo�o" não combina com "João"), então as linhas são recusadas.
 
      **Fazer:** detectar a codificação (UTF-8 válido, com ou sem BOM; senão, ler como Windows-1252) antes de mandar o texto. Teste: arquivo em Windows-1252 com "João" importa "João".
 
-386. ⬜ **A prévia da série não olha a sala ou cadeira escolhida** (back: `AppointmentSeriesService.check`; front: `Appointments.tsx`):
+     **Feito:** o arquivo é lido em bytes. UTF-8 válido (com ou sem BOM) passa direto; o resto é Windows-1252. "João" gravado pelo Excel chega como "João".
+
+386. ✅ **A prévia da série não olha a sala ou cadeira escolhida** (back: `AppointmentSeriesService.check`; front: `Appointments.tsx`):
      - A prévia confere só o profissional, a folga e o fechamento. Uma data em que o recurso (sala, cadeira, maca) já está ocupado aparece como livre, e na criação ela é pulada sem que a pessoa tenha visto antes.
      - Na tela, trocar o recurso não atualiza a prévia (ele não está nas dependências do efeito).
 
      **Fazer:** a prévia confere o recurso como a criação (`ensureResourceAvailable`), e a tela refaz a prévia ao trocar de recurso. Teste: recurso ocupado na terceira data aparece como "ocupado" na prévia.
 
-387. ⬜ **Post nas redes é agendado no fuso do navegador, não no da unidade** (front: `Social.tsx`):
+     **Feito:** a prévia chama `ensureResourceAvailable`, e a agenda refaz a prévia ao trocar a sala ou a cadeira. Teste: recurso ocupado na terceira data volta "Recurso já reservado nesse horário"; as outras datas seguem livres.
+
+387. ✅ **Post nas redes é agendado no fuso do navegador, não no da unidade** (front: `Social.tsx`):
      - O campo de data e hora usa o relógio do navegador (`new Date(valor)` e `getTimezoneOffset`), e a lista mostra os horários no fuso do navegador. As outras telas da unidade (agenda, folga, fechamento) usam o fuso da unidade (`shopClock`). O dono que agenda de outro fuso (em viagem, ou rede em outro país) publica na hora errada.
 
      **Fazer:** ler e mostrar a data do post no fuso da unidade, como na agenda. Teste: unidade em São Paulo e navegador em Lisboa; agendar 18:00 publica às 18:00 de São Paulo.
+
+     **Feito:** agendar, listar e tentar de novo usam o relógio da unidade (`shopWallToInstant` / `formatShopDateTime`). 18:00 em São Paulo vira 21:00 UTC, mesmo com o navegador em Lisboa.
 
 ### Centésima trigésima oitava rodada (2026-10-27): fila do dia, e-mails, imagens, buscas e dados guardados no navegador
 

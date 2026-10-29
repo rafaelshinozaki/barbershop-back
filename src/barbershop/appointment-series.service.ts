@@ -98,6 +98,7 @@ export class AppointmentSeriesService {
     barberId: number,
     slot: { date: string; startAt: Date; endAt: Date },
     timeZone: string,
+    resourceId?: number | null,
   ): Promise<{ ok: boolean; reason: string | null; warning: string | null }> {
     try {
       await this.barbershopService.ensureBarberAvailable(
@@ -110,6 +111,20 @@ export class AppointmentSeriesService {
       if (err instanceof BadRequestException)
         return { ok: false, reason: err.message, warning: null };
       throw err;
+    }
+    if (resourceId != null) {
+      try {
+        await this.barbershopService.ensureResourceAvailable(
+          barbershopId,
+          resourceId,
+          slot.startAt,
+          slot.endAt,
+        );
+      } catch (err) {
+        if (err instanceof BadRequestException)
+          return { ok: false, reason: err.message, warning: null };
+        throw err;
+      }
     }
     const [timeOff, closure] = await Promise.all([
       this.prisma.barberTimeOff.findFirst({
@@ -155,7 +170,7 @@ export class AppointmentSeriesService {
         index: s.index,
         startAt: s.startAt,
         endAt: s.endAt,
-        ...(await this.check(barbershopId, input.barberId, s, timeZone)),
+        ...(await this.check(barbershopId, input.barberId, s, timeZone, input.resourceId)),
       })),
     );
   }
@@ -173,7 +188,7 @@ export class AppointmentSeriesService {
     const created: Array<{ id: number; startAt: Date; customer: { email: string | null } }> = [];
     const skipped: SeriesSlot[] = [];
     for (const s of slots) {
-      const check = await this.check(barbershopId, input.barberId, s, timeZone);
+      const check = await this.check(barbershopId, input.barberId, s, timeZone, input.resourceId);
       if (!check.ok) {
         skipped.push({ index: s.index, startAt: s.startAt, endAt: s.endAt, ...check });
         continue;

@@ -7,13 +7,21 @@
  */
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { ActivityNotificationsService } from './activity-notifications.service';
+import { ActivityNotificationsService, activityEmailJobId } from './activity-notifications.service';
+
+/** A mesma regra do BullMQ 5: `:` só vale com exatamente três partes, e id inteiro não. */
+function bullmqAcceptsJobId(jobId: string): boolean {
+  if (`${parseInt(jobId, 10)}` === jobId) return false;
+  if (jobId.includes(':') && jobId.split(':').length !== 3) return false;
+  return true;
+}
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
 describe('ActivityNotificationsService (integração com o banco)', () => {
   const prisma = new PrismaService();
   const emails: Array<{ to: string; subject: string; jobId?: string }> = [];
+  let failEmailTo: string | null = null;
   const pushed: number[] = [];
   let service: ActivityNotificationsService;
 
@@ -72,6 +80,7 @@ describe('ActivityNotificationsService (integração com o banco)', () => {
       { notifyUsers: (userIds: number[]) => pushed.push(...userIds) } as never,
       {
         email: async (job: { to: string; subject: string }, jobId?: string) => {
+          if (failEmailTo && job.to === failEmailTo) throw new Error('fila recusou');
           emails.push({ to: job.to, subject: job.subject, jobId });
         },
       } as never,
@@ -293,7 +302,7 @@ describe('ActivityNotificationsService (integração com o banco)', () => {
       {
         to: `act-owner-${RUN}@test.local`,
         subject: `Nova venda · Unidade ${RUN}`,
-        jobId: `activity:sale:${sale.id}:${ids.owner}`,
+        jobId: activityEmailJobId(`sale:${sale.id}`, ids.owner),
       },
     ]);
   });
@@ -336,6 +345,49 @@ describe('ActivityNotificationsService (integração com o banco)', () => {
     expect(lowStock).toHaveLength(1);
     expect(lowStock[0].message).toContain('Pomada');
     // Estoque: e-mail ligado por padrão
-    expect(emails.filter((e) => e.jobId?.startsWith('activity:low-stock'))).toHaveLength(2); // dono + gerente
+    expect(emails.filter((e) => e.jobId?.startsWith('activity-low-stock'))).toHaveLength(2); // dono + gerente
+    for (const mail of emails) expect(bullmqAcceptsJobId(mail.jobId ?? '')).toBe(true);
+  });
+
+  it('venda com e-mail: o sininho sai mesmo se um envio da fila falha, e o id passa no BullMQ', async () => {
+    await prisma.notificationPreference.upsert({
+      where: { userId: ids.owner },
+      create: { userId: ids.owner, salesInApp: true, salesEmail: true },
+      update: { salesInApp: true, salesEmail: true },
+    });
+    await prisma.notificationPreference.upsert({
+      where: { userId: ids.manager },
+      create: { userId: ids.manager, salesInApp: true, salesEmail: true },
+      update: { salesInApp: true, salesEmail: true },
+    });
+    const beforeOwner = (await notificationsOf(ids.owner)).length;
+    const beforeManager = (await notificationsOf(ids.manager)).length;
+    const sentBefore = emails.length;
+    failEmailTo = `act-manager-${RUN}@test.local`;
+    const sale = await prisma.sale.create({
+      data: {
+        barbershopId: ids.shopId,
+        customerId: ids.customerId,
+        barberId: ids.barberId,
+        saleType: 'SERVICE',
+        subtotal: new Decimal(40),
+        total: new Decimal(40),
+      },
+    });
+    await service.saleCreated(sale.id, ids.barberUser);
+    failEmailTo = null;
+
+    expect((await notificationsOf(ids.owner)).length).toBe(beforeOwner + 1);
+    expect((await notificationsOf(ids.manager)).length).toBe(beforeManager + 1);
+    const sent = emails.slice(sentBefore);
+    expect(sent).toEqual([
+      {
+        to: `act-owner-${RUN}@test.local`,
+        subject: `Nova venda · Unidade ${RUN}`,
+        jobId: activityEmailJobId(`sale:${sale.id}`, ids.owner),
+      },
+    ]);
+    expect(bullmqAcceptsJobId(sent[0].jobId ?? '')).toBe(true);
+    expect(bullmqAcceptsJobId(`activity:sale:${sale.id}:${ids.owner}`)).toBe(false);
   });
 });

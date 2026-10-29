@@ -465,4 +465,13 @@ export class PublicBookingResolver {
   ) {
     return this.barbershopService.cancelMySubscription(client.id, subscriptionId);
   }
+
+  @UseGuards(GraphQLClientJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async resumeMySubscription(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('subscriptionId', { type: () => Int }) subscriptionId: number,
+  ) {
+    return this.barbershopService.resumeMySubscription(client.id, subscriptionId);
+  }
 }

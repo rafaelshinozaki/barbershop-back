@@ -63,6 +63,9 @@ export class CareerOverviewType {
   @Field(() => Int)
   completedAppointments: number;
 
+  @Field(() => Int, { description: 'Concluídos importados de planilha, fora do perfil público' })
+  importedAppointments: number;
+
   @Field(() => Int)
   noShows: number;
 

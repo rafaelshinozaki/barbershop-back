@@ -310,7 +310,11 @@ export class CareerService {
   private async clientCounts(userId: number) {
     const rows = await this.prisma.appointment.groupBy({
       by: ['customerId'],
-      where: { status: 'COMPLETED', barber: { professional: { is: { userId } } } },
+      where: {
+        status: 'COMPLETED',
+        source: { notIn: ['HISTORY', 'IMPORT'] },
+        barber: { professional: { is: { userId } } },
+      },
       _count: { _all: true },
     });
     return {
@@ -373,7 +377,11 @@ export class CareerService {
         orderBy: { name: 'asc' },
       }),
       this.prisma.appointment.count({
-        where: { status: 'COMPLETED', barber: { professional: { userId } } },
+        where: {
+          status: 'COMPLETED',
+          source: { notIn: ['HISTORY', 'IMPORT'] },
+          barber: { professional: { userId } },
+        },
       }),
     ]);
     const worksAt: { name: string; slug: string }[] = [];
@@ -470,6 +478,7 @@ export class CareerService {
         select: {
           customerId: true,
           status: true,
+          source: true,
           startAt: true,
           barberId: true,
           services: {
@@ -515,6 +524,7 @@ export class CareerService {
           status: appointment.status,
           hour: Math.floor(toZonedParts(appointment.startAt, zone).minutesOfDay / 60),
           currency: shop?.currency ?? 'BRL',
+          imported: appointment.source === 'HISTORY' || appointment.source === 'IMPORT',
           services: appointment.services.map((line) => ({
             name: line.service.name,
             quantity: line.quantity,

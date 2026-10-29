@@ -48,9 +48,11 @@ export function formatGqlError(
     // `code` continua sendo a categoria (FORBIDDEN, BAD_REQUEST…); `reason` diz
     // qual erro foi, pro front traduzir (ver error-reasons.ts)
     const reason = errorReasonOf(message) ?? (validation ? 'INVALID_INPUT' : undefined);
+    const extra = exceptionExtras(original);
     const extensions = {
       ...(code !== undefined ? { code } : {}),
       ...(reason ? { reason } : {}),
+      ...extra,
     };
     return {
       message,
@@ -60,6 +62,18 @@ export function formatGqlError(
   } catch {
     return { message: 'Internal server error' };
   }
+}
+
+/** A ficha repetida leva o id e o nome, pra tela abrir o cadastro que já existe. */
+function exceptionExtras(error: unknown): Record<string, unknown> {
+  if (!(error instanceof BadRequestException)) return {};
+  const response = error.getResponse();
+  if (typeof response !== 'object' || response == null) return {};
+  const body = response as { customerId?: unknown; customerName?: unknown };
+  const extra: Record<string, unknown> = {};
+  if (typeof body.customerId === 'number') extra.customerId = body.customerId;
+  if (typeof body.customerName === 'string' && body.customerName) extra.customerName = body.customerName;
+  return extra;
 }
 
 const validationMessageOf = (error: unknown): string | undefined => {

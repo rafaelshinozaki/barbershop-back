@@ -41,6 +41,8 @@ export type CareerVisitInput = {
   hour: number;
   currency: string;
   services: { name: string; quantity: number; unitPrice: number }[];
+  /** Planilha (HISTORY/IMPORT): conta no painel, separado dos números do app. */
+  imported?: boolean;
 };
 
 export type CareerPayoutInput = {
@@ -82,6 +84,8 @@ export function visiblePastVisit(input: {
 export type CareerOverview = {
   places: CareerPlaceInput[];
   completedAppointments: number;
+  /** Concluídos que vieram de planilha. O perfil público não soma estes. */
+  importedAppointments: number;
   noShows: number;
   uniqueClients: number;
   returningClients: number;
@@ -109,7 +113,12 @@ export function buildCareerOverview(input: {
   visits: CareerVisitInput[];
   payouts: CareerPayoutInput[];
 }): CareerOverview {
-  const completed = input.visits.filter((visit) => visit.status === 'COMPLETED');
+  const completed = input.visits.filter(
+    (visit) => visit.status === 'COMPLETED' && !visit.imported,
+  );
+  const importedAppointments = input.visits.filter(
+    (visit) => visit.status === 'COMPLETED' && visit.imported,
+  ).length;
   const byCustomer = new Map<number, number>();
   const hours = new Map<number, number>();
   const services = new Map<string, number>();
@@ -162,6 +171,7 @@ export function buildCareerOverview(input: {
         Number(b.active) - Number(a.active) || b.startedAt.getTime() - a.startedAt.getTime(),
     ),
     completedAppointments: completed.length,
+    importedAppointments,
     noShows: input.visits.filter((visit) => visit.status === 'NO_SHOW').length,
     uniqueClients: byCustomer.size,
     returningClients: [...byCustomer.values()].filter((count) => count >= 2).length,

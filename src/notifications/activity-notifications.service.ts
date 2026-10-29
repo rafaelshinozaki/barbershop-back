@@ -24,6 +24,15 @@ const DEFAULTS: Record<ActivityCategory, { email: boolean; inApp: boolean }> = {
 
 const LOCALE: Record<Lang, string> = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' };
 
+/**
+ * Id do e-mail na fila. O BullMQ só aceita `:` quando o id tem exatamente
+ * três partes; as chaves já trazem `:` (`sale:12`, `low-stock:3:m9`), então
+ * o id vai com hífen.
+ */
+export function activityEmailJobId(key: string, userId: number): string {
+  return `activity-${key}-${userId}`.replace(/:/g, '-');
+}
+
 interface Shop {
   id: number;
   name: string;
@@ -860,6 +869,8 @@ export class ActivityNotificationsService {
       actionUrl: string;
       actionText: string;
     }> = [];
+    const emails: Array<{ job: Parameters<NotificationQueueService['email']>[0]; jobId: string }> =
+      [];
 
     for (const user of users) {
       const pref = user.notificationPreference as unknown as Record<
@@ -877,8 +888,9 @@ export class ActivityNotificationsService {
         inApp.push({ userId: user.id, ...text, type: opts.type, actionUrl: path, actionText });
       }
       if (wantsEmail && user.email) {
-        await this.queue.email(
-          {
+        emails.push({
+          jobId: activityEmailJobId(opts.key, user.id),
+          job: {
             kind: 'user',
             userId: user.id,
             template: 'admin_notification',
@@ -894,14 +906,21 @@ export class ActivityNotificationsService {
             meta: `activity:${category}`,
             to: user.email,
           },
-          `activity:${opts.key}:${user.id}`,
-        );
+        });
       }
     }
 
+    // O aviso no app sai antes do e-mail: uma fila recusada não apaga o sininho.
     if (inApp.length > 0) {
       await this.prisma.userNotification.createMany({ data: inApp });
       for (const n of inApp) this.realtime.notifyUsers([n.userId], 'CREATED', n.title);
+    }
+    for (const mail of emails) {
+      try {
+        await this.queue.email(mail.job, mail.jobId);
+      } catch (err) {
+        this.logger.error(`Erro ao enfileirar o aviso ${mail.jobId}:`, err);
+      }
     }
   }
 

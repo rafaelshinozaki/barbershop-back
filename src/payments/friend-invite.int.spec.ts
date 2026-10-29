@@ -141,4 +141,17 @@ describe('Convidar amigos (integração)', () => {
       }),
     ).toBe(1);
   });
+
+  it('o link copiado leva o código e a página mostra quem indicou', async () => {
+    const before = emails.length;
+    const shared = await invites.shareLink(inviterId, `Amigo.Link.${RUN}@Example.com`);
+    expect(emails.length).toBe(before);
+    expect(shared.inviteToken).toEqual(expect.any(String));
+    const page = await invites.validateInvite(shared.inviteToken);
+    expect(page.valid).toBe(true);
+    expect(page.invite?.inviterName).toBe('Pessoa quem-convida');
+    const again = await invites.shareLink(inviterId, `amigo.link.${RUN}@example.com`);
+    expect(again.inviteToken).toBe(shared.inviteToken);
+    await expect(invites.shareLink(inviterId, 'a@b')).rejects.toThrow('E-mail inválido');
+  });
 });

@@ -533,6 +533,20 @@ export class EmployeeInviteService {
         'Este convite foi enviado para outro e-mail. Entre com a conta desse e-mail para aceitar.',
       );
     }
+    if (!user.birthdate) {
+      throw new BadRequestException(
+        'Complete a data de nascimento da conta para entrar na equipe.',
+      );
+    }
+    const born = user.birthdate;
+    const birthText = `${born.getUTCFullYear()}-${String(born.getUTCMonth() + 1).padStart(2, '0')}-${String(born.getUTCDate()).padStart(2, '0')}`;
+    const age = completedYears(birthText);
+    if (age == null || age < 0) {
+      throw new BadRequestException('Data de nascimento inválida');
+    }
+    if (age < WORK_MINIMUM_AGE) {
+      throw new BadRequestException('Para trabalhar é preciso ter 16 anos.');
+    }
     // Conta que nunca confirmou o e-mail (ex.: criada com o e-mail de outra
     // pessoa antes do código no cadastro) só aceita pelo link do e-mail
     // convidado — o link compartilhado pelo gerente não prova que é dela

@@ -406,4 +406,27 @@ describe('Agendamento recorrente (integração)', () => {
     expect(owner.map((t) => t.reason)).toEqual(['SICK']);
     await prisma.barberTimeOff.deleteMany({ where: { barberId: { in: [ana, beto] } } });
   });
+
+  it('recurso ocupado na terceira data aparece como ocupado na prévia', async () => {
+    const room = await prisma.resource.create({
+      data: { barbershopId: shopId, name: `Sala ${RUN}`, type: 'ROOM' },
+    });
+    const third = addDays(monday, 28);
+    await prisma.appointment.create({
+      data: {
+        barbershopId: shopId,
+        customerId,
+        barberId: beto,
+        resourceId: room.id,
+        startAt: at(third, '10:00'),
+        endAt: at(third, '10:30'),
+        status: 'CONFIRMED',
+      },
+    });
+    const preview = await series.preview(ownerId, shopId, input({ resourceId: room.id }));
+    const occupied = preview.find((slot) => slot.index === 2);
+    expect(occupied?.ok).toBe(false);
+    expect(occupied?.reason).toBe('Recurso já reservado nesse horário');
+    expect(preview.filter((slot) => slot.index !== 2).every((slot) => slot.ok)).toBe(true);
+  });
 });

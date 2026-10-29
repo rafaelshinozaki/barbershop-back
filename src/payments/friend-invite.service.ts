@@ -28,6 +28,13 @@ const MAX_REWARDS = 12;
 export const FRIEND_EMAIL_NOT_CONFIRMED = 'Confirme seu e-mail para aceitar o convite.';
 
 /** O token do convite é o link de aceite: só vai no e-mail do amigo, nunca para quem convida */
+type FriendInviteSent = Omit<
+  Prisma.FriendInviteGetPayload<{
+    include: { inviter: { select: { fullName: true; email: true } } };
+  }>,
+  'inviteToken'
+>;
+
 function withoutToken<T extends { inviteToken?: string }>(invite: T): Omit<T, 'inviteToken'> {
   const { inviteToken: _token, ...rest } = invite;
   return rest;
@@ -110,12 +117,47 @@ export class FriendInviteService {
   /**
    * Cria um novo convite de amigo
    */
-  async createInvite(userId: number, friendEmail: string, sentVia?: string) {
+  /** Link copiado: o mesmo convite do e-mail, sem disparar o e-mail de novo. */
+  async shareLink(userId: number, friendEmail: string) {
+    const email = this.friendEmailOf(friendEmail);
+    const pending = await this.prisma.friendInvite.findFirst({
+      where: {
+        inviterId: userId,
+        friendEmail: email,
+        status: 'PENDING',
+        expiresAt: { gt: new Date() },
+      },
+      select: { inviteToken: true },
+    });
+    if (pending) return { inviteToken: pending.inviteToken };
+    return this.createInvite(userId, email, 'LINK');
+  }
+
+  private friendEmailOf(raw: string): string {
+    const email = raw.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('E-mail inválido');
+    }
+    return email;
+  }
+
+  async createInvite(
+    userId: number,
+    friendEmail: string,
+    sentVia: 'LINK',
+  ): Promise<{ inviteToken: string }>;
+  async createInvite(
+    userId: number,
+    friendEmail: string,
+    sentVia?: string,
+  ): Promise<FriendInviteSent>;
+  async createInvite(userId: number, friendEmail: string, sentVia?: string): Promise<any> {
+    const email = this.friendEmailOf(friendEmail);
     // Verificar se o usuário já convidou este email
     const existingInvite = await this.prisma.friendInvite.findFirst({
       where: {
         inviterId: userId,
-        friendEmail: friendEmail.toLowerCase(),
+        friendEmail: email,
         status: { in: ['PENDING', 'ACCEPTED'] },
       },
     });
@@ -143,7 +185,7 @@ export class FriendInviteService {
       throw new BadRequestException(EMAIL_NOT_CONFIRMED);
     }
 
-    if (user.email.toLowerCase() === friendEmail.toLowerCase()) {
+    if (user.email.toLowerCase() === email) {
       throw new BadRequestException('Você não pode convidar a si mesmo');
     }
 
@@ -175,7 +217,7 @@ export class FriendInviteService {
     const invite = await this.prisma.friendInvite.create({
       data: {
         inviterId: userId,
-        friendEmail: friendEmail.toLowerCase(),
+        friendEmail: email,
         inviteToken,
         expiresAt,
         sentVia: sentVia || 'EMAIL',
@@ -190,6 +232,7 @@ export class FriendInviteService {
       },
     });
 
+    if (sentVia === 'LINK') return { inviteToken: invite.inviteToken };
     // Enviar email de convite
     await this.sendInviteEmail(invite);
 

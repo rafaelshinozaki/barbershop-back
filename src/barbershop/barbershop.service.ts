@@ -247,6 +247,18 @@ export function compareClientPackagesForUse(
   if (expA !== expB) return expA - expB;
   return (at(a.createdAt) ?? 0) - (at(b.createdAt) ?? 0);
 }
+const CUSTOMER_PHONE_EXISTS = 'Já existe uma ficha com este telefone.';
+
+/** E-mail da ficha: minúsculas e com formato. Vazio vira null. undefined não mexe. */
+function customerEmail(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  const text = clearedText(value);
+  if (text == null) return null;
+  const email = text.toLowerCase();
+  if (!SHOP_EMAIL.test(email)) throw new BadRequestException('E-mail inválido');
+  return email;
+}
+
 /** Campo opcional esvaziado na edição vira null. undefined = não veio, não mexe. */
 function clearedText(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
@@ -3307,19 +3319,22 @@ export class BarbershopService {
     },
   ) {
     const phone = data.phone?.trim();
-    const email = data.email?.trim();
+    const email = customerEmail(data.email);
     if (!phone && !email) {
       throw new BadRequestException(
         'Informe pelo menos telefone ou email para cadastrar o cliente.',
       );
     }
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    if (phone) await this.assertPhoneFree(barbershop.networkId, phone);
     return this.prisma.customer.create({
       data: {
         networkId: barbershop.networkId,
-        ...data,
+        name: data.name,
+        birthDate: data.birthDate,
+        notes: data.notes,
         phone: phone || '(sem telefone)',
-        email: email || null,
+        email: email ?? null,
       },
     });
   }
@@ -3416,7 +3431,12 @@ export class BarbershopService {
       }
     }
     // Campo esvaziado na edição apaga (e-mail vazio vira null). undefined não mexe.
-    if (data.email !== undefined) data.email = clearedText(data.email) ?? null;
+    if (data.email !== undefined) data.email = customerEmail(data.email) ?? null;
+    if (data.phone !== undefined) {
+      const nextPhone = data.phone.trim();
+      if (nextPhone) await this.assertPhoneFree(barbershop.networkId, nextPhone, customerId);
+      data.phone = nextPhone;
+    }
     if (data.notes !== undefined) data.notes = clearedText(data.notes) ?? null;
     // E-mail trocado numa ficha ligada a uma conta com o e-mail antigo: a
     // ligação sai (a conta antiga não segue vendo a ficha) (item 251)
@@ -3762,6 +3782,22 @@ export class BarbershopService {
       const refund = refundBySub.get(sub.id);
       if (refund) await this.refundUnusedClubCycle(refund);
     }
+  }
+
+  /** Outra ficha da rede já usa este telefone: devolve o id e o nome pra tela abrir. */
+  private async assertPhoneFree(networkId: number, phone: string, exceptId?: number) {
+    const ids = await this.customerIdsByPhone(networkId, phone);
+    const other = ids.find((id) => id !== exceptId);
+    if (other == null) return;
+    const existing = await this.prisma.customer.findUnique({
+      where: { id: other },
+      select: { id: true, name: true },
+    });
+    throw new BadRequestException({
+      message: CUSTOMER_PHONE_EXISTS,
+      customerId: existing?.id ?? other,
+      customerName: existing?.name ?? '',
+    });
   }
 
   /** Ficha da rede com este telefone, escrito de qualquer jeito (só os dígitos contam) */
@@ -5229,7 +5265,7 @@ export class BarbershopService {
     }
   }
 
-  private async ensureResourceAvailable(
+  async ensureResourceAvailable(
     barbershopId: number,
     resourceId: number,
     startAt: Date,
@@ -10879,6 +10915,28 @@ export class BarbershopService {
       // Moeda da unidade (a conta mostrava sempre em reais)
       currency: s.barbershop.currency,
     }));
+  }
+
+  async resumeMySubscription(clientAccountId: number, subscriptionId: number) {
+    const subscription = await this.prisma.clientSubscription.findFirst({
+      where: { id: subscriptionId, clientAccountId },
+    });
+    if (!subscription) throw new NotFoundException('Assinatura não encontrada');
+    if (subscription.status === 'CANCELED') {
+      throw new BadRequestException('Esta assinatura já foi encerrada');
+    }
+    if (!subscription.cancelAtPeriodEnd) return true;
+    if (subscription.currentPeriodEnd && subscription.currentPeriodEnd.getTime() <= Date.now()) {
+      throw new BadRequestException('O ciclo desta assinatura já acabou');
+    }
+    await this.stripeService.updateSubscription(subscription.stripeSubscriptionId, {
+      cancel_at_period_end: false,
+    });
+    await this.prisma.clientSubscription.update({
+      where: { id: subscriptionId },
+      data: { cancelAtPeriodEnd: false },
+    });
+    return true;
   }
 
   async cancelMySubscription(clientAccountId: number, subscriptionId: number) {

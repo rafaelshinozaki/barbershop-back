@@ -13,6 +13,11 @@ export class FriendInviteController {
     return this.friendInviteService.createInvite(req.user.id, body.friendEmail, body.sentVia);
   }
 
+  @Post('link')
+  async shareLink(@Request() req, @Body() body: { friendEmail: string }) {
+    return this.friendInviteService.shareLink(req.user.id, body?.friendEmail ?? '');
+  }
+
   @Get()
   async getSentInvites(@Request() req) {
     return this.friendInviteService.getSentInvites(req.user.id);
