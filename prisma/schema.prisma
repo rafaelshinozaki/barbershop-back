@@ -30,6 +30,8 @@ model User {
   readTerms           Boolean
   // Quando aceitou os termos e a política de privacidade no cadastro (item 257)
   termsAcceptedAt     DateTime?
+  // Versão do texto aceito (termos e política publicados juntos)
+  termsVersion        String?
   membership          String             @default("FREE")
   // Plano Pro da agenda solo. Enquanto esta data está no futuro, a cota de 30 não trava.
   proUntil            DateTime?
@@ -844,6 +846,9 @@ model ClientAccount {
   // barbearias com esse e-mail — antes bastava cadastrar o e-mail de outra
   // pessoa pra ver o histórico dela
   emailVerifiedAt      DateTime?
+  // Aceite dos termos e da política no cadastro da área do cliente
+  termsAcceptedAt      DateTime?
+  termsVersion         String?
   language             String?                     // idioma dos e-mails (pt/en/es), vem do navegador no cadastro
   sessionVersion       Int                         @default(0) // sobe ao trocar a senha: derruba as sessões antigas
   // Login social desconectado: não religa sozinho pelo e-mail (item 485)
@@ -2003,6 +2008,12 @@ model ConsentForm {
   answers       String?   // JSON livre com as respostas do formulário
   signatureName String?
   signedAt      DateTime?
+  // CLIENT: a pessoa assinou pelo link. COUNTER: a equipe registrou no balcão.
+  signedVia        String?
+  signatureIp      String?
+  textVersion      String?
+  recordedByName   String?
+  signToken        String?   @unique
   expiresAt     DateTime? // ex.: teste de alergia válido por 48h antes do serviço
   status        String    @default("PENDING") // PENDING, SIGNED, EXPIRED, ARCHIVED
   // Dado de saúde (anamnese, teste de alergia) é sensível na LGPD: as
@@ -2508,6 +2519,8 @@ model JobApplication {
   feeRefundedAt      DateTime?
   // Aceitou o convite e entrou na equipe: sai da rotina que libera os aceitos (item 281)
   joinedAt           DateTime?
+  // Já voltou uma vez depois de retirar: outra volta não é aceita, e a volta não avisa de novo
+  returnedOnce       Boolean   @default(false)
   jobOpening   JobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 

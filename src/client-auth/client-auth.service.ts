@@ -25,6 +25,8 @@ import { AccountLinkService } from './account-link.service';
 import { assertNotSuspended } from './suspension';
 import { clientClaims } from '../auth/session-claims';
 import { pickSocialLink } from '../auth/social-link';
+import { personName, signupPhone } from '../common/person';
+import { TERMS_REQUIRED_MESSAGE, TERMS_VERSION } from '../common/terms';
 import { dropPushSubscriptions } from '../push/push.service';
 import { supportEmail } from '../common/app-urls';
 import {
@@ -393,6 +395,7 @@ export class ClientAuthService {
     phone?: string,
     language?: string,
     emailCode?: string,
+    acceptedTerms?: boolean,
   ) {
     const normalizedEmail = email.trim().toLowerCase();
     // A conta só é criada com o código enviado ao e-mail (requestSignupCode),
@@ -400,8 +403,10 @@ export class ClientAuthService {
     // criava a conta com o e-mail de outra pessoa (a confirmação vinha
     // depois, por link, com a conta já ocupando o e-mail)
     validatePassword(password);
+    const displayName = personName(name);
     const codes = new SignupCodes(this.redis, this.emailService);
     await codes.check(normalizedEmail, emailCode);
+    if (acceptedTerms !== true) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
 
     const existing = await this.prisma.clientAccount.findUnique({
       where: { email: normalizedEmail },
@@ -422,8 +427,10 @@ export class ClientAuthService {
         // E-mail confirmado pelo código
         emailVerifiedAt: new Date(),
         password: sameAsStaff ? null : passwordHash,
-        name: name.trim(),
-        phone: phone?.trim() || null,
+        name: displayName,
+        phone: phone?.trim() ? signupPhone(phone) : null,
+        termsAcceptedAt: new Date(),
+        termsVersion: TERMS_VERSION,
         language: language ? normalizeLang(language) : null,
         ...(sameAsStaff && staff ? { userId: staff.id, linkedAt: new Date() } : {}),
       },
@@ -520,6 +527,7 @@ export class ClientAuthService {
     name: string,
     provider: string,
     providerUserId?: string | null,
+    acceptedTerms = false,
   ) {
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -583,12 +591,15 @@ export class ClientAuthService {
     }
 
     if (!account) {
+      if (!acceptedTerms) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
       account = await this.prisma.clientAccount.create({
         data: {
           email: normalizedEmail,
-          name: name || normalizedEmail.split('@')[0],
+          name: personName(name || normalizedEmail.split('@')[0]),
           password: null,
           emailVerifiedAt: new Date(),
+          termsAcceptedAt: new Date(),
+          termsVersion: TERMS_VERSION,
         },
       });
       await this.prisma.clientLinkedSocialAccount.create({
@@ -1057,7 +1068,10 @@ export class ClientAuthService {
     if (!account || account.deletedAt) throw new UnauthorizedException('Conta não encontrada.');
     const updated = await this.prisma.clientAccount.update({
       where: { id: clientAccountId },
-      data: { name: name.trim(), phone: phone?.trim() || null },
+      data: {
+        name: personName(name),
+        phone: phone?.trim() ? signupPhone(phone) : null,
+      },
     });
     // Telefone novo pode ser o que faltava para ligar as fichas (item 251)
     if ((updated.phone ?? '') !== (account.phone ?? '')) {

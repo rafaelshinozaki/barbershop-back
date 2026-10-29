@@ -22,6 +22,26 @@ const LABELS: Record<keyof typeof PUBLIC_TEXT_LIMITS, string> = {
   referralCode: 'Código de indicação inválido',
 };
 
+export const CATALOG_NAME_MAX = 120;
+export const CATALOG_TEXT_MAX = 2000;
+export const CATALOG_NAME_MESSAGE = 'Informe o nome.';
+export const CATALOG_TEXT_MESSAGE = 'Texto muito longo';
+
+/** Nome de serviço, produto ou cliente: obrigatório, sem ser só espaço. */
+export function requiredCatalogName(raw: string | null | undefined): string {
+  const name = (raw ?? '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > CATALOG_NAME_MAX) throw new BadRequestException(CATALOG_NAME_MESSAGE);
+  return name;
+}
+
+/** Descrição e observação. Vazio vira null. */
+export function limitedCatalogText(raw: string | null | undefined): string | null | undefined {
+  if (raw == null) return raw;
+  const text = raw.trim();
+  if (text.length > CATALOG_TEXT_MAX) throw new BadRequestException(CATALOG_TEXT_MESSAGE);
+  return text || null;
+}
+
 /** A mesma regra no serviço, para quem chama sem passar pela validação do input */
 export function assertPublicTextLimits(
   fields: Partial<Record<keyof typeof PUBLIC_TEXT_LIMITS, string | null | undefined>>,

@@ -238,6 +238,7 @@ describe('Itens 483 a 487 (integração)', () => {
       'Cliente',
       'google',
       `cg-${RUN}`,
+      true,
     );
     await clients.unlinkSocialAccount(account.id, 'google');
     await expect(

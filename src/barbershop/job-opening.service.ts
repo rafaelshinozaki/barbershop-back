@@ -707,9 +707,22 @@ export class JobOpeningService {
   async apply(userId: number, openingId: number, message?: string | null) {
     const opening = await this.prisma.jobOpening.findUnique({
       where: { id: openingId },
-      include: { barbershop: { select: { isActive: true } } },
+      include: {
+        barbershop: {
+          select: {
+            isActive: true,
+            platformSuspendedAt: true,
+            network: { select: { platformSuspendedAt: true } },
+          },
+        },
+      },
     });
-    if (!opening || !opening.barbershop.isActive)
+    if (
+      !opening ||
+      !opening.barbershop.isActive ||
+      opening.barbershop.platformSuspendedAt ||
+      opening.barbershop.network.platformSuspendedAt
+    )
       throw new NotFoundException('Vaga não encontrada');
     if (opening.status !== 'open') throw new BadRequestException('A vaga não está mais aberta');
     if (opening.endDate < (await this.today(opening.barbershopId)).today) {
@@ -743,14 +756,19 @@ export class JobOpeningService {
     if (existing && existing.status !== 'withdrawn') {
       throw new BadRequestException('Você já se candidatou a esta vaga');
     }
+    if (existing?.returnedOnce) {
+      throw new BadRequestException('Você já voltou a esta vaga.');
+    }
     const application = existing
       ? await this.prisma.jobApplication.update({
           where: { id: existing.id },
-          data: { status: 'pending', message: text, decidedAt: null },
+          data: { status: 'pending', message: text, decidedAt: null, returnedOnce: true },
         })
       : await this.prisma.jobApplication.create({
           data: { jobOpeningId: openingId, userId, message: text },
         });
+
+    if (existing) return { id: application.id, status: application.status };
 
     const managers = await this.shopManagers(opening.barbershopId);
     const who = await this.prisma.user.findUnique({

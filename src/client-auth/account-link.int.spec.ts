@@ -48,7 +48,7 @@ describe('Ligação entre conta de cliente e conta da equipe (integração)', ()
   );
   /** Cadastro com o código que chegou no e-mail */
   const signup = (to: string, password: string, name: string) =>
-    clients.signup(to, password, name, undefined, undefined, presetSignupCode(redis, to));
+    clients.signup(to, password, name, undefined, undefined, presetSignupCode(redis, to), true);
 
   let roleId: number;
   const userIds: number[] = [];

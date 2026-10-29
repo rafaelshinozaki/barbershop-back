@@ -35,6 +35,10 @@ export class ClientSignupInput {
   @IsString()
   @MaxLength(10)
   emailCode?: string;
+
+  /** Aceite dos termos de uso e da política de privacidade */
+  @Field({ nullable: true })
+  acceptedTerms?: boolean;
 }
 
 @InputType()

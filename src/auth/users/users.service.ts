@@ -27,6 +27,14 @@ import { clearFailedLogins, isLoginBlocked, recordFailedLogin } from '../login-l
 import { pickSocialLink } from '../social-link';
 import { canonicalIdDoc } from '@/common/id-doc';
 import { idDocTaken } from '@/common/id-doc-lookup';
+import { assertPassword } from '@/common/password';
+import { TERMS_REQUIRED_MESSAGE, TERMS_VERSION } from '@/common/terms';
+import {
+  ADDRESS_REQUIRED_MESSAGE,
+  assertWorkBirthdate,
+  personName,
+  signupPhone,
+} from '@/common/person';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
 import { SignupCodes } from '../signup-code';
@@ -67,8 +75,6 @@ export const SOCIAL_PROFILE_ONLY_MESSAGE =
 export const SOCIAL_PROFILE_DONE_MESSAGE = 'O cadastro desta conta já está completo.';
 export const SOCIAL_PROFILE_PHONE_MESSAGE = 'Informe o telefone.';
 export const EMAIL_IN_USE_MESSAGE = 'Outra conta já usa este e-mail.';
-export const TERMS_REQUIRED_MESSAGE =
-  'Aceite os termos de uso e a política de privacidade para criar a conta.';
 
 export const SOCIAL_UNLINKED_MESSAGE =
   'Este login social foi desconectado da conta. Entre com a senha e ligue de novo pela sua conta.';
@@ -128,21 +134,7 @@ export class UserService {
   ) {}
 
   private validatePassword(password: string) {
-    const hasSpecialCharacter = (password: string) => /[^\w\s]/.test(password);
-    const hasUpperCase = (password: string) => /[A-Z]/.test(password);
-    const hasLowerCase = (password: string) => /[a-z]/.test(password);
-    const hasNumber = (password: string) => /\d/.test(password);
-    const hasMinLength = (password: string) => password.length >= 8;
-
-    if (
-      !hasSpecialCharacter(password) ||
-      !hasUpperCase(password) ||
-      !hasLowerCase(password) ||
-      !hasNumber(password) ||
-      !hasMinLength(password)
-    ) {
-      throw new BadRequestException('Password does not meet the complexity requirements.');
-    }
+    assertPassword(password);
   }
 
   // Bloqueio por tentativas: login-lockout.ts (o login do cliente com a
@@ -258,6 +250,7 @@ export class UserService {
         throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
       }
       if (!socialSignup) this.validatePassword(userData.password ?? '');
+      assertWorkBirthdate(userData.birthdate);
 
       // Hash da senha
       const hashedPassword = await bcrypt.hash(userData.password, 10);
@@ -291,6 +284,7 @@ export class UserService {
           birthdate: userData.birthdate ? new Date(userData.birthdate) : userData.birthdate,
           readTerms: true,
           termsAcceptedAt: new Date(),
+          termsVersion: TERMS_VERSION,
           // E-mail confirmado pelo código (cadastro com senha)
           ...(socialSignup ? {} : { emailVerifiedAt: new Date() }),
           membership: MEMBERSHIP_STATUS.FREE,
@@ -463,7 +457,7 @@ export class UserService {
       }
     }
     if (userDto.password !== undefined) data.password = userDto.password;
-    if (userDto.fullName !== undefined) data.fullName = userDto.fullName;
+    if (userDto.fullName !== undefined) data.fullName = personName(userDto.fullName);
     // Identidade verificada vale pro nome do documento: outro nome, verifica de novo
     if (
       userDto.fullName !== undefined &&
@@ -472,8 +466,11 @@ export class UserService {
     ) {
       data.identityVerifiedAt = null;
     }
-    if (userDto.phone !== undefined) data.phone = userDto.phone;
-    if (userDto.birthdate !== undefined) data.birthdate = userDto.birthdate;
+    if (userDto.phone !== undefined) data.phone = signupPhone(userDto.phone);
+    if (userDto.birthdate !== undefined) {
+      assertWorkBirthdate(userDto.birthdate);
+      data.birthdate = userDto.birthdate;
+    }
 
     // Incluir twoFactorEnabled normalmente
     if ('twoFactorEnabled' in userDto) {
@@ -535,16 +532,39 @@ export class UserService {
     }
 
     if (userDto.address) {
-      data.address = {
-        update: {},
-      };
-      if (userDto.address.zipcode !== undefined)
-        data.address.update.zipcode = userDto.address.zipcode;
-      if (userDto.address.street !== undefined) data.address.update.street = userDto.address.street;
-      if (userDto.address.city !== undefined) data.address.update.city = userDto.address.city;
-      if (userDto.address.neighborhood !== undefined)
-        data.address.update.neighborhood = userDto.address.neighborhood;
-      if (userDto.address.state !== undefined) data.address.update.state = userDto.address.state;
+      const incoming = userDto.address;
+      const text = (value: string | null | undefined) => (value ?? '').trim();
+      const existing = await this.prisma.address.findUnique({ where: { userId: user.id } });
+      if (!existing) {
+        const required = {
+          zipcode: text(incoming.zipcode),
+          street: text(incoming.street),
+          city: text(incoming.city),
+          neighborhood: text(incoming.neighborhood),
+          state: text(incoming.state),
+          country: text(incoming.country),
+        };
+        if (Object.values(required).some((value) => !value)) {
+          throw new BadRequestException(ADDRESS_REQUIRED_MESSAGE);
+        }
+        data.address = {
+          create: {
+            ...required,
+            zipcode: required.zipcode.replace(/\D/g, ''),
+            complement1: text(incoming.complement1) || null,
+            complement2: text(incoming.complement2) || null,
+          },
+        };
+      } else {
+        data.address = { update: {} };
+        if (incoming.zipcode !== undefined) data.address.update.zipcode = incoming.zipcode;
+        if (incoming.street !== undefined) data.address.update.street = incoming.street;
+        if (incoming.city !== undefined) data.address.update.city = incoming.city;
+        if (incoming.neighborhood !== undefined)
+          data.address.update.neighborhood = incoming.neighborhood;
+        if (incoming.state !== undefined) data.address.update.state = incoming.state;
+        if (incoming.country !== undefined) data.address.update.country = incoming.country;
+      }
     }
 
     // Atualizar tudo de uma vez só
@@ -2059,6 +2079,8 @@ export class UserService {
     if (data.readTerms !== true) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
     const phone = data.phone?.trim();
     if (!phone) throw new BadRequestException(SOCIAL_PROFILE_PHONE_MESSAGE);
+    signupPhone(phone);
+    assertWorkBirthdate(data.birthdate);
     const documentNumber = canonicalIdDoc(data.idDocNumber, data.country);
     // Mesma regra (e mesma mensagem) do cadastro com senha
     if (documentNumber && (await idDocTaken(this.prisma, documentNumber, data.country, userId))) {
@@ -2079,6 +2101,7 @@ export class UserService {
         birthdate: data.birthdate ? new Date(data.birthdate) : undefined,
         readTerms: true,
         termsAcceptedAt: new Date(),
+        termsVersion: TERMS_VERSION,
         ...(role ? { roleId: role.id } : {}),
       },
       include: {
@@ -2554,7 +2577,7 @@ export class UserService {
   async acceptTerms(userId: number) {
     await this.prisma.user.updateMany({
       where: { id: userId, readTerms: false },
-      data: { readTerms: true, termsAcceptedAt: new Date() },
+      data: { readTerms: true, termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION },
     });
     return true;
   }

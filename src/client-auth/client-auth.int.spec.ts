@@ -59,7 +59,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
   );
   /** Cadastro de quem tem a caixa de entrada (com o código que chegou) */
   const signup = (mail: string, password: string, name: string, phone?: string, lang?: string) =>
-    service.signup(mail, password, name, phone, lang, presetSignupCode(redis, mail));
+    service.signup(mail, password, name, phone, lang, presetSignupCode(redis, mail), true);
   /** Conta de antes do código no cadastro: e-mail nunca confirmado */
   const legacyAccount = async (mail: string, name = 'Quem cadastrou') =>
     prisma.clientAccount.create({
@@ -207,7 +207,15 @@ describe('Conta do cliente final (integração com o banco)', () => {
 
   it('com o código, a conta nasce com o e-mail confirmado e liga as fichas desse e-mail; o código vale uma vez', async () => {
     const code = presetSignupCode(redis, victimEmail);
-    const account = await service.signup(victimEmail, PASSWORD, 'Vítima', victimPhone, 'es', code);
+    const account = await service.signup(
+      victimEmail,
+      PASSWORD,
+      'Vítima',
+      victimPhone,
+      'es',
+      code,
+      true,
+    );
     expect(account.emailVerifiedAt).toBeTruthy();
     expect((await service.getById(account.id)).emailVerified).toBe(true);
     // Não manda mais o link de confirmação
@@ -519,7 +527,7 @@ describe('Conta do cliente final (integração com o banco)', () => {
 
     it('conta só de login social confirma digitando o e-mail', async () => {
       const mail = `social-apagar-${RUN}@test.local`;
-      const account = await service.findOrCreateSocialAccount(mail, 'Social', 'google');
+      const account = await service.findOrCreateSocialAccount(mail, 'Social', 'google', null, true);
       deletedIds.push(account.id);
       expect((await service.getById(account.id)).hasPassword).toBe(false);
       await expect(

@@ -7,6 +7,8 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { WORK_MINIMUM_AGE, completedYears } from '../common/work-age';
+import { assertPassword } from '../common/password';
+import { TERMS_REQUIRED_MESSAGE, TERMS_VERSION } from '../common/terms';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry } from '../email/language';
@@ -63,6 +65,8 @@ export interface AcceptEmployeeInviteInput {
   address?: AcceptEmployeeInviteAddress;
   /** Chave do link que chegou no e-mail convidado (prova que a pessoa recebeu) */
   emailKey?: string;
+  /** Aceite dos termos de uso e da política de privacidade */
+  readTerms?: boolean;
 }
 
 export const INVITE_EMAIL_KEY_MESSAGE =
@@ -394,6 +398,8 @@ export class EmployeeInviteService {
     if (age < WORK_MINIMUM_AGE) {
       throw new BadRequestException('Para trabalhar é preciso ter 16 anos.');
     }
+    if (data.readTerms !== true) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
+    assertPassword(data.password);
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
     const role = await this.prisma.role.findFirst({
@@ -425,6 +431,8 @@ export class EmployeeInviteService {
           gender,
           birthdate,
           readTerms: true,
+          termsAcceptedAt: new Date(),
+          termsVersion: TERMS_VERSION,
           membership: 'FREE',
           isActive: true,
           // A chave do link só chega no e-mail convidado

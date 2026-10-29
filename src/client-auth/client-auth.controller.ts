@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -7,6 +16,7 @@ import { ClientGoogleAuthGuard } from './guards/client-google-auth.guard';
 import { ClientFacebookAuthGuard } from './guards/client-facebook-auth.guard';
 import { ClientAppleAuthGuard } from './guards/client-apple-auth.guard';
 import { clientClaims } from '../auth/session-claims';
+import { CLIENT_TERMS_COOKIE } from './oauth-state';
 
 // Rotas REST puras porque OAuth precisa de um redirect de página inteira —
 // não dá para fazer esse fluxo via mutation GraphQL. O resto da API de
@@ -93,17 +103,24 @@ export class ClientAuthController {
     }
 
     let account;
+    const acceptedTerms = req.cookies?.[CLIENT_TERMS_COOKIE] === '1';
+    res.clearCookie(CLIENT_TERMS_COOKIE, { path: '/client-auth' });
     try {
       account = await this.clientAuthService.findOrCreateSocialAccount(
         user.email,
         user.displayName,
         provider,
         user.providerUserId,
+        acceptedTerms,
       );
     } catch (err) {
       // Vínculo de outra pessoa neste provedor: volta pra tela de login (item 299)
       if (err instanceof UnauthorizedException) {
         res.redirect(`${frontendUrl}/client/login?error=social`);
+        return;
+      }
+      if (err instanceof BadRequestException) {
+        res.redirect(`${frontendUrl}/client/signup?error=terms`);
         return;
       }
       throw err;

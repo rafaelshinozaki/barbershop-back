@@ -12,9 +12,11 @@ import {
   Parent,
   ObjectType,
   Field,
+  Context,
 } from '@nestjs/graphql';
 import { DeletionRefundType } from './account-deletion.resolver';
 import { BadRequestException, UseGuards } from '@nestjs/common';
+import { clientIp } from '../../common/client-ip';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
 import { LIST_LIMIT_MESSAGE } from '../../barbershop/barbershop.service';
@@ -46,6 +48,7 @@ import {
   ServicePackageType,
   ClientPackageType,
   ConsentFormType,
+  ConsentLinkType,
   HealthFormAccessType,
   CommissionRuleType,
   CommissionReportType,
@@ -1531,6 +1534,24 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.signConsentForm(user.id, barbershopId, id, input.signatureName);
+  }
+
+  @Query(() => ConsentLinkType)
+  async consentByToken(@Args('token') token: string) {
+    return this.barbershopService.consentByToken(token);
+  }
+
+  @Mutation(() => ConsentFormType)
+  async signConsentByToken(
+    @Args('token') token: string,
+    @Args('signatureName') signatureName: string,
+    @Context() context: { req: unknown },
+  ) {
+    return this.barbershopService.signConsentByToken(
+      token,
+      signatureName,
+      clientIp(context.req as never),
+    );
   }
 
   /** O cliente revogou o consentimento de dados de saúde: apaga as respostas */

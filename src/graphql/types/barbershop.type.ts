@@ -1519,6 +1519,24 @@ export class HealthFormAccessType {
 }
 
 @ObjectType()
+export class ConsentLinkType {
+  @Field()
+  formType: string;
+
+  @Field()
+  status: string;
+
+  @Field({ nullable: true })
+  signedAt?: Date;
+
+  @Field({ nullable: true })
+  signedVia?: string;
+
+  @Field()
+  shopName: string;
+}
+
+@ObjectType()
 export class ConsentFormType {
   @Field(() => Int)
   id: number;
@@ -1540,6 +1558,18 @@ export class ConsentFormType {
 
   @Field({ nullable: true })
   signatureName?: string;
+
+  @Field({ nullable: true })
+  signedVia?: string;
+
+  @Field({ nullable: true })
+  recordedByName?: string;
+
+  @Field({ nullable: true })
+  textVersion?: string;
+
+  @Field({ nullable: true })
+  signToken?: string;
 
   @Field({ nullable: true })
   signedAt?: string;

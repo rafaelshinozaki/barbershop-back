@@ -1,6 +1,12 @@
 import { PresignedUploadType } from '../types/upload.type';
 import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { BadRequestException, UseGuards } from '@nestjs/common';
+import {
+  ADDRESS_REQUIRED_MESSAGE,
+  assertWorkBirthdate,
+  personName,
+  signupPhone,
+} from '../../common/person';
 import { UserService } from '../../auth/users/users.service';
 import { User, UserSystemConfig, TrialStatus } from '../types/user.type';
 import { PaginatedLoginHistory, PaginatedActiveSessions } from '../types/notification.type';
@@ -164,23 +170,22 @@ export class UserResolver {
 
     // Campos básicos do usuário
     if (input.fullName !== undefined) {
-      updateData.fullName = input.fullName;
+      const fullName = personName(input.fullName);
+      updateData.fullName = fullName;
       // O selo vale para o nome do documento: outro nome, verifica de novo
       const current = await this.prisma.user.findUnique({
         where: { id: user.id },
         select: { fullName: true, identityVerifiedAt: true },
       });
-      if (current?.identityVerifiedAt && input.fullName.trim() !== current.fullName.trim()) {
+      if (current?.identityVerifiedAt && fullName !== current.fullName.trim()) {
         updateData.identityVerifiedAt = null;
       }
     }
-    if (input.phone !== undefined) updateData.phone = input.phone;
+    if (input.phone !== undefined) updateData.phone = signupPhone(input.phone);
     if (input.gender !== undefined) updateData.gender = input.gender;
     if (input.birthdate !== undefined && input.birthdate.trim() !== '') {
-      const birthdate = new Date(input.birthdate);
-      if (!isNaN(birthdate.getTime())) {
-        updateData.birthdate = birthdate;
-      }
+      assertWorkBirthdate(input.birthdate);
+      updateData.birthdate = new Date(input.birthdate);
     }
     // twoFactorEnabled não é aceito aqui de propósito — precisa passar por
     // setTwoFactor, que exige código de verificação (ativar) ou senha atual
@@ -197,43 +202,38 @@ export class UserResolver {
       input.complement1 !== undefined ||
       input.complement2 !== undefined
     ) {
-      updateData.address = {
-        upsert: {
-          create: {},
-          update: {},
-        },
-      };
-      if (input.street !== undefined) {
-        updateData.address.upsert.create.street = input.street;
-        updateData.address.upsert.update.street = input.street;
-      }
-      if (input.city !== undefined) {
-        updateData.address.upsert.create.city = input.city;
-        updateData.address.upsert.update.city = input.city;
-      }
-      if (input.neighborhood !== undefined) {
-        updateData.address.upsert.create.neighborhood = input.neighborhood;
-        updateData.address.upsert.update.neighborhood = input.neighborhood;
-      }
-      if (input.zipcode !== undefined) {
-        updateData.address.upsert.create.zipcode = input.zipcode;
-        updateData.address.upsert.update.zipcode = input.zipcode;
-      }
-      if (input.state !== undefined) {
-        updateData.address.upsert.create.state = input.state;
-        updateData.address.upsert.update.state = input.state;
-      }
-      if (input.country !== undefined) {
-        updateData.address.upsert.create.country = input.country;
-        updateData.address.upsert.update.country = input.country;
-      }
-      if (input.complement1 !== undefined) {
-        updateData.address.upsert.create.complement1 = input.complement1;
-        updateData.address.upsert.update.complement1 = input.complement1;
-      }
-      if (input.complement2 !== undefined) {
-        updateData.address.upsert.create.complement2 = input.complement2;
-        updateData.address.upsert.update.complement2 = input.complement2;
+      const text = (value: string | null | undefined) => (value ?? '').trim();
+      const existing = await this.prisma.address.findUnique({ where: { userId: user.id } });
+      if (!existing) {
+        const required = {
+          zipcode: text(input.zipcode).replace(/\D/g, ''),
+          street: text(input.street),
+          city: text(input.city),
+          neighborhood: text(input.neighborhood),
+          state: text(input.state),
+          country: text(input.country),
+        };
+        if (Object.values(required).some((value) => !value)) {
+          throw new BadRequestException(ADDRESS_REQUIRED_MESSAGE);
+        }
+        updateData.address = {
+          create: {
+            ...required,
+            complement1: text(input.complement1) || null,
+            complement2: text(input.complement2) || null,
+          },
+        };
+      } else {
+        const patch: Record<string, string> = {};
+        if (input.street !== undefined) patch.street = text(input.street);
+        if (input.city !== undefined) patch.city = text(input.city);
+        if (input.neighborhood !== undefined) patch.neighborhood = text(input.neighborhood);
+        if (input.zipcode !== undefined) patch.zipcode = text(input.zipcode).replace(/\D/g, '');
+        if (input.state !== undefined) patch.state = text(input.state);
+        if (input.country !== undefined) patch.country = text(input.country);
+        if (input.complement1 !== undefined) patch.complement1 = text(input.complement1);
+        if (input.complement2 !== undefined) patch.complement2 = text(input.complement2);
+        updateData.address = { update: patch };
       }
     }
 

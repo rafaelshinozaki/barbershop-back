@@ -67,6 +67,7 @@ export class ClientAuthResolver {
       input.phone,
       input.language,
       input.emailCode,
+      input.acceptedTerms,
     );
     await this.clientAuthService.issueCookie(account, context.res);
     return toClientAccountType(account);

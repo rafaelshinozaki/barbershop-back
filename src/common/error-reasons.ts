@@ -26,6 +26,11 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Data de nascimento é obrigatória': 'BIRTHDATE_REQUIRED',
   'Data de nascimento inválida': 'BIRTHDATE_INVALID',
   'Para trabalhar é preciso ter 16 anos.': 'WORK_MINIMUM_AGE',
+  'Informe o nome com pelo menos 2 letras.': 'PERSON_NAME',
+  'Para salvar o endereço, informe rua, cidade, bairro, estado, país e CEP.': 'ADDRESS_REQUIRED',
+  'Informe o nome.': 'CATALOG_NAME',
+  'Texto muito longo': 'CATALOG_TEXT',
+  'Você já voltou a esta vaga.': 'JOB_ALREADY_RETURNED',
   'Este link é só para consulta.': 'LINK_READ_ONLY',
   'Apague ou estorne a venda antes de mudar a situação deste horário.':
     'SALE_LOCKS_APPOINTMENT_STATUS',

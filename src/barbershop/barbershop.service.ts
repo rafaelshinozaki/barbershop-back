@@ -14,7 +14,7 @@ import { reminderSentAtAfterMove } from './reminder-window';
 import { appointmentContactEmail } from './appointment-contact';
 import { localeGroups, moneyByCurrency } from './dashboard-locale';
 import { ownerAcceptsPublic, ownerAccountOpen } from './public-shop';
-import { assertPublicTextLimits } from './public-text-limits';
+import { assertPublicTextLimits, limitedCatalogText, requiredCatalogName } from './public-text-limits';
 import {
   Injectable,
   Logger,
@@ -26,7 +26,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { randomInt, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { SearchCacheService } from './search-cache.service';
 import { langForCountry, LOCALE, normalizeLang, type Lang } from '../email/language';
 import { reviewEditData } from './review-edit';
@@ -413,6 +413,10 @@ function waitlistBookUrl(
 
 // Fichas com dado de saúde (sensível na LGPD): só com consentimento do cliente
 const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
+
+function consentTextVersion(formType: string, answers: string | null) {
+  return createHash('sha256').update(`${formType}\n${answers ?? ''}`).digest('hex').slice(0, 16);
+}
 /** O profissional vê a ficha de quem atendeu ou vai atender neste prazo */
 const HEALTH_FORM_LOOKBACK_DAYS = 90;
 /** Horário marcado: a ficha abre só nos dias antes do atendimento */
@@ -1697,11 +1701,24 @@ export class BarbershopService {
     text('mission', 1000, NETWORK_MISSION_MESSAGE);
 
     if (data.foundationYear !== undefined) {
-      const year = Number(data.foundationYear);
-      const maxYear = new Date().getFullYear();
-      if (!Number.isInteger(year) || year < 1800 || year > maxYear) {
-        throw new BadRequestException(NETWORK_YEAR_MESSAGE);
+      if (data.foundationYear == null) {
+        data.foundationYear = null;
+      } else {
+        const year = Number(data.foundationYear);
+        const maxYear = new Date().getFullYear();
+        if (!Number.isInteger(year) || year < 1800 || year > maxYear) {
+          throw new BadRequestException(NETWORK_YEAR_MESSAGE);
+        }
       }
+    }
+    for (const key of [
+      'loyaltyPointsPerCurrencyUnit',
+      'loyaltyPointValue',
+      'referralBonusPoints',
+      'noShowFeeValue',
+      'lateCancellationWindowHours',
+    ]) {
+      if (data[key] === null) data[key] = null;
     }
 
     if (data.logoUrl !== undefined) {
@@ -1759,7 +1776,9 @@ export class BarbershopService {
         throw new BadRequestException(NETWORK_FEE_TYPE_NEEDS_VALUE_MESSAGE);
       }
     }
-    if (data.noShowFeeValue !== undefined) {
+    if (data.noShowFeeValue === null) {
+      data.noShowFeeValue = null;
+    } else if (data.noShowFeeValue !== undefined) {
       const value = Number(data.noShowFeeValue);
       if (feeType === 'PERCENT') {
         if (!Number.isFinite(value) || value < 0 || value > 100) {
@@ -1780,7 +1799,9 @@ export class BarbershopService {
       data.noShowFeeValue = value;
     }
 
-    if (data.lateCancellationWindowHours !== undefined) {
+    if (data.lateCancellationWindowHours === null) {
+      data.lateCancellationWindowHours = null;
+    } else if (data.lateCancellationWindowHours !== undefined) {
       const hours = Number(data.lateCancellationWindowHours);
       if (!Number.isInteger(hours) || hours < 0 || hours > 72) {
         throw new BadRequestException(NETWORK_WINDOW_MESSAGE);
@@ -3363,6 +3384,8 @@ export class BarbershopService {
   ) {
     const phone = data.phone?.trim();
     const email = customerEmail(data.email);
+    const name = requiredCatalogName(data.name);
+    const notes = limitedCatalogText(data.notes);
     if (!phone && !email) {
       throw new BadRequestException(
         'Informe pelo menos telefone ou email para cadastrar o cliente.',
@@ -3373,9 +3396,9 @@ export class BarbershopService {
     return this.prisma.customer.create({
       data: {
         networkId: barbershop.networkId,
-        name: data.name,
+        name,
         birthDate: data.birthDate,
-        notes: data.notes,
+        notes,
         phone: phone || '(sem telefone)',
         email: email ?? null,
       },
@@ -3441,6 +3464,8 @@ export class BarbershopService {
       where: { id: customerId, networkId: barbershop.networkId, deletedAt: null },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (data.name !== undefined) data.name = requiredCatalogName(data.name);
+    if (data.notes !== undefined) data.notes = limitedCatalogText(data.notes) ?? null;
     // Quem saiu pelo link do e-mail só volta por conta própria (LGPD). A
     // equipe pode marcar "não quer receber", e isso vale para as outras
     // fichas da rede com o mesmo e-mail.
@@ -4445,11 +4470,15 @@ export class BarbershopService {
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     checkServiceValues(data, shop.currency);
+    const name = requiredCatalogName(data.name);
+    const description = limitedCatalogText(data.description);
     const { depositAmount, ...rest } = data;
     return this.prisma.barbershopService.create({
       data: {
         barbershopId,
         ...rest,
+        name,
+        description,
         price: new Decimal(data.price),
         depositAmount: depositAmount != null ? new Decimal(depositAmount) : null,
         displayOrder: data.displayOrder ?? 0,
@@ -4495,6 +4524,8 @@ export class BarbershopService {
     }
     // O sinal é conferido com o preço que vai ficar (o novo ou o atual)
     checkServiceValues(data, shop.currency, current);
+    if (data.name !== undefined) data.name = requiredCatalogName(data.name);
+    if (data.description !== undefined) data.description = limitedCatalogText(data.description) ?? null;
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
     const depositAmount =
       data.depositAmount !== undefined
@@ -4681,10 +4712,14 @@ export class BarbershopService {
     checkMoney('Preço de venda', Number(data.salePrice), shop.currency);
     checkMoney('Custo', data.costPrice != null ? Number(data.costPrice) : null, shop.currency);
     if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
+    const name = requiredCatalogName(data.name);
+    const description = limitedCatalogText(data.description);
     return this.prisma.barbershopProduct.create({
       data: {
         barbershopId,
         ...data,
+        name,
+        description,
         categoryId: data.categoryId ?? null,
         salePrice: new Decimal(data.salePrice),
         costPrice: data.costPrice != null ? new Decimal(data.costPrice) : null,
@@ -4726,6 +4761,8 @@ export class BarbershopService {
       where: { id: productId, barbershopId },
     });
     if (!current) throw new NotFoundException('Produto não encontrado');
+    if (data.name !== undefined) data.name = requiredCatalogName(data.name);
+    if (data.description !== undefined) data.description = limitedCatalogText(data.description) ?? null;
     checkMoney(
       'Preço de venda',
       data.salePrice != null ? Number(data.salePrice) : null,
@@ -5455,6 +5492,7 @@ export class BarbershopService {
     if (isNaN(new Date(data.startAt).getTime()) || isNaN(new Date(data.endAt).getTime())) {
       throw new BadRequestException('Horário inválido');
     }
+    if (data.notes !== undefined) data.notes = limitedCatalogText(data.notes) ?? undefined;
     if (new Date(data.endAt) <= new Date(data.startAt)) {
       throw new BadRequestException('O fim tem que ser depois do início');
     }
@@ -11556,6 +11594,9 @@ export class BarbershopService {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId);
     checkSaleAmounts(data, barbershop.currency);
     checkSaleKinds({ ...data, paymentStatus: data.paymentStatus ?? 'PENDING' });
+    for (const item of data.items) {
+      if (item.notes !== undefined) item.notes = limitedCatalogText(item.notes) ?? undefined;
+    }
     // Barbeiro: a venda é dele (como na listagem, que só mostra as dele).
     // Antes dava pra lançar em nome de um colega (e a comissão ia junto) ou
     // cobrar o atendimento de outro
@@ -13552,6 +13593,7 @@ export class BarbershopService {
         answers: data.answers,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
         ...(health ? { healthConsentAt: new Date(), healthConsentByUserId: userId } : {}),
+        signToken: randomBytes(24).toString('hex'),
       },
     });
   }
@@ -13612,9 +13654,60 @@ export class BarbershopService {
     ) {
       throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
     }
+    const marker = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true },
+    });
     return this.prisma.consentForm.update({
       where: { id },
-      data: { signatureName, signedAt: new Date(), status: 'SIGNED' },
+      data: {
+        signatureName: signatureName.trim(),
+        signedAt: new Date(),
+        status: 'SIGNED',
+        signedVia: 'COUNTER',
+        recordedByName: marker?.fullName?.trim() || `usuário ${userId}`,
+        textVersion: consentTextVersion(form.formType, form.answers),
+      },
+    });
+  }
+
+  /** Ficha pelo link, sem as respostas (saúde não sai da unidade). */
+  async consentByToken(token: string) {
+    const form = await this.prisma.consentForm.findUnique({
+      where: { signToken: token },
+      select: {
+        formType: true,
+        status: true,
+        signedAt: true,
+        signedVia: true,
+        barbershop: { select: { name: true } },
+      },
+    });
+    if (!form || form.status === 'ARCHIVED') throw new NotFoundException('Ficha não encontrada');
+    return { formType: form.formType, status: form.status, signedAt: form.signedAt, signedVia: form.signedVia, shopName: form.barbershop.name };
+  }
+
+  /** O cliente assina pelo link do agendamento ou da área do cliente. */
+  async signConsentByToken(token: string, signatureName: string, ip: string | null) {
+    const form = await this.prisma.consentForm.findUnique({ where: { signToken: token } });
+    if (!form || form.status === 'ARCHIVED') throw new NotFoundException('Ficha não encontrada');
+    if (form.status !== 'PENDING' || form.signedAt || form.healthConsentRevokedAt) {
+      throw new BadRequestException(
+        'Só dá para assinar uma ficha que ainda está pendente e sem o consentimento revogado.',
+      );
+    }
+    const name = signatureName.trim();
+    if (name.length < 2) throw new BadRequestException('Informe o nome.');
+    return this.prisma.consentForm.update({
+      where: { id: form.id },
+      data: {
+        signatureName: name,
+        signedAt: new Date(),
+        status: 'SIGNED',
+        signedVia: 'CLIENT',
+        signatureIp: ip,
+        textVersion: consentTextVersion(form.formType, form.answers),
+      },
     });
   }
 

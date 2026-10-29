@@ -124,6 +124,7 @@ describe('Ficha ligada à conta do cliente (integração)', () => {
       '11 91234-0002',
       undefined,
       presetSignupCode(redis, typo),
+      true,
     );
     expect(
       (await prisma.customer.findUniqueOrThrow({ where: { id: maria.id } })).clientAccountId,

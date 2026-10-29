@@ -639,9 +639,10 @@ describe('Profissional em várias unidades e vínculo temporário (integração)
       fullName: 'Pessoa Convidada',
       idDocNumber: `9${RUN}`.slice(-11),
       phone: '11900000022',
-      password: 'senha-forte-1',
+      password: 'Equipe#2026',
       birthdate: '1995-05-05',
       gender: 'female',
+      readTerms: true,
     };
     // Link compartilhado (sem a chave) não cria a conta
     await expect(mailer.acceptInvite(invite.inviteToken, form)).rejects.toThrow(
