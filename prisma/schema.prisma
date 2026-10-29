@@ -626,6 +626,8 @@ model Barbershop {
   ownerUser      User?     @relation("BarbershopOwner", fields: [ownerUserId], references: [id])
   barbers          Barber[]
   services         BarbershopService[]
+  // Endereços antigos da página (/u/:slug): o link e o QR continuam abrindo a unidade
+  formerSlugs      BarbershopFormerSlug[]
   productCategories ProductCategory[]
   products         BarbershopProduct[]
   appointments     Appointment[]
@@ -690,6 +692,17 @@ model Resource {
 
   @@index([barbershopId])
   @@index([barbershopId, isActive])
+}
+
+// Slug que a unidade já usou. Fica reservado por um ano: outra unidade não
+// pega, e /u/slug-antigo abre a página atual.
+model BarbershopFormerSlug {
+  slug         String     @id
+  barbershopId Int
+  retiredAt    DateTime   @default(now())
+  barbershop   Barbershop @relation(fields: [barbershopId], references: [id], onDelete: Cascade)
+
+  @@index([barbershopId])
 }
 
 model Customer {

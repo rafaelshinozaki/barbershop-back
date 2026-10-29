@@ -1076,6 +1076,15 @@ export class ClientAuthService {
   }
 
   async addFavorite(clientAccountId: number, networkId: number) {
+    const network = await this.prisma.network.findFirst({
+      where: {
+        id: networkId,
+        platformSuspendedAt: null,
+        barbershops: { some: { isActive: true, closedAt: null, platformSuspendedAt: null } },
+      },
+      select: { id: true },
+    });
+    if (!network) throw new NotFoundException('Rede não encontrada');
     await this.prisma.clientFavorite.upsert({
       where: { clientAccountId_networkId: { clientAccountId, networkId } },
       create: { clientAccountId, networkId },
@@ -1145,7 +1154,11 @@ export class ClientAuthService {
     const q = query.trim();
     if (q.length < 2) return [];
     return this.prisma.network.findMany({
-      where: { name: { contains: q, mode: 'insensitive' } },
+      where: {
+        name: { contains: q, mode: 'insensitive' },
+        platformSuspendedAt: null,
+        barbershops: { some: { isActive: true, closedAt: null, platformSuspendedAt: null } },
+      },
       take: 15,
       orderBy: { name: 'asc' },
     });

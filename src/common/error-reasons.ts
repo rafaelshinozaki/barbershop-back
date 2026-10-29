@@ -221,6 +221,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Seu cargo só permite mexer na sua própria agenda.': 'ROLE_ONLY_ALLOWS_CHANGES_OWN',
   'Franquia não encontrada': 'FRANCHISE_NOT_FOUND',
   'Já existe uma unidade com este endereço de página (slug)': 'LOCATION_WITH_PAGE_ADDRESS_ALREADY',
+  'Informe um limite entre 1 e 200.': 'LIST_LIMIT',
+  'Rede não encontrada': 'NETWORK_NOT_FOUND',
   'WhatsApp inválido (use o número com DDD)': 'INVALID_WHATSAPP_NUMBER_INCLUDE_AREA',
   'Subdomínio inválido — use só letras minúsculas, números e hífen (sem começar/terminar com hífen), de 3 a 63 caracteres.':
     'INVALID_SUBDOMAIN',

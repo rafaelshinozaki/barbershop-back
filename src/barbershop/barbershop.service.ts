@@ -26,7 +26,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { randomInt } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { SearchCacheService } from './search-cache.service';
 import { langForCountry, LOCALE, normalizeLang, type Lang } from '../email/language';
 import { reviewEditData } from './review-edit';
@@ -77,6 +77,8 @@ export type PublicSearchInput = {
   radiusKm?: number;
   minRating?: number;
   maxPrice?: number;
+  /** Moeda de quem busca (ISO). O filtro e a ordem por preço ficam nela. */
+  currency?: string;
   openNow?: boolean;
   sort?: SearchSort;
   limit?: number;
@@ -489,10 +491,14 @@ function checkServiceValues(
     durationMinutes?: number | null;
   },
   currency: string | null | undefined,
-  current?: { price: number | Decimal },
+  current?: { price: number | Decimal; depositAmount?: number | Decimal | null },
 ) {
   const price = data.price != null ? Number(data.price) : undefined;
-  const deposit = data.depositAmount != null ? Number(data.depositAmount) : undefined;
+  // Sinal omitido no pedido: vale o que já está no serviço. Baixar só o
+  // preço não pode deixar o sinal maior (item 391).
+  const depositRaw =
+    data.depositAmount !== undefined ? data.depositAmount : current?.depositAmount;
+  const deposit = depositRaw != null ? Number(depositRaw) : undefined;
   checkMoney('Preço do serviço', price, currency);
   checkMoney('Sinal', deposit, currency);
   checkServiceDuration(data.durationMinutes);
@@ -637,9 +643,30 @@ function checkSaleConsistency(data: {
 const WALK_IN_STATUSES = ['WAITING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NOT_SERVED'];
 /** Para onde cada situação da fila pode ir (concluída e cancelada não voltam) */
 const WALK_IN_NEXT: Record<string, string[]> = {
-  WAITING: ['IN_PROGRESS', 'CANCELLED'],
-  IN_PROGRESS: ['COMPLETED', 'CANCELLED', 'WAITING'],
+  WAITING: ['IN_PROGRESS', 'CANCELLED', 'NOT_SERVED'],
+  IN_PROGRESS: ['COMPLETED', 'CANCELLED', 'WAITING', 'NOT_SERVED'],
 };
+
+/** Lista da equipe: de 1 até este teto. Negativo inverte a ordem no Prisma. */
+export const LIST_PAGE_MAX = 200;
+export const LIST_LIMIT_MESSAGE = 'Informe um limite entre 1 e 200.';
+
+export function pageTake(limit: number | undefined, fallback: number, max = LIST_PAGE_MAX): number {
+  if (limit == null) return Math.min(fallback, max);
+  if (!Number.isInteger(limit) || limit < 1) throw new BadRequestException(LIST_LIMIT_MESSAGE);
+  return Math.min(limit, max);
+}
+
+/** Fim do último dia de validade, no fuso da unidade (vende às 15h, vale até 23h59). */
+export function packageExpiresAt(
+  validityDays: number,
+  timeZone: string | null | undefined,
+  now = new Date(),
+): Date {
+  const tz = safeTimeZone(timeZone) ?? 'UTC';
+  const lastDay = addDaysStr(toZonedParts(now, tz).dateStr, validityDays);
+  return new Date(zonedTimeToUtc(nextDateStr(lastDay), 0, tz).getTime() - 1);
+}
 
 /** Centavos certos (soma de float deixava 26,999999…) */
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -2396,6 +2423,7 @@ export class BarbershopService {
     if (existing) {
       throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
     }
+    await this.assertSlugFree(slug);
     const network = await this.findOrCreateNetwork(userId);
     const limits = await this.getPlanLimitsForOwner(userId);
     const currentCount = await this.prisma.barbershop.count({
@@ -2888,8 +2916,12 @@ export class BarbershopService {
     }
     for (const [to, shop] of notices) {
       const lang = langForCountry(shop.country);
-      // O modelo escapa a mensagem (item 487): o nome vai como texto
-      const name = shop.name;
+      // O modelo mostra a mensagem sem escapar: o nome entra como texto
+      const name = shop.name
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
       const text = {
         pt: {
           subject: `${shop.name} encerrou o atendimento pelo app`,
@@ -3279,6 +3311,17 @@ export class BarbershopService {
     ]);
   }
 
+  /** Mensalidade manual que ainda não venceu: o vínculo acabou, ela não é devida. */
+  async dropFutureChairRent(linkId: number) {
+    await this.prisma.chairRentPayment.deleteMany({
+      where: {
+        sharedLocationMemberId: linkId,
+        status: 'DUE',
+        dueDate: { gt: new Date() },
+      },
+    });
+  }
+
   /** Mensalidade manual já vencida, que continua devida depois do encerramento. */
   async overdueChairRentsOf(barbershopIds: number[]) {
     if (barbershopIds.length === 0) return [];
@@ -3356,12 +3399,14 @@ export class BarbershopService {
           { phone: { contains: filters.search } },
           { email: { contains: filters.search, mode: 'insensitive' } },
         );
+        const digits = filters.search.replace(/\D/g, '');
+        if (digits.length >= 4) where.OR.push({ phoneDigits: { contains: digits } });
       }
     }
     const customers = await this.prisma.customer.findMany({
       where,
       orderBy: { name: 'asc' },
-      take: filters?.limit ?? 50,
+      take: pageTake(filters?.limit, 50),
       skip: filters?.offset ?? 0,
     });
     const canSee = await this.contactVisibility(userId, barbershop);
@@ -4449,15 +4494,7 @@ export class BarbershopService {
       await this.assertServiceDeactivationConfirmed(barbershopId, serviceId, false);
     }
     // O sinal é conferido com o preço que vai ficar (o novo ou o atual)
-    checkServiceValues(
-      {
-        ...data,
-        depositAmount:
-          data.depositAmount !== undefined ? data.depositAmount : current.depositAmount,
-      },
-      shop.currency,
-      current,
-    );
+    checkServiceValues(data, shop.currency, current);
     const price = data.price !== undefined ? new Decimal(data.price) : undefined;
     const depositAmount =
       data.depositAmount !== undefined
@@ -5564,7 +5601,11 @@ export class BarbershopService {
       orderBy: { startAt: 'asc' },
       // Agenda (semana/mês): o período inteiro — com 50 fixo, numa semana
       // movimentada os horários além do 50º simplesmente não apareciam
-      take: filters?.limit ?? (filters?.startFrom && filters?.startTo ? MAX_AGENDA_ROWS : 50),
+      take: pageTake(
+        filters?.limit,
+        filters?.startFrom && filters?.startTo ? MAX_AGENDA_ROWS : 50,
+        filters?.startFrom && filters?.startTo ? MAX_AGENDA_ROWS : LIST_PAGE_MAX,
+      ),
       skip: filters?.offset ?? 0,
     });
     const canSee = await this.contactVisibility(userId, barbershop);
@@ -7500,14 +7541,19 @@ export class BarbershopService {
       const days = inactiveDays ?? 60;
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
+      // Campanha da rede: quem foi em qualquer unidade conta. Só esta unidade
+      // deixava de fora quem passou a ir na outra, e incluía quem está ativo lá.
+      const historyWhere: Prisma.ServiceHistoryWhereInput = networkWide
+        ? { barbershop: { networkId } }
+        : { barbershopId };
       const [recent, ever] = await Promise.all([
         this.prisma.serviceHistory.findMany({
-          where: { barbershopId, performedAt: { gte: cutoff } },
+          where: { ...historyWhere, performedAt: { gte: cutoff } },
           select: { customerId: true },
           distinct: ['customerId'],
         }),
         this.prisma.serviceHistory.findMany({
-          where: { barbershopId },
+          where: historyWhere,
           select: { customerId: true },
           distinct: ['customerId'],
         }),
@@ -7877,9 +7923,142 @@ export class BarbershopService {
   private readonly DEFAULT_WORKING_HOURS = DEFAULT_WORKING_HOURS;
   private readonly WEEKDAY_KEYS = WEEKDAY_KEYS;
 
-  async getPublicBarbershopByslug(slug: string) {
-    const barbershop = await this.prisma.barbershop.findUnique({
+  /** Um ano: o QR impresso continua, e outra unidade não pega o endereço. */
+  private static readonly SLUG_HOLD_MS = 365 * 24 * 60 * 60 * 1000;
+
+  private async assertSlugFree(slug: string, exceptBarbershopId?: number) {
+    const taken = await this.prisma.barbershop.findUnique({
       where: { slug },
+      select: { id: true },
+    });
+    if (taken && taken.id !== exceptBarbershopId) {
+      throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
+    }
+    const former = await this.prisma.barbershopFormerSlug.findUnique({ where: { slug } });
+    if (!former || former.barbershopId === exceptBarbershopId) return;
+    if (Date.now() - former.retiredAt.getTime() < BarbershopService.SLUG_HOLD_MS) {
+      throw new BadRequestException('Já existe uma unidade com este endereço de página (slug)');
+    }
+  }
+
+  /** Troca o endereço da página e guarda o anterior para o link e o QR. */
+  async changeShopSlug(barbershopId: number, nextRaw: string) {
+    const next = normalizeShopSlug(nextRaw);
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { slug: true },
+    });
+    if (!shop) throw new NotFoundException('Unidade não encontrada');
+    if (shop.slug === next) return next;
+    await this.assertSlugFree(next, barbershopId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.barbershopFormerSlug.deleteMany({ where: { slug: next } });
+      await tx.barbershopFormerSlug.upsert({
+        where: { slug: shop.slug },
+        create: { slug: shop.slug, barbershopId },
+        update: { barbershopId, retiredAt: new Date() },
+      });
+      await tx.barbershop.update({ where: { id: barbershopId }, data: { slug: next } });
+    });
+    return next;
+  }
+
+  /** Link de envio do logo. Não grava: a imagem só troca em setBarbershopLogo. */
+  async prepareBarbershopPhotoUpload(userId: number, barbershopId: number, contentType?: string) {
+    await this.ensureAccess(userId, barbershopId, 'manager');
+    return this.s3Service.createImageUpload(
+      `barbershops/${barbershopId}/photo-${randomUUID()}`,
+      contentType,
+    );
+  }
+
+  /** Confirma o logo enviado (ou null para tirar). A imagem anterior sai do S3. */
+  async setBarbershopLogo(userId: number, barbershopId: number, key: string | null) {
+    await this.ensureAccess(userId, barbershopId, 'manager');
+    const prefix = `barbershops/${barbershopId}/photo-`;
+    if (key && (!key.startsWith(prefix) || key.includes('..'))) {
+      throw new BadRequestException('Arquivo inválido');
+    }
+    const shop = await this.prisma.barbershop.findUnique({
+      where: { id: barbershopId },
+      select: { photoKey: true },
+    });
+    await this.prisma.barbershop.update({
+      where: { id: barbershopId },
+      data: { photoKey: key, logoHiddenAt: null },
+    });
+    if (shop?.photoKey && shop.photoKey !== key) {
+      this.s3Service
+        .deleteObject(shop.photoKey)
+        .catch((err) => this.logger.warn(`Não apagou ${shop.photoKey} do S3: ${String(err)}`));
+    }
+    return true;
+  }
+
+  async prepareProductPhotoUpload(
+    userId: number,
+    barbershopId: number,
+    productId: number,
+    contentType?: string,
+  ) {
+    await this.ensureAccess(userId, barbershopId, 'manager');
+    const product = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+      select: { id: true },
+    });
+    if (!product) throw new NotFoundException('Produto não encontrado');
+    return this.s3Service.createImageUpload(
+      `products/${barbershopId}/${productId}/${randomUUID()}`,
+      contentType,
+    );
+  }
+
+  async setProductPhoto(
+    userId: number,
+    barbershopId: number,
+    productId: number,
+    key: string | null,
+  ) {
+    await this.ensureAccess(userId, barbershopId, 'manager');
+    const prefix = `products/${barbershopId}/${productId}/`;
+    if (key && (!key.startsWith(prefix) || key.includes('..'))) {
+      throw new BadRequestException('Arquivo inválido');
+    }
+    const product = await this.prisma.barbershopProduct.findFirst({
+      where: { id: productId, barbershopId },
+      select: { imageKey: true },
+    });
+    if (!product) throw new NotFoundException('Produto não encontrado');
+    await this.prisma.barbershopProduct.update({
+      where: { id: productId },
+      data: { imageKey: key },
+    });
+    if (product.imageKey && product.imageKey !== key) {
+      this.s3Service
+        .deleteObject(product.imageKey)
+        .catch((err) => this.logger.warn(`Não apagou ${product.imageKey} do S3: ${String(err)}`));
+    }
+    return true;
+  }
+
+  async getPublicBarbershopByslug(slug: string) {
+    const current = await this.prisma.barbershop.findUnique({ where: { slug }, select: { id: true } });
+    let lookup = slug;
+    if (!current) {
+      const former = await this.prisma.barbershopFormerSlug.findUnique({
+        where: { slug },
+        include: { barbershop: { select: { slug: true } } },
+      });
+      if (
+        former &&
+        former.barbershop.slug !== slug &&
+        Date.now() - former.retiredAt.getTime() < BarbershopService.SLUG_HOLD_MS
+      ) {
+        lookup = former.barbershop.slug;
+      }
+    }
+    const barbershop = await this.prisma.barbershop.findUnique({
+      where: { slug: lookup },
       include: {
         services: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } },
         barbers: {
@@ -9446,6 +9625,7 @@ export class BarbershopService {
         id: true,
         name: true,
         city: true,
+        currency: true,
         latitude: true,
         longitude: true,
         featuredUntil: true,
@@ -9488,6 +9668,7 @@ export class BarbershopService {
           // distância com o ponto exato de cada pessoa
           points: b.latitude != null && b.longitude != null ? [[b.latitude, b.longitude]] : [],
           minPrice: offer?.minPrice ?? null,
+          currency: b.currency,
           isFeatured: b.featuredUntil != null && b.featuredUntil > now,
           openNow: input.openNow ? isOpenAt(b as Parameters<typeof isOpenAt>[0], now) : false,
           ...(ratings.get(b.id) ?? { averageRating: null, reviewCount: 0 }),
@@ -9497,7 +9678,7 @@ export class BarbershopService {
         (r) =>
           (!point || (r.distanceKm != null && r.distanceKm <= radiusKm)) &&
           (input.minRating == null || (r.averageRating ?? 0) >= input.minRating) &&
-          (input.maxPrice == null || (r.minPrice != null && r.minPrice <= input.maxPrice)) &&
+          this.priceInCurrency(r, input) &&
           (!input.openNow || r.openNow),
       );
     const limited = rankResults(ranked, input.sort ?? 'relevance', !!point).slice(
@@ -9691,7 +9872,11 @@ export class BarbershopService {
                 : [],
             )
           : [];
-        const prices = p.barbers.flatMap((b) => {
+        const money = this.searchCurrency(input);
+        const pricedShops = p.barbers.filter(
+          (b) => !money || (b.barbershop.currency ?? 'BRL').toUpperCase() === money,
+        );
+        const prices = pricedShops.flatMap((b) => {
           const min = offers.get(b.barbershop.id)?.minPrice;
           return min != null ? [min] : [];
         });
@@ -9715,7 +9900,7 @@ export class BarbershopService {
             s.latitude != null && s.longitude != null ? [[s.latitude, s.longitude]] : [],
           ),
           minPrice: prices.length ? Math.min(...prices) : null,
-          currency: p.barbers[0]?.barbershop.currency ?? null,
+          currency: (pricedShops[0] ?? p.barbers[0])?.barbershop.currency ?? null,
           isFeatured: p.featuredUntil != null && p.featuredUntil > now,
           ...rating,
         };
@@ -9725,7 +9910,7 @@ export class BarbershopService {
           (!wantedCity || r.cities.some((c) => citySlugOf(c) === wantedCity)) &&
           (!point || (r.distanceKm != null && r.distanceKm <= radiusKm)) &&
           (input.minRating == null || (r.averageRating ?? 0) >= input.minRating) &&
-          (input.maxPrice == null || (r.minPrice != null && r.minPrice <= input.maxPrice)),
+          this.priceInCurrency(r, input),
       );
 
     const limited = rankResults(results, input.sort ?? 'relevance', !!point).slice(
@@ -9950,6 +10135,23 @@ export class BarbershopService {
    * no banco: uma linha por unidade em vez de uma por serviço (na busca sem
    * filtro são todas as unidades)
    */
+  /** Moeda do filtro de preço. Sem filtro nem ordem por preço, não restringe. */
+  private searchCurrency(input: PublicSearchInput): string | null {
+    if (input.maxPrice == null && input.sort !== 'price') return null;
+    return (input.currency ?? 'BRL').trim().toUpperCase();
+  }
+
+  private priceInCurrency(
+    row: { currency?: string | null; minPrice: number | null },
+    input: PublicSearchInput,
+  ): boolean {
+    const money = this.searchCurrency(input);
+    if (!money) return input.maxPrice == null || (row.minPrice != null && row.minPrice <= input.maxPrice);
+    if ((row.currency ?? 'BRL').toUpperCase() !== money) return false;
+    if (input.maxPrice == null) return true;
+    return row.minPrice != null && row.minPrice <= input.maxPrice;
+  }
+
   private async getServiceOffers(
     barbershopIds: number[],
   ): Promise<Map<number, { categories: TreatmentCategory[]; minPrice: number | null }>> {
@@ -11119,13 +11321,19 @@ export class BarbershopService {
     // A fila é do dia (no fuso da unidade): a de ontem não fica na frente
     const where: any = { barbershopId, createdAt: { gte: queueDayStart(barbershop.timezone) } };
     if (filters?.status) where.status = filters.status;
-    const walkIns = await this.prisma.walkIn.findMany({
-      where,
-      include: { services: { include: { service: true } }, customer: true, barber: true },
-      orderBy: [{ status: 'asc' }, { queuePosition: 'asc' }],
-      take: filters?.limit ?? 50,
-      skip: filters?.offset ?? 0,
-    });
+    const rank: Record<string, number> = { WAITING: 0, IN_PROGRESS: 1 };
+    const walkIns = (
+      await this.prisma.walkIn.findMany({
+        where,
+        include: { services: { include: { service: true } }, customer: true, barber: true },
+        orderBy: { queuePosition: 'asc' },
+        take: pageTake(filters?.limit, LIST_PAGE_MAX),
+        skip: filters?.offset ?? 0,
+      })
+    ).sort(
+      (a, b) =>
+        (rank[a.status] ?? 2) - (rank[b.status] ?? 2) || a.queuePosition - b.queuePosition,
+    );
     const canSee = await this.contactVisibility(userId, barbershop);
     return walkIns.map((w) => this.hideWalkInContact(canSee, w));
   }
@@ -11155,7 +11363,7 @@ export class BarbershopService {
     // Só a fila desta unidade (o id sozinho mexia na fila de qualquer uma)
     const walkIn = await this.prisma.walkIn.findFirst({
       where: { id: walkInId, barbershopId },
-      select: { id: true, barberId: true, status: true },
+      select: { id: true, barberId: true, status: true, customerId: true },
     });
     if (!walkIn) throw new NotFoundException('Cliente da fila não encontrado');
     // Recepção para cima mexe em qualquer um. Barbeiro e básico, na própria
@@ -11188,7 +11396,32 @@ export class BarbershopService {
         data.queuePosition = await this.nextQueuePosition(tx, barbershopId, barbershop.timezone);
         data.servedAt = null;
       }
-      return tx.walkIn.update({ where: { id: walkInId }, data });
+      const updated = await tx.walkIn.update({ where: { id: walkInId }, data });
+      if (status === 'COMPLETED' && walkIn.status !== 'COMPLETED') {
+        const servedBy = (data.barberId as number | null | undefined) ?? walkIn.barberId;
+        if (walkIn.customerId && servedBy) {
+          const lines = await tx.walkInService.findMany({
+            where: { walkInId },
+            include: { service: { select: { price: true, durationMinutes: true } } },
+          });
+          if (lines.length) {
+            await tx.serviceHistory.createMany({
+              data: lines.map((line) => ({
+                barbershopId,
+                customerId: walkIn.customerId as number,
+                barberId: servedBy,
+                walkInId,
+                serviceId: line.serviceId,
+                performedAt: new Date(),
+                priceCharged: line.service.price,
+                durationMinutes: line.service.durationMinutes,
+                notes: line.notes,
+              })),
+            });
+          }
+        }
+      }
+      return updated;
     });
     // O telefone que a lista esconde não volta pela resposta
     return this.hideWalkInContact(await this.contactVisibility(userId, barbershop), updated);
@@ -11685,6 +11918,7 @@ export class BarbershopService {
       to?: Date;
       limit?: number;
       offset?: number;
+      before?: { createdAt: Date; id: number };
     },
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId);
@@ -11696,10 +11930,24 @@ export class BarbershopService {
     const ownBarberId = await this.ownBarberIdIfBarber(userId, shop);
     if (ownBarberId !== null) where.barberId = ownBarberId;
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
-    if (filters?.from || filters?.to) {
-      where.createdAt = {};
-      if (filters.from) where.createdAt.gte = filters.from;
-      if (filters.to) where.createdAt.lte = filters.to;
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (filters?.from) createdAt.gte = filters.from;
+    if (filters?.to) createdAt.lte = filters.to;
+    const bounds = Object.keys(createdAt).length ? [{ createdAt }] : [];
+    // Página seguinte pelo último item visto: uma venda nova no topo não
+    // empurra a lista e não repete a última da página anterior
+    if (filters?.before) {
+      where.AND = [
+        ...bounds,
+        {
+          OR: [
+            { createdAt: { lt: filters.before.createdAt } },
+            { createdAt: filters.before.createdAt, id: { lt: filters.before.id } },
+          ],
+        },
+      ];
+    } else if (bounds.length) {
+      where.createdAt = createdAt;
     }
     const sales = await this.prisma.sale.findMany({
       where,
@@ -11708,9 +11956,9 @@ export class BarbershopService {
         customer: true,
         barber: true,
       },
-      orderBy: { createdAt: 'desc' },
-      take: filters?.limit ?? 50,
-      skip: filters?.offset ?? 0,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: pageTake(filters?.limit, 50),
+      skip: filters?.before ? 0 : (filters?.offset ?? 0),
     });
     return sales.map((s) => ({
       ...s,
@@ -13038,7 +13286,9 @@ export class BarbershopService {
           servicePackageId: pkg.id,
           totalSessions: pkg.totalSessions,
           saleId: sale.id,
-          expiresAt: pkg.validityDays ? new Date(Date.now() + pkg.validityDays * 86_400_000) : null,
+          expiresAt: pkg.validityDays
+            ? packageExpiresAt(pkg.validityDays, barbershop.timezone)
+            : null,
         },
         include: { servicePackage: { include: { service: true } } },
       });

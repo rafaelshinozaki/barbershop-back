@@ -2163,6 +2163,19 @@ export class UserService {
     return true;
   }
 
+  /** Reenvia o código do login em andamento, sem a senha. Devolve o loginId novo. */
+  async resendLoginCode(loginId: string) {
+    const entry = await this.withRedis(() =>
+      this.redis.getJson<{ email: string }>(UserService.KEY.code(loginId)),
+    );
+    if (!entry?.email) throw new UnauthorizedException('Invalid or expired verification code');
+    const user = await this.prisma.user.findFirst({ where: { email: entry.email } });
+    if (!user) throw new UnauthorizedException('Invalid or expired verification code');
+    const nextId = randomUUID();
+    await this.sendLoginCode(user as unknown as UserDTO, nextId);
+    return nextId;
+  }
+
   async verifyLoginCode(loginId: string, code: string) {
     this.logger.log(`Verifying login code - loginId: ${loginId}`);
 

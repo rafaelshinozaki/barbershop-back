@@ -106,6 +106,13 @@ export class AuthResolver {
     return toGraphQLUser(dbUser) as any;
   }
 
+  /** Novo código do login em andamento. Não pede a senha de novo. */
+  @Mutation(() => String)
+  @ThrottleLogin()
+  async resendLoginCode(@Args('loginId') loginId: string) {
+    return this.userService.resendLoginCode(loginId);
+  }
+
   @Mutation(() => User)
   @ThrottleAuth()
   async verify2FA(

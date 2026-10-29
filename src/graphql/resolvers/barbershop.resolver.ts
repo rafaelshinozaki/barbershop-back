@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { GeocodingService } from '../../barbershop/geocoding.service';
 import { PresignedUploadType } from '../types/upload.type';
 import { AdminProfessionalType } from '../types/public-booking.type';
@@ -18,6 +17,7 @@ import { DeletionRefundType } from './account-deletion.resolver';
 import { BadRequestException, UseGuards } from '@nestjs/common';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { ActivityNotificationsService } from '../../notifications/activity-notifications.service';
+import { LIST_LIMIT_MESSAGE } from '../../barbershop/barbershop.service';
 import {
   Barbershop,
   BarbershopCustomer,
@@ -155,10 +155,18 @@ export class BarbershopDeletionPreviewType {
 
 /** Página de lista (clientes, vendas): no máximo 200 por vez */
 const MAX_PAGE = 200;
-const pageArgs = (limit?: number | null, offset?: number | null) => ({
-  limit: limit == null ? undefined : Math.min(Math.max(1, Math.floor(limit)), MAX_PAGE),
-  offset: offset == null ? undefined : Math.max(0, Math.floor(offset)),
-});
+const pageArgs = (limit?: number | null, offset?: number | null) => {
+  if (limit != null && (!Number.isInteger(limit) || limit < 1)) {
+    throw new BadRequestException(LIST_LIMIT_MESSAGE);
+  }
+  if (offset != null && (!Number.isInteger(offset) || offset < 0)) {
+    throw new BadRequestException(LIST_LIMIT_MESSAGE);
+  }
+  return {
+    limit: limit == null ? undefined : Math.min(limit, MAX_PAGE),
+    offset: offset ?? undefined,
+  };
+};
 
 /** Data da consulta: inválida vira 400 (antes era Invalid Date e erro 500 no banco) */
 export const QUERY_DATE_INVALID_MESSAGE = 'Data da consulta inválida';
@@ -727,22 +735,23 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
-    const product = await this.prisma.barbershopProduct.findFirst({
-      where: { id: productId, barbershopId },
-    });
-    if (!product) {
-      throw new Error('Produto não encontrado');
-    }
-    const upload = await this.s3Service.createImageUpload(
-      `products/${barbershopId}/${productId}/photo`,
+    return this.barbershopService.prepareProductPhotoUpload(
+      user.id,
+      barbershopId,
+      productId,
       contentType,
     );
-    await this.prisma.barbershopProduct.update({
-      where: { id: productId },
-      data: { imageKey: upload.key },
-    });
-    return upload;
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async setProductPhoto(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('productId', { type: () => Int }) productId: number,
+    @Args('key') key: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.setProductPhoto(user.id, barbershopId, productId, key);
   }
 
   // ============ INVENTORY ============
@@ -898,24 +907,17 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<PresignedUploadType> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
-    const shop = await this.prisma.barbershop.findUnique({
-      where: { id: barbershopId },
-      select: { logoHiddenAt: true },
-    });
-    // Logo ocultado pela moderação: o novo vai para outra chave (a antiga
-    // não volta à página se o envio não terminar) e volta a aparecer
-    const upload = await this.s3Service.createImageUpload(
-      shop?.logoHiddenAt
-        ? `barbershops/${barbershopId}/photo-${randomUUID()}`
-        : `barbershops/${barbershopId}/photo`,
-      contentType,
-    );
-    await this.prisma.barbershop.update({
-      where: { id: barbershopId },
-      data: { photoKey: upload.key, logoHiddenAt: null },
-    });
-    return upload;
+    return this.barbershopService.prepareBarbershopPhotoUpload(user.id, barbershopId, contentType);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Mutation(() => Boolean)
+  async setBarbershopLogo(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('key') key: string,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return this.barbershopService.setBarbershopLogo(user.id, barbershopId, key);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -925,12 +927,7 @@ export class BarbershopResolver {
     @CurrentUser() user?: UserDTO,
   ): Promise<boolean> {
     if (!user?.id) throw new Error('Não autorizado');
-    await this.barbershopService.ensureAccess(user.id, barbershopId, 'manager');
-    await this.prisma.barbershop.update({
-      where: { id: barbershopId },
-      data: { photoKey: null, logoHiddenAt: null },
-    });
-    return true;
+    return this.barbershopService.setBarbershopLogo(user.id, barbershopId, null);
   }
 
   // ============ BARBER SCHEDULE ============
@@ -1338,12 +1335,19 @@ export class BarbershopResolver {
     @Args('customerId', { type: () => Int, nullable: true }) customerId?: number,
     @Args('limit', { type: () => Int, nullable: true }) limit?: number,
     @Args('offset', { type: () => Int, nullable: true }) offset?: number,
+    @Args('beforeCreatedAt', { nullable: true }) beforeCreatedAt?: string,
+    @Args('beforeId', { type: () => Int, nullable: true }) beforeId?: number,
   ) {
+    const beforeAt = beforeCreatedAt ? new Date(beforeCreatedAt) : undefined;
     return this.barbershopService.getSales(user.id, barbershopId, {
       from: startAt ? new Date(startAt) : undefined,
       to: endAt ? new Date(endAt) : undefined,
       customerId,
       ...pageArgs(limit, offset),
+      before:
+        beforeAt && !isNaN(beforeAt.getTime()) && beforeId != null
+          ? { createdAt: beforeAt, id: beforeId }
+          : undefined,
     });
   }
 

@@ -144,8 +144,9 @@ export class SharedLocationService {
     if (link.status !== 'ACTIVE' && link.status !== 'PENDING') {
       throw new BadRequestException('Esse vínculo já foi encerrado');
     }
-    // Saiu do espaço: a cobrança do aluguel para junto
+    // Saiu do espaço: a cobrança do aluguel para junto, inclusive a mensalidade futura
     await this.barbershopService.cancelChairRentsOfBarbershops([], link.id);
+    await this.barbershopService.dropFutureChairRent(link.id);
     await this.prisma.sharedLocationMember.update({
       where: { id: link.id },
       data: {

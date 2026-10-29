@@ -81,6 +81,11 @@ export class SearchProfessionalsInput {
   @Min(0)
   maxPrice?: number;
 
+  @Field({ nullable: true, description: 'Moeda de quem busca (ISO). O preço só compara nessa moeda.' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
   @Field({ nullable: true, description: 'relevance (padrão), distance, rating ou price' })
   @IsOptional()
   @IsIn(SEARCH_SORTS)

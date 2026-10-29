@@ -113,4 +113,17 @@ describe('UserService', () => {
     );
     expect(await redis.getJson('auth:login-code:login-2')).toBeNull();
   });
+
+  it('resends the login code from the login id, without the password', async () => {
+    const user = { id: 1, email: 'a@b.com', fullName: 'A' } as any;
+    (service as any).emailService = { sendTemplateEmail: jest.fn() };
+    prisma.user.findFirst.mockResolvedValue({ ...user, subscriptions: [], role: null });
+    await service.sendLoginCode(user, 'login-9');
+    const redis = (service as any).redis;
+    const next = await service.resendLoginCode('login-9');
+    expect(next).not.toBe('login-9');
+    expect(await redis.getJson('auth:login-code:login-9')).toBeNull();
+    expect(await redis.getJson(`auth:login-code:${next}`)).toMatchObject({ email: 'a@b.com' });
+    expect(JSON.stringify({ loginId: next })).not.toContain('password');
+  });
 });
