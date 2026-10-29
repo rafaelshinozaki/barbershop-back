@@ -1,4 +1,3 @@
-import { appointmentManageUrl } from '../barbershop/appointment-link';
 import { buildCalendar, googleCalendarUrl, IcsEvent, outlookCalendarUrl } from './ics';
 
 // Evento de calendário do agendamento e os links "adicionar à agenda".
@@ -12,7 +11,7 @@ export type AppointmentForEvent = {
   status: string;
   updatedAt: Date;
   linkVersion?: number;
-  barbershop: { name: string; address: string; city: string; state: string };
+  barbershop: { name: string; address: string; city: string; state: string; slug?: string | null };
   barber: { name: string };
   services: Array<{ service: { name: string } | null }>;
 };
@@ -22,17 +21,20 @@ export function appointmentEvent(a: AppointmentForEvent): IcsEvent {
     .map((s) => s.service?.name)
     .filter(Boolean)
     .join(', ');
-  const manage = appointmentManageUrl(a.id, a.linkVersion ?? 0);
+  const front = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const page = a.barbershop.slug ? `${front}/u/${a.barbershop.slug}` : front;
   return {
     uid: `appointment-${a.id}@barbershop`,
     start: a.startAt,
     end: a.endAt,
     // O nome do serviço é o título do evento na agenda do cliente (a unidade
-    // vai no local). Sem isso o Gmail chegava a chamar de "Consulta médica"
+    // vai no local). Sem isso o Gmail chegava a chamar de "Consulta médica".
+    // A descrição não leva o link de gerenciar: agenda compartilhada entregava
+    // o poder de cancelar e remarcar.
     summary: services || `Horário em ${a.barbershop.name}`,
-    description: `Com ${a.barber.name}\nRemarcar ou cancelar: ${manage}`,
+    description: `Com ${a.barber.name}\n${page}`,
     location: `${a.barbershop.name}, ${a.barbershop.address}, ${a.barbershop.city} - ${a.barbershop.state}`,
-    url: manage,
+    url: page,
     // Remarcou: o app troca o evento (SEQUENCE maior vence)
     sequence: Math.floor(a.updatedAt.getTime() / 1000),
     updatedAt: a.updatedAt,

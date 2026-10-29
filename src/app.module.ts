@@ -48,6 +48,7 @@ import type { IncomingMessage } from 'http';
 import { isAllowedOrigin } from './common/cors-origins';
 import { formatGqlError } from './graphql/format-error';
 import { rejectNonSubscription } from './common/ws-subscriptions-only';
+import { frontendUrlSchema } from './common/env-frontend';
 
 @Module({
   imports: [
@@ -57,7 +58,7 @@ import { rejectNonSubscription } from './common/ws-subscriptions-only';
       validationSchema: Joi.object({
         PORT: Joi.string().required(),
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
-        FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+        FRONTEND_URL: frontendUrlSchema,
 
         DB_DIALECT: Joi.string().required(),
         DB_HOST: Joi.string().required(),

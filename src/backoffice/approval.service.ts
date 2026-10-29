@@ -19,6 +19,11 @@ export type ApprovalAction = (typeof APPROVAL_ACTIONS)[number];
 export const MASS_EMAIL_LIMIT = 1000;
 const MASS_EMAIL_WINDOW_MS = 24 * 60 * 60_000;
 
+/** Pedido pendente por mais que isso não confirma mais. */
+export const APPROVAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const TEAM_ROLES = ['SystemAdmin', 'SystemManager'];
+
 /** Estorno acima disso (em reais) pede confirmação. Padrão R$ 500 */
 export function refundApprovalLimit(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.BACKOFFICE_REFUND_APPROVAL_LIMIT;
@@ -56,6 +61,22 @@ export function refundExceedsLimit(
 }
 
 export type ApprovalOutcome = { done: boolean; approvalId: number | null };
+
+function sameApprovalTarget(action: string, left: unknown, right: unknown) {
+  const a = (left ?? {}) as Record<string, unknown>;
+  const b = (right ?? {}) as Record<string, unknown>;
+  if (action === 'payment.refund') return a.kind === b.kind && Number(a.id) === Number(b.id);
+  if (action === 'user.delete') return Number(a.userId) === Number(b.userId);
+  if (action === 'email.mass') {
+    const ids = (value: unknown) =>
+      (Array.isArray(value) ? value : [])
+        .map((id) => Number(id))
+        .sort((x, y) => x - y)
+        .join(',');
+    return ids(a.userIds) === ids(b.userIds) && a.subject === b.subject;
+  }
+  return false;
+}
 
 type Payloads = {
   'user.delete': { userId: number };
@@ -123,6 +144,14 @@ export class ApprovalService {
     actor: StaffActor,
   ): Promise<ApprovalOutcome> {
     if (!reason || reason.trim().length < 5) throw new BadRequestException('Informe o motivo');
+    await this.expireStale();
+    const open = await this.prisma.backofficeApproval.findMany({
+      where: { action, status: 'pending' },
+      select: { payload: true },
+    });
+    if (open.some((row) => sameApprovalTarget(action, payload, row.payload))) {
+      throw new BadRequestException('Já existe um pedido igual pendente.');
+    }
     const row = await this.prisma.backofficeApproval.create({
       data: {
         action,
@@ -162,6 +191,16 @@ export class ApprovalService {
     if (row.requestedByEmail.toLowerCase() === actor.email.toLowerCase()) {
       throw new ForbiddenException('Quem pediu não confirma o próprio pedido');
     }
+    if (row.createdAt.getTime() < Date.now() - APPROVAL_TTL_MS) {
+      await this.prisma.backofficeApproval.updateMany({
+        where: { id, status: 'pending' },
+        data: { status: 'expired', decidedAt: new Date() },
+      });
+      throw new BadRequestException('Este pedido venceu.');
+    }
+    if (!(await this.requesterOnTeam(row.requestedById, row.requestedByEmail))) {
+      throw new BadRequestException('Quem pediu não está mais na equipe.');
+    }
     const decided = {
       decidedById: actor.id || null,
       decidedByEmail: actor.email,
@@ -189,6 +228,49 @@ export class ApprovalService {
         data: { status: 'failed', error: message.slice(0, 500) },
       });
     }
+  }
+
+  /** Quem pediu desiste enquanto ainda está pendente. */
+  async cancel(id: number, actor: StaffActor) {
+    const row = await this.prisma.backofficeApproval.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('Pedido não encontrado');
+    if (row.requestedByEmail.toLowerCase() !== actor.email.toLowerCase()) {
+      throw new ForbiddenException('Só quem pediu cancela o próprio pedido.');
+    }
+    const claimed = await this.prisma.backofficeApproval.updateMany({
+      where: { id, status: 'pending' },
+      data: {
+        status: 'cancelled',
+        decidedById: actor.id || null,
+        decidedByEmail: actor.email,
+        decidedAt: new Date(),
+        decisionNote: 'Cancelado por quem pediu.',
+      },
+    });
+    if (claimed.count !== 1) throw new BadRequestException('Este pedido já foi decidido');
+    return this.prisma.backofficeApproval.findUniqueOrThrow({ where: { id } });
+  }
+
+  private async expireStale() {
+    await this.prisma.backofficeApproval.updateMany({
+      where: { status: 'pending', createdAt: { lt: new Date(Date.now() - APPROVAL_TTL_MS) } },
+      data: { status: 'expired', decidedAt: new Date() },
+    });
+  }
+
+  /** Sem ficha, o pedido antigo (id que não é usuário) segue. Ficha inativa ou fora da equipe, não. */
+  private async requesterOnTeam(userId: number | null, email: string) {
+    const who = userId
+      ? await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { isActive: true, deleted_at: true, role: { select: { name: true } } },
+        })
+      : await this.prisma.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
+          select: { isActive: true, deleted_at: true, role: { select: { name: true } } },
+        });
+    if (!who) return true;
+    return who.isActive && !who.deleted_at && TEAM_ROLES.includes(who.role?.name ?? '');
   }
 
   /**

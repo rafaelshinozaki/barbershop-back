@@ -360,6 +360,17 @@ export class BackofficeGovernanceResolver {
 
   @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
   @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
+  @RequireArea(BackofficeArea.USERS, BackofficeArea.FINANCE, BackofficeArea.OPERATIONS)
+  @Mutation(() => BackofficeApprovalType)
+  async cancelBackofficeApproval(
+    @Args('id', { type: () => Int }) id: number,
+    @CurrentUser() user: UserDTO,
+  ) {
+    return withJsonPayload(await this.approvals.cancel(id, staffActor(user)));
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
   @RequireArea(BackofficeArea.SUPPORT)
   @Query(() => [PrivacyRequestType])
   privacyRequests(

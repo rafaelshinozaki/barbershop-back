@@ -224,4 +224,14 @@ export class ChatResolver {
   myChatInbox(@CurrentUser() user: UserDTO) {
     return this.chat.staffInbox(user.id);
   }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => ChatInboxItemType, { nullable: true })
+  async myChatInboxItem(
+    @CurrentUser() user: UserDTO,
+    @Args('appointmentId', { type: () => Int }) appointmentId: number,
+  ) {
+    const rows = await this.chat.staffInbox(user.id, appointmentId);
+    return rows[0] ?? null;
+  }
 }

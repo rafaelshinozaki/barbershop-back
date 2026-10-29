@@ -912,7 +912,12 @@ export class ClientAuthService {
       // Antes de tudo: apagar avaliações e pedidos de suporte não grava
       // histórico (o assunto do pedido é texto livre, com dado pessoal)
       this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
-      this.prisma.chatThread.deleteMany({ where: { customerId: { in: customerIds } } }),
+      this.prisma.chatThread.deleteMany({
+        where: {
+          customerId: { in: customerIds },
+          OR: [{ retainUntil: null }, { retainUntil: { lte: now } }],
+        },
+      }),
       // Lista de espera das fichas da conta (e as online com o e-mail dela):
       // sai da fila e o e-mail informado é apagado (item 193)
       this.prisma.waitlistEntry.updateMany({
@@ -938,9 +943,27 @@ export class ClientAuthService {
         where: { clientAccountId, status: { not: 'CANCELED' } },
         data: { status: 'CANCELED', canceledAt: now, cancelAtPeriodEnd: false },
       }),
-      this.prisma.review.deleteMany({ where: { clientAccountId } }),
+      this.prisma.review.deleteMany({
+        where: {
+          clientAccountId,
+          OR: [{ reportedAt: null }, { reportDismissedComment: { not: null } }],
+        },
+      }),
       // As que deixou pelo link do e-mail (ligadas às fichas da conta)
-      this.prisma.review.deleteMany({ where: { customer: { clientAccountId } } }),
+      this.prisma.review.deleteMany({
+        where: {
+          customer: { clientAccountId },
+          OR: [{ reportedAt: null }, { reportDismissedComment: { not: null } }],
+        },
+      }),
+      this.prisma.review.updateMany({
+        where: {
+          reportedAt: { not: null },
+          reportDismissedComment: null,
+          OR: [{ clientAccountId }, { customer: { clientAccountId } }],
+        },
+        data: { clientAccountId: null },
+      }),
       // Avaliação do profissional: o texto sai e a ligação com a pessoa também;
       // a nota fica na média dele sem dar pra saber de quem era
       this.prisma.professionalReview.updateMany({
@@ -1165,7 +1188,7 @@ export class ClientAuthService {
   }
 
   async searchNetworks(query: string) {
-    const q = query.trim();
+    const q = query.trim().replace(/[%_\\]/g, '');
     if (q.length < 2) return [];
     return this.prisma.network.findMany({
       where: {
@@ -1178,7 +1201,11 @@ export class ClientAuthService {
     });
   }
 
-  async getHistory(clientAccountId: number): Promise<ClientHistoryEntry[]> {
+  async getHistory(
+    clientAccountId: number,
+    limit = 50,
+    offset = 0,
+  ): Promise<ClientHistoryEntry[]> {
     const customers = await this.prisma.customer.findMany({
       where: { clientAccountId },
       select: { id: true, network: { select: { name: true } } },
@@ -1186,6 +1213,7 @@ export class ClientAuthService {
     if (customers.length === 0) return [];
 
     const customerIds = customers.map((c) => c.id);
+    const window = Math.min(Math.max(offset, 0) + Math.min(Math.max(limit, 1), 200), 200);
     const networkNameByCustomer = new Map(
       customers.map((c) => [c.id, c.network?.name ?? 'Negócio']),
     );
@@ -1204,23 +1232,27 @@ export class ClientAuthService {
           tips: { select: { amount: true } },
         },
         orderBy: { startAt: 'desc' },
-        take: 50,
+        take: window,
       }),
       this.prisma.sale.findMany({
         where: { customerId: { in: customerIds }, paymentStatus: 'PAID' },
         include: { barbershop: { select: { name: true, currency: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
+        orderBy: { paidAt: 'desc' },
+        take: window,
       }),
       this.prisma.walkIn.findMany({
         where: { customerId: { in: customerIds } },
         include: { barbershop: { select: { name: true } } },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: window,
       }),
     ]);
 
     const entries: ClientHistoryEntry[] = [];
+    const saleByAppointment = new Map(
+      sales.filter((s) => s.appointmentId).map((s) => [s.appointmentId as number, s]),
+    );
+    const shownAppointments = new Set(appointments.map((a) => a.id));
 
     appointments.forEach((a) => {
       const serviceNames = a.services
@@ -1236,7 +1268,7 @@ export class ClientAuthService {
         barbershopSlug: a.barbershop.slug,
         detail: serviceNames || null,
         status: a.status,
-        total: null,
+        total: saleByAppointment.has(a.id) ? Number(saleByAppointment.get(a.id)!.total) : null,
         currency: a.barbershop.currency,
         barberName: a.barber?.name ?? null,
         barberId: a.barberId,
@@ -1249,10 +1281,11 @@ export class ClientAuthService {
     });
 
     sales.forEach((s) => {
+      if (s.appointmentId && shownAppointments.has(s.appointmentId)) return;
       entries.push({
         id: `sale-${s.id}`,
         type: 'SALE',
-        date: s.createdAt.toISOString(),
+        date: (s.paidAt ?? s.createdAt).toISOString(),
         networkName: s.customerId
           ? networkNameByCustomer.get(s.customerId) ?? 'Negócio'
           : 'Negócio',
@@ -1282,6 +1315,6 @@ export class ClientAuthService {
 
     return entries
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 50);
+      .slice(Math.max(offset, 0), Math.max(offset, 0) + Math.min(Math.max(limit, 1), 200));
   }
 }

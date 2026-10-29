@@ -4271,241 +4271,321 @@ Foram lidos no back o cadastro da equipe e do cliente (idade, senha, termos), o 
 
 Foram lidos no front a sessão guardada no navegador, os endereços padrão, as ações de um clique (falta, taxa de falta, caixinha), os seletores de serviço, produto e profissional, a ficha do cliente e a lista de vendas. No back, o endereço da página (subdomínio), o `/health`, a exclusão da conta do cliente, as avaliações, o plano (e-mails e rotas antigas do admin), as buscas por texto, o cadastro de clientes, as campanhas, o histórico do app do cliente, as avaliações públicas e os números do backoffice. No backoffice-back, as dependências (`pnpm audit`).
 
-423. ⬜ **O login guarda os dados pessoais no navegador, e o devtools fica ligado em produção** (front: `src/store/auth.store.ts`):
+423. ✅ **O login guarda os dados pessoais no navegador, e o devtools fica ligado em produção** (front: `src/store/auth.store.ts`):
      - O `persist` grava o usuário inteiro no `localStorage` (CPF, telefone, data de nascimento). Qualquer script na página, extensão ou pessoa no mesmo computador lê esses dados, e eles ficam lá depois que a sessão vence.
      - O `devtools` do zustand está ligado sem conferir o ambiente: em produção, quem tem a extensão vê e altera o estado.
 
      **Fazer:** guardar só o necessário (id, nome, papel), buscar o resto pela API, e ligar o `devtools` só fora de produção. Teste: depois do login, o `localStorage` não tem CPF nem telefone.
 
-424. ⬜ **Endereços de teste e de localhost como padrão em produção** (front: `src/constants/payment.ts`, `src/config.ts`; back: `app.module.ts`):
+     **Feito:** o navegador guarda só id, nome e papel. Sem o e-mail, a sessão busca o perfil na API. O devtools só liga fora de produção.
+
+424. ✅ **Endereços de teste e de localhost como padrão em produção** (front: `src/constants/payment.ts`, `src/config.ts`; back: `app.module.ts`):
      - O link do portal de cobrança do Stripe cai num endereço de teste quando a variável não existe. O `BACKOFFICE_URL` cai em `localhost`.
      - No back, o Joi aceita `FRONTEND_URL` vazio e usa `localhost`: e-mails de convite, de senha e de avaliação saem com links para `localhost` se a variável faltar no deploy.
 
      **Fazer:** sem padrão em produção: o back não sobe sem `FRONTEND_URL` quando `NODE_ENV=production`, e o build do front falha sem as variáveis. Teste: subir o back em produção sem `FRONTEND_URL` dá erro na validação.
 
-425. ⬜ **Dependências do backoffice-back com falhas de segurança conhecidas** (backoffice-back: `pnpm audit --prod`):
+     **Feito:** em produção o back não valida sem `FRONTEND_URL`. O build do front falha sem o portal do Stripe e sem o endereço do backoffice. No dev, o localhost continua.
+
+425. ✅ **Dependências do backoffice-back com falhas de segurança conhecidas** (backoffice-back: `pnpm audit --prod`):
      - Avisos altos em `follow-redirects`, `body-parser` e `multer`, e moderado em `qs`. O `body-parser` e o `multer` recebem pedidos de fora.
 
      **Fazer:** atualizar para as versões corrigidas (como no item 421 do back) e pôr o `pnpm audit --prod --audit-level high` no CI. Teste: `pnpm audit --prod` sem avisos altos.
 
-426. ⬜ **Marcar falta, perdoar a taxa de falta e tirar a caixinha são um clique, sem confirmação** (front: `Appointments.tsx`, `NoShowCharges.tsx`, `TipPanel`):
+     **Feito:** o backoffice-back usa as versões corrigidas e o CI roda o audit. Não há aviso alto. Resta um moderado.
+
+426. ✅ **Marcar falta, perdoar a taxa de falta e tirar a caixinha são um clique, sem confirmação** (front: `Appointments.tsx`, `NoShowCharges.tsx`, `TipPanel`):
      - "Faltou" no agendamento lança a falta (e a taxa, quando a unidade cobra) na hora. Um toque errado no celular marca a falta de quem está na cadeira.
      - "Perdoar" a taxa de falta (`handleWaive`) e "remover" a caixinha (`drop`) também não pedem confirmação, e a taxa perdoada não volta.
 
      **Fazer:** confirmação com o nome do cliente e o valor ("Marcar falta de Davi? A taxa de R$ 30 será cobrada"). Teste: cancelar a confirmação não muda nada.
 
-427. ⬜ **Serviço, produto e profissional inativos aparecem para vender e agendar** (front: `Sales.tsx`, `Appointments`, `QuickAppointment`, `Packages`, `Subscriptions`; back: `ensureItemsOfBarbershop`, `ensureBarberOfBarbershop`):
+     **Feito:** falta, perdoar a taxa e tirar a caixinha pedem confirmação com o nome e o valor. Cancelar não muda nada.
+
+427. ✅ **Serviço, produto e profissional inativos aparecem para vender e agendar** (front: `Sales.tsx`, `Appointments`, `QuickAppointment`, `Packages`, `Subscriptions`; back: `ensureItemsOfBarbershop`, `ensureBarberOfBarbershop`):
      - Os seletores de Vendas, do agendamento, do pacote e do clube listam também o que foi desativado. O back confere só se o item é da unidade, não se está ativo.
      - O serviço desativado (preço antigo, que não existe mais) continua sendo vendido e agendado, e o profissional desligado recebe horário.
 
      **Fazer:** filtrar os inativos nas telas e recusar no back o item ou profissional inativo em venda, agendamento, pacote e clube novos (editar o que já existe continua igual). Teste: vender um serviço desativado dá erro.
 
-428. ⬜ **A lista de subdomínios reservados é pequena** (back: `resolveSubdomainUpdate`):
+     **Feito:** as telas só listam o que está ativo. Venda, agendamento, fila, pacote e clube novos recusam item ou profissional inativo. Editar o que já existe continua.
+
+428. ✅ **A lista de subdomínios reservados é pequena** (back: `resolveSubdomainUpdate`):
      - Só alguns nomes são bloqueados. Uma unidade pode pegar `admin`, `suporte`, `pagamento`, `login`, `status` ou o nome da própria plataforma, e usar o endereço para enganar clientes.
 
      **Fazer:** lista maior (contas, suporte, pagamento, login, termos, status, mail, app, api, www e variações com a marca), comparando sem acento e sem hífen. Teste: `suporte` e `pagamentos` são recusados.
 
-429. ⬜ **O `/health` público chama a API do Stripe a cada acesso** (back: `HealthController`, `/stripe/health`):
+     **Feito:** a comparação tira acento e hífen. `suporte`, `pagamentos` e `pag-amentos` são recusados.
+
+429. ✅ **O `/health` público chama a API do Stripe a cada acesso** (back: `HealthController`, `/stripe/health`):
      - Os dois endereços são abertos e consultam o Stripe toda vez, sem cache. Quem chama em loop gasta o limite de chamadas da conta do Stripe da plataforma.
      - Com o Stripe fora do ar, o `/health` fica "error" e o monitor ou o balanceador pode tirar o servidor do ar, mesmo com o banco e o resto funcionando.
 
      **Fazer:** o `/health` público confere só o banco e o Redis. O Stripe fica num endereço protegido, com o resultado guardado por um minuto. Teste: dez chamadas seguidas ao `/health` não chamam o Stripe.
 
-430. ⬜ **Excluir a conta do cliente apaga a conversa em moderação e as avaliações denunciadas** (back: `client-auth.service.ts`, exclusão da conta):
+     **Feito:** o `/health` público olha só o banco e o Redis. O Stripe ficou em `/stripe/health`, com login de admin, e o resultado vale um minuto.
+
+430. ✅ **Excluir a conta do cliente apaga a conversa em moderação e as avaliações denunciadas** (back: `client-auth.service.ts`, exclusão da conta):
      - A exclusão apaga as conversas, inclusive a que está retida para análise de denúncia, e as avaliações com denúncia aberta. Quem foi denunciado apaga a prova antes da análise.
 
      **Fazer:** o que está em análise fica guardado (sem os dados da pessoa) até a moderação decidir, e depois sai. Teste: excluir a conta com uma conversa retida mantém a conversa para a moderação.
 
-431. ⬜ **A unidade pode avaliar a si mesma** (back: `ensureVerifiedCustomer`):
+     **Feito:** conversa com prazo de guarda e avaliação com denúncia aberta ficam. A avaliação perde o vínculo com a conta. O resto da exclusão segue igual.
+
+431. ✅ **A unidade pode avaliar a si mesma** (back: `ensureVerifiedCustomer`):
      - Conta como "cliente atendido" o horário vindo de importação ou histórico (`HISTORY`, `IMPORT`), que a própria unidade lança, e não confere se quem avalia é da equipe. O dono importa uma planilha com o próprio e-mail e avalia a unidade com 5 estrelas.
 
      **Fazer:** só horários atendidos de verdade (agendados pelo app ou pela equipe e concluídos), e quem é da equipe da unidade (ou dono da rede) não avalia. Teste: a conta do dono não consegue avaliar a própria unidade.
 
-432. ⬜ **Plano: o e-mail de confirmação prometido não sai, e não há aviso antes da renovação** (back: pagamento do plano; front: tela de sucesso):
+     **Feito:** importação e histórico não contam como atendimento. Dono, dono da rede e quem está na equipe não avaliam a própria unidade.
+
+432. ✅ **Plano: o e-mail de confirmação prometido não sai, e não há aviso antes da renovação** (back: pagamento do plano; front: tela de sucesso):
      - Depois de pagar, a tela diz que um e-mail de confirmação foi enviado, e nenhum é mandado.
      - Os modelos `plan_expiring_email` e `reactivation_email` existem e não são usados. O dono é cobrado na renovação sem aviso prévio.
 
      **Fazer:** mandar o e-mail de confirmação com o recibo e o aviso alguns dias antes da renovação (ou tirar a promessa da tela). Teste: pagar o plano enfileira o e-mail de confirmação.
 
-433. ⬜ **Rotas antigas do admin mudam o plano sem o Stripe e desativam a conta** (back: REST e GraphQL antigos do admin):
+     **Feito:** pagar o plano no checkout enfileira o e-mail de confirmação. O job diário manda o aviso três dias antes da renovação, uma vez.
+
+433. ✅ **Rotas antigas do admin mudam o plano sem o Stripe e desativam a conta** (back: REST e GraphQL antigos do admin):
      - Trocar o plano por elas muda só o banco: o Stripe continua cobrando o plano antigo, e a troca agendada (`pendingPlanId`) não é limpa.
      - `update-payment-status` com `FREE` ou `PAST_DUE` põe `User.isActive = false` (só `PAID` fica ativo): a conta do dono é desativada por um atraso de pagamento. A troca de plano (`changeUserPlan`) busca o plano pelo nome e muda só o `planId`.
 
      **Fazer:** tirar as rotas antigas (o backoffice já tem as suas) ou fazer passar pelo mesmo caminho do backoffice, e não desativar a conta por status de pagamento. Teste: a rota antiga responde que não existe, ou a troca sincroniza com o Stripe.
 
-434. ⬜ **A ficha do cliente para em 50 atendimentos, vendas e pacotes** (front: ficha do cliente; back: consultas com `take` padrão):
+     **Feito:** as rotas REST antigas e a mutation que só mudava o banco saíram. Atraso de pagamento não desliga a conta. A troca fica no backoffice, que sincroniza com o Stripe.
+
+434. ✅ **A ficha do cliente para em 50 atendimentos, vendas e pacotes** (front: ficha do cliente; back: consultas com `take` padrão):
      - As abas e os números da ficha (gasto total, visitas) usam as listas que vêm com no máximo 50 itens, sem "ver mais". O cliente fiel com 80 visitas aparece com 50, e o gasto total sai menor.
 
      **Fazer:** números calculados no banco (soma e contagem) e listas com paginação. Teste: cliente com 60 vendas mostra 60 visitas e o gasto total certo.
 
-435. ⬜ **Vendas do mês filtradas pela data de criação, receita pela data de pagamento** (back: lista de vendas; front: `Sales.tsx`):
+     **Feito:** compras, agendamentos e gasto total vêm do banco. As listas carregam mais 50 por vez. Sessenta vendas de R$ 10 dão 60 compras e R$ 600.
+
+435. ✅ **Vendas do mês filtradas pela data de criação, receita pela data de pagamento** (back: lista de vendas; front: `Sales.tsx`):
      - A lista do mês filtra por `createdAt` e o resumo de receita usa `paidAt`. A venda criada no dia 31 e paga no dia 1 aparece num mês e entra na receita do outro.
      - O fim do período é `'23:59:59'` com `lte`, e a venda do último segundo (com milissegundos) fica de fora.
 
      **Fazer:** a mesma data nas duas (pagamento, ou criação para as pendentes) e fim do período como início do dia seguinte com `lt`, no fuso da unidade. Teste: venda criada às 23:59:59.500 do último dia entra no mês.
 
-436. ⬜ **A busca por texto não trata `%` e `_`** (back: `searchNetworks`, `getCustomers`, busca pública):
+     **Feito:** a lista usa o pagamento, ou a criação se ainda está pendente. O fim do período é o começo do dia seguinte, no fuso da unidade. A venda das 23:59:59.500 entra.
+
+436. ✅ **A busca por texto não trata `%` e `_`** (back: `searchNetworks`, `getCustomers`, busca pública):
      - O Prisma não escapa `%` e `_` no `contains` (conferido: buscar `%` traz todos os clientes). Na busca da equipe isso lista a base inteira de uma vez; na busca pública de redes, traz todas.
 
      **Fazer:** escapar `%`, `_` e `\` antes do `contains` (uma função comum). Teste: buscar `%` não traz ninguém (ou só quem tem `%` no nome).
 
-437. ⬜ **O histórico do app do cliente mostra o atendimento duas vezes** (back: `ClientAuthService.getHistory`):
+     **Feito:** a busca tira `%`, `_` e `\`. Buscar `%` não traz a base.
+
+437. ✅ **O histórico do app do cliente mostra o atendimento duas vezes** (back: `ClientAuthService.getHistory`):
      - O atendimento fechado no caixa aparece como "agendamento" (sem valor) e de novo como "venda" (com o valor), porque a venda tem o `appointmentId` e a lista não junta os dois.
      - Cada lista vem com no máximo 50 e só depois é cortada em 50, e a venda é ordenada pela criação, não pelo pagamento.
 
      **Fazer:** a venda ligada a um agendamento entra como o valor dele (uma linha só), e a lista é paginada. Teste: atendimento fechado no caixa aparece uma vez, com o valor.
 
-438. ⬜ **Campanha para "inativos" pega quem já tem horário marcado e ignora as outras unidades** (back: `resolveMarketingSegment`, `INACTIVE`):
+     **Feito:** a venda ligada ao agendamento entra como o valor dele, uma linha só. A lista aceita limite e deslocamento.
+
+438. ✅ **Campanha para "inativos" pega quem já tem horário marcado e ignora as outras unidades** (back: `resolveMarketingSegment`, `INACTIVE`):
      - O "inativo" é só quem não teve atendimento na unidade nos últimos dias. Quem já tem horário marcado para a semana que vem recebe "sentimos sua falta".
      - Na campanha para a rede inteira, a conta usa só a unidade de onde se dispara: quem vai toda semana a outra unidade da rede entra como inativo.
 
      **Fazer:** tirar quem tem horário futuro e, na campanha da rede, contar os atendimentos em todas as unidades da rede. Teste: cliente com horário marcado não entra no segmento.
 
-439. ⬜ **Cliente cadastrado à mão sem padronizar o telefone e sem conferir se já existe** (back: `createCustomer`):
+     **Feito:** quem tem horário futuro sai dos inativos. Na campanha da rede, o histórico e o horário futuro olham todas as unidades.
+
+439. ✅ **Cliente cadastrado à mão sem padronizar o telefone e sem conferir se já existe** (back: `createCustomer`):
      - O telefone é gravado como foi digitado (os outros caminhos usam `normalizePhoneToE164`), e não há conferência de ficha com o mesmo telefone ou e-mail na rede. O mesmo cliente fica com duas fichas, e os pontos, o histórico e o pacote se dividem.
      - Sem telefone, a ficha recebe o texto `(sem telefone)` no campo do telefone.
 
      **Fazer:** padronizar o telefone e, se já houver ficha com o mesmo telefone ou e-mail, avisar e oferecer a existente. Teste: cadastrar "(11) 99999-0000" quando já existe "+5511999990000" devolve aviso de duplicado.
 
-440. ⬜ **Buscar cliente pelo telefone formatado não acha** (back: `getCustomers`):
+     **Feito:** o telefone é gravado em E.164. Telefone ou e-mail repetido devolve o id e o nome da ficha. Sem telefone, o campo fica vazio.
+
+440. ✅ **Buscar cliente pelo telefone formatado não acha** (back: `getCustomers`):
      - A busca compara o texto digitado com o telefone gravado (`+5511999990000`). "(11) 99999-0000" ou "11 99999" não acham ninguém. A coluna `phoneDigits` (só os números) existe e não é usada aqui.
      - Este item dizia também que o `limit` não tinha teto. Tem: o resolver limita com `pageArgs` (corrigido na rodada 141).
 
      **Fazer:** buscar pelos dígitos em `phoneDigits`. Teste: buscar "(11) 99999-0000" acha a ficha.
 
-441. ⬜ **Avaliações públicas de qualquer unidade, inclusive suspensa ou fora do ar** (back: `barbershopReviews`):
+     **Feito:** a busca usa os dígitos de `phoneDigits`. "(11) 9xxxx-xxxx" acha a ficha gravada com `+55`.
+
+441. ✅ **Avaliações públicas de qualquer unidade, inclusive suspensa ou fora do ar** (back: `barbershopReviews`):
      - A consulta é aberta e aceita qualquer `barbershopId`, sem conferir se a unidade está ativa, publicada e não suspensa. Basta percorrer os números para ler as avaliações de unidades que saíram do ar.
      - Traz no máximo 50, sem paginação, enquanto a contagem mostra o total.
 
      **Fazer:** só unidade com a página pública no ar, e paginação. Teste: unidade suspensa devolve lista vazia.
 
-442. ⬜ **Faixas de idade erradas no painel do backoffice** (back: `BackofficeService`, demografia dos usuários):
+     **Feito:** só unidade ativa, não encerrada e não suspensa, com a rede no ar. A lista é paginada. Unidade suspensa devolve vazio.
+
+442. ✅ **Faixas de idade erradas no painel do backoffice** (back: `BackofficeService`, demografia dos usuários):
      - A idade é só a diferença de anos: quem ainda não fez aniversário no ano entra um ano mais velho (e muda de faixa).
      - Menores de 18 (a equipe pode ter aprendiz a partir da idade mínima de trabalho) não entram em faixa nenhuma, e o total do gráfico fica menor que o de usuários.
      - O resolver tem outra conta de faixas (`getAgeRange`), sem uso, em que menor de 18 cai em "18-24".
 
      **Fazer:** idade pela data completa (como `work-age.ts`), faixa "menos de 18", e apagar a função sem uso. Teste: quem nasceu em 30/12/2000 tem 25 anos em 28/10/2026.
 
+     **Feito:** a idade usa dia e mês. Entrou a faixa "menos de 18". A função sem uso saiu. Quem nasceu em 30/12/2000 tem 25 anos em 28/10/2026.
+
 ### Centésima quadragésima primeira rodada (2026-10-28): redes sociais, convites, avisos, backoffice e telas que mostram o que não devem
 
 Foram lidos no back a conexão com Facebook e Instagram (login e posts agendados), o chat, o convite de amigos, o cartão salvo, a agenda assinável, as avaliações (resposta da unidade), o perfil público do profissional, o estoque e o aceite do convite da equipe. No front, a fatura, o convite de amigos, Mensagens, o "adicionar à agenda", a tela de clientes da rede, o estoque e o sininho. No backoffice-back, o histórico de e-mails, a busca de usuários, a moderação e as confirmações.
 
-443. ⬜ **Conectar o Facebook pode ligar a página de outra pessoa à unidade de quem armou o link** (back: `SocialController.callback`, `SocialService.getConnectUrl`):
+443. ✅ **Conectar o Facebook pode ligar a página de outra pessoa à unidade de quem armou o link** (back: `SocialController.callback`, `SocialService.getConnectUrl`):
      - O `state` do login da Meta é um JWT com a unidade e a pessoa de quem começou, e a volta não confere quem está no navegador. Quem tem uma unidade começa a conexão, copia o link do diálogo da Meta e manda para outra pessoa. Ela autoriza com o Facebook dela, e a página dela fica ligada à unidade de quem mandou, que passa a publicar nela.
      - Com o `state` vencido ou inválido, a volta responde 400 em JSON, numa tela de navegador, em vez de voltar para a página com o erro.
 
      **Fazer:** guardar no navegador (cookie de curta duração) um valor aleatório que vai no `state` e conferir na volta; com o `state` inválido, redirecionar com `socialError`. Teste: a volta com um `state` de outra sessão não conecta a página.
 
-444. ⬜ **O front pede a chave secreta do reCAPTCHA numa variável que vai para o navegador** (front: `src/config.ts`, `vite.config.ts`, `.env.example`, `README.md`):
+     **Feito:** o `state` leva um valor aleatório que também fica num cookie de 10 minutos. Sem o cookie da sessão, a volta não conecta a página e o navegador volta com `socialError`.
+
+444. ✅ **O front pede a chave secreta do reCAPTCHA numa variável que vai para o navegador** (front: `src/config.ts`, `vite.config.ts`, `.env.example`, `README.md`):
      - `VITE_RECAPTCHA_SECRET_KEY` está no `.env.example` e na lista do `vite.config.ts`, e `config.ts` exporta `RECAPTCHA_SECRET_KEY`. Tudo que começa com `VITE_` entra no JS público: se alguém preencher, a chave secreta fica visível para qualquer visitante. O front não usa essa chave (quem confere é o back).
 
      **Fazer:** tirar a variável do front, do `.env.example`, do `vite.config.ts` e do README, e trocar a chave se ela já foi usada em algum build. Teste: o build não tem `RECAPTCHA_SECRET`.
 
-445. ⬜ **Cada mensagem do cliente no chat cria um aviso novo no sininho de toda a equipe** (back: `ChatService.notifyStaff`):
+     **Feito:** a chave secreta saiu do front, do exemplo de ambiente, do Vite e do README. Se ela já entrou num build publicado, troque a chave no painel do reCAPTCHA.
+
+445. ✅ **Cada mensagem do cliente no chat cria um aviso novo no sininho de toda a equipe** (back: `ChatService.notifyStaff`):
      - Cada mensagem gera uma linha em `userNotification` para o dono, a recepção e os gerentes, sem agrupar. Dez mensagens seguidas são dez avisos para cada um. O e-mail para o cliente já tem intervalo de 30 minutos; o aviso da equipe não tem nenhum.
 
      **Fazer:** um aviso por conversa enquanto não for lido (atualizar o existente em vez de criar outro). Teste: três mensagens seguidas deixam um aviso só no sininho.
 
-446. ⬜ **A mesma conta nova junta vários meses grátis aceitando convites de várias pessoas** (back: `FriendInviteService.acceptInvite`, `createInvite`):
+     **Feito:** enquanto o aviso da conversa não foi lido, a mensagem nova atualiza o mesmo. Três mensagens deixam um aviso.
+
+446. ✅ **A mesma conta nova junta vários meses grátis aceitando convites de várias pessoas** (back: `FriendInviteService.acceptInvite`, `createInvite`):
      - O aceite confere só se a conta é mais nova que o convite. Quem é convidado por cinco pessoas e cria a conta depois aceita os cinco e ganha cinco cupons de mês grátis.
      - Convidar um e-mail que já tem conta é aceito e só falha no aceite (com e-mail de "convite recusado" para os dois). O e-mail convidado não é validado nem tem espaços tirados antes de conferir duplicado.
 
      **Fazer:** um convite aceito por conta (os outros viram recusados) e recusar na hora de convidar um e-mail que já tem conta. Validar o formato do e-mail. Teste: a segunda aceitação da mesma conta não cria cupom.
 
-447. ⬜ **A fatura manda o cliente para o painel do Stripe da plataforma, e "Exportar" não faz nada** (front: `Invoice.tsx`):
+     **Feito:** o primeiro aceite recusa os outros convites do mesmo e-mail e a segunda aceitação não cria cupom. Convidar um e-mail que já tem conta falha na hora. O formato do e-mail já era conferido.
+
+447. ✅ **A fatura manda o cliente para o painel do Stripe da plataforma, e "Exportar" não faz nada** (front: `Invoice.tsx`):
      - "Ver no Stripe" abre `dashboard.stripe.com/payments/...`, o painel de quem administra a conta Stripe da plataforma. O dono da barbearia cai na tela de login do Stripe (ou, se for da equipe da plataforma, vê o pagamento por dentro).
      - O botão "Exportar" não tem ação.
 
      **Fazer:** tirar o link do painel e ligar "Exportar" ao recibo (o `receipt_url` da cobrança ou um PDF gerado), ou esconder o botão. Teste: a fatura não tem link para `dashboard.stripe.com`.
 
-448. ⬜ **A rota `/invoice/:id` mostra uma fatura de mentira em produção** (front: `InvoiceId.tsx`, `App.tsx`):
+     **Feito:** o link do painel saiu. "Exportar" imprime a fatura.
+
+448. ✅ **A rota `/invoice/:id` mostra uma fatura de mentira em produção** (front: `InvoiceId.tsx`, `App.tsx`):
      - A página ignora o número da rota e monta uma fatura fixa (R$ 99,90, transação `txn_mock_123`, "Abrir Invoice" em português fixo). Quem abre o link vê um pagamento que não existe.
 
      **Fazer:** buscar a fatura de verdade pelo número (só a da própria conta) ou tirar a rota. Teste: `/invoice/1` de outra conta não mostra nada; a própria mostra o valor certo.
 
-449. ⬜ **"Copiar link" do convite de amigos copia um link quebrado, e os erros não aparecem** (front: `InviteFriends.tsx`):
+     **Feito:** a rota busca os pagamentos da própria conta. Número de outra conta mostra que a fatura não foi encontrada, sem valor inventado.
+
+449. ✅ **"Copiar link" do convite de amigos copia um link quebrado, e os erros não aparecem** (front: `InviteFriends.tsx`):
      - O botão copia `/invite/`, sem o código do convite. Quem recebe abre uma página que não existe.
      - Ao convidar, todo erro vira a mesma mensagem genérica. O motivo que o back manda ("você já convidou este e-mail", "limite de hoje", "não pode convidar a si mesmo") não aparece.
      - O convite recusado aparece com o texto cru `REJECTED`.
 
      **Fazer:** tirar o botão (o link só vai no e-mail do amigo, por segurança) ou trocar por um link de indicação de verdade. Mostrar a mensagem do back e traduzir o status "recusado". Teste: convidar o mesmo e-mail duas vezes mostra "você já convidou este e-mail".
 
-450. ⬜ **Apagar o cartão que paga o plano não avisa** (front: `PaymentMethods.tsx`; back: `deletePaymentMethod`):
+     **Feito:** o botão de copiar saiu. O erro do back aparece no aviso, e o status recusado sai traduzido.
+
+450. ✅ **Apagar o cartão que paga o plano não avisa** (front: `PaymentMethods.tsx`; back: `deletePaymentMethod`):
      - Dá para apagar o cartão padrão da renovação com o plano ativo. A renovação seguinte falha e o plano entra em atraso, sem aviso na hora de apagar.
      - Este item dizia também que o erro da remoção não aparecia. Aparece: a mutação mostra o erro pelo `onError` (corrigido na rodada 142).
 
      **Fazer:** avisar quando o cartão é o da renovação (e pedir outro antes, ou deixar apagar só com outro cartão salvo). Teste: apagar o único cartão com o plano ativo mostra o aviso.
 
-451. ⬜ **Em Mensagens, o aviso de outra conversa não troca a conversa aberta** (front: `Messages.tsx`):
+     **Feito:** com o plano pago ativo, o único cartão não sai: a tela avisa e o back recusa. Com outro cartão salvo, o apagar segue.
+
+451. ✅ **Em Mensagens, o aviso de outra conversa não troca a conversa aberta** (front: `Messages.tsx`):
      - A tela só escolhe a conversa do `?appointment=` quando nenhuma está aberta. Com uma conversa aberta, clicar no aviso de outra muda o endereço e a tela continua na primeira.
      - A lista traz as 50 conversas mais recentes. O aviso de uma conversa mais antiga abre a tela sem nada selecionado.
 
      **Fazer:** reagir à troca do `?appointment=` e, se a conversa não estiver na lista, buscá-la direto. Teste: com a conversa A aberta, abrir o aviso da B mostra a B.
 
-452. ⬜ **"Adicionar à agenda" põe o link secreto do agendamento no evento** (front: `ManageAppointment/index.tsx`, `PublicBarbershopPage.tsx`):
+     **Feito:** a tela segue o `?appointment=` mesmo com outra conversa aberta. Se ela não está nas 50 mais recentes, busca essa conversa.
+
+452. ✅ **"Adicionar à agenda" põe o link secreto do agendamento no evento** (front: `ManageAppointment/index.tsx`, `PublicBarbershopPage.tsx`):
      - A descrição do evento do Google Agenda leva o link `/booking/manage?t=...`, que cancela, remarca e abre o chat sem login. Agenda compartilhada (família, trabalho) ou convite encaminhado entrega esse poder a outras pessoas.
 
      **Fazer:** deixar na descrição só o endereço da página da unidade, ou um link que só mostre o horário. Teste: o evento gerado não tem `?t=`.
 
-453. ⬜ **Histórico de e-mails do backoffice: o filtro "até" deixa o último dia de fora** (backoffice-back: `NotifyQueries.emailHistory`):
+     **Feito:** a descrição e o link do evento apontam para a página pública da unidade. O arquivo da agenda não leva `?t=`.
+
+453. ✅ **Histórico de e-mails do backoffice: o filtro "até" deixa o último dia de fora** (backoffice-back: `NotifyQueries.emailHistory`):
      - `dateTo` "2026-10-28" vira meia-noite, e a consulta usa `<=`: os e-mails do próprio dia 28 não aparecem.
      - A busca por pessoa e assunto diferencia maiúsculas ("joão" não acha "João").
 
      **Fazer:** fim do período como início do dia seguinte com `<`, e busca sem diferenciar maiúsculas (`lower`/`ILIKE`, com `%` e `_` escapados). Teste: filtrar de 28 a 28 traz os e-mails do dia 28.
 
-454. ⬜ **Busca de usuários do backoffice: maiúsculas e faixas de idade que se sobrepõem** (backoffice-back: `users.ts`):
+     **Feito:** o dia "até" entra (o fim é o começo do dia seguinte). A busca ignora maiúsculas e trata `%` e `_` como texto.
+
+454. ✅ **Busca de usuários do backoffice: maiúsculas e faixas de idade que se sobrepõem** (backoffice-back: `users.ts`):
      - Nome, cidade e país diferenciam maiúsculas: "maria" não acha "Maria".
      - A faixa de idade é calculada pelo ano de nascimento, e o ano da borda entra em duas faixas: quem nasceu em 2000 aparece em "18-25" e em "26-35".
 
      **Fazer:** busca sem diferenciar maiúsculas e idade pela data completa (como o item 442), com faixas que não se cruzam. Teste: a mesma pessoa não aparece em duas faixas.
 
-455. ⬜ **Post ocultado pela moderação ainda é publicado no horário** (back: `SocialService.publishDuePosts`, `publishPost`):
+     **Feito:** nome, e-mail, cidade e país ignoram maiúsculas. A idade usa a data completa e as faixas não se cruzam, inclusive "menos de 18".
+
+455. ✅ **Post ocultado pela moderação ainda é publicado no horário** (back: `SocialService.publishDuePosts`, `publishPost`):
      - A moderação oculta o post (`hiddenAt`), mas a publicação busca só `status: 'SCHEDULED'` e não confere `hiddenAt`. O post agendado e ocultado sai no Facebook e no Instagram da unidade na hora marcada.
 
      **Fazer:** ocultar um post agendado o cancela (status `CANCELLED` com o motivo), e a publicação pula post com `hiddenAt`. Teste: post agendado e ocultado não chama a API da Meta.
 
-456. ⬜ **Confirmações do backoffice não vencem, não podem ser canceladas e podem ser repetidas** (back: `ApprovalService`; backoffice-back: `ApprovalsWrites.decide`):
+     **Feito:** ocultar um post agendado o cancela. A publicação pula post oculto e não chama a Meta.
+
+456. ✅ **Confirmações do backoffice não vencem, não podem ser canceladas e podem ser repetidas** (back: `ApprovalService`; backoffice-back: `ApprovalsWrites.decide`):
      - Um pedido (apagar conta, estorno, e-mail em massa) pode ficar pendente por meses e ser confirmado depois, quando já não faz sentido. Também não se confere se quem pediu ainda está na equipe da plataforma.
      - Quem pediu não consegue cancelar o próprio pedido.
      - Dá para abrir dois pedidos iguais (o mesmo estorno), e dois administradores diferentes confirmam um cada.
 
      **Fazer:** prazo de validade (por exemplo 7 dias), cancelamento por quem pediu, conferir se quem pediu ainda está ativo e recusar pedido pendente igual. Teste: pedir o mesmo estorno duas vezes dá erro no segundo.
 
-457. ⬜ **A tela de clientes da rede repete cada cliente uma vez por unidade e para em 50** (front: `useNetworkCustomers`, `FranchiseCustomers.tsx`):
+     **Feito:** o pedido vence em 7 dias, quem pediu pode cancelar o seu, e um segundo estorno igual pendente é recusado. Quem saiu da equipe não tem o pedido confirmado.
+
+457. ✅ **A tela de clientes da rede repete cada cliente uma vez por unidade e para em 50** (front: `useNetworkCustomers`, `FranchiseCustomers.tsx`):
      - A tela pede os clientes de cada unidade, mas a lista do back é da rede inteira. A rede com três unidades mostra cada cliente três vezes, cada vez com uma unidade (às vezes uma em que a pessoa nunca foi).
      - Cada pedido vem com o padrão de 50: a rede com 300 clientes vê só os 50 primeiros em ordem alfabética, e a busca da tela procura só neles.
 
      **Fazer:** uma consulta da rede, paginada e com a busca no back. Teste: rede com duas unidades e 60 clientes mostra 60 linhas, sem repetir.
 
-458. ⬜ **O perfil público do profissional conta atendimentos importados** (back: `CareerService.profileFacts`, `clientCounts`):
+     **Feito:** uma consulta da rede, em páginas de 200, com a busca no back. Cada cliente aparece uma vez.
+
+458. ✅ **O perfil público do profissional conta atendimentos importados** (back: `CareerService.profileFacts`, `clientCounts`):
      - "Atendimentos concluídos", "clientes" e "clientes que voltaram" (e os selos que saem deles) contam os horários de planilha (`HISTORY`, `IMPORT`). A unidade importa uma planilha e o perfil mostra centenas de atendimentos que ninguém confere. A avaliação de cliente já deixa esses de fora (`RATEABLE_SOURCE`).
 
      **Fazer:** contar só atendimentos feitos pelo app (fora `HISTORY` e `IMPORT`) no perfil e nos selos. Teste: importar 100 atendimentos não muda os números do perfil.
 
-459. ⬜ **No estoque, "ajuste" só soma, e o back aceita perda positiva** (front: `Inventory.tsx`; back: `adjustInventory`):
+     **Feito:** atendimentos concluídos, clientes e clientes que voltaram (e os selos) deixam de fora `HISTORY` e `IMPORT`. Cem importados não mudam os números.
+
+459. ✅ **No estoque, "ajuste" só soma, e o back aceita perda positiva** (front: `Inventory.tsx`; back: `adjustInventory`):
      - A tela trata "ajuste" sempre como entrada. Para corrigir uma contagem para baixo, o gerente tem que lançar como "perda", o que aparece como perda nos relatórios e no aviso de estoque baixo.
      - "Transferência" é sempre saída, sem entrada na outra unidade.
      - O back aceita qualquer sinal com qualquer tipo: "perda" de +5 aumenta o estoque, e "compra" de −5 diminui.
 
      **Fazer:** no ajuste, informar a quantidade contada (ou o sinal), e o back conferir o sinal pelo tipo (compra > 0, perda < 0). Transferência com a unidade de destino, ou sem esse tipo. Teste: perda com quantidade positiva dá erro.
 
-460. ⬜ **Aceitar o convite da equipe cria a conta sem conferir a senha** (back: `EmployeeInviteService.acceptInvite`, `employee-invite.controller.ts`):
+     **Feito:** a contagem informa o total e o ajuste aceita sinal. Compra só aumenta e perda só diminui. Transferência saiu, porque não tinha unidade de destino.
+
+460. ✅ **Aceitar o convite da equipe cria a conta sem conferir a senha** (back: `EmployeeInviteService.acceptInvite`, `employee-invite.controller.ts`):
      - O corpo do pedido é uma `interface` (`AcceptEmployeeInviteInput`), que não passa pela validação do Nest. A senha não segue as regras do cadastro (`validatePassword`): "1" é aceita. Sem senha no corpo, o `bcrypt` falha com erro 500.
      - O gênero que não é `female` vira `male` (a tela só tem os dois, e o cadastro normal tem mais opções).
      - A conta nasce com `readTerms: true`, e a tela do convite não mostra os termos.
 
      **Fazer:** classe com validação (nome, telefone, data, gênero) e as mesmas regras de senha do cadastro; as mesmas opções de gênero; caixa de aceite dos termos. Teste: aceitar com a senha "1" dá erro.
 
-461. ⬜ **A resposta da unidade ocultada pela moderação volta salvando o mesmo texto** (back: `ReviewManagementService.reply`):
+     **Feito:** o corpo do aceite é uma classe validada. A senha "1" é recusada, o gênero aceita as mesmas opções do cadastro (sem virar masculino) e a tela pede o aceite dos termos.
+
+461. ✅ **A resposta da unidade ocultada pela moderação volta salvando o mesmo texto** (back: `ReviewManagementService.reply`):
      - Salvar a resposta limpa `replyHiddenAt` sem conferir se o texto mudou. A unidade salva de novo o texto ocultado e ele volta para a página.
      - Apagar a resposta e responder de novo conta como "primeira resposta" e manda outro e-mail ao cliente. Repetindo, a unidade envia quantos e-mails quiser.
 
      **Fazer:** com o mesmo texto, a resposta continua oculta; o e-mail ao cliente sai uma vez por avaliação. Teste: salvar o texto ocultado de novo não o mostra na página.
 
-462. ⬜ **Avisos do sininho sem botão para abrir** (back: chat, vagas, Destaque, suporte e duas em `barbershop.service.ts`; front: `NotificationsDropdown.tsx`):
+     **Feito:** salvar o mesmo texto deixa a resposta oculta. O e-mail ao cliente sai uma vez por avaliação.
+
+462. ✅ **Avisos do sininho sem botão para abrir** (back: chat, vagas, Destaque, suporte e duas em `barbershop.service.ts`; front: `NotificationsDropdown.tsx`):
      - O sininho só mostra o botão de abrir quando o aviso tem `actionUrl` e `actionText`. Os avisos de mensagem nova, candidatura, Destaque, suporte e outros dois gravam só o `actionUrl`. Eles aparecem sem botão, e o cartão não é clicável: a pessoa não chega à conversa ou à candidatura pelo aviso.
 
      **Fazer:** texto padrão do botão ("Abrir") quando há link, ou o cartão inteiro clicável. Teste: o aviso de mensagem nova abre a conversa.
+
+     **Feito:** com link e sem texto de botão, o sininho mostra "Abrir". O aviso de mensagem nova abre a conversa.
 
 ### Centésima quadragésima segunda rodada (2026-10-28): valores digitados, contas apagadas, planos, clube e telas no fuso errado
 

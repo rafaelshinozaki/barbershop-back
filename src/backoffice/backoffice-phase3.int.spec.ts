@@ -121,6 +121,15 @@ describe('Backoffice fase 3 (integração)', () => {
     await expect(approvals.decide(selfAdmin.approvalId!, true, null, admin1)).rejects.toThrow(
       /Quem pediu não confirma/,
     );
+    await expect(
+      approvals.request(
+        'payment.refund',
+        { kind: 'prepaid', id: 1, amount: 10, reason: 'de novo' },
+        'mesmo estorno',
+        'pedido repetido',
+        coord,
+      ),
+    ).rejects.toThrow('Já existe um pedido igual pendente.');
 
     const done = await approvals.decide(id, true, 'conferido', admin1);
     expect(done).toMatchObject({

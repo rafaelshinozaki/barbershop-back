@@ -108,6 +108,7 @@ import {
   phoneDigitVariants,
   phoneForWhatsapp,
 } from '../common/phone.util';
+import { literalSearch } from '../common/search-text';
 import { whatsappMarketingBody } from '../whatsapp/marketing-text';
 import { homeServiceEnabled } from './home-service';
 import { StripeService } from '../stripe/stripe.service';
@@ -477,7 +478,17 @@ export const SERVICE_DEPOSIT_MESSAGE = 'O sinal não pode ser maior que o preço
 export const STOCK_MOVEMENT_MESSAGE = 'Tipo de movimentação de estoque inválido.';
 export const STOCK_QUANTITY_MESSAGE = 'Informe uma quantidade diferente de zero.';
 export const STOCK_MIN_MESSAGE = 'O estoque mínimo não pode ser negativo.';
-const STOCK_MOVEMENTS = ['PURCHASE', 'ADJUSTMENT', 'LOSS', 'TRANSFER'];
+const STOCK_MOVEMENTS = ['PURCHASE', 'ADJUSTMENT', 'LOSS'];
+
+/** Compra só entra, perda só sai. Ajuste e contagem ficam com o sinal da diferença. */
+export function assertStockSign(movementType: string, change: number) {
+  if (movementType === 'PURCHASE' && !(change > 0)) {
+    throw new BadRequestException('A compra aumenta o estoque.');
+  }
+  if (movementType === 'LOSS' && !(change < 0)) {
+    throw new BadRequestException('A perda diminui o estoque.');
+  }
+}
 function checkServiceDuration(value: number | null | undefined) {
   if (value == null) return;
   if (!Number.isInteger(value) || value < 1 || value > 720) {
@@ -2786,8 +2797,19 @@ export class BarbershopService {
         'Subdomínio inválido — use só letras minúsculas, números e hífen (sem começar/terminar com hífen), de 3 a 63 caracteres.',
       );
     }
-    const RESERVED = ['www', 'app', 'api', 'admin', 'mail', 'ftp'];
-    if (RESERVED.includes(trimmed)) {
+    const RESERVED = [
+      'www', 'app', 'api', 'admin', 'mail', 'ftp', 'suporte', 'support', 'pagamento',
+      'pagamentos', 'payment', 'payments', 'login', 'signin', 'signup', 'contas',
+      'account', 'accounts', 'termos', 'terms', 'status', 'billing', 'help', 'ajuda',
+      'contato', 'contact', 'dashboard', 'backoffice', 'barbershop', 'barbearia',
+      'barbearias', 'static', 'assets', 'cdn', 'blog', 'shop', 'loja', 'cliente',
+      'client', 'clientes', 'auth', 'oauth', 'webhook', 'webhooks', 'health', 'docs',
+      'legal', 'privacy', 'privacidade', 'security', 'seguranca', 'root', 'stripe',
+      'whatsapp', 'email',
+    ];
+    const key = (value: string) =>
+      value.normalize('NFD').replace(/\p{M}/gu, '').replace(/-/g, '').toLowerCase();
+    if (RESERVED.some((name) => key(name) === key(trimmed))) {
       throw new BadRequestException('Esse subdomínio é reservado. Escolha outro.');
     }
     const existing = await this.prisma.barbershop.findFirst({
@@ -3392,14 +3414,38 @@ export class BarbershopService {
       );
     }
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
-    if (phone) await this.assertPhoneFree(barbershop.networkId, phone);
+    const calling = callingCodeForCountry(barbershop.country) ?? '55';
+    let storedPhone = '';
+    if (phone) {
+      const normalized = normalizePhoneToE164(phone, calling);
+      if (!normalized) throw new BadRequestException('Telefone inválido');
+      await this.assertPhoneFree(barbershop.networkId, normalized);
+      storedPhone = normalized;
+    }
+    if (email) {
+      const existing = await this.prisma.customer.findFirst({
+        where: {
+          networkId: barbershop.networkId,
+          deletedAt: null,
+          email: { equals: email, mode: 'insensitive' },
+        },
+        select: { id: true, name: true },
+      });
+      if (existing) {
+        throw new BadRequestException({
+          message: 'Já existe uma ficha com este e-mail.',
+          customerId: existing.id,
+          customerName: existing.name,
+        });
+      }
+    }
     return this.prisma.customer.create({
       data: {
         networkId: barbershop.networkId,
         name,
         birthDate: data.birthDate,
         notes,
-        phone: phone || '(sem telefone)',
+        phone: storedPhone,
         email: email ?? null,
       },
     });
@@ -3414,17 +3460,17 @@ export class BarbershopService {
     const where: any = { networkId: barbershop.networkId, deletedAt: null };
     if (filters?.isActive !== undefined) where.isActive = filters.isActive;
     if (filters?.search) {
-      where.OR = [{ name: { contains: filters.search, mode: 'insensitive' } }];
+      const text = literalSearch(filters.search);
+      const digits = filters.search.replace(/\D/g, '');
+      where.OR = [];
+      if (text) where.OR.push({ name: { contains: text, mode: 'insensitive' } });
       // Quem não vê o contato de todos não busca por ele (confirmaria o
-      // telefone de alguém)
+      // telefone de alguém). O telefone é pelos dígitos: "(11) 99999-0000" acha.
       if (ACCESS_RANK[barbershop.accessLevel] >= ACCESS_RANK.reception) {
-        where.OR.push(
-          { phone: { contains: filters.search } },
-          { email: { contains: filters.search, mode: 'insensitive' } },
-        );
-        const digits = filters.search.replace(/\D/g, '');
+        if (text) where.OR.push({ email: { contains: text, mode: 'insensitive' } });
         if (digits.length >= 4) where.OR.push({ phoneDigits: { contains: digits } });
       }
+      if (!where.OR.length) return [];
     }
     const customers = await this.prisma.customer.findMany({
       where,
@@ -3443,6 +3489,25 @@ export class BarbershopService {
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     return this.hideContact(await this.contactVisibility(userId, barbershop), customer);
+  }
+
+  /** Números da ficha: a lista vem paginada, a conta não. */
+  async customerCardStats(userId: number, barbershopId: number, customerId: number) {
+    const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'basic');
+    await this.ensureCustomerOfNetwork(barbershop.networkId, customerId);
+    const [sales, appointments, sum] = await Promise.all([
+      this.prisma.sale.count({ where: { barbershopId, customerId } }),
+      this.prisma.appointment.count({ where: { barbershopId, customerId } }),
+      this.prisma.sale.aggregate({
+        where: { barbershopId, customerId, paymentStatus: 'PAID' },
+        _sum: { total: true },
+      }),
+    ]);
+    return {
+      sales,
+      appointments,
+      totalSpent: Number(sum._sum.total ?? 0),
+    };
   }
 
   async updateCustomer(
@@ -4868,6 +4933,8 @@ export class BarbershopService {
         });
         change = (data.countedQuantity as number) - Number(current?.quantity ?? 0);
       }
+      const movementType = counting ? 'ADJUSTMENT' : (data.movementType ?? 'ADJUSTMENT');
+      assertStockSign(movementType, change);
       if (change === 0) {
         const unchanged = await tx.inventoryItem.upsert({
           where: { barbershopId_productId: { barbershopId, productId: data.productId } },
@@ -4896,7 +4963,7 @@ export class BarbershopService {
       const movement = await tx.inventoryMovement.create({
         data: {
           inventoryItemId: item.id,
-          movementType: counting ? 'ADJUSTMENT' : (data.movementType ?? 'ADJUSTMENT'),
+          movementType,
           quantityChange: change,
           quantityBefore,
           quantityAfter,
@@ -5309,18 +5376,20 @@ export class BarbershopService {
     barbershopId: number,
     serviceIds: number[],
     productIds: number[] = [],
+    opts: { active?: boolean } = {},
   ) {
     const uniqueServices = [...new Set(serviceIds)];
     const uniqueProducts = [...new Set(productIds)];
+    const active = opts.active ? { isActive: true } : {};
     const [services, products] = await Promise.all([
       uniqueServices.length
         ? this.prisma.barbershopService.count({
-            where: { id: { in: uniqueServices }, barbershopId },
+            where: { id: { in: uniqueServices }, barbershopId, ...active },
           })
         : 0,
       uniqueProducts.length
         ? this.prisma.barbershopProduct.count({
-            where: { id: { in: uniqueProducts }, barbershopId },
+            where: { id: { in: uniqueProducts }, barbershopId, ...active },
           })
         : 0,
     ]);
@@ -5510,6 +5579,8 @@ export class BarbershopService {
     await this.ensureItemsOfBarbershop(
       barbershopId,
       data.services.map((s) => s.serviceId),
+      [],
+      { active: true },
     );
     const { services, depositAmount, depositPaid, depositPaymentMethod, ...appointmentData } = data;
     // Preço e quantidade com a mesma conferência da venda: é a base da taxa
@@ -7598,9 +7669,23 @@ export class BarbershopService {
       ]);
       const recentIds = new Set(recent.map((r) => r.customerId));
       const inactiveIds = ever.map((r) => r.customerId).filter((id) => !recentIds.has(id));
+      const booked = inactiveIds.length
+        ? await this.prisma.appointment.findMany({
+            where: {
+              customerId: { in: inactiveIds },
+              startAt: { gt: new Date() },
+              status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+              ...(networkWide ? { barbershop: { networkId } } : { barbershopId }),
+            },
+            select: { customerId: true },
+            distinct: ['customerId'],
+          })
+        : [];
+      const bookedIds = new Set(booked.map((a) => a.customerId));
+      const ids = inactiveIds.filter((id) => !bookedIds.has(id));
       return this.uniqueRecipients(
         optedOut,
-        await this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: inactiveIds } } }),
+        await this.prisma.customer.findMany({ where: { ...baseWhere, id: { in: ids } } }),
         country,
       );
     }
@@ -9618,19 +9703,26 @@ export class BarbershopService {
   async searchPublicBarbershops(input: PublicSearchInput & { businessType?: string }) {
     const AND: Prisma.BarbershopWhereInput[] = [ownerAcceptsPublic];
     if (input.query) {
-      AND.push({
-        OR: [
-          { name: { contains: input.query, mode: 'insensitive' } },
-          { city: { contains: input.query, mode: 'insensitive' } },
-          {
-            services: {
-              some: { isActive: true, name: { contains: input.query, mode: 'insensitive' } },
+      const text = literalSearch(input.query);
+      if (!text) AND.push({ id: -1 });
+      else {
+        AND.push({
+          OR: [
+            { name: { contains: text, mode: 'insensitive' } },
+            { city: { contains: text, mode: 'insensitive' } },
+            {
+              services: {
+                some: { isActive: true, name: { contains: text, mode: 'insensitive' } },
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
+      }
     }
-    if (input.city) AND.push({ city: { contains: input.city, mode: 'insensitive' } });
+    if (input.city) {
+      const city = literalSearch(input.city);
+      AND.push(city ? { city: { contains: city, mode: 'insensitive' } } : { id: -1 });
+    }
     if (input.businessType) AND.push({ businessType: this.parseBusinessType(input.businessType) });
     if (input.category) {
       AND.push({ services: { some: { isActive: true, category: input.category } } });
@@ -9799,12 +9891,16 @@ export class BarbershopService {
     };
     const AND: Prisma.ProfessionalWhereInput[] = [];
     if (input.query) {
-      AND.push({
-        OR: [
-          { user: { fullName: { contains: input.query, mode: 'insensitive' } } },
-          { cities: { has: input.query } },
-        ],
-      });
+      const text = literalSearch(input.query);
+      if (!text) AND.push({ id: -1 });
+      else {
+        AND.push({
+          OR: [
+            { user: { fullName: { contains: text, mode: 'insensitive' } } },
+            { cities: { has: text } },
+          ],
+        });
+      }
     }
     if (input.category) {
       AND.push({
@@ -9966,14 +10062,17 @@ export class BarbershopService {
   // ============ ADMIN: POSICIONAMENTO "DESTAQUE" ============
 
   async getAdminBarbershops(query?: string) {
+    const text = literalSearch(query);
     return this.prisma.barbershop.findMany({
       where: query
-        ? {
-            OR: [
-              { name: { contains: query, mode: 'insensitive' } },
-              { city: { contains: query, mode: 'insensitive' } },
-            ],
-          }
+        ? text
+          ? {
+              OR: [
+                { name: { contains: text, mode: 'insensitive' } },
+                { city: { contains: text, mode: 'insensitive' } },
+              ],
+            }
+          : { id: -1 }
         : undefined,
       orderBy: { name: 'asc' },
       take: 100,
@@ -9982,18 +10081,20 @@ export class BarbershopService {
 
   /** Profissionais com página (pública ou só na plataforma), destacados primeiro */
   async getAdminProfessionals(query?: string) {
-    const q = query?.trim();
+    const q = literalSearch(query);
     const rows = await this.prisma.professional.findMany({
       where: {
         slug: { not: null },
-        ...(q
-          ? {
-              OR: [
-                { user: { fullName: { contains: q, mode: 'insensitive' } } },
-                { slug: { contains: q, mode: 'insensitive' } },
-                { cities: { has: q } },
-              ],
-            }
+        ...(query?.trim()
+          ? q
+            ? {
+                OR: [
+                  { user: { fullName: { contains: q, mode: 'insensitive' } } },
+                  { slug: { contains: q, mode: 'insensitive' } },
+                  { cities: { has: q } },
+                ],
+              }
+            : { id: -1 }
           : {}),
       },
       include: { user: { select: { fullName: true } } },
@@ -10055,8 +10156,36 @@ export class BarbershopService {
   // avaliar — evita review de quem nunca foi cliente de verdade (ex.:
   // concorrente, ou alguém que só olhou a página pública).
   private async ensureVerifiedCustomer(clientAccountId: number, barbershopId: number) {
+    const account = await this.prisma.clientAccount.findUnique({
+      where: { id: clientAccountId },
+      select: { userId: true },
+    });
+    if (account?.userId) {
+      const [shop, staff] = await Promise.all([
+        this.prisma.barbershop.findFirst({
+          where: { id: barbershopId },
+          select: { ownerUserId: true, network: { select: { ownerUserId: true } } },
+        }),
+        this.prisma.barber.findFirst({
+          where: { barbershopId, userId: account.userId, isActive: true },
+          select: { id: true },
+        }),
+      ]);
+      if (
+        staff ||
+        shop?.ownerUserId === account.userId ||
+        shop?.network?.ownerUserId === account.userId
+      ) {
+        throw new ForbiddenException('Quem faz parte da unidade não avalia o próprio negócio.');
+      }
+    }
     const visit = await this.prisma.appointment.findFirst({
-      where: { barbershopId, status: 'COMPLETED', customer: { clientAccountId } },
+      where: {
+        barbershopId,
+        status: 'COMPLETED',
+        source: { notIn: ['HISTORY', 'IMPORT'] },
+        customer: { clientAccountId },
+      },
     });
     if (!visit) {
       throw new ForbiddenException(
@@ -10137,22 +10266,37 @@ export class BarbershopService {
   }
 
   async canReviewBarbershop(clientAccountId: number, barbershopId: number): Promise<boolean> {
-    const visit = await this.prisma.appointment.findFirst({
-      where: { barbershopId, status: 'COMPLETED', customer: { clientAccountId } },
-    });
-    return Boolean(visit);
+    try {
+      await this.ensureVerifiedCustomer(clientAccountId, barbershopId);
+      return true;
+    } catch (err) {
+      if (err instanceof ForbiddenException) return false;
+      throw err;
+    }
   }
 
-  async getBarbershopReviews(barbershopId: number) {
+  async getBarbershopReviews(barbershopId: number, limit?: number, offset?: number) {
+    const live = await this.prisma.barbershop.findFirst({
+      where: {
+        id: barbershopId,
+        isActive: true,
+        closedAt: null,
+        platformSuspendedAt: null,
+        network: { platformSuspendedAt: null },
+      },
+      select: { id: true },
+    });
+    if (!live) return [];
     const reviews = await this.prisma.review.findMany({
       // Oculta pela moderação (denúncia aceita) não aparece
-      where: { barbershopId, hiddenAt: null },
+      where: { barbershopId, hiddenAt: null, withdrawnAt: null },
       include: {
         clientAccount: { select: { name: true } },
         customer: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: pageTake(limit, 20),
+      skip: offset && offset > 0 ? offset : 0,
     });
     return reviews.map((r) => ({
       id: r.id,
@@ -10646,7 +10790,7 @@ export class BarbershopService {
     checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
     await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const service = await this.prisma.barbershopService.findFirst({
-      where: { id: data.serviceId, barbershopId },
+      where: { id: data.serviceId, barbershopId, isActive: true },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
 
@@ -11308,7 +11452,9 @@ export class BarbershopService {
     // Cliente, profissional e serviços têm de ser desta unidade/rede (a
     // resposta traz a ficha do cliente: sem isso vazava a de outra empresa)
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
-    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    if (data.barberId) {
+      await this.ensureBarberOfBarbershop(barbershopId, data.barberId, { active: true });
+    }
     // Como no agendamento: barbeiro só põe na própria fila (ou sem profissional)
     const ownBarberId = await this.ownBarberIdIfBarber(userId, barbershop);
     if (ownBarberId !== null && data.barberId && data.barberId !== ownBarberId) {
@@ -11317,6 +11463,8 @@ export class BarbershopService {
     await this.ensureItemsOfBarbershop(
       barbershopId,
       data.services.map((s) => s.serviceId),
+      [],
+      { active: true },
     );
     await assertSoloBookingAllowed(this.prisma, barbershopId, new Date());
 
@@ -11608,7 +11756,11 @@ export class BarbershopService {
       data = { ...data, barberId: ownBarberId };
     }
     if (data.customerId) await this.ensureCustomerOfNetwork(barbershop.networkId, data.customerId);
-    if (data.barberId) await this.ensureBarberOfBarbershop(barbershopId, data.barberId);
+    if (data.barberId) {
+      await this.ensureBarberOfBarbershop(barbershopId, data.barberId, {
+        active: !data.appointmentId,
+      });
+    }
     // Conta do horário: uma venda só por horário, e o sinal já pago (online
     // ou na mão) é descontado do que se cobra agora
     let depositPaidOnAppointment = 0;
@@ -11664,6 +11816,7 @@ export class BarbershopService {
       barbershopId,
       data.items.filter((i) => i.serviceId).map((i) => i.serviceId as number),
       data.items.filter((i) => i.productId).map((i) => i.productId as number),
+      { active: true },
     );
     await this.ensureServiceHistoriesOfBarbershop(
       barbershopId,
@@ -11971,10 +12124,11 @@ export class BarbershopService {
     const ownBarberId = await this.ownBarberIdIfBarber(userId, shop);
     if (ownBarberId !== null) where.barberId = ownBarberId;
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
-    const createdAt: Prisma.DateTimeFilter = {};
-    if (filters?.from) createdAt.gte = filters.from;
-    if (filters?.to) createdAt.lte = filters.to;
-    const bounds = Object.keys(createdAt).length ? [{ createdAt }] : [];
+    // Paga: pela data do pagamento. Pendente: pela criação. O fim do período é exclusivo.
+    const paidAt: Prisma.DateTimeFilter = {};
+    if (filters?.from) paidAt.gte = filters.from;
+    if (filters?.to) paidAt.lt = filters.to;
+    const bounds = Object.keys(paidAt).length ? [paidInRange(paidAt)] : [];
     // Página seguinte pelo último item visto: uma venda nova no topo não
     // empurra a lista e não repete a última da página anterior
     if (filters?.before) {
@@ -11988,7 +12142,7 @@ export class BarbershopService {
         },
       ];
     } else if (bounds.length) {
-      where.createdAt = createdAt;
+      where.AND = bounds;
     }
     const sales = await this.prisma.sale.findMany({
       where,
@@ -13220,7 +13374,7 @@ export class BarbershopService {
     checkSessionCount('Validade', data.validityDays);
     await this.ensureModuleAccess(barbershopId, 'packages');
     const service = await this.prisma.barbershopService.findFirst({
-      where: { id: data.serviceId, barbershopId },
+      where: { id: data.serviceId, barbershopId, isActive: true },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
     const pkg = await this.prisma.servicePackage.create({

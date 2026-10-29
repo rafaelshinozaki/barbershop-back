@@ -183,6 +183,18 @@ function requiredQueryDate(value: string): Date {
   return date;
 }
 
+@ObjectType()
+export class CustomerCardStats {
+  @Field(() => Int)
+  sales: number;
+
+  @Field(() => Int)
+  appointments: number;
+
+  @Field(() => Float)
+  totalSpent: number;
+}
+
 @Resolver(() => Barbershop)
 export class BarbershopResolver {
   constructor(
@@ -443,6 +455,16 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     return this.barbershopService.getCustomer(user.id, barbershopId, id);
+  }
+
+  @UseGuards(GraphQLJwtAuthGuard)
+  @Query(() => CustomerCardStats)
+  async customerCardStats(
+    @CurrentUser() user: UserDTO,
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('customerId', { type: () => Int }) customerId: number,
+  ) {
+    return this.barbershopService.customerCardStats(user.id, barbershopId, customerId);
   }
 
   @UseGuards(GraphQLJwtAuthGuard)
@@ -1076,6 +1098,8 @@ export class BarbershopResolver {
     @Args('barberId', { type: () => Int, nullable: true }) barberId?: number,
     @Args('customerId', { type: () => Int, nullable: true }) customerId?: number,
     @Args('status', { nullable: true }) status?: string,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
   ) {
     return this.barbershopService.getAppointments(user.id, barbershopId, {
       startFrom: startAt ? new Date(startAt) : undefined,
@@ -1083,6 +1107,7 @@ export class BarbershopResolver {
       barberId,
       customerId,
       status,
+      ...pageArgs(limit, offset),
     });
   }
 

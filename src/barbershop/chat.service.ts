@@ -348,9 +348,23 @@ export class ChatService {
         // Valor do enum do sininho (outro valor quebra a lista inteira)
         type: NotificationType.INFO,
         actionUrl: `/messages?appointment=${appt.id}`,
+        actionText: 'Abrir',
       };
     });
-    await this.prisma.userNotification.createMany({ data });
+    for (const n of data) {
+      const open = await this.prisma.userNotification.findFirst({
+        where: { userId: n.userId, isRead: false, actionUrl: n.actionUrl },
+        select: { id: true },
+      });
+      if (open) {
+        await this.prisma.userNotification.update({
+          where: { id: open.id },
+          data: { title: n.title, message: n.message, isNew: true, actionText: n.actionText },
+        });
+      } else {
+        await this.prisma.userNotification.create({ data: n });
+      }
+    }
     for (const n of data) this.realtime.notifyUsers([n.userId], 'CREATED', n.title);
     // No celular também (sem o texto da mensagem, como no e-mail)
     await this.push
@@ -458,7 +472,7 @@ export class ChatService {
   }
 
   /** Caixa de entrada da equipe: as conversas de que a pessoa participa, mais recentes primeiro */
-  async staffInbox(userId: number) {
+  async staffInbox(userId: number, onlyAppointmentId?: number) {
     const shops = await this.prisma.barber.findMany({
       where: { userId, ...currentEngagement() },
       select: { id: true, barbershopId: true },
@@ -476,13 +490,14 @@ export class ChatService {
     const threads = await this.prisma.chatThread.findMany({
       where: {
         lastMessageAt: { not: null },
+        ...(onlyAppointmentId ? { appointmentId: onlyAppointmentId } : {}),
         OR: [
           { kind: 'unit', barbershopId: { in: deskShops } },
           { kind: 'professional', barberId: { in: shops.map((s) => s.id) } },
         ],
       },
       orderBy: { lastMessageAt: 'desc' },
-      take: INBOX_SIZE,
+      take: onlyAppointmentId ? 5 : INBOX_SIZE,
       include: {
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
         appointment: {

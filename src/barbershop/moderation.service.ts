@@ -907,9 +907,22 @@ export class ModerationService {
       case 'barber_photo':
         await this.prisma.barber.update({ where: { id }, data: { avatarHiddenAt: at } });
         return;
-      case 'social_post':
-        await this.prisma.socialPost.update({ where: { id }, data: { hiddenAt: at } });
+      case 'social_post': {
+        const post = at
+          ? await this.prisma.socialPost.findUnique({ where: { id }, select: { status: true } })
+          : null;
+        const scheduled = post?.status === 'SCHEDULED' || post?.status === 'PUBLISHING';
+        await this.prisma.socialPost.update({
+          where: { id },
+          data: {
+            hiddenAt: at,
+            ...(at && scheduled
+              ? { status: 'CANCELLED', errorMessage: 'Cancelado: ocultado pela moderação.' }
+              : {}),
+          },
+        });
         return;
+      }
       case 'chat_thread':
         // "Ocultar" uma conversa é encerrá-la: fica visível, sem mensagem nova
         await this.prisma.chatThread.update({ where: { id }, data: { closedAt: at } });

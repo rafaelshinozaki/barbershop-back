@@ -18,6 +18,8 @@ import { NotificationQueueService } from '../queue/notification-queue.service';
 import { safeAppLink } from '../common/app-urls';
 import { newsUnsubscribeLinks } from '../notifications/news-unsubscribe';
 import { PAGAMENTO_STATUS } from '../common/contants';
+import { ageBand, ageInYears, birthdateFilterForBand } from '../common/work-age';
+import { literalSearch } from '../common/search-text';
 import { takesAppointments } from '../barbershop/staff-roles';
 import {
   COUNTED_APPOINTMENT_STATUSES,
@@ -366,7 +368,8 @@ export class BackofficeService {
     });
 
     // Análise por faixa etária
-    const ageRanges = {
+    const ageRanges: Record<string, number> = {
+      'menos de 18': 0,
       '18-25': 0,
       '26-35': 0,
       '36-45': 0,
@@ -375,17 +378,9 @@ export class BackofficeService {
       '65+': 0,
     };
 
-    const currentYear = new Date().getFullYear();
     users.forEach((user) => {
-      if (user.birthdate) {
-        const age = currentYear - user.birthdate.getFullYear();
-        if (age >= 18 && age <= 25) ageRanges['18-25']++;
-        else if (age >= 26 && age <= 35) ageRanges['26-35']++;
-        else if (age >= 36 && age <= 45) ageRanges['36-45']++;
-        else if (age >= 46 && age <= 55) ageRanges['46-55']++;
-        else if (age >= 56 && age <= 65) ageRanges['56-65']++;
-        else if (age > 65) ageRanges['65+']++;
-      }
+      const band = ageBand(user.birthdate);
+      if (band in ageRanges) ageRanges[band]++;
     });
 
     return {
@@ -416,9 +411,16 @@ export class BackofficeService {
           ...(params.role && params.role !== 'all' ? { equals: params.role } : {}),
         },
       },
-      ...(params.name?.trim()
-        ? { fullName: { contains: params.name.trim(), mode: 'insensitive' as const } }
-        : {}),
+      ...(literalSearch(params.name)
+        ? {
+            fullName: {
+              contains: literalSearch(params.name),
+              mode: 'insensitive' as const,
+            },
+          }
+        : params.name?.trim()
+          ? { id: -1 }
+          : {}),
     };
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -525,20 +527,8 @@ export class BackofficeService {
 
     // Filtro de faixa etária
     if (filterParams.ageRange && filterParams.ageRange !== 'all') {
-      const currentYear = new Date().getFullYear();
-      const [minAge, maxAge] = filterParams.ageRange.split('-').map(Number);
-
-      if (maxAge) {
-        where.birthdate = {
-          gte: new Date(currentYear - maxAge - 1, 0, 1),
-          lte: new Date(currentYear - minAge, 11, 31),
-        };
-      } else {
-        // Para 65+
-        where.birthdate = {
-          lte: new Date(currentYear - 65, 11, 31),
-        };
-      }
+      const range = birthdateFilterForBand(filterParams.ageRange);
+      if (range) where.birthdate = range;
     }
 
     // Buscar usuários com dados relacionados
@@ -611,44 +601,17 @@ export class BackofficeService {
           }),
           ...(filterParams.ageRange &&
             filterParams.ageRange !== 'all' &&
-            (() => {
-              const currentYear = new Date().getFullYear();
-              const [minAge, maxAge] = filterParams.ageRange.split('-').map(Number);
-
-              if (maxAge) {
-                return {
-                  birthdate: {
-                    gte: new Date(currentYear - maxAge - 1, 0, 1),
-                    lte: new Date(currentYear - minAge, 11, 31),
-                  },
-                };
-              } else {
-                return {
-                  birthdate: {
-                    lte: new Date(currentYear - 65, 11, 31),
-                  },
-                };
-              }
-            })()),
+            birthdateFilterForBand(filterParams.ageRange) && {
+              birthdate: birthdateFilterForBand(filterParams.ageRange)!,
+            }),
         },
       }),
     ]);
 
     // Processar dados dos usuários
     const processedUsers = users.map((user) => {
-      const currentYear = new Date().getFullYear();
-      const age = user.birthdate ? currentYear - user.birthdate.getFullYear() : null;
-
-      // Determinar faixa etária
-      let ageRange = 'Não informado';
-      if (age) {
-        if (age >= 18 && age <= 25) ageRange = '18-25';
-        else if (age >= 26 && age <= 35) ageRange = '26-35';
-        else if (age >= 36 && age <= 45) ageRange = '36-45';
-        else if (age >= 46 && age <= 55) ageRange = '46-55';
-        else if (age >= 56 && age <= 65) ageRange = '56-65';
-        else if (age > 65) ageRange = '65+';
-      }
+      const age = user.birthdate ? ageInYears(user.birthdate) : null;
+      const ageRange = ageBand(user.birthdate);
 
       // DetailedUser.role é um enum GraphQL estrito (UserRole), então o
       // fallback aqui precisa ser um membro válido do enum, diferente do

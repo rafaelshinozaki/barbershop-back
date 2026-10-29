@@ -309,6 +309,7 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'APPOINTMENT_CHANGED_WHILE_WERE_RESCHEDULING',
   'Você só pode avaliar unidades onde já teve um atendimento concluído.':
     'CAN_ONLY_REVIEW_LOCATIONS_WHERE',
+  'Quem faz parte da unidade não avalia o próprio negócio.': 'STAFF_CANNOT_REVIEW_OWN_SHOP',
   'A nota deve ser um número inteiro entre 1 e 5.': 'RATING_MUST_WHOLE_NUMBER_FROM',
   'Sem acesso a esta rede': 'NOT_ACCESS_NETWORK',
   'O valor do cartão-presente deve ser maior que zero': 'GIFT_CARD_AMOUNT_MUST_GREATER',
@@ -653,6 +654,8 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'A legenda do Instagram pode ter no máximo 30 hashtags.': 'INSTAGRAM_HASHTAG_LIMIT',
   'E-mail inválido': 'INVALID_EMAIL',
   'Já existe uma ficha com este telefone.': 'CUSTOMER_PHONE_EXISTS',
+  'Já existe uma ficha com este e-mail.': 'CUSTOMER_EMAIL_EXISTS',
+  'A troca de plano é feita pelo backoffice.': 'PLAN_CHANGE_VIA_BACKOFFICE',
   'Complete a data de nascimento da conta para entrar na equipe.': 'INVITE_BIRTHDATE_REQUIRED',
   'Esta assinatura já foi encerrada': 'SUBSCRIPTION_ALREADY_ENDED',
   'O ciclo desta assinatura já acabou': 'SUBSCRIPTION_CYCLE_ENDED',
@@ -662,6 +665,16 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Este profissional já tem um agendamento nesse horário': 'BARBER_BUSY',
   'Este profissional já está ocupado em outra unidade nesse horário': 'BARBER_BUSY_ELSEWHERE',
   'Este horário não está aguardando pagamento': 'APPOINTMENT_NOT_AWAITING_PAYMENT',
+  'Este e-mail já tem conta.': 'EMAIL_ALREADY_HAS_ACCOUNT',
+  'Este é o cartão da renovação. Adicione outro antes de apagar.': 'KEEP_RENEWAL_CARD',
+  'A compra aumenta o estoque.': 'PURCHASE_INCREASES_STOCK',
+  'A perda diminui o estoque.': 'LOSS_DECREASES_STOCK',
+  'Informe o gênero.': 'GENDER_REQUIRED',
+  'Já existe um pedido igual pendente.': 'DUPLICATE_PENDING_APPROVAL',
+  'Este pedido venceu.': 'APPROVAL_EXPIRED',
+  'Quem pediu não está mais na equipe.': 'REQUESTER_NOT_ON_TEAM',
+  'Só quem pediu cancela o próprio pedido.': 'ONLY_REQUESTER_CANCELS',
+  'Esta conta já aceitou um convite.': 'ACCOUNT_ALREADY_ACCEPTED_INVITE',
 };
 
 export const errorReasonOf = (message: string): string | undefined =>

@@ -37,7 +37,7 @@ export class CalendarService {
       ? await this.prisma.appointment.findUnique({
           where: { id },
           include: {
-            barbershop: { select: { name: true, address: true, city: true, state: true } },
+            barbershop: { select: { name: true, address: true, city: true, state: true, slug: true } },
             barber: { select: { name: true } },
             services: { include: { service: { select: { name: true } } } },
           },

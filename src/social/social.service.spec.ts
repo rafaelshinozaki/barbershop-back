@@ -16,7 +16,7 @@ describe('SocialService.handleOAuthCallback', () => {
     const service = new SocialService(
       prisma as never,
       { get: (key: string) => (key === 'JWT_SECRET' ? 'jwt-test' : undefined) } as never,
-      { verify: () => ({ barbershopId: 4, userId: 9 }) } as never,
+      { verify: () => ({ barbershopId: 4, userId: 9, nonce: 'browser' }) } as never,
       {} as never,
       { ensureAccess } as never,
     );
@@ -25,12 +25,22 @@ describe('SocialService.handleOAuthCallback', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it('state de outra sessão não conecta a página', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const { service, upsert } = build(async () => ({}));
+    await expect(service.handleOAuthCallback('code', 'state', 'outro-navegador')).rejects.toThrow(
+      'Tente conectar de novo',
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   it('não troca o código se a pessoa já não administra a unidade', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
     const { service, upsert } = build(async () => {
       throw new Error('forbidden');
     });
-    const result = await service.handleOAuthCallback('code', 'state');
+    const result = await service.handleOAuthCallback('code', 'state', 'browser');
     expect(result.barbershopId).toBe(4);
     expect(result.error).toBeTruthy();
     expect(result.pick).toBeUndefined();
@@ -51,7 +61,7 @@ describe('SocialService.handleOAuthCallback', () => {
       }) as never;
     });
     const { service, upsert, createChoice, deleteChoice } = build(async () => ({}));
-    const result = await service.handleOAuthCallback('code', 'state');
+    const result = await service.handleOAuthCallback('code', 'state', 'browser');
     expect(result.pick).toEqual(expect.any(String));
     expect(result.error).toBeUndefined();
     expect(upsert).not.toHaveBeenCalled();
@@ -77,7 +87,7 @@ describe('SocialService.handleOAuthCallback', () => {
       return json({ instagram_business_account: { id: 'ig', username: 'loja' } }) as never;
     });
     const { service, upsert } = build(async () => ({}));
-    const result = await service.handleOAuthCallback('code', 'state');
+    const result = await service.handleOAuthCallback('code', 'state', 'browser');
     expect(result).toEqual({ barbershopId: 4 });
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -179,12 +189,39 @@ describe('SocialService: chave do token da Página', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it('post agendado e ocultado não chama a API da Meta', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const prisma = {
+      socialPost: {
+        findUnique: async () => ({
+          id: 1,
+          status: 'SCHEDULED',
+          hiddenAt: new Date(),
+          barbershopId: 4,
+          scheduledFor: new Date(),
+        }),
+        updateMany,
+      },
+    };
+    const service = new SocialService(
+      prisma as never,
+      { get: () => undefined } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await (service as unknown as { publishPost: (id: number) => Promise<void> }).publishPost(1);
+    expect(updateMany).toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('em produção sem SOCIAL_TOKEN_KEY nem começa a conexão', async () => {
     const { service } = build(
       { NODE_ENV: 'production', JWT_SECRET: 'jwt', META_APP_ID: 'a', META_APP_SECRET: 'b' },
       '',
     );
-    await expect(service.getConnectUrl(9, 4)).rejects.toThrow('SOCIAL_TOKEN_KEY');
+    await expect(service.getConnectUrl(9, 4, 'nonce')).rejects.toThrow('SOCIAL_TOKEN_KEY');
   });
 
   it('token cifrado com o JWT_SECRET abre e é cifrado de novo com a chave própria', async () => {

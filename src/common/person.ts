@@ -22,6 +22,16 @@ export function signupPhone(raw: string | null | undefined): string {
   return phone;
 }
 
+export const STAFF_GENDERS = ['male', 'female', 'other'] as const;
+
+export function staffGender(raw: string | null | undefined): string {
+  const gender = (raw ?? '').trim();
+  if (!(STAFF_GENDERS as readonly string[]).includes(gender)) {
+    throw new BadRequestException('Informe o gênero.');
+  }
+  return gender;
+}
+
 /** Nascimento de quem trabalha: entre 16 e 120 anos. Data futura não passa. */
 export function assertWorkBirthdate(value: Date | string | null | undefined) {
   const text =

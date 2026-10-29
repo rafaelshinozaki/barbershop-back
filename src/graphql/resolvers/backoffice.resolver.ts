@@ -4,8 +4,9 @@ import {
 } from '../../payments/payments.service';
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { DEFAULT_TIMEZONE, monthRangeUtc, toZonedParts } from '../../common/timezone.util';
-import { ForbiddenException, UseGuards } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UseGuards } from '@nestjs/common';
 import { clientErrorMessage } from '../../common/client-error';
+import { literalSearch } from '../../common/search-text';
 import { BackofficeService } from '../../backoffice/backoffice.service';
 import { UserService } from '../../auth/users/users.service';
 import {
@@ -222,10 +223,7 @@ export class BackofficeResolver {
         await this.userService.setMultipleUsersActive(input.userIds, false);
         break;
       case 'changePlan':
-        if (input.plan) {
-          await this.userService.changeMultipleUsersPlan(input.userIds, input.plan);
-        }
-        break;
+        throw new BadRequestException('A troca de plano é feita pelo backoffice.');
       default:
         throw new Error(`Unknown action: ${input.action}`);
     }
@@ -243,20 +241,6 @@ export class BackofficeResolver {
   ) {
     await this.userService.assertCanManageUsers(actor, [userId]);
     await this.userService.setUserActive(userId, active);
-    return true;
-  }
-
-  @UseGuards(GraphQLJwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.FINANCE)
-  @Mutation(() => Boolean)
-  async changeUserPlan(
-    @Args('userId', { type: () => Int }) userId: number,
-    @Args('plan') plan: string,
-    @CurrentUser() actor: UserDTO,
-  ) {
-    await this.userService.assertCanManageUsers(actor, [userId]);
-    await this.userService.changeUserPlan(userId, plan);
     return true;
   }
 
@@ -292,30 +276,6 @@ export class BackofficeResolver {
   @Query(() => PaginatedEmailHistory)
   async emailHistory(@Args('filters') filters: EmailHistoryFilters) {
     return this.backofficeService.getEmailHistory(filters);
-  }
-
-  private calculateAge(birthdate: Date): number {
-    const today = new Date();
-    let age = today.getFullYear() - birthdate.getFullYear();
-    const monthDiff = today.getMonth() - birthdate.getMonth();
-
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthdate.getDate())) {
-      age--;
-    }
-
-    return age;
-  }
-
-  private getAgeRange(birthdate: Date): string {
-    const age = this.calculateAge(birthdate);
-
-    if (age < 18) return '18-24';
-    if (age < 25) return '18-24';
-    if (age < 35) return '25-34';
-    if (age < 45) return '35-44';
-    if (age < 55) return '45-54';
-    if (age < 65) return '55-64';
-    return '65+';
   }
 
   @RequireArea(BackofficeArea.FINANCE)
@@ -634,26 +594,36 @@ export class BackofficeResolver {
       }
 
       if (filters.paymentMethod) {
-        where.paymentMethod = { contains: filters.paymentMethod, mode: 'insensitive' };
+        const method = literalSearch(filters.paymentMethod);
+        if (method) where.paymentMethod = { contains: method, mode: 'insensitive' };
+        else where.id = -1;
       }
 
       if (filters.user) {
-        where.subscription = {
-          ...where.subscription,
-          user: {
-            OR: [
-              { fullName: { contains: filters.user, mode: 'insensitive' } },
-              { email: { contains: filters.user, mode: 'insensitive' } },
-            ],
-          },
-        };
+        const text = literalSearch(filters.user);
+        if (!text) where.id = -1;
+        else {
+          where.subscription = {
+            ...where.subscription,
+            user: {
+              OR: [
+                { fullName: { contains: text, mode: 'insensitive' } },
+                { email: { contains: text, mode: 'insensitive' } },
+              ],
+            },
+          };
+        }
       }
 
       if (filters.plan) {
-        where.subscription = {
-          ...where.subscription,
-          plan: { name: { contains: filters.plan, mode: 'insensitive' } },
-        };
+        const plan = literalSearch(filters.plan);
+        if (!plan) where.id = -1;
+        else {
+          where.subscription = {
+            ...where.subscription,
+            plan: { name: { contains: plan, mode: 'insensitive' } },
+          };
+        }
       }
 
       let payments, total;

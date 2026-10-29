@@ -687,6 +687,22 @@ export class PaymentsService {
       throw new NotFoundException('Cartão não encontrado');
     }
 
+    const methods = await this.stripeService.listPaymentMethods(user.stripeCustomerId!);
+    const renewing = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: PLANO_STATUS.ACTIVE,
+        cancelAtPeriodEnd: false,
+        plan: { price: { gt: 0 } },
+      },
+      select: { id: true },
+    });
+    if (renewing && methods.data.length <= 1) {
+      throw new BadRequestException(
+        'Este é o cartão da renovação. Adicione outro antes de apagar.',
+      );
+    }
+
     try {
       await this.stripeService.detachPaymentMethod(paymentMethodId);
       return { success: true, message: 'Payment method deleted successfully' };
@@ -1081,6 +1097,12 @@ export class PaymentsService {
         });
       }
     }
+    if (result.created && price > 0) {
+      const charged = coupon ? roundMoney(price - coupon.discountAmount) : price;
+      await this.sendPlanReceipt(user, charged, periodEnd).catch((e) =>
+        this.logger.warn(`E-mail de confirmação do plano não saiu (user ${userId}): ${e}`),
+      );
+    }
     if (result.created) {
       // O cartão usado vira o padrão: é ele que a renovação cobra
       if (paymentMethodId && user.stripeCustomerId) {
@@ -1090,6 +1112,83 @@ export class PaymentsService {
       }
     }
     return { success: true, subscription: result.subscription };
+  }
+
+  /** Recibo do plano pago no checkout (o webhook de fatura cobre o outro caminho). */
+  private async sendPlanReceipt(
+    user: { id: number; fullName: string; email: string },
+    amount: number,
+    periodEnd: Date,
+  ) {
+    await this.emailService.sendTemplateEmail(
+      user.id,
+      'invoice_email',
+      {
+        FullName: user.fullName,
+        AppName: 'Barbershop',
+        InvoiceID: 'plano',
+        Amount: amount,
+        Currency: 'brl',
+        DueDate: periodEnd,
+        InvoiceURL: appUrl('/payment-history'),
+        SupportEmail: supportEmail(),
+        Year: new Date().getFullYear(),
+        TimeZone: await timeZoneForOwner(this.prisma, user.id),
+      },
+      {
+        pt: 'Pagamento recebido',
+        en: 'Payment received',
+        es: 'Pago recibido',
+      },
+      'invoice',
+      user.email,
+    );
+  }
+
+  /** Três dias antes do vencimento, uma vez: o job diário só pega esse dia. */
+  async notifyPlansExpiringSoon(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+    const [y, m, d] = parts.split('-').map(Number);
+    const start = new Date(Date.UTC(y, m - 1, d + 3, 3, 0, 0));
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const subs = await this.prisma.subscription.findMany({
+      where: {
+        status: PLANO_STATUS.ACTIVE,
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: { gte: start, lt: end },
+      },
+      include: { user: true, plan: true },
+    });
+    let sent = 0;
+    for (const sub of subs) {
+      if (Number(sub.plan.price) <= 0 || !sub.user.email) continue;
+      await this.emailService
+        .sendTemplateEmail(
+          sub.user.id,
+          'plan_expiring_email',
+          {
+            FullName: sub.user.fullName,
+            DaysLeft: 3,
+            RenewURL: appUrl('/pricing'),
+            AppName: 'Barbershop',
+          },
+          {
+            pt: 'Seu plano renova em breve',
+            en: 'Your plan renews soon',
+            es: 'Tu plan se renueva pronto',
+          },
+          'plan',
+          sub.user.email,
+        )
+        .catch((e) => this.logger.warn(`Aviso de renovação (user ${sub.userId}): ${e}`));
+      sent++;
+    }
+    return sent;
   }
 
   /**
@@ -1107,6 +1206,11 @@ export class PaymentsService {
    * o plano cai depois de RENEWAL_GRACE_DAYS do vencimento.
    */
   async processRecurringPayments() {
+    try {
+      await this.notifyPlansExpiringSoon();
+    } catch (error) {
+      this.logger.error(`Aviso de renovação falhou: ${error}`);
+    }
     const due = await this.prisma.subscription.findMany({
       where: {
         status: PLANO_STATUS.ACTIVE,

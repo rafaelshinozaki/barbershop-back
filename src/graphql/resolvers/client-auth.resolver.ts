@@ -177,8 +177,12 @@ export class ClientAuthResolver {
 
   @UseGuards(GraphQLClientJwtAuthGuard)
   @Query(() => [ClientHistoryEntryType])
-  async clientHistory(@CurrentClient() client: CurrentClientUser) {
-    return this.clientAuthService.getHistory(client.id);
+  async clientHistory(
+    @CurrentClient() client: CurrentClientUser,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
+  ) {
+    return this.clientAuthService.getHistory(client.id, limit ?? 50, offset ?? 0);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)

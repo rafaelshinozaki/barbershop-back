@@ -180,7 +180,8 @@ describe('Calendário (integração)', () => {
     expect(ics).toContain('SUMMARY:Corte\r\n');
     expect(ics).toContain('LOCATION:Barbearia Agenda\\, Rua das Flores\\, 10\\, SP - SP');
     expect(ics).toContain('STATUS:CONFIRMED');
-    expect(ics).toContain('/booking/manage?t=');
+    expect(ics).not.toContain('?t=');
+    expect(ics).toContain('/u/');
 
     const cancelled = unfold(
       await calendar.appointmentIcs(createAppointmentToken(appts.anaCancelled)),

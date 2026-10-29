@@ -14,7 +14,6 @@ import { UserService } from './users.service';
 import { UserDTO } from './dto/user.dto';
 import { ApiTags, ApiCookieAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 
-import { MEMBERSHIP_STATUS } from '@/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../current-user.decorator';
 import { Roles } from '../roles.decorator';
@@ -143,51 +142,6 @@ export class UserController {
   ) {
     await this.userService.assertCanManageUsers(actor, userIds);
     return this.userService.setMultipleUsersActive(userIds, active);
-  }
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.FINANCE)
-  @ApiOperation({ summary: 'Change multiple users plan' })
-  @ApiResponse({ status: 200, description: 'Users plan changed' })
-  @Post('admin/change-multiple-plans')
-  async changeMultiplePlans(
-    @Body('userIds') userIds: number[],
-    @Body('plan') plan: string,
-    @CurrentUser() actor: UserDTO,
-  ) {
-    await this.userService.assertCanManageUsers(actor, userIds);
-    return this.userService.changeMultipleUsersPlan(userIds, plan);
-  }
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.FINANCE)
-  @ApiOperation({ summary: 'Update payment status' })
-  @ApiResponse({ status: 200, description: 'Payment status updated' })
-  @Post('admin/update-payment-status')
-  async updatePaymentStatus(
-    @Body('userId') userId: number,
-    @Body('status') status: MEMBERSHIP_STATUS,
-    @CurrentUser() actor: UserDTO,
-  ) {
-    await this.userService.assertCanManageUsers(actor, [userId]);
-    return this.userService.updatePaymentStatus(userId, status);
-  }
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SYSTEM_ADMIN, Role.SYSTEM_MANAGER)
-  @RequireArea(BackofficeArea.FINANCE)
-  @ApiOperation({ summary: 'Change user plan' })
-  @ApiResponse({ status: 200, description: 'User plan changed' })
-  @Post('admin/change-plan')
-  async changePlan(
-    @Body('userId') userId: number,
-    @Body('plan') plan: string,
-    @CurrentUser() actor: UserDTO,
-  ) {
-    await this.userService.assertCanManageUsers(actor, [userId]);
-    return this.userService.changeUserPlan(userId, plan);
   }
 
   // PUT /user/system-config/:id existia aqui recebendo o id direto da URL

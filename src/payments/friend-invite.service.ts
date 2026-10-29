@@ -189,6 +189,14 @@ export class FriendInviteService {
       throw new BadRequestException('Você não pode convidar a si mesmo');
     }
 
+    const alreadyRegistered = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' }, deleted_at: null },
+      select: { id: true },
+    });
+    if (alreadyRegistered) {
+      throw new BadRequestException('Este e-mail já tem conta.');
+    }
+
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const [sentToday, rewards] = await Promise.all([
@@ -484,6 +492,25 @@ export class FriendInviteService {
       if (claimed.count !== 1) {
         throw new BadRequestException('Convite já foi processado');
       }
+      const prior = await tx.friendInvite.findFirst({
+        where: { acceptedByUserId, status: 'ACCEPTED', NOT: { id: invite.id } },
+        select: { id: true },
+      });
+      if (prior) {
+        await tx.friendInvite.update({
+          where: { id: invite.id },
+          data: { status: 'REJECTED', acceptedByUserId },
+        });
+        return null;
+      }
+      await tx.friendInvite.updateMany({
+        where: {
+          friendEmail: invite.friendEmail,
+          status: 'PENDING',
+          NOT: { id: invite.id },
+        },
+        data: { status: 'REJECTED', acceptedByUserId },
+      });
       const friendCoupon = await createFriendInviteCoupon(
         tx,
         acceptedByUserId,
@@ -496,6 +523,19 @@ export class FriendInviteService {
         include: inviteView,
       });
     });
+
+    if (!updatedInvite) {
+      const rejected = await this.prisma.friendInvite.findUniqueOrThrow({
+        where: { id: invite.id },
+        include: inviteView,
+      });
+      return {
+        success: false,
+        message: 'Esta conta já aceitou um convite.',
+        invite: withoutToken(rejected),
+        hasBenefits: false,
+      };
+    }
 
     await this.sendInviteAcceptedEmails(updatedInvite);
 

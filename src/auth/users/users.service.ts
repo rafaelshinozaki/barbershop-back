@@ -2502,7 +2502,7 @@ export class UserService {
   async updatePaymentStatus(userId: number, status: MEMBERSHIP_STATUS) {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { membership: status, isActive: status === MEMBERSHIP_STATUS.PAID },
+      data: { membership: status },
     });
   }
 

@@ -11,6 +11,7 @@ import { join, relative } from 'path';
 const PUBLIC: Record<string, string> = {
   // Entrar, cadastrar e recuperar senha
   'auth.resolver.ts#login': 'login',
+  'auth.resolver.ts#resendLoginCode': 'reenviar o código do login',
   'auth.resolver.ts#verify2FA': 'login em duas etapas',
   'auth.resolver.ts#createUser': 'cadastro',
   'auth.resolver.ts#requestSignupCode': 'cadastro (código do e-mail)',
@@ -48,6 +49,8 @@ const PUBLIC: Record<string, string> = {
   'public-booking.resolver.ts#startDepositPayment': 'sinal pelo link (token)',
   'public-booking.resolver.ts#confirmDepositPayment': 'sinal pelo link (token)',
   'public-booking.resolver.ts#barbershopReviews': 'avaliações públicas',
+  'barbershop.resolver.ts#consentByToken': 'ficha de consentimento (token)',
+  'barbershop.resolver.ts#signConsentByToken': 'assinar a ficha (token)',
   'public-booking.resolver.ts#reviewRequest': 'avaliar pelo link (token)',
   'public-booking.resolver.ts#submitReviewByLink': 'avaliar pelo link (token)',
   'prepayment.resolver.ts#appointmentPrepayment': 'pagar pelo link (token)',
@@ -127,7 +130,6 @@ const PUBLIC_ROUTES: Record<string, string> = {
   'stripe/stripe.controller.ts#handleWebhook': 'webhook (assinatura do Stripe)',
   'whatsapp/whatsapp.controller.ts#verify': 'webhook do WhatsApp (token de verificação da Meta)',
   'whatsapp/whatsapp.controller.ts#receive': 'webhook do WhatsApp (assinatura da Meta)',
-  'stripe/stripe.controller.ts#checkHealth': 'health check',
   'stripe/stripe.controller.ts#getStripePlans': 'preços públicos dos planos',
 };
 
@@ -157,7 +159,9 @@ function unguardedRoutes(): string[] {
     );
     for (const [, decorators, method] of src.matchAll(DECORATED_METHOD)) {
       if (!ROUTE.test(decorators)) continue;
-      if (!classGuarded && !/@UseGuards\(/.test(decorators)) found.push(`${file}#${method}`);
+      if (!classGuarded && !/@UseGuards\(/.test(decorators)) {
+        found.push(`${file.replace(/\\/g, '/')}#${method}`);
+      }
     }
   }
   return found.sort();

@@ -658,14 +658,19 @@ export class JobOpeningService {
   ) {
     // Janela larga: cada unidade filtra pelo próprio fuso logo abaixo.
     const horizon = addDaysStr(toZonedParts(new Date(), 'UTC').dateStr, -2);
-    const city = filters.city?.trim();
+    const rawCity = filters.city?.trim();
+    const city = rawCity?.replace(/[%_\\]/g, '');
     const openings = await this.prisma.jobOpening.findMany({
       where: {
         status: 'open',
         endDate: { gte: horizon },
         barbershop: {
           isActive: true,
-          ...(city ? { city: { contains: city, mode: 'insensitive' } } : {}),
+          ...(rawCity
+            ? city
+              ? { city: { contains: city, mode: 'insensitive' } }
+              : { id: -1 }
+            : {}),
         },
         ...(filters.category ? { OR: [{ category: filters.category }, { category: null }] } : {}),
       },

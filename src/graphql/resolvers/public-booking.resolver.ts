@@ -347,8 +347,12 @@ export class PublicBookingResolver {
   }
 
   @Query(() => [ReviewType])
-  async barbershopReviews(@Args('barbershopId', { type: () => Int }) barbershopId: number) {
-    return this.barbershopService.getBarbershopReviews(barbershopId);
+  async barbershopReviews(
+    @Args('barbershopId', { type: () => Int }) barbershopId: number,
+    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
+    @Args('offset', { type: () => Int, nullable: true }) offset?: number,
+  ) {
+    return this.barbershopService.getBarbershopReviews(barbershopId, limit ?? undefined, offset ?? undefined);
   }
 
   @UseGuards(GraphQLClientJwtAuthGuard)

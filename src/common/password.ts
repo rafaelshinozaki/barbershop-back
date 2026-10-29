@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 /** Mesma regra do cadastro, da troca e da recuperação de senha. */
 export function assertPassword(password: string) {
   const ok =
+    typeof password === 'string' &&
     password.length >= 8 &&
     /[A-Z]/.test(password) &&
     /[a-z]/.test(password) &&

@@ -10,6 +10,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EmailService } from '@/email/email.service';
 import { normalizeLang } from '@/email/language';
 import { supportEmail } from '../common/app-urls';
+import { literalSearch } from '../common/search-text';
 import { BarbershopService } from '../barbershop/barbershop.service';
 import { ClientAuthService } from './client-auth.service';
 
@@ -40,17 +41,19 @@ export class ClientSuspensionService {
 
   /** Busca de contas pro backoffice (e-mail ou nome), mais recentes primeiro */
   async search(query?: string | null) {
-    const q = query?.trim();
+    const q = literalSearch(query);
     const accounts = await this.prisma.clientAccount.findMany({
       where: {
         deletedAt: null,
-        ...(q
-          ? {
-              OR: [
-                { email: { contains: q, mode: 'insensitive' } },
-                { name: { contains: q, mode: 'insensitive' } },
-              ],
-            }
+        ...(query?.trim()
+          ? q
+            ? {
+                OR: [
+                  { email: { contains: q, mode: 'insensitive' } },
+                  { name: { contains: q, mode: 'insensitive' } },
+                ],
+              }
+            : { id: -1 }
           : {}),
       },
       orderBy: [{ suspendedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],

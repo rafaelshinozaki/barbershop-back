@@ -142,4 +142,29 @@ describe('buildCareerOverview', () => {
     });
     expect(overview.busiestHour).toBe(10);
   });
+
+  it('atendimento importado não entra na conta do perfil', () => {
+    const visit = (customerId: number, imported = false) => ({
+      customerId,
+      status: 'COMPLETED' as const,
+      hour: 10,
+      currency: 'BRL',
+      imported,
+      services: [{ name: 'Corte', quantity: 1, unitPrice: 10 }],
+    });
+    const base = buildCareerOverview({
+      places: [place],
+      visits: [visit(1), visit(1)],
+      payouts: [],
+    });
+    const withImports = buildCareerOverview({
+      places: [place],
+      visits: [visit(1), visit(1), ...Array.from({ length: 100 }, (_, i) => visit(1000 + i, true))],
+      payouts: [],
+    });
+    expect(withImports.completedAppointments).toBe(base.completedAppointments);
+    expect(withImports.uniqueClients).toBe(base.uniqueClients);
+    expect(withImports.returningClients).toBe(base.returningClients);
+    expect(withImports.importedAppointments).toBe(100);
+  });
 });

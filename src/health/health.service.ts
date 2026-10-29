@@ -1,24 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StripeService } from '../stripe/stripe.service';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class HealthService {
   constructor(
     private prisma: PrismaService,
-    private stripeService: StripeService,
     private redis: RedisService,
   ) {}
 
   async getHealthStatus() {
     const database = await this.checkDatabase();
-    const stripe = await this.checkStripe();
     const redis = await this.checkRedis();
-    const status =
-      database === 'connected' && stripe === 'available' && redis === 'connected' ? 'ok' : 'error';
+    const status = database === 'connected' && redis === 'connected' ? 'ok' : 'error';
     const timestamp = new Date().toISOString();
-    return { status, database, stripe, redis, timestamp };
+    return { status, database, redis, timestamp };
   }
 
   private async checkDatabase(): Promise<'connected' | 'disconnected'> {
@@ -39,7 +35,4 @@ export class HealthService {
     }
   }
 
-  private async checkStripe(): Promise<'available' | 'unavailable'> {
-    return (await this.stripeService.isAvailable()) ? 'available' : 'unavailable';
-  }
 }

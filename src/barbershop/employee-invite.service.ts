@@ -7,7 +7,9 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { WORK_MINIMUM_AGE, completedYears } from '../common/work-age';
+import { Equals, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { assertPassword } from '../common/password';
+import { personName, signupPhone, STAFF_GENDERS, staffGender } from '../common/person';
 import { TERMS_REQUIRED_MESSAGE, TERMS_VERSION } from '../common/terms';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
@@ -55,18 +57,37 @@ export interface AcceptEmployeeInviteAddress {
   complement2?: string;
 }
 
-export interface AcceptEmployeeInviteInput {
+export class AcceptEmployeeInviteInput {
+  @IsString()
+  @MinLength(2)
   fullName: string;
+
+  @IsString()
   idDocNumber: string;
+
+  @IsString()
   phone: string;
+
+  @IsString()
   password: string;
+
+  @IsString()
   birthdate: string;
+
+  @IsIn([...STAFF_GENDERS])
   gender: string;
+
+  @IsOptional()
   address?: AcceptEmployeeInviteAddress;
+
   /** Chave do link que chegou no e-mail convidado (prova que a pessoa recebeu) */
+  @IsOptional()
+  @IsString()
   emailKey?: string;
+
   /** Aceite dos termos de uso e da política de privacidade */
-  readTerms?: boolean;
+  @Equals(true)
+  readTerms: boolean;
 }
 
 export const INVITE_EMAIL_KEY_MESSAGE =
@@ -399,6 +420,9 @@ export class EmployeeInviteService {
       throw new BadRequestException('Para trabalhar é preciso ter 16 anos.');
     }
     if (data.readTerms !== true) throw new BadRequestException(TERMS_REQUIRED_MESSAGE);
+    const fullName = personName(data.fullName);
+    const phone = signupPhone(data.phone);
+    const gender = staffGender(data.gender);
     assertPassword(data.password);
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -410,7 +434,6 @@ export class EmployeeInviteService {
     }
 
     const birthdate = new Date(birthdateText);
-    const gender = data.gender === 'female' ? 'female' : 'male';
 
     const language = langForCountry(invite.barbershop.country);
     const newUser = await this.prisma.$transaction(async (tx) => {
@@ -425,9 +448,9 @@ export class EmployeeInviteService {
         data: {
           email: normalizeEmail(invite.email),
           password: hashedPassword,
-          fullName: data.fullName.trim(),
+          fullName,
           idDocNumber: documentNumber,
-          phone: data.phone.trim(),
+          phone,
           gender,
           birthdate,
           readTerms: true,

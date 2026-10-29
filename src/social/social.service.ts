@@ -3,13 +3,22 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PresignedUpload, S3Service } from '@/aws/s3.service';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { isSealed, openSecret, sealSecret } from '@/common/secret-box';
 import { BarbershopService } from '@/barbershop/barbershop.service';
 
 interface OAuthStatePayload {
   barbershopId: number;
   userId: number;
+  /** Valor aleatório que também vai no cookie do navegador que começou */
+  nonce: string;
+}
+
+function sameNonce(cookie: string | undefined, expected: string | undefined) {
+  if (!cookie || !expected) return false;
+  const left = Buffer.from(cookie);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 type FbPage = { id: string; name: string; access_token: string };
@@ -135,14 +144,14 @@ export class SocialService {
 
   // ============ OAUTH ============
 
-  async getConnectUrl(userId: number, barbershopId: number): Promise<string> {
+  async getConnectUrl(userId: number, barbershopId: number, nonce: string): Promise<string> {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
     if (!this.isConfigured()) {
       throw new BadRequestException('Integração com Meta não configurada nesta instância.');
     }
     // Sem chave pra guardar o token, nem começa o login no Facebook
     this.tokenSecret();
-    const state = this.jwtService.sign({ barbershopId, userId } as OAuthStatePayload, {
+    const state = this.jwtService.sign({ barbershopId, userId, nonce } as OAuthStatePayload, {
       secret: this.config.get<string>('JWT_SECRET'),
       expiresIn: '10m',
     });
@@ -174,11 +183,19 @@ export class SocialService {
   async handleOAuthCallback(
     code: string,
     state: string,
+    nonce?: string,
   ): Promise<{ barbershopId: number; error?: string; pick?: string }> {
     let payload: OAuthStatePayload;
     try {
       payload = this.jwtService.verify(state, { secret: this.config.get<string>('JWT_SECRET') });
     } catch {
+      throw new BadRequestException(
+        'Link de conexão expirado ou inválido. Tente conectar de novo.',
+      );
+    }
+    // O state sozinho não basta: quem copiou o link da Meta não tem o cookie
+    // do navegador que começou. Sem isso, a Página de outra pessoa ligava na unidade.
+    if (!sameNonce(nonce, payload.nonce)) {
       throw new BadRequestException(
         'Link de conexão expirado ou inválido. Tente conectar de novo.',
       );
@@ -541,7 +558,7 @@ export class SocialService {
       },
     });
     const due = await this.prisma.socialPost.findMany({
-      where: { status: 'SCHEDULED', scheduledFor: { lte: new Date() } },
+      where: { status: 'SCHEDULED', hiddenAt: null, scheduledFor: { lte: new Date() } },
     });
     for (const post of due) {
       await this.publishPost(post.id).catch((err) =>
@@ -553,6 +570,13 @@ export class SocialService {
   private async publishPost(postId: number): Promise<void> {
     const post = await this.prisma.socialPost.findUnique({ where: { id: postId } });
     if (!post || post.status !== 'SCHEDULED') return;
+    if (post.hiddenAt) {
+      await this.prisma.socialPost.updateMany({
+        where: { id: postId, status: 'SCHEDULED' },
+        data: { status: 'CANCELLED', errorMessage: 'Cancelado: ocultado pela moderação.' },
+      });
+      return;
+    }
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: post.barbershopId },
       select: {
@@ -589,7 +613,7 @@ export class SocialService {
     // Reserva: só quem mudou a linha publica. Antes duas execuções ao mesmo
     // tempo (em instâncias diferentes) publicavam o mesmo post duas vezes
     const claimed = await this.prisma.socialPost.updateMany({
-      where: { id: postId, status: 'SCHEDULED' },
+      where: { id: postId, status: 'SCHEDULED', hiddenAt: null },
       data: { status: 'PUBLISHING', publishingAt: new Date() },
     });
     if (claimed.count === 0) return;

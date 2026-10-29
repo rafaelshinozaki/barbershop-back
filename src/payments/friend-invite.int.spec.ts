@@ -81,9 +81,13 @@ describe('Convidar amigos (integração)', () => {
   });
 
   afterAll(async () => {
-    const invitesOf = await prisma.friendInvite.findMany({ where: { inviterId } });
+    const invitesOf = await prisma.friendInvite.findMany({
+      where: { OR: [{ inviterId: { in: userIds } }, { acceptedByUserId: { in: userIds } }] },
+    });
     const couponIds = invitesOf.flatMap((i) => [i.inviterCouponId, i.friendCouponId]);
-    await prisma.friendInvite.deleteMany({ where: { inviterId } });
+    await prisma.friendInvite.deleteMany({
+      where: { OR: [{ inviterId: { in: userIds } }, { acceptedByUserId: { in: userIds } }] },
+    });
     const subs = await prisma.subscription.findMany({ where: { userId: { in: userIds } } });
     await prisma.payment.deleteMany({ where: { subscriptionId: { in: subs.map((s) => s.id) } } });
     await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
@@ -153,5 +157,41 @@ describe('Convidar amigos (integração)', () => {
     const again = await invites.shareLink(inviterId, `amigo.link.${RUN}@example.com`);
     expect(again.inviteToken).toBe(shared.inviteToken);
     await expect(invites.shareLink(inviterId, 'a@b')).rejects.toThrow('E-mail inválido');
+  });
+
+  it('não convida um e-mail que já tem conta', async () => {
+    const existing = await user('ja-tem', true);
+    await expect(invites.createInvite(inviterId, existing.email)).rejects.toThrow(
+      'Este e-mail já tem conta.',
+    );
+  });
+
+  it('a segunda aceitação da mesma conta não cria cupom', async () => {
+    const other = await user('outro-convite', true);
+    const email = `fi-novo-${RUN}@test.local`;
+    const first = await invites.createInvite(inviterId, email);
+    const second = await invites.createInvite(other.id, email);
+    const friend = await user('novo-dois', true);
+    await prisma.user.update({
+      where: { id: friend.id },
+      data: { email, emailVerifiedAt: new Date() },
+    });
+    const tokenA = (
+      await prisma.friendInvite.findUniqueOrThrow({ where: { id: first.id } })
+    ).inviteToken;
+    const tokenB = (
+      await prisma.friendInvite.findUniqueOrThrow({ where: { id: second.id } })
+    ).inviteToken;
+    const accepted = await invites.acceptInvite(tokenA, friend.id);
+    expect(accepted.success).toBe(true);
+    await expect(invites.acceptInvite(tokenB, friend.id)).rejects.toThrow('Convite já foi processado');
+    const row = await prisma.friendInvite.findUniqueOrThrow({ where: { id: second.id } });
+    expect(row.status).toBe('REJECTED');
+    expect(row.friendCouponId).toBeNull();
+    expect(
+      await prisma.friendInvite.count({
+        where: { acceptedByUserId: friend.id, friendCouponId: { not: null } },
+      }),
+    ).toBe(1);
   });
 });

@@ -7,7 +7,11 @@ import {
   Logger,
   Get,
   InternalServerErrorException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +51,8 @@ function clientInvoicePeriodEnd(invoice: Stripe.Invoice): Date | null {
 @Controller('stripe')
 export class StripeController {
   private readonly logger = new Logger(StripeController.name);
+  private stripeHealthAt = 0;
+  private stripeHealthValue = false;
 
   constructor(
     private configService: ConfigService,
@@ -568,10 +574,18 @@ export class StripeController {
   }
 
   @Get('health')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Check Stripe health' })
   @ApiResponse({ status: 200 })
   async checkHealth() {
+    const now = Date.now();
+    if (this.stripeHealthAt && now - this.stripeHealthAt < 60_000) {
+      return { available: this.stripeHealthValue, timestamp: new Date().toISOString() };
+    }
     const isAvailable = await this.stripeService.isAvailable();
+    this.stripeHealthAt = now;
+    this.stripeHealthValue = isAvailable;
     return {
       available: isAvailable,
       timestamp: new Date().toISOString(),
