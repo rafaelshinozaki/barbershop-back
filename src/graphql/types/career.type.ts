@@ -232,6 +232,9 @@ export class ServiceHistoryItemType {
   shopName: string;
 
   @Field()
+  timeZone: string;
+
+  @Field()
   currency: string;
 
   @Field({ description: 'Só o primeiro nome do cliente' })

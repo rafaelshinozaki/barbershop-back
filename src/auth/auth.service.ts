@@ -14,6 +14,41 @@ import { IpLocationService } from '@/common/ip-location.service';
 import { supportEmail } from '../common/app-urls';
 import { dropPushSubscriptions } from '../push/push.service';
 
+/** Android antes de Linux, Edge (Edg/) antes de Chrome, iPad recente antes de Mac. */
+export function parseUserAgent(ua: string) {
+  const browser = /edg\//i.test(ua)
+    ? 'Edge'
+    : /chrome|crios/i.test(ua)
+      ? 'Chrome'
+      : /firefox|fxios/i.test(ua)
+        ? 'Firefox'
+        : /safari/i.test(ua)
+          ? 'Safari'
+          : /msie|trident/i.test(ua)
+            ? 'IE'
+            : 'Other';
+  const os = /android/i.test(ua)
+    ? 'Android'
+    : /ipad/i.test(ua) || (/macintosh/i.test(ua) && /mobile/i.test(ua))
+      ? 'iPad'
+      : /iphone/i.test(ua)
+        ? 'iPhone'
+        : /mac os|macintosh/i.test(ua)
+          ? 'macOS'
+          : /windows/i.test(ua)
+            ? 'Windows'
+            : /linux/i.test(ua)
+              ? 'Linux'
+              : 'Other';
+  const deviceType =
+    os === 'iPad' || /tablet/i.test(ua)
+      ? 'Tablet'
+      : os === 'Android' || os === 'iPhone' || /mobile/i.test(ua)
+        ? 'Mobile'
+        : 'Desktop';
+  return { deviceType, browser, os };
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -177,13 +212,6 @@ export class AuthService {
   }
 
   private parseUserAgent(ua: string) {
-    const deviceType = /mobile/i.test(ua) ? 'Mobile' : /tablet/i.test(ua) ? 'Tablet' : 'Desktop';
-    const browserMatch = ua.match(/(edge|chrome|safari|firefox|msie|trident)/i);
-    const browser = browserMatch ? browserMatch[1] : 'Other';
-    const osMatch = ua.match(/(windows|android|linux|iphone|ipad|mac os)/i);
-    let os = osMatch ? osMatch[1] : 'Other';
-    if (os.toLowerCase() === 'mac os') os = 'macOS';
-
-    return { deviceType, browser, os };
+    return parseUserAgent(ua);
   }
 }

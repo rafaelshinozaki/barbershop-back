@@ -295,9 +295,15 @@ export class PaymentsService {
     // Mesmo plano: desfaz o que estava agendado (plano menor ou cancelamento)
     if (subscription.planId === newPlanId) {
       if (!subscription.pendingPlanId && !subscription.cancelAtPeriodEnd) return subscription;
-      if (subscription.stripeSubscriptionId && subscription.cancelAtPeriodEnd) {
+      if (subscription.stripeSubscriptionId && (subscription.pendingPlanId || subscription.cancelAtPeriodEnd)) {
         await this.updateStripeSubscription(subscription.stripeSubscriptionId, {
-          cancel_at_period_end: false,
+          ...(subscription.pendingPlanId && subscription.plan.stripePriceId
+            ? {
+                price: subscription.plan.stripePriceId,
+                proration_behavior: 'none' as const,
+              }
+            : {}),
+          ...(subscription.cancelAtPeriodEnd ? { cancel_at_period_end: false } : {}),
         });
       }
       const updated = await this.prisma.subscription.update({

@@ -98,6 +98,23 @@ describe('vitrine e convite do espaço compartilhado', () => {
     expect(updates).toEqual([]);
   });
 
+  it('cancelar um convite pendente deixa convidar de novo na hora', async () => {
+    const pending = {
+      id: 8,
+      status: 'PENDING',
+      hostBarbershopId: 3,
+      memberBarbershopId: 4,
+      invitesBlockedAt: null,
+    };
+    const ended = build(pending);
+    await ended.service.end(1, 8, 3);
+    expect(ended.updates[0]).toMatchObject({ status: 'CANCELLED', respondedAt: null });
+
+    const again = build({ ...pending, status: 'CANCELLED', respondedAt: new Date() });
+    await again.service.invite(1, 3, 'studio');
+    expect(again.updates[0]).toMatchObject({ status: 'PENDING', respondedAt: null });
+  });
+
   it('depois de 30 dias o convite pode ser refeito', async () => {
     const { service, updates } = build(declined(31));
     await service.invite(1, 3, 'studio');

@@ -144,6 +144,14 @@ export class SharedLocationService {
     if (link.status !== 'ACTIVE' && link.status !== 'PENDING') {
       throw new BadRequestException('Esse vínculo já foi encerrado');
     }
+    // Convite ainda pendente: cancela sem o prazo de 30 dias e sem mexer em aluguel.
+    if (link.status === 'PENDING') {
+      await this.prisma.sharedLocationMember.update({
+        where: { id: link.id },
+        data: { status: 'CANCELLED', respondedAt: null },
+      });
+      return true;
+    }
     // Saiu do espaço: a cobrança do aluguel para junto, inclusive a mensalidade futura
     await this.barbershopService.cancelChairRentsOfBarbershops([], link.id);
     await this.barbershopService.dropFutureChairRent(link.id);

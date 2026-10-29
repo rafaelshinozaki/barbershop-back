@@ -372,10 +372,45 @@ const REFERRAL_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** Campanhas de marketing: uma por dia por unidade, e um teto de e-mails em 30 dias */
 const MARKETING_MIN_INTERVAL_HOURS = 24;
 export const MARKETING_EMAILS_PER_30_DAYS = 5000;
+/** Mesmo teto do e-mail: a plataforma paga cada mensagem de modelo à Meta. */
+export const MARKETING_WHATSAPP_PER_30_DAYS = 5000;
 export const MARKETING_DAILY_LIMIT_MESSAGE =
   'Esta unidade já enviou uma campanha nas últimas 24 horas. Tente amanhã.';
 export const MARKETING_MONTHLY_LIMIT_MESSAGE =
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.';
+export const MARKETING_WHATSAPP_LIMIT_MESSAGE =
+  'Esta campanha passa do limite de mensagens de WhatsApp da unidade nos últimos 30 dias.';
+export const MARKETING_SEGMENTS = ['ALL', 'INACTIVE', 'BIRTHDAY_MONTH'] as const;
+export const MARKETING_SEGMENT_MESSAGE = 'Escolha um público da lista.';
+export const MARKETING_INACTIVE_DAYS_MESSAGE = 'Os dias sem visita ficam entre 1 e 365.';
+export const MARKETING_SUBJECT_LIMIT_MESSAGE = 'O assunto da campanha é longo demais.';
+export const MARKETING_BODY_LIMIT_MESSAGE = 'O texto da campanha é longo demais.';
+const MARKETING_SUBJECT_MAX = 200;
+const MARKETING_BODY_MAX = 5000;
+
+/** Segmento fechado, prazo de inatividade e tamanho do e-mail. */
+export function assertMarketingCampaignInput(data: {
+  segment: string;
+  inactiveDays?: number | null;
+  subject?: string | null;
+  message?: string | null;
+}) {
+  if (!(MARKETING_SEGMENTS as readonly string[]).includes(data.segment)) {
+    throw new BadRequestException(MARKETING_SEGMENT_MESSAGE);
+  }
+  if (data.segment === 'INACTIVE' && data.inactiveDays != null) {
+    const days = data.inactiveDays;
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      throw new BadRequestException(MARKETING_INACTIVE_DAYS_MESSAGE);
+    }
+  }
+  if ((data.subject ?? '').length > MARKETING_SUBJECT_MAX) {
+    throw new BadRequestException(MARKETING_SUBJECT_LIMIT_MESSAGE);
+  }
+  if ((data.message ?? '').length > MARKETING_BODY_MAX) {
+    throw new BadRequestException(MARKETING_BODY_LIMIT_MESSAGE);
+  }
+}
 /** Prazo de quem foi avisado da vaga; depois, o horário livre vai pro próximo */
 export const WAITLIST_OFFER_MINUTES = 30;
 export const MARKETING_SUSPENDED_MESSAGE =
@@ -4330,6 +4365,7 @@ export class BarbershopService {
       ]);
       this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
       await this.warnFutureAppointments(barbershopId, barber.name, barberId, now);
+      await this.releaseBarberWaitlist(barbershopId, barberId, barber.name);
       return updated;
     }
     return this.prisma.barber.update({ where: { id: barberId }, data });
@@ -4356,6 +4392,62 @@ export class BarbershopService {
     ]);
     this.realtime.notify(barbershopId, 'BARBER', 'UPDATED');
     await this.warnFutureAppointments(barbershopId, barber.name, barberId, now);
+    await this.releaseBarberWaitlist(barbershopId, barberId, barber.name);
+  }
+
+  /**
+   * Desligou o profissional: quem esperava por ele passa a "qualquer um" e
+   * recebe um aviso. Uma falha de e-mail não desfaz a troca.
+   */
+  private async releaseBarberWaitlist(barbershopId: number, barberId: number, barberName: string) {
+    const entries = await this.prisma.waitlistEntry.findMany({
+      where: { barbershopId, barberId, status: { in: ['WAITING', 'NOTIFIED'] } },
+      select: {
+        id: true,
+        contactEmail: true,
+        customer: { select: { name: true, email: true } },
+        barbershop: { select: { name: true, ownerUserId: true, country: true } },
+      },
+    });
+    if (!entries.length) return;
+    await this.prisma.waitlistEntry.updateMany({
+      where: { id: { in: entries.map((e) => e.id) } },
+      data: {
+        barberId: null,
+        status: 'WAITING',
+        offeredStartAt: null,
+        offeredBarberId: null,
+        notifiedAt: null,
+      },
+    });
+    const lang = langForCountry(entries[0].barbershop.country);
+    for (const entry of entries) {
+      const to = entry.contactEmail || entry.customer.email;
+      if (!to) continue;
+      try {
+        await this.notificationQueue.email({
+          kind: 'customer',
+          loggedAgainstUserId: entry.barbershop.ownerUserId ?? 0,
+          template: 'waitlist_barber_left',
+          context: {
+            CustomerName: entry.customer.name,
+            BarbershopName: entry.barbershop.name,
+            BarberName: barberName,
+            Year: new Date().getFullYear(),
+          },
+          subject: {
+            pt: `${barberName} não atende mais em ${entry.barbershop.name}`,
+            en: `${barberName} no longer works at ${entry.barbershop.name}`,
+            es: `${barberName} ya no atiende en ${entry.barbershop.name}`,
+          },
+          meta: 'waitlist-barber-left',
+          to,
+          lang,
+        });
+      } catch (err) {
+        this.logger.warn(`Aviso da lista de espera (entrada ${entry.id}) não saiu: ${err}`);
+      }
+    }
   }
 
   /**
@@ -6874,7 +6966,13 @@ export class BarbershopService {
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
     const name = input.customerName?.trim() ?? '';
-    const phone = input.customerPhone?.trim() ?? '';
+    const phone =
+      normalizePhoneToE164(
+        input.customerPhone,
+        callingCodeForCountry(barbershop.country) ?? '55',
+      ) ?? '';
+    if (!phone) throw new BadRequestException('Telefone inválido');
+    input = { ...input, customerPhone: phone };
     const email = input.customerEmail?.trim().toLowerCase() ?? '';
     assertPublicTextLimits({ name, phone, email });
     if (name.length < 2 || phone.length < 8) {
@@ -7789,6 +7887,7 @@ export class BarbershopService {
     inactiveDays?: number,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    assertMarketingCampaignInput({ segment, inactiveDays, message: '' });
     const customers = await this.resolveMarketingSegment(
       barbershop.networkId,
       barbershopId,
@@ -7854,6 +7953,7 @@ export class BarbershopService {
     },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    assertMarketingCampaignInput(data);
     // Unidade ou rede suspensa pela plataforma não dispara campanha (item 190)
     if (barbershop.platformSuspendedAt || barbershop.network?.platformSuspendedAt) {
       throw new BadRequestException(MARKETING_SUSPENDED_MESSAGE);
@@ -7929,6 +8029,21 @@ export class BarbershopService {
           MARKETING_EMAILS_PER_30_DAYS
         ) {
           throw new BadRequestException(MARKETING_MONTHLY_LIMIT_MESSAGE);
+        }
+      }
+      if (whatsappPhones.length > 0) {
+        const sentWa = await tx.marketingCampaign.aggregate({
+          where: {
+            ...this.marketingLimitScope(barbershop.networkId, barbershopId, networkWide),
+            createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) },
+          },
+          _sum: { whatsappQueuedCount: true },
+        });
+        if (
+          (sentWa._sum.whatsappQueuedCount ?? 0) + whatsappPhones.length >
+          MARKETING_WHATSAPP_PER_30_DAYS
+        ) {
+          throw new BadRequestException(MARKETING_WHATSAPP_LIMIT_MESSAGE);
         }
       }
       return tx.marketingCampaign.create({
@@ -8981,6 +9096,12 @@ export class BarbershopService {
       where: { id: input.barbershopId, isActive: true, ...ownerAcceptsPublic },
     });
     if (!barbershop) throw new NotFoundException('Unidade não encontrada');
+    const customerPhone = normalizePhoneToE164(
+      input.customerPhone,
+      callingCodeForCountry(barbershop.country) ?? '55',
+    );
+    if (!customerPhone) throw new BadRequestException('Telefone inválido');
+    input = { ...input, customerPhone };
     const requestedStart = new Date(input.startAt);
     if (!isNaN(requestedStart.getTime())) {
       await assertSoloBookingAllowed(this.prisma, barbershop.id, requestedStart);
@@ -11232,7 +11353,17 @@ export class BarbershopService {
             status: { in: ['INCOMPLETE', 'ACTIVE', 'PAST_DUE'] },
           },
         });
-        if (existing) {
+        if (existing?.status === 'INCOMPLETE') {
+          if (existing.stripeSubscriptionId) {
+            await this.stripeService.cancelSubscription(existing.stripeSubscriptionId).catch((e: { code?: string }) => {
+              if (e?.code !== 'resource_missing') throw e;
+            });
+          }
+          await tx.clientSubscription.update({
+            where: { id: existing.id },
+            data: { status: 'CANCELED', canceledAt: new Date() },
+          });
+        } else if (existing) {
           throw new BadRequestException('Você já tem uma assinatura ativa neste plano');
         }
         const previous = await tx.clientSubscription.count({ where: { clientAccountId, planId } });

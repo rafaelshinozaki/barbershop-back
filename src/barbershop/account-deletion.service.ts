@@ -80,12 +80,28 @@ export class AccountDeletionService {
       select: { id: true },
     });
     const networkIds = networks.map((n) => n.id);
+    // Só as unidades deste titular. A do franqueado (outro dono) fica com ele.
     const shops = await this.prisma.barbershop.findMany({
-      where: { OR: [{ networkId: { in: networkIds } }, { ownerUserId: userId }] },
-      select: { id: true, name: true },
+      where: { ownerUserId: userId, closedAt: null },
+      select: { id: true, name: true, networkId: true },
       orderBy: { name: 'asc' },
     });
     return { networkIds, shops };
+  }
+
+  /** Redes em que todas as unidades abertas são deste titular (os cartões ficam sem onde usar). */
+  private async networksLosingEveryShop(
+    networkIds: number[],
+    closingIds: number[],
+  ): Promise<number[]> {
+    const losing: number[] = [];
+    for (const networkId of networkIds) {
+      const remaining = await this.prisma.barbershop.count({
+        where: { networkId, closedAt: null, id: { notIn: closingIds } },
+      });
+      if (remaining === 0) losing.push(networkId);
+    }
+    return losing;
   }
 
   async preview(userId: number): Promise<AccountDeletionPreview> {
@@ -98,12 +114,13 @@ export class AccountDeletionService {
       : 0;
     const { networkIds } = await this.ownedBarbershops(userId);
     const shopIds = shops.map((s) => s.id);
+    const giftNetworks = await this.networksLosingEveryShop(networkIds, shopIds);
     // Mesma soma da prévia de encerrar uma unidade, mais os cartões-presente
     const [impact, packages, overdueChairRents, giftCards] = await Promise.all([
       this.barbershopService.deletionImpact(shopIds),
       this.barbershopService.activePackagesOf(shopIds),
       this.barbershopService.overdueChairRentsOf(shopIds),
-      this.barbershopService.giftCardBalancesOf(networkIds),
+      this.barbershopService.giftCardBalancesOf(giftNetworks),
     ]);
     return {
       barbershops: shops.map((s) => s.name),
@@ -152,6 +169,7 @@ export class AccountDeletionService {
     const userId = user.id;
     const { networkIds, shops } = await this.ownedBarbershops(userId);
     const shopIds = shops.map((s) => s.id);
+    const giftNetworks = await this.networksLosingEveryShop(networkIds, shopIds);
 
     // Cobranças primeiro (Stripe): se algo falhar aqui, nada foi apagado e
     // dá pra tentar de novo — cobrança seguindo depois da exclusão seria o
@@ -161,7 +179,11 @@ export class AccountDeletionService {
     // Horários futuros: cancela, devolve o pago pelo app e avisa o cliente
     await this.barbershopService.cancelFutureAppointmentsOfBarbershops(shopIds);
     // Quem tem pacote ativo ou cartão-presente com saldo recebe o aviso
-    await this.barbershopService.notifyBalancesBeforeDeletion(shopIds, networkIds);
+    await this.barbershopService.notifyBalancesBeforeDeletion(shopIds, giftNetworks);
+    // Encerra como "excluir unidade": o histórico (vendas, pagamentos) fica.
+    for (const shop of shops) {
+      await this.barbershopService.deleteBarbershop(userId, shop.id);
+    }
     const activePlans = await this.prisma.subscription.findMany({
       where: { userId, status: PLANO_STATUS.ACTIVE },
     });
@@ -200,20 +222,6 @@ export class AccountDeletionService {
       // O negócio sai inteiro: sem uma linha de histórico por item apagado
       // em cascata (vale só nesta transação)
       this.prisma.$executeRaw`SELECT set_config('app.change_log_off', 'on', true)`,
-      // Avaliação, caixinha, taxa, nota e conversa não saem em cascata do
-      // horário (o gerente não apaga isso excluindo um agendamento). Na
-      // exclusão da conta o negócio inteiro sai, então estas linhas saem antes.
-      this.prisma.chatMessage.deleteMany({
-        where: { thread: { barbershopId: { in: shopIds } } },
-      }),
-      this.prisma.chatThread.deleteMany({ where: { barbershopId: { in: shopIds } } }),
-      this.prisma.appointmentTip.deleteMany({ where: { barbershopId: { in: shopIds } } }),
-      this.prisma.noShowFee.deleteMany({ where: { barbershopId: { in: shopIds } } }),
-      this.prisma.professionalReview.deleteMany({ where: { barbershopId: { in: shopIds } } }),
-      this.prisma.customerRating.deleteMany({ where: { barbershopId: { in: shopIds } } }),
-      // Negócio do dono (cascade leva clientes, agenda, vendas, equipe…)
-      this.prisma.barbershop.deleteMany({ where: { id: { in: shopIds } } }),
-      this.prisma.network.deleteMany({ where: { id: { in: networkIds } } }),
       // Plano: cobrança encerrada, registro fica (fiscal)
       this.prisma.subscription.updateMany({
         where: { userId, status: PLANO_STATUS.ACTIVE },
@@ -241,11 +249,6 @@ export class AccountDeletionService {
       this.prisma.employeeInvite.deleteMany({ where: { inviterId: userId } }),
       // Histórico: o do negócio apagado sai; nas outras unidades, quem fez
       // vira "Conta excluída"
-      this.prisma.changeLog.deleteMany({
-        where: {
-          OR: [{ barbershopId: { in: shopIds } }, { networkId: { in: networkIds } }],
-        },
-      }),
       this.prisma.changeLog.updateMany({
         where: { actorType: 'user', actorId: userId },
         data: { actorName: null },
@@ -334,7 +337,7 @@ export class AccountDeletionService {
       }),
     ]);
     this.logger.log(
-      `Usuário ${userId} excluiu a própria conta (${shopIds.length} unidade(s) apagada(s))`,
+      `Usuário ${userId} excluiu a própria conta (${shopIds.length} unidade(s) encerrada(s))`,
     );
   }
 }

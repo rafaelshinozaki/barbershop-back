@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RetentionService } from '../privacy/retention.service';
 import { BarbershopService } from './barbershop.service';
 import { CustomerRatingService } from './customer-rating.service';
+import { toZonedParts, zonedTimeToUtc } from '../common/timezone.util';
 
 const RUN = `${Date.now()}`.slice(-9);
 const HOUR = 3_600_000;
@@ -304,7 +305,20 @@ describe('Nota do cliente (integração)', () => {
     expect(pending.map((p) => p.appointmentId)).toContain(todo.id);
     expect(pending.every((p) => p.barbershopName === 'Unidade a')).toBe(true);
 
-    await ratings.sendDailyDigest();
+    const parts = toZonedParts(new Date(), 'America/Sao_Paulo');
+    let evening = zonedTimeToUtc(parts.dateStr, 21 * 60, 'America/Sao_Paulo');
+    if (evening.getTime() > Date.now()) {
+      const yesterday = toZonedParts(new Date(Date.now() - DAY), 'America/Sao_Paulo');
+      evening = zonedTimeToUtc(yesterday.dateStr, 21 * 60, 'America/Sao_Paulo');
+    }
+    await prisma.appointment.update({
+      where: { id: todo.id },
+      data: {
+        startAt: new Date(evening.getTime() - 5 * HOUR),
+        endAt: new Date(evening.getTime() - 4 * HOUR),
+      },
+    });
+    await ratings.sendDailyDigest(evening);
     const mine = emails.filter((e) => e.userId === users.pro);
     expect(mine).toHaveLength(1);
     expect(mine[0].context.Appointments.length).toBeGreaterThanOrEqual(1);
@@ -318,6 +332,29 @@ describe('Nota do cliente (integração)', () => {
     expect((await ratings.pendingForMe(users.pro)).map((p) => p.appointmentId)).not.toContain(
       todo.id,
     );
+  });
+
+  it('profissional com o e-mail de avaliações desligado não recebe o resumo', async () => {
+    await prisma.notificationPreference.create({
+      data: { userId: users.pro, reviewsEmail: false },
+    });
+    const hidden = await appointment('a', 'pro', customerA, 4);
+    const parts = toZonedParts(new Date(), 'America/Sao_Paulo');
+    let evening = zonedTimeToUtc(parts.dateStr, 21 * 60, 'America/Sao_Paulo');
+    if (evening.getTime() > Date.now()) {
+      const yesterday = toZonedParts(new Date(Date.now() - DAY), 'America/Sao_Paulo');
+      evening = zonedTimeToUtc(yesterday.dateStr, 21 * 60, 'America/Sao_Paulo');
+    }
+    await prisma.appointment.update({
+      where: { id: hidden.id },
+      data: {
+        startAt: new Date(evening.getTime() - 5 * HOUR),
+        endAt: new Date(evening.getTime() - 4 * HOUR),
+      },
+    });
+    const before = emails.filter((e) => e.userId === users.pro).length;
+    await ratings.sendDailyDigest(evening);
+    expect(emails.filter((e) => e.userId === users.pro)).toHaveLength(before);
   });
 
   it('guarda: sai depois de 2 anos sem atendimento novo daquela ficha', async () => {

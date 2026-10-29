@@ -17,6 +17,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
     'MARKETING_DAILY_LIMIT',
   'Esta campanha passa do limite de e-mails de campanha da unidade nos últimos 30 dias.':
     'MARKETING_MONTHLY_LIMIT',
+  'Esta campanha passa do limite de mensagens de WhatsApp da unidade nos últimos 30 dias.':
+    'MARKETING_WHATSAPP_LIMIT',
+  'Escolha um público da lista.': 'MARKETING_SEGMENT',
+  'Os dias sem visita ficam entre 1 e 365.': 'MARKETING_INACTIVE_DAYS',
+  'O assunto da campanha é longo demais.': 'MARKETING_SUBJECT_TOO_LONG',
+  'O texto da campanha é longo demais.': 'MARKETING_BODY_TOO_LONG',
   'Quem saiu das campanhas só pode voltar a receber por conta própria.':
     'MARKETING_OPT_IN_BY_CUSTOMER',
   'A mensagem do WhatsApp pode ter no máximo 1.024 caracteres.': 'WHATSAPP_MARKETING_TOO_LONG',

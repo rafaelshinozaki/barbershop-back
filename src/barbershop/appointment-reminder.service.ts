@@ -197,7 +197,7 @@ export class AppointmentReminderScheduler implements OnModuleInit {
       // "Como foi?" depois do atendimento (ver ReviewRequestService)
       { id: 'enqueue-review-requests', repeat: { every: 15 * 60 * 1000 } },
       // Resumo do dia pro profissional avaliar os clientes (CustomerRatingService)
-      { id: 'client-rating-digest', repeat: { pattern: '0 0 21 * * *', tz: 'America/Sao_Paulo' } },
+      { id: 'client-rating-digest', repeat: { pattern: '0 0 * * * *' } },
       // Sinal online: lembra quem não pagou e libera o que passou do prazo
       { id: 'expire-deposit-holds', repeat: { every: 60 * 1000 } },
       // Lista de espera: avisado que não agendou no prazo, a vaga vai pro próximo

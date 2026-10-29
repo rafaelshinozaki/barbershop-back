@@ -11,7 +11,7 @@ import { NotificationQueueService } from '../queue/notification-queue.service';
 import { BarbershopService, currentEngagement, type AccessLevel } from './barbershop.service';
 import { clientBadges } from './badges';
 import { LOCALE, normalizeLang } from '../email/language';
-import { safeTimeZone } from '../common/timezone.util';
+import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 
 export type RatingSide = 'unit' | 'professional';
 
@@ -120,7 +120,7 @@ export class CustomerRatingService {
       take: 50,
       include: {
         customer: { select: { name: true } },
-        barbershop: { select: { id: true, name: true } },
+        barbershop: { select: { id: true, name: true, timezone: true } },
         services: { select: { service: { select: { name: true } } } },
       },
     });
@@ -128,6 +128,7 @@ export class CustomerRatingService {
       appointmentId: a.id,
       barbershopId: a.barbershop.id,
       barbershopName: a.barbershop.name,
+      timeZone: a.barbershop.timezone,
       customerName: a.customer.name,
       startAt: a.startAt,
       serviceNames: a.services
@@ -228,8 +229,14 @@ export class CustomerRatingService {
       orderBy: { startAt: 'asc' },
       take: 1000,
     });
+    // Fim do dia de cada unidade (21h no fuso dela), não 21h de Brasília para todas.
+    const dueToday = due.filter(
+      (appt) =>
+        Math.floor(toZonedParts(now, safeTimeZone(appt.barbershop.timezone)).minutesOfDay / 60) ===
+        21,
+    );
     const byUser = new Map<number, typeof due>();
-    for (const appt of due) {
+    for (const appt of dueToday) {
       const userId = appt.barber.userId;
       if (userId == null) continue;
       const claimed = await this.prisma.appointment.updateMany({
@@ -248,9 +255,11 @@ export class CustomerRatingService {
           email: true,
           fullName: true,
           userSystemConfig: { select: { language: true } },
+          notificationPreference: { select: { reviewsEmail: true } },
         },
       });
       if (!user?.email) continue;
+      if (user.notificationPreference?.reviewsEmail === false) continue;
       const lang = normalizeLang(user.userSystemConfig?.language);
       try {
         await this.notificationQueue.email(

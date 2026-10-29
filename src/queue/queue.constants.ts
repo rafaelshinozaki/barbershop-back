@@ -12,6 +12,7 @@ export const CHAIR_RENT_QUEUE = 'chair-rent';
 export const DATA_RETENTION_QUEUE = 'data-retention';
 export const FEATURED_QUEUE = 'featured';
 export const PILOT_QUEUE = 'pilot';
+export const GEOCODING_QUEUE = 'geocoding';
 // Trilha de ações do app (lotes pro Axiom)
 export const APP_ACTIVITY_QUEUE = 'app-activity';
 // Backup diário do Postgres para o S3

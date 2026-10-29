@@ -95,6 +95,9 @@ export class PendingCustomerRatingType {
   barbershopName: string;
 
   @Field()
+  timeZone: string;
+
+  @Field()
   customerName: string;
 
   @Field(() => GraphQLISODateTime)

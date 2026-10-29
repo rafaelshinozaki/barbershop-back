@@ -34,6 +34,7 @@ import {
   assertWorkBirthdate,
   personName,
   signupPhone,
+  staffGender,
 } from '@/common/person';
 import { SmartLogger } from '@/common/logger.util';
 import { RedisService } from '@/redis/redis.service';
@@ -467,6 +468,8 @@ export class UserService {
       data.identityVerifiedAt = null;
     }
     if (userDto.phone !== undefined) data.phone = signupPhone(userDto.phone);
+    if (userDto.gender !== undefined) data.gender = staffGender(userDto.gender);
+    if (typeof userDto.isActive === 'boolean') data.isActive = userDto.isActive;
     if (userDto.birthdate !== undefined) {
       assertWorkBirthdate(userDto.birthdate);
       data.birthdate = userDto.birthdate;
@@ -575,6 +578,12 @@ export class UserService {
       data: data,
     });
 
+    if (data.isActive === false) {
+      await this.prisma.activeSession.deleteMany({ where: { userId: user.id } });
+      await this.prisma.pushSubscription.deleteMany({ where: { userId: user.id } });
+      await dropCalendarFeeds(this.prisma, user.id);
+      await this.clubPause?.forOwner(user.id, true);
+    }
     this.logger.log(
       `User updated successfully. New twoFactorEnabled: ${updatedUser.twoFactorEnabled}`,
     );

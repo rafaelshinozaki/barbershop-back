@@ -255,10 +255,13 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     expect(s3Deleted).toContain(`users/dono-${RUN}.jpg`);
     expect(s3Deleted).toContain(`users/${owner.id}/`);
 
-    // Negócio apagado
-    expect(await prisma.network.findUnique({ where: { id: network.id } })).toBeNull();
-    expect(await prisma.barbershop.findUnique({ where: { id: shop.id } })).toBeNull();
-    expect(await prisma.customer.findUnique({ where: { id: customer.id } })).toBeNull();
+    // Unidade encerrada, histórico fica. A rede também fica.
+    expect(await prisma.network.findUnique({ where: { id: network.id } })).toBeTruthy();
+    const closed = await prisma.barbershop.findUnique({ where: { id: shop.id } });
+    expect(closed?.isActive).toBe(false);
+    expect(closed?.closedAt).toBeTruthy();
+    expect(await prisma.customer.findUnique({ where: { id: customer.id } })).toBeTruthy();
+    expect(await prisma.sale.count({ where: { barbershopId: shop.id } })).toBe(1);
 
     // Plano: cobrança encerrada, pagamento guardado
     const subAfter = await prisma.subscription.findUnique({ where: { id: sub.id } });
@@ -355,7 +358,9 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     expect(cancelled.context.Reason).toMatch(/devolvido/);
     expect(cancelled.attachments[0].contentType).toContain('method=CANCEL');
     expect(cancelled.attachments[0].content).toContain(`UID:appointment-${appt.id}@barbershop`);
-    expect(await prisma.appointment.count({ where: { id: appt.id } })).toBe(0);
+    expect((await prisma.appointment.findUnique({ where: { id: appt.id } }))?.status).toBe(
+      'CANCELLED',
+    );
   });
 
   it('pacotes e cartões-presente com saldo aparecem na prévia e o cliente é avisado (item 220)', async () => {
@@ -550,5 +555,32 @@ describe('Exclusão de conta do dono/funcionário (integração com o banco)', (
     ).id;
     const manager = await createUser('gerente-sistema', managerRoleId);
     await expect(service.deleteByStaff(manager.id)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('excluir a conta do dono da rede mantém a unidade do franqueado', async () => {
+    const owner = await createUser('rede', ownerRoleId);
+    const franchisee = await createUser('franq', ownerRoleId);
+    const { network, shop } = await createBusiness(owner.id, 'rede');
+    const theirs = await prisma.barbershop.create({
+      data: {
+        name: `Franquia ${RUN}`,
+        slug: `franq-${RUN}`,
+        address: 'Rua 2',
+        city: 'São Paulo',
+        state: 'SP',
+        country: 'BR',
+        postalCode: '01000000',
+        phone: '11988887777',
+        email: `franq-${RUN}@test.local`,
+        networkId: network.id,
+        ownerUserId: franchisee.id,
+      },
+    });
+    await service.deleteAccount(owner.id, { password: PASSWORD });
+    const kept = await prisma.barbershop.findUnique({ where: { id: theirs.id } });
+    expect(kept?.isActive).toBe(true);
+    expect(kept?.closedAt).toBeNull();
+    const closed = await prisma.barbershop.findUnique({ where: { id: shop.id } });
+    expect(closed?.isActive).toBe(false);
   });
 });

@@ -26,7 +26,7 @@ import { PrepaymentService } from './prepayment.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { CalendarController } from '../calendar/calendar.controller';
 import { BarbershopMediaService } from './media.service';
-import { GeocodingService } from './geocoding.service';
+import { GeocodingProcessor, GeocodingScheduler, GeocodingService } from './geocoding.service';
 import { Module } from '@nestjs/common';
 import { BarbershopService } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
@@ -47,6 +47,7 @@ import {
   APPOINTMENT_REMINDERS_QUEUE,
   CHAIR_RENT_QUEUE,
   FEATURED_QUEUE,
+  GEOCODING_QUEUE,
   PILOT_QUEUE,
 } from '../queue/queue.constants';
 import { PilotMetricsService, PilotProcessor, PilotScheduler } from './pilot-metrics.service';
@@ -74,6 +75,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BullModule.registerQueue({ name: CHAIR_RENT_QUEUE }),
     BullModule.registerQueue({ name: FEATURED_QUEUE }),
     BullModule.registerQueue({ name: PILOT_QUEUE }),
+    BullModule.registerQueue({ name: GEOCODING_QUEUE }),
   ],
   providers: [
     AppPaymentsService,
@@ -110,6 +112,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PrepaymentService,
     BarbershopMediaService,
     GeocodingService,
+    GeocodingScheduler,
+    GeocodingProcessor,
     JobOpeningService,
     FeaturedPaymentService,
     FeaturedScheduler,

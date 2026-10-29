@@ -340,7 +340,7 @@ export class CareerService {
         id: true,
         startAt: true,
         customer: { select: { name: true } },
-        barbershop: { select: { name: true, currency: true } },
+        barbershop: { select: { name: true, currency: true, timezone: true } },
         services: { select: { service: { select: { name: true } } } },
         professionalReview: { select: { rating: true, hiddenAt: true } },
         tips: { where: { destination: 'professional' }, select: { amount: true } },
@@ -350,6 +350,7 @@ export class CareerService {
       appointmentId: a.id,
       startAt: a.startAt,
       shopName: a.barbershop.name,
+      timeZone: a.barbershop.timezone,
       currency: a.barbershop.currency,
       customerFirstName: a.customer.name.trim().split(/\s+/)[0] || 'Cliente',
       serviceNames: a.services

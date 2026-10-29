@@ -6,7 +6,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
-import { BarbershopService, MARKETING_EMAILS_PER_30_DAYS } from './barbershop.service';
+import {
+  BarbershopService,
+  MARKETING_EMAILS_PER_30_DAYS,
+  MARKETING_WHATSAPP_PER_30_DAYS,
+} from './barbershop.service';
 import { EmailService } from '../email/email.service';
 import { createUnsubscribeToken, verifyUnsubscribeToken } from './marketing-unsubscribe';
 import { MarketingUnsubscribeController } from './marketing-unsubscribe.controller';
@@ -16,11 +20,12 @@ const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 describe('Descadastro do marketing (integração com o banco)', () => {
   const prisma = new PrismaService();
   const queued: any[] = [];
+  let whatsappOn = false;
   const service = new BarbershopService(
     prisma,
     {} as never,
     {} as never,
-    { isConfigured: () => false } as never,
+    { isConfigured: () => whatsappOn } as never,
     {} as never,
     {
       emailBulk: async (jobs: unknown[]) => void queued.push(...jobs),
@@ -254,5 +259,23 @@ describe('Descadastro do marketing (integração com o banco)', () => {
         sendWhatsapp: false,
       }),
     ).rejects.toThrow('limite de e-mails');
+
+    await prisma.marketingCampaign.updateMany({
+      where: { barbershopId: shopId },
+      data: {
+        emailQueuedCount: 0,
+        whatsappQueuedCount: MARKETING_WHATSAPP_PER_30_DAYS,
+      },
+    });
+    whatsappOn = true;
+    await expect(
+      service.sendMarketingBlast(ownerId, shopId, {
+        message: 'Zap demais',
+        segment: 'ALL',
+        sendEmail: false,
+        sendWhatsapp: true,
+      }),
+    ).rejects.toThrow('limite de mensagens de WhatsApp');
+    whatsappOn = false;
   });
 });

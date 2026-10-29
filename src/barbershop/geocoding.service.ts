@@ -1,5 +1,10 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GEOCODING_QUEUE } from '../queue/queue.constants';
+import { registerSchedulers } from '../queue/register-schedulers';
 
 type Address = {
   address: string;
@@ -31,9 +36,24 @@ const addressKey = (a: Address) =>
 
 /** Nominatim pede no máximo 1 pedido por segundo */
 const MIN_INTERVAL_MS = 1100;
-/** Quantas unidades sem localização completar por vez ao subir o servidor */
+/** Quantas unidades sem localização completar por vez */
 const BACKFILL_BATCH = 200;
-const BACKFILL_EVERY_MS = 60 * 60 * 1000;
+/** Endereço não encontrado: tenta de novo só depois deste prazo */
+const GEOCODE_RETRY_MS = 7 * 86_400_000;
+
+/** Unidades ativas sem coordenada, as nunca tentadas primeiro. */
+export function geocodeBackfillWhere(now = new Date()): Prisma.BarbershopWhereInput {
+  const retryAfter = new Date(now.getTime() - GEOCODE_RETRY_MS);
+  return {
+    isActive: true,
+    OR: [{ latitude: null }, { longitude: null }],
+    AND: [
+      {
+        OR: [{ geocodeAttemptedAt: null }, { geocodeAttemptedAt: { lt: retryAfter } }],
+      },
+    ],
+  };
+}
 
 /**
  * Latitude/longitude da unidade a partir do endereço (OpenStreetMap
@@ -43,31 +63,15 @@ const BACKFILL_EVERY_MS = 60 * 60 * 1000;
  * completa as que ainda não têm. Falhou ou não achou: fica sem, sem erro.
  */
 @Injectable()
-export class GeocodingService implements OnApplicationBootstrap, OnModuleDestroy {
+export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
   private queue: Promise<unknown> = Promise.resolve();
   private last = 0;
-  private timer?: NodeJS.Timeout;
 
   constructor(private readonly prisma: PrismaService) {}
 
   private get enabled() {
     return process.env.GEOCODING_DISABLED !== 'true' && process.env.NODE_ENV !== 'test';
-  }
-
-  onApplicationBootstrap() {
-    if (!this.enabled) return;
-    // Não segura a subida do servidor
-    const run = () =>
-      this.backfill().catch((err) => this.logger.warn(`Backfill de localização: ${String(err)}`));
-    setTimeout(run, 5_000).unref();
-    // Unidade nova (inclusive a do cadastro do dono) entra na próxima rodada
-    this.timer = setInterval(run, BACKFILL_EVERY_MS);
-    this.timer.unref();
-  }
-
-  onModuleDestroy() {
-    if (this.timer) clearInterval(this.timer);
   }
 
   /** Coordenadas do endereço (null se não achou ou o serviço falhou) */
@@ -149,7 +153,13 @@ export class GeocodingService implements OnApplicationBootstrap, OnModuleDestroy
     const shop = await this.prisma.barbershop.findUnique({ where: { id: barbershopId } });
     if (!shop) return false;
     const found = await this.geocode(shop);
-    if (!found) return false;
+    if (!found) {
+      await this.prisma.barbershop.update({
+        where: { id: barbershopId },
+        data: { geocodeAttemptedAt: new Date() },
+      });
+      return false;
+    }
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
       data: { latitude: found.lat, longitude: found.lng },
@@ -160,13 +170,35 @@ export class GeocodingService implements OnApplicationBootstrap, OnModuleDestroy
   /** Completa as unidades ativas que ainda não têm localização */
   async backfill(): Promise<number> {
     const shops = await this.prisma.barbershop.findMany({
-      where: { isActive: true, OR: [{ latitude: null }, { longitude: null }] },
+      where: geocodeBackfillWhere(),
       select: { id: true },
+      orderBy: [{ geocodeAttemptedAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
       take: BACKFILL_BATCH,
     });
     let done = 0;
     for (const s of shops) if (await this.locate(s.id)) done++;
     if (shops.length) this.logger.log(`Localização completada: ${done}/${shops.length} unidade(s)`);
     return done;
+  }
+}
+
+@Injectable()
+export class GeocodingScheduler implements OnModuleInit {
+  constructor(@InjectQueue(GEOCODING_QUEUE) private readonly queue: Queue) {}
+
+  onModuleInit() {
+    if (process.env.GEOCODING_DISABLED === 'true' || process.env.NODE_ENV === 'test') return;
+    registerSchedulers(this.queue, [{ id: 'geocode-backfill', repeat: { pattern: '0 15 * * * *' } }]);
+  }
+}
+
+@Processor(GEOCODING_QUEUE)
+export class GeocodingProcessor extends WorkerHost {
+  constructor(private readonly geocoding: GeocodingService) {
+    super();
+  }
+
+  async process(job: Job) {
+    if (job.name === 'geocode-backfill') return this.geocoding.backfill();
   }
 }

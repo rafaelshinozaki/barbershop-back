@@ -593,6 +593,8 @@ model Barbershop {
   postalCode     String
   latitude       Float?    // preenchido manualmente ou por geocoding — usado na busca "perto de mim"
   longitude      Float?
+  // Tentativa que o Nominatim não achou: sai do lote por alguns dias
+  geocodeAttemptedAt DateTime?
   phone          String
   email          String
   photoKey       String?
