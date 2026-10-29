@@ -512,7 +512,7 @@ export class UpdateBarbershopProductInput {
   name?: string;
 
   @Field(() => Int, { nullable: true })
-  categoryId?: number;
+  categoryId?: number | null;
 
   @Field({ nullable: true })
   icon?: string;
@@ -527,7 +527,7 @@ export class UpdateBarbershopProductInput {
   salePrice?: number;
 
   @Field(() => Float, { nullable: true })
-  costPrice?: number;
+  costPrice?: number | null;
 
   @Field({ nullable: true })
   unit?: string;
@@ -542,11 +542,16 @@ export class AdjustInventoryInput {
   @Field(() => Int)
   productId: number;
 
-  // Positivo para entrada (compra/ajuste pra cima), negativo para saída
-  // (perda/ajuste pra baixo). Vendas debitam o estoque automaticamente
-  // via createSale — não precisa passar por aqui.
-  @Field(() => Float)
-  quantityChange: number;
+  // Positivo para entrada, negativo para saída. Na contagem, omita e
+  // informe countedQuantity (o total que há).
+  @Field(() => Float, { nullable: true })
+  quantityChange?: number | null;
+
+  @Field(() => Float, {
+    nullable: true,
+    description: 'Contagem física: o total que há. O sistema lança a diferença como Ajuste.',
+  })
+  countedQuantity?: number | null;
 
   @Field({ defaultValue: 'ADJUSTMENT' })
   movementType?: string; // PURCHASE, ADJUSTMENT, LOSS, TRANSFER
@@ -558,10 +563,10 @@ export class AdjustInventoryInput {
 @InputType()
 export class UpdateInventoryItemInput {
   @Field(() => Float, { nullable: true })
-  minQuantity?: number;
+  minQuantity?: number | null;
 
-  @Field({ nullable: true })
-  location?: string;
+  @Field(() => String, { nullable: true })
+  location?: string | null;
 }
 
 // ============ Cash Session & Expense ============

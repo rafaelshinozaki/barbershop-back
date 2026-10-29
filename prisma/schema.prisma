@@ -897,6 +897,8 @@ model Review {
   hiddenAt        DateTime?
   // Só a resposta da unidade ocultada pela moderação (denúncia do público)
   replyHiddenAt   DateTime?
+  // O e-mail "a unidade respondeu" sai uma vez por avaliação
+  replyNotifiedAt DateTime?
   // Comentário que a moderação decidiu manter: a unidade não denuncia de
   // novo o mesmo texto
   reportDismissedComment String?

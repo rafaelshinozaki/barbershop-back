@@ -22,7 +22,7 @@ import {
   toZonedParts,
   zonedTimeToUtc,
 } from '@/common/timezone.util';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, currentManagers } from './barbershop.service';
 import { EmployeeInviteService } from './employee-invite.service';
 import { StripeService } from '@/stripe/stripe.service';
 import { stripeConfigured } from './stripe-configured';
@@ -818,7 +818,7 @@ export class JobOpeningService {
         ownerUserId: true,
         network: { select: { ownerUserId: true } },
         barbers: {
-          where: { isActive: true, staffType: 'manager', userId: { not: null } },
+          where: currentManagers(),
           select: { userId: true },
         },
       },

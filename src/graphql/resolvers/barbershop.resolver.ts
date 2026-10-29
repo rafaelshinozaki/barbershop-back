@@ -443,7 +443,7 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const data: any = { ...input };
-    if (input.birthDate) data.birthDate = new Date(input.birthDate);
+    if (input.birthDate !== undefined) data.birthDate = input.birthDate ? new Date(input.birthDate) : null;
     const result = await this.barbershopService.updateCustomer(user.id, barbershopId, id, data);
     this.realtime.notify(barbershopId, 'CUSTOMER', 'UPDATED');
     return result;
@@ -764,7 +764,9 @@ export class BarbershopResolver {
     @CurrentUser() user: UserDTO,
   ) {
     const result = await this.barbershopService.adjustInventory(user.id, barbershopId, input);
-    void this.activity.stockAdjusted(result.movementId, barbershopId);
+    if (result.movementId != null) {
+      void this.activity.stockAdjusted(result.movementId, barbershopId);
+    }
     return result;
   }
 

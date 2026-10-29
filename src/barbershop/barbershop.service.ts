@@ -207,6 +207,52 @@ export function currentEngagement(now = new Date()): Prisma.BarberWhereInput {
     ],
   };
 }
+/** Gerente que ainda entra na unidade. Fora do período não recebe aviso. */
+export function currentManagers(now = new Date()): Prisma.BarberWhereInput {
+  return { ...currentEngagement(now), staffType: 'manager', userId: { not: null } };
+}
+/** Pacote a usar primeiro: o ativo que vence antes. Sem validade fica por último; empate, o mais antigo. */
+export function compareClientPackagesForUse(
+  a: {
+    status: string;
+    usedSessions: number;
+    totalSessions: number;
+    expiresAt: Date | string | null;
+    createdAt: Date | string;
+  },
+  b: {
+    status: string;
+    usedSessions: number;
+    totalSessions: number;
+    expiresAt: Date | string | null;
+    createdAt: Date | string;
+  },
+  now = Date.now(),
+): number {
+  const at = (value: Date | string | null | undefined) =>
+    value == null || value === '' ? null : new Date(value).getTime();
+  const usable = (pack: typeof a) => {
+    const expires = at(pack.expiresAt);
+    return (
+      pack.status === 'ACTIVE' &&
+      pack.usedSessions < pack.totalSessions &&
+      (expires == null || expires > now)
+    );
+  };
+  const rankA = usable(a) ? 0 : 1;
+  const rankB = usable(b) ? 0 : 1;
+  if (rankA !== rankB) return rankA - rankB;
+  const expA = at(a.expiresAt) ?? Number.POSITIVE_INFINITY;
+  const expB = at(b.expiresAt) ?? Number.POSITIVE_INFINITY;
+  if (expA !== expB) return expA - expB;
+  return (at(a.createdAt) ?? 0) - (at(b.createdAt) ?? 0);
+}
+/** Campo opcional esvaziado na edição vira null. undefined = não veio, não mexe. */
+function clearedText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  const text = value?.trim() ?? '';
+  return text === '' ? null : text;
+}
 /** Nome sem acento, caixa e espaços repetidos */
 const personName = (value: string | null | undefined) =>
   (value ?? '')
@@ -3323,9 +3369,9 @@ export class BarbershopService {
     data: Partial<{
       name: string;
       phone: string;
-      email: string;
-      birthDate: Date;
-      notes: string;
+      email: string | null;
+      birthDate: Date | null;
+      notes: string | null;
       isActive: boolean;
       marketingOptOut: boolean;
     }>,
@@ -3369,6 +3415,9 @@ export class BarbershopService {
         `;
       }
     }
+    // Campo esvaziado na edição apaga (e-mail vazio vira null). undefined não mexe.
+    if (data.email !== undefined) data.email = clearedText(data.email) ?? null;
+    if (data.notes !== undefined) data.notes = clearedText(data.notes) ?? null;
     // E-mail trocado numa ficha ligada a uma conta com o e-mail antigo: a
     // ligação sai (a conta antiga não segue vendo a ficha) (item 251)
     let unlink = {};
@@ -3981,10 +4030,11 @@ export class BarbershopService {
     data: Partial<{
       name: string;
       phone: string;
-      email: string;
+      email: string | null;
       avatarUrl: string;
-      specialization: string;
+      specialization: string | null;
       specialties: TreatmentCategory[];
+      hireDate: string | Date | null;
       isActive: boolean;
       staffType: string;
       takesAppointments: boolean | null;
@@ -3997,6 +4047,20 @@ export class BarbershopService {
       where: { id: barberId, barbershopId },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
+    if (data.email !== undefined) data.email = clearedText(data.email) ?? null;
+    if (data.specialization !== undefined) data.specialization = clearedText(data.specialization) ?? null;
+    if (data.hireDate !== undefined) {
+      const raw = data.hireDate;
+      if (raw == null || String(raw).trim() === '') {
+        data.hireDate = null;
+      } else {
+        const parsed = raw instanceof Date ? raw : new Date(raw);
+        if (Number.isNaN(parsed.getTime())) {
+          throw new BadRequestException('Data de contratação inválida');
+        }
+        data.hireDate = parsed;
+      }
+    }
     const period = parseEngagementPeriod(
       data.accessStartsAt === undefined ? barber.accessStartsAt : data.accessStartsAt,
       data.accessEndsAt === undefined ? barber.accessEndsAt : data.accessEndsAt,
@@ -4182,7 +4246,7 @@ export class BarbershopService {
         select: { ownerUserId: true },
       }),
       this.prisma.barber.findMany({
-        where: { barbershopId, isActive: true, staffType: 'manager', userId: { not: null } },
+        where: { barbershopId, ...currentManagers(now) },
         select: { userId: true },
       }),
       this.prisma.appointment.count({
@@ -4328,7 +4392,8 @@ export class BarbershopService {
     serviceId: number,
     data: Partial<{
       name: string;
-      description: string;
+      description: string | null;
+      icon: string | null;
       durationMinutes: number;
       price: number | Decimal;
       category: TreatmentCategory;
@@ -4342,6 +4407,8 @@ export class BarbershopService {
       where: { id: serviceId, barbershopId },
     });
     if (!current) throw new NotFoundException('Serviço não encontrado');
+    if (data.description !== undefined) data.description = clearedText(data.description) ?? null;
+    if (data.icon !== undefined) data.icon = clearedText(data.icon) ?? null;
     if (data.isActive === false && current.isActive) {
       await this.assertServiceDeactivationConfirmed(barbershopId, serviceId, false);
     }
@@ -4571,14 +4638,14 @@ export class BarbershopService {
     productId: number,
     data: Partial<{
       name: string;
-      categoryId: number;
-      sku: string;
-      description: string;
+      categoryId: number | null;
+      sku: string | null;
+      description: string | null;
       salePrice: number | Decimal;
-      costPrice: number | Decimal;
+      costPrice: number | Decimal | null;
       unit: string;
       isActive: boolean;
-      icon: string;
+      icon: string | null;
     }>,
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
@@ -4594,9 +4661,17 @@ export class BarbershopService {
     checkMoney('Custo', data.costPrice != null ? Number(data.costPrice) : null, shop.currency);
     if (data.categoryId) await this.categoryOfShop(barbershopId, data.categoryId);
     const salePrice = data.salePrice !== undefined ? new Decimal(data.salePrice) : undefined;
-    const costPrice = data.costPrice !== undefined ? new Decimal(data.costPrice) : undefined;
+    const costPrice =
+      data.costPrice === undefined
+        ? undefined
+        : data.costPrice == null
+          ? null
+          : new Decimal(data.costPrice);
     const updateData: any = { ...data, salePrice, costPrice };
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId || null;
+    if (data.sku !== undefined) updateData.sku = clearedText(data.sku);
+    if (data.description !== undefined) updateData.description = clearedText(data.description);
+    if (data.icon !== undefined) updateData.icon = clearedText(data.icon);
     return this.prisma.barbershopProduct.update({
       where: { id: productId },
       data: updateData,
@@ -4645,7 +4720,13 @@ export class BarbershopService {
   async adjustInventory(
     userId: number,
     barbershopId: number,
-    data: { productId: number; quantityChange: number; movementType?: string; notes?: string },
+    data: {
+      productId: number;
+      quantityChange?: number | null;
+      countedQuantity?: number | null;
+      movementType?: string;
+      notes?: string;
+    },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
@@ -4654,7 +4735,11 @@ export class BarbershopService {
     if (data.movementType != null && !STOCK_MOVEMENTS.includes(data.movementType)) {
       throw new BadRequestException(STOCK_MOVEMENT_MESSAGE);
     }
-    if (!Number.isFinite(data.quantityChange) || data.quantityChange === 0) {
+    const counting = data.countedQuantity != null;
+    if (counting && (!Number.isFinite(data.countedQuantity) || (data.countedQuantity as number) < 0)) {
+      throw new BadRequestException(STOCK_QUANTITY_MESSAGE);
+    }
+    if (!counting && (!Number.isFinite(data.quantityChange) || data.quantityChange === 0)) {
       throw new BadRequestException(STOCK_QUANTITY_MESSAGE);
     }
     const product = await this.prisma.barbershopProduct.findFirst({
@@ -4664,11 +4749,35 @@ export class BarbershopService {
       throw new NotFoundException('Produto não encontrado nesta unidade');
     }
     return this.prisma.$transaction(async (tx) => {
+      const countedAt = new Date();
+      let change = data.quantityChange as number;
+      if (counting) {
+        const current = await tx.inventoryItem.findUnique({
+          where: { barbershopId_productId: { barbershopId, productId: data.productId } },
+          select: { quantity: true },
+        });
+        change = (data.countedQuantity as number) - Number(current?.quantity ?? 0);
+      }
+      if (change === 0) {
+        const unchanged = await tx.inventoryItem.upsert({
+          where: { barbershopId_productId: { barbershopId, productId: data.productId } },
+          create: {
+            barbershopId,
+            productId: data.productId,
+            quantity: 0,
+            unit: product.unit,
+            lastCountedAt: countedAt,
+          },
+          update: { lastCountedAt: countedAt },
+          include: { product: { include: { category: true } } },
+        });
+        return { ...unchanged, movementId: undefined as number | undefined };
+      }
       const {
         inventoryItem: item,
         quantityBefore,
         quantityAfter,
-      } = await moveStock(tx, barbershopId, data.productId, product.unit, data.quantityChange);
+      } = await moveStock(tx, barbershopId, data.productId, product.unit, change);
       // Confere depois de aplicar (o saldo que voltou é o de verdade, mesmo
       // com outra baixa ao mesmo tempo); negativo desfaz a transação
       if (quantityAfter < 0) {
@@ -4677,8 +4786,8 @@ export class BarbershopService {
       const movement = await tx.inventoryMovement.create({
         data: {
           inventoryItemId: item.id,
-          movementType: data.movementType ?? 'ADJUSTMENT',
-          quantityChange: data.quantityChange,
+          movementType: counting ? 'ADJUSTMENT' : (data.movementType ?? 'ADJUSTMENT'),
+          quantityChange: change,
           quantityBefore,
           quantityAfter,
           referenceType: 'MANUAL',
@@ -4686,12 +4795,18 @@ export class BarbershopService {
         },
         select: { id: true },
       });
+      if (counting) {
+        await tx.inventoryItem.update({
+          where: { id: item.id },
+          data: { lastCountedAt: countedAt },
+        });
+      }
       const updated = await tx.inventoryItem.findUniqueOrThrow({
         where: { id: item.id },
         include: { product: { include: { category: true } } },
       });
       // Quem chama avisa o estoque baixo por este movimento (item 367)
-      return { ...updated, movementId: movement.id };
+      return { ...updated, movementId: movement.id as number | undefined };
     });
   }
 
@@ -4699,7 +4814,7 @@ export class BarbershopService {
     userId: number,
     barbershopId: number,
     productId: number,
-    data: { minQuantity?: number; location?: string },
+    data: { minQuantity?: number | null; location?: string | null },
   ) {
     await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
     await this.ensureModuleAccess(barbershopId, 'inventory');
@@ -4712,6 +4827,8 @@ export class BarbershopService {
     if (!product) {
       throw new NotFoundException('Produto não encontrado nesta unidade');
     }
+    const location =
+      data.location === undefined ? undefined : data.location?.trim() || null;
     return this.prisma.inventoryItem.upsert({
       where: { barbershopId_productId: { barbershopId, productId } },
       create: {
@@ -4719,12 +4836,12 @@ export class BarbershopService {
         productId,
         quantity: 0,
         unit: product.unit,
-        minQuantity: data.minQuantity,
-        location: data.location,
+        minQuantity: data.minQuantity ?? undefined,
+        location: location ?? undefined,
       },
       update: {
         ...(data.minQuantity !== undefined && { minQuantity: data.minQuantity }),
-        ...(data.location !== undefined && { location: data.location || null }),
+        ...(location !== undefined && { location }),
       },
       include: { product: { include: { category: true } } },
     });
@@ -12930,8 +13047,9 @@ export class BarbershopService {
         servicePackage: { include: { service: true } },
         uses: { where: { undoneAt: null }, orderBy: { createdAt: 'desc' }, take: 8 },
       },
-      orderBy: { createdAt: 'desc' },
     });
+    // O que vence primeiro vem na frente (sem validade por último; empate, o mais antigo)
+    packages.sort(compareClientPackagesForUse);
     const names = await this.userNames(packages.flatMap((p) => p.uses.map((u) => u.usedByUserId)));
     return packages.map((p) =>
       this.toClientPackageResult({

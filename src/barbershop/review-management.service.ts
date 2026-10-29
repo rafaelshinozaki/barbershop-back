@@ -112,6 +112,9 @@ export class ReviewManagementService {
     if (reply && reply.length > MAX_REPLY) {
       throw new BadRequestException(`Resposta com no máximo ${MAX_REPLY} caracteres`);
     }
+    // O mesmo texto que a moderação ocultou continua oculto. Texto diferente volta à página.
+    const stillHidden =
+      reply != null && before.replyHiddenAt != null && reply === (before.reply ?? '').trim();
     await this.prisma.review.update({
       where: { id: reviewId },
       data: reply
@@ -120,8 +123,7 @@ export class ReviewManagementService {
             repliedAt: new Date(),
             repliedByUserId: userId,
             replyStale: false,
-            // Resposta nova (texto novo): volta a aparecer e pode ser denunciada de novo
-            replyHiddenAt: null,
+            replyHiddenAt: stillHidden ? before.replyHiddenAt : null,
           }
         : {
             reply: null,
@@ -131,11 +133,17 @@ export class ReviewManagementService {
             replyHiddenAt: null,
           },
     });
-    // Primeira resposta: o cliente fica sabendo (editar depois não reenvia)
-    if (reply && !before.reply) {
-      await this.notifyReviewer(reviewId, reply).catch((err) =>
-        this.logger.error(`Erro ao avisar a resposta da avaliação #${reviewId}:`, err),
-      );
+    // Uma vez por avaliação: apagar e responder de novo não manda outro e-mail.
+    if (reply && before.replyNotifiedAt == null) {
+      const claimed = await this.prisma.review.updateMany({
+        where: { id: reviewId, replyNotifiedAt: null },
+        data: { replyNotifiedAt: new Date() },
+      });
+      if (claimed.count > 0) {
+        await this.notifyReviewer(reviewId, reply).catch((err) =>
+          this.logger.error(`Erro ao avisar a resposta da avaliação #${reviewId}:`, err),
+        );
+      }
     }
     return true;
   }
@@ -190,7 +198,7 @@ export class ReviewManagementService {
         to,
         ...(unsubscribe ? { headers: unsubscribe.headers } : {}),
       },
-      `review-reply-${reviewId}-${Date.now()}`,
+      `review-reply-${reviewId}`,
     );
   }
 

@@ -13,6 +13,7 @@ import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { NotificationsService, type LocalizedNotice } from '../notifications/notifications.service';
 import type { Lang } from '../email/language';
 import { reviewerLabel } from './professional-review.service';
+import { currentManagers } from './barbershop.service';
 
 export const REPORT_TARGETS = [
   'photo',
@@ -780,7 +781,7 @@ export class ModerationService {
           ownerUserId: true,
           network: { select: { ownerUserId: true } },
           barbers: {
-            where: { isActive: true, staffType: 'manager', userId: { not: null } },
+            where: currentManagers(),
             select: { userId: true },
           },
         },

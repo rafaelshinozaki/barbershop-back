@@ -18,7 +18,7 @@ import { registerSchedulers } from '../queue/register-schedulers';
 import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
-import { BarbershopService } from './barbershop.service';
+import { BarbershopService, currentManagers } from './barbershop.service';
 import { ownerAcceptsPublic } from './public-shop';
 import { SearchCacheService } from './search-cache.service';
 import { stripeConfigured } from './stripe-configured';
@@ -307,7 +307,7 @@ export class FeaturedPaymentService {
         ownerUserId: true,
         network: { select: { ownerUserId: true } },
         barbers: {
-          where: { isActive: true, staffType: 'manager', userId: { not: null } },
+          where: currentManagers(),
           select: { userId: true },
         },
       },
