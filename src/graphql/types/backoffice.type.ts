@@ -133,7 +133,7 @@ export class DetailedUser {
   @Field()
   createdAt: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   lastLogin?: string | null;
 }
 

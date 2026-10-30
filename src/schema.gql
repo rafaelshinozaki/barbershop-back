@@ -66,10 +66,14 @@ input AddressInput {
 }
 
 input AdjustInventoryInput {
+  """
+  Contagem física: o total que há. O sistema lança a diferença como Ajuste.
+  """
+  countedQuantity: Float
   movementType: String! = "ADJUSTMENT"
   notes: String
   productId: Int!
-  quantityChange: Float!
+  quantityChange: Float
 }
 
 type AdminClientAccountType {
@@ -712,6 +716,9 @@ type CareerOverviewType {
   busiestHour: Int
   byCurrency: [CareerCurrencyType!]!
   completedAppointments: Int!
+
+  """Concluídos importados de planilha, fora do perfil público"""
+  importedAppointments: Int!
   isPublic: Boolean!
   noShows: Int!
   ownedShops: [CareerShopLinkType!]!
@@ -863,7 +870,9 @@ input ChangePasswordInput {
   newPassword: String!
   oldPassword: String!
 
-  """Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)"""
+  """
+  Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)
+  """
   pushEndpoint: String
 }
 
@@ -955,17 +964,17 @@ type ClientAccountType {
   phone: String
 }
 
-input ClientDeleteAccountInput {
-  email: String
-  password: String
-}
-
 type ClientClubSubscriptionPreview {
   barbershopName: String!
   currency: String!
   id: Int!
   planName: String!
   refundAmount: Float!
+}
+
+input ClientDeleteAccountInput {
+  email: String
+  password: String
 }
 
 type ClientFavoriteBarberType {
@@ -1030,7 +1039,9 @@ type ClientMarketingPreferencesType {
   """Esta conta pediu para sair das campanhas pelo WhatsApp"""
   whatsappOptOut: Boolean!
 
-  """O telefone saiu pelo WhatsApp ou por outra conta. Só volta respondendo VOLTAR."""
+  """
+  O telefone saiu pelo WhatsApp ou por outra conta. Só volta respondendo VOLTAR.
+  """
   whatsappReplyOnly: Boolean!
 }
 
@@ -1072,6 +1083,7 @@ input ClientResetPasswordInput {
 }
 
 input ClientSignupInput {
+  acceptedTerms: Boolean
   email: String!
   emailCode: String
   language: String
@@ -1250,8 +1262,20 @@ type ConsentFormType {
   healthConsentAt: String
   healthConsentRevokedAt: String
   id: Int!
+  recordedByName: String
+  signToken: String
   signatureName: String
   signedAt: String
+  signedVia: String
+  status: String!
+  textVersion: String
+}
+
+type ConsentLinkType {
+  formType: String!
+  shopName: String!
+  signedAt: DateTime
+  signedVia: String
   status: String!
 }
 
@@ -1623,6 +1647,12 @@ type CustomerBlockSubscriptionType {
   refundAmount: Float!
 }
 
+type CustomerCardStats {
+  appointments: Int!
+  sales: Int!
+  totalSpent: Float!
+}
+
 type CustomerConductType {
   """Comparecimento em % (concluídos / marcados)"""
   attendanceRate: Int
@@ -1735,7 +1765,7 @@ type DetailedUser {
   fullName: String!
   gender: String!
   id: Int!
-  lastLogin: String!
+  lastLogin: String
   plan: MembershipStatus!
   role: UserRole!
   state: String!
@@ -2121,6 +2151,8 @@ type ManagedReviewType {
 
   """Denunciada (aguardando moderação)"""
   reportedAt: DateTime
+
+  """Quem pediu o link, quando foi a equipe"""
   requestedByName: String
 
   """EMAIL ou STAFF"""
@@ -2233,7 +2265,9 @@ type MonthlyRevenueItem {
 type Mutation {
   acceptJobApplication(applicationId: Int!, barbershopId: Int!): JobOpeningType!
 
-  """Conta criada sem o aceite (importada pela planilha): aceita no primeiro acesso"""
+  """
+  Conta criada sem o aceite (importada pela planilha): aceita no primeiro acesso
+  """
   acceptTerms: Boolean!
   addAppointmentTip(amount: Float!, appointmentId: Int!, barbershopId: Int!, destination: String!, method: String!, receivedByUnit: Boolean): AppointmentTipType!
   addBarberPayEntry(barbershopId: Int!, input: AddBarberPayEntryInput!): BarberPayEntryType!
@@ -2244,9 +2278,9 @@ type Mutation {
   adminDeleteUser(reason: String!, userId: Int!): ApprovalOutcomeType!
   adminRefundAppPayment(input: RefundAppPaymentInput!): ApprovalOutcomeType!
   answerSupportTicket(body: String!, close: Boolean, ticketId: Int!): Boolean!
-  appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): Boolean!
   applyCoupon(code: String!, paymentId: Int!): ApplyCouponResult!
   applyToJobOpening(message: String, openingId: Int!): JobApplyResultType!
+  appointmentReviewLink(appointmentId: Int!, barbershopId: Int!): Boolean!
   authorizeChairRent(barbershopId: Int!, id: Int!, paymentMethodId: String!): AuthorizeChairRentResultType!
   barberAvatarUpload(barberId: Int!, contentType: String): PresignedUploadType!
   barbershopCoverUpload(barbershopId: Int!, contentType: String): PresignedUploadType!
@@ -2254,13 +2288,13 @@ type Mutation {
   barbershopPaymentDashboardLink(barbershopId: Int!): PaymentAccountLinkType!
   bulkUserAction(input: BulkUserAction!): Boolean!
   cancelAppointmentSeries(appointmentId: Int!, barbershopId: Int!): Int!
+  cancelBackofficeApproval(id: Int!): BackofficeApprovalType!
   cancelManagedAppointment(token: String!): ManagedAppointmentType!
   cancelMySubscription(subscriptionId: Int!): Boolean!
   cancelSubscription: Boolean!
   cancelWaitlistEntry(barbershopId: Int!, id: Int!): Boolean!
   changePassword(input: ChangePasswordInput!): Boolean!
   changePlan(planId: Int!): ChangePlanResponse!
-  changeUserPlan(plan: String!, userId: Int!): Boolean!
   checkPassword(input: CheckPasswordInput!): Boolean!
   chooseSocialPage(pageId: String!, token: String!): SocialConnectionType!
   claimProReferral(code: String!): ProReferralType!
@@ -2424,16 +2458,22 @@ type Mutation {
   requestSignupCode(input: RequestSignupCodeInput!): Boolean!
   requestTwoFactorCode: Boolean!
   rescheduleManagedAppointment(startAt: String!, token: String!): ManagedAppointmentType!
+  resendLoginCode(loginId: String!): String!
   resetPassword(input: ResetPasswordInput!): Boolean!
   resetPasswordWithCode(input: ResetPasswordWithCodeInput!): Boolean!
   resolveContentReports(action: String!, targetId: Int!, targetType: String!): Boolean!
 
-  """O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço"""
+  """
+  O profissional aceita ou recusa o aumento do aluguel proposto pelo espaço
+  """
   respondChairRentIncrease(accept: Boolean!, barbershopId: Int!, id: Int!): ChairRentType!
   respondSharedLocationInvite(accept: Boolean!, id: Int!): SharedLocationLinkType!
 
-  """Volta a receber as campanhas por e-mail da rede, pelo link do descadastro"""
+  """
+  Volta a receber as campanhas por e-mail da rede, pelo link do descadastro
+  """
   resubscribeToMarketing(token: String!): String!
+  resumeMySubscription(subscriptionId: Int!): Boolean!
   retrySocialPost(barbershopId: Int!, id: Int!, scheduledFor: String!): SocialPostType!
   revokeHealthConsent(barbershopId: Int!, id: Int!): ConsentFormType!
   runBackupNow: Boolean!
@@ -2449,6 +2489,7 @@ type Mutation {
   setBarbershopClosure(barbershopId: Int!, input: ClosureInput!): SetClosureResultType!
   setBarbershopCover(barbershopId: Int!, key: String): String
   setBarbershopFeatured(barbershopId: Int!, featuredUntil: String): Barbershop!
+  setBarbershopLogo(barbershopId: Int!, key: String!): Boolean!
   setBusinessHours(barbershopId: Int!, days: [BusinessDayInput!]!): [BusinessDayType!]!
   setChairRent(amount: Float, barbershopId: Int!, id: Int!, mode: String): ChairRentType!
   setClientAccountSuspended(cancelSubscriptions: Boolean, clientAccountId: Int!, reason: String, refundUnused: Boolean, suspended: Boolean!): Boolean!
@@ -2466,14 +2507,15 @@ type Mutation {
   setMyCareerPublic(isPublic: Boolean!): CareerOverviewType!
   setNetworkLogo(key: String!): String
   setOnlineDeposit(barbershopId: Int!, enabled: Boolean!): Boolean!
+  setProductPhoto(barbershopId: Int!, key: String!, productId: Int!): Boolean!
   setProfessionalFeatured(featuredUntil: String, professionalId: Int!): AdminProfessionalType!
   setSharedLocationInviteBlock(barbershopId: Int!, blocked: Boolean!, id: Int!): Boolean!
-
   setSocialLoginTwoFactor(input: SocialLoginTwoFactorInput!): Boolean!
   setSupportTicketStatus(status: String!, ticketId: Int!): Boolean!
   setTwoFactor(input: TwoFactorInput!): Boolean!
   setUserActive(active: Boolean!, userId: Int!): Boolean!
   setUserPhoto(key: String!): String
+  signConsentByToken(signatureName: String!, token: String!): ConsentFormType!
   signConsentForm(barbershopId: Int!, id: Int!, input: SignConsentFormInput!): ConsentFormType!
   staffContactSupport(input: ContactSupportInput!): SupportTicketCreatedType!
   startAppTip(
@@ -2986,6 +3028,7 @@ type PendingCustomerRatingType {
   customerName: String!
   serviceNames: String!
   startAt: DateTime!
+  timeZone: String!
 }
 
 type Plan {
@@ -3483,7 +3526,7 @@ type Query {
   barberWeeklySchedule(barberId: Int!): [WeeklyScheduleDayType!]!
   barberWeeklyScheduleImpact(barberId: Int!, days: [WeeklyScheduleDayInput!]!): [ClosureImpactType!]!
   barbershop(id: Int!): Barbershop
-  barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, startAt: String, status: String): [Appointment!]!
+  barbershopAppointments(barberId: Int, barbershopId: Int!, customerId: Int, endAt: String, limit: Int, offset: Int, startAt: String, status: String): [Appointment!]!
   barbershopBarbers(barbershopId: Int!): [Barber!]!
   barbershopChangeLog(actorId: Int, actorKind: String, barbershopId: Int!, entityType: String, from: DateTime, limit: Int, offset: Int, to: DateTime): ChangeLogPageType!
   barbershopChangeLogActors(barbershopId: Int!): [ChangeLogActorType!]!
@@ -3500,8 +3543,8 @@ type Query {
   barbershopProductCategories(barbershopId: Int!): [ProductCategoryType!]!
   barbershopProducts(barbershopId: Int!): [BarbershopProductType!]!
   barbershopReferrals(barbershopId: Int!): [CustomerReferralType!]!
-  barbershopReviews(barbershopId: Int!): [ReviewType!]!
-  barbershopSales(barbershopId: Int!, customerId: Int, endAt: String, limit: Int, offset: Int, startAt: String): [Sale!]!
+  barbershopReviews(barbershopId: Int!, limit: Int, offset: Int): [ReviewType!]!
+  barbershopSales(barbershopId: Int!, beforeCreatedAt: String, beforeId: Int, customerId: Int, endAt: String, limit: Int, offset: Int, startAt: String): [Sale!]!
   barbershopServices(barbershopId: Int!): [BarbershopServiceType!]!
   barbershopSubscribers(barbershopId: Int!): [ClientSubscriptionType!]!
   barbershopTimeOffs(barbershopId: Int!, endAt: String!, startAt: String!): [BarberTimeOffType!]!
@@ -3517,7 +3560,7 @@ type Query {
   clientChatInbox: [ChatInboxItemType!]!
   clientFavoriteBarbers: [ClientFavoriteBarberType!]!
   clientFavorites: [Network!]!
-  clientHistory: [ClientHistoryEntryType!]!
+  clientHistory(limit: Int, offset: Int): [ClientHistoryEntryType!]!
   clientLinkedSocialAccounts: [ClientLinkedSocialAccountType!]!
   clientMarketingPreferences: ClientMarketingPreferencesType!
   clientMe: ClientAccountType!
@@ -3527,12 +3570,14 @@ type Query {
   closureImpact(barbershopId: Int!, input: ClosureInput!): [ClosureImpactType!]!
   commissionReport(barbershopId: Int!, from: String!, to: String!): CommissionReportType!
   commissionRules(barbershopId: Int!): [CommissionRuleType!]!
+  consentByToken(token: String!): ConsentLinkType!
   consentForms(barbershopId: Int!, customerId: Int!): [ConsentFormType!]!
   couponStats(id: Int!): CouponStats!
   currentCashSession(barbershopId: Int!): CashSessionType
   currentUser: User
   customer(barbershopId: Int!, id: Int!): BarbershopCustomer
   customerBlockPreview(barbershopId: Int!, customerId: Int!): CustomerBlockPreviewType!
+  customerCardStats(barbershopId: Int!, customerId: Int!): CustomerCardStats!
   customerConduct(barbershopId: Int!, customerId: Int!): CustomerConductType!
   customerLoyalty(barbershopId: Int!, customerId: Int!): CustomerLoyaltyType!
   customerReferralInfo(barbershopId: Int!, customerId: Int!): CustomerReferralInfoType!
@@ -3580,6 +3625,7 @@ type Query {
   myCalendarFeeds(barbershopId: Int!): [CalendarFeedType!]!
   myCareer: CareerOverviewType!
   myChatInbox: [ChatInboxItemType!]!
+  myChatInboxItem(appointmentId: Int!): ChatInboxItemType
   myClientAccountLink: StaffClientLinkType!
   myClientOnboarding: OnboardingType
   myClientSubscriptions: [ClientSubscriptionType!]!
@@ -3713,7 +3759,9 @@ input ResetPasswordWithCodeInput {
   currentPassword: String!
   newPassword: String!
 
-  """Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)"""
+  """
+  Inscrição de push deste aparelho (as dos outros aparelhos são apagadas)
+  """
   pushEndpoint: String
 }
 
@@ -3820,6 +3868,9 @@ input SearchBarbershopsInput {
   category: TreatmentCategory
   city: String
   citySlug: String
+
+  """Moeda de quem busca (ISO). O preço só compara nessa moeda."""
+  currency: String
   lat: Float
   limit: Int
   lng: Float
@@ -3845,6 +3896,9 @@ input SearchProfessionalsInput {
   category: TreatmentCategory
   city: String
   citySlug: String
+
+  """Moeda de quem busca (ISO). O preço só compara nessa moeda."""
+  currency: String
   lat: Float
   limit: Int
   lng: Float
@@ -3890,6 +3944,24 @@ type SeriesSlotType {
   warning: String
 }
 
+type ServiceDeactivationPackageType {
+  id: Int!
+  name: String!
+}
+
+type ServiceDeactivationPlanType {
+  id: Int!
+  name: String!
+  subscribers: Int!
+}
+
+type ServiceDeactivationPreviewType {
+  futureAppointments: Int!
+  packagesForSale: [ServiceDeactivationPackageType!]!
+  packagesWithBalance: Int!
+  plans: [ServiceDeactivationPlanType!]!
+}
+
 type ServiceHistory {
   appointmentId: Int
   barberId: Int!
@@ -3919,27 +3991,10 @@ type ServiceHistoryItemType {
   serviceNames: String!
   shopName: String!
   startAt: DateTime!
+  timeZone: String!
 
   """Caixinha que foi pro profissional"""
   tip: Float
-}
-
-type ServiceDeactivationPackageType {
-  id: Int!
-  name: String!
-}
-
-type ServiceDeactivationPlanType {
-  id: Int!
-  name: String!
-  subscribers: Int!
-}
-
-type ServiceDeactivationPreviewType {
-  futureAppointments: Int!
-  packagesForSale: [ServiceDeactivationPackageType!]!
-  packagesWithBalance: Int!
-  plans: [ServiceDeactivationPlanType!]!
 }
 
 type ServicePackageType {
@@ -3983,6 +4038,8 @@ type SetupIntent {
 type SharedLocationLinkType {
   createdAt: DateTime!
   id: Int!
+
+  """O profissional bloqueou novos convites deste espaço"""
   invitesBlocked: Boolean!
   rent: ChairRentType!
   shop: SharedLocationShopType!
