@@ -773,6 +773,7 @@ export class JobOpeningService {
           data: { jobOpeningId: openingId, userId, message: text },
         });
 
+    // Reabrir a mesma candidatura não avisa de novo (o primeiro aviso fica)
     if (existing) return { id: application.id, status: application.status };
 
     const managers = await this.shopManagers(opening.barbershopId);

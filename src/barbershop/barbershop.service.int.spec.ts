@@ -114,7 +114,7 @@ describe('BarbershopService (integração com o banco)', () => {
       { email: async () => undefined, whatsapp: async () => undefined } as never,
       { notify: () => undefined } as never, // RealtimeService
     );
-    allowModulesInTests(service, ['products', 'cashFlow']);
+    allowModulesInTests(service, ['products', 'cashFlow', 'subscriptions']);
 
     const ownerA = await createUser('ownera', role.id);
     const staffA = await createUser('staffa', role.id);

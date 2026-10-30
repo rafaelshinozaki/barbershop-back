@@ -602,6 +602,8 @@ model Barbershop {
   coverKey       String?
   // Capa e logo ocultados pela moderação (denúncia); enviar outra imagem limpa
   coverHiddenAt  DateTime?
+  // Capas que a moderação ocultou: confirmar a mesma chave de novo não volta
+  hiddenCoverKeys String[] @default([])
   logoHiddenAt   DateTime?
   timezone       String    @default("America/Sao_Paulo")
   currency       String    @default("BRL") // ISO 4217 — moeda de preços, vendas, caixa e dashboard financeiro desta unidade
@@ -1150,6 +1152,8 @@ model Barber {
   avatarKey      String?
   // Foto ocultada pela moderação (denúncia); trocar a foto limpa
   avatarHiddenAt DateTime?
+  // Fotos que a moderação ocultou: confirmar a mesma chave de novo não volta
+  hiddenAvatarKeys String[] @default([])
   specialization String?
   specialties    TreatmentCategory[] @default([])
   isActive       Boolean          @default(true)

@@ -79,7 +79,8 @@ export class ClosureService {
 
   /** Valida e devolve os dias (YYYY-MM-DD) do fechamento. */
   private parse(input: ClosureInput, today: string) {
-    const valid = (d: string) => DATE.test(d) && !isNaN(Date.parse(`${d}T00:00:00Z`));
+    const valid = (d: string) =>
+      DATE.test(d) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
     if (!valid(input.date)) throw new BadRequestException('Data inválida');
     if (input.date < today) throw new BadRequestException('Não dá pra fechar um dia que já passou');
     const end = input.endDate || input.date;

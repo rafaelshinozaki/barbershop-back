@@ -6,6 +6,7 @@ const ANSWERS = JSON.stringify({ alergias: 'Amônia' });
 describe('ficha de saúde', () => {
   function build(level: string, hasAppointment: boolean) {
     const updates: { id: number; data: Record<string, unknown> }[] = [];
+    const created: Record<string, unknown>[] = [];
     const deleted: number[] = [];
     const accesses: Record<string, unknown>[] = [];
     let appointmentWhere: { barberId?: number; customerId?: number; status?: unknown } | null =
@@ -54,7 +55,10 @@ describe('ficha de saúde', () => {
         delete: async ({ where }: { where: { id: number } }) => {
           deleted.push(where.id);
         },
-        create: async ({ data }: { data: Record<string, unknown> }) => data,
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          created.push(data);
+          return data;
+        },
       },
       customer: { findFirst: async () => ({ id: 4 }) },
       healthFormAccess: {
@@ -80,6 +84,7 @@ describe('ficha de saúde', () => {
     return {
       service,
       updates,
+      created,
       deleted,
       forms,
       accesses,
@@ -143,6 +148,29 @@ describe('ficha de saúde', () => {
     expect(deleted).toEqual([]);
     await expect(service.deleteConsentForm(1, 10, 2)).resolves.toBe(true);
     expect(deleted).toEqual([2]);
+  });
+
+  it('tipo fora da lista e validade inválida são recusados', async () => {
+    const { service, created } = build('owner', true);
+    await expect(
+      service.createConsentForm(3, 10, { customerId: 4, formType: 'anamnesis' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.createConsentForm(3, 10, {
+        customerId: 4,
+        formType: 'GENERAL',
+        expiresAt: 'abc',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(created).toEqual([]);
+  });
+
+  it('assinar com nome vazio deixa a ficha pendente', async () => {
+    const { service, updates } = build('owner', true);
+    await expect(service.signConsentForm(3, 10, 2, '   ')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(updates).toEqual([]);
   });
 
   it('barbeiro sem horário não grava respostas de saúde', async () => {

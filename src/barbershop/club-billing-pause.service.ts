@@ -27,6 +27,7 @@ const SUBJECTS = {
 
 type SubRow = {
   id: number;
+  status: string;
   stripeSubscriptionId: string;
   shopPausedAt: Date | null;
   billingPauseReasons: string[];
@@ -111,6 +112,7 @@ export class ClubBillingPauseService {
         : { barbershopId: { in: ids }, billingPauseReasons: { has: token } },
       select: {
         id: true,
+        status: true,
         stripeSubscriptionId: true,
         shopPausedAt: true,
         billingPauseReasons: true,
@@ -126,8 +128,11 @@ export class ClubBillingPauseService {
       const heldBySomeoneElse =
         sub.shopPausedAt != null ||
         (paused ? sub.billingPauseReasons.length > 0 : remaining.length > 0);
+      // Cancelada (ou já encerrada) durante a pausa: a Stripe recusa mexer.
+      // Só tira o motivo. Cobrança volta só em ACTIVE e PAST_DUE.
+      const billable = paused || sub.status === 'ACTIVE' || sub.status === 'PAST_DUE';
       try {
-        if (!heldBySomeoneElse) {
+        if (!heldBySomeoneElse && billable) {
           await this.stripe.updateSubscription(sub.stripeSubscriptionId, {
             pause_collection: paused ? { behavior: 'void' } : ('' as never),
           });
@@ -146,7 +151,7 @@ export class ClubBillingPauseService {
           ? { billingPauseReasons: { push: token } }
           : { billingPauseReasons: { set: remaining } },
       });
-      if (!heldBySomeoneElse) await this.emailSubscriber(sub, paused, reason);
+      if (!heldBySomeoneElse && billable) await this.emailSubscriber(sub, paused, reason);
     }
     if (failed) throw new Error('Não foi possível atualizar a cobrança do clube');
   }

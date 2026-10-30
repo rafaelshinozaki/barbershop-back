@@ -458,6 +458,37 @@ function waitlistBookUrl(
 
 // Fichas com dado de saúde (sensível na LGPD): só com consentimento do cliente
 const HEALTH_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST'];
+/** Os mesmos tipos da tela de ficha. Qualquer outro texto não entra. */
+const CONSENT_FORM_TYPES = ['ANAMNESIS', 'ALLERGY_TEST', 'PHOTO_CONSENT', 'GENERAL'];
+const SIGNATURE_NAME_MAX = 120;
+const PLAN_NAME_MAX = 120;
+export const CONSENT_FORM_TYPE_MESSAGE = 'Tipo de ficha inválido';
+export const CONSENT_EXPIRES_INVALID_MESSAGE = 'Data de validade inválida';
+export const CONSENT_EXPIRES_PAST_MESSAGE = 'A validade precisa ser uma data futura';
+export const CONSENT_SIGNATURE_NAME_MESSAGE =
+  'Informe o nome de quem assinou (até 120 caracteres).';
+export const SUBSCRIPTION_PLAN_NAME_MESSAGE = 'Informe o nome do plano (até 120 caracteres).';
+export const SUBSCRIPTION_SERVICE_INACTIVE_MESSAGE = 'O serviço deste plano está desativado.';
+
+function isHealthFormType(formType: string) {
+  return HEALTH_FORM_TYPES.includes(formType.trim().toUpperCase());
+}
+
+function consentSignatureName(raw: string) {
+  const name = raw.trim();
+  if (name.length < 2 || name.length > SIGNATURE_NAME_MAX) {
+    throw new BadRequestException(CONSENT_SIGNATURE_NAME_MESSAGE);
+  }
+  return name;
+}
+
+function subscriptionPlanName(raw: string) {
+  const name = raw.trim();
+  if (!name || name.length > PLAN_NAME_MAX) {
+    throw new BadRequestException(SUBSCRIPTION_PLAN_NAME_MESSAGE);
+  }
+  return name;
+}
 
 function consentTextVersion(formType: string, answers: string | null) {
   return createHash('sha256').update(`${formType}\n${answers ?? ''}`).digest('hex').slice(0, 16);
@@ -2853,13 +2884,15 @@ export class BarbershopService {
       where: paused
         ? { barbershopId, status: { in: ['ACTIVE', 'PAST_DUE'] }, shopPausedAt: null }
         : { barbershopId, shopPausedAt: { not: null } },
-      select: { id: true, stripeSubscriptionId: true, billingPauseReasons: true },
+      select: { id: true, status: true, stripeSubscriptionId: true, billingPauseReasons: true },
     });
     for (const sub of subs) {
-      // Suspensão da plataforma ou dono desativado ainda segura a Stripe
+      // Suspensão da plataforma ou dono desativado ainda segura a Stripe.
+      // Assinatura que não está mais ativa só perde a pausa da unidade.
       const stillHeld = !paused && sub.billingPauseReasons.length > 0;
+      const billable = paused || sub.status === 'ACTIVE' || sub.status === 'PAST_DUE';
       try {
-        if (!stillHeld) {
+        if (!stillHeld && billable) {
           await this.stripeService.updateSubscription(sub.stripeSubscriptionId, {
             // '' tira a pausa (é assim que a API da Stripe limpa o campo)
             pause_collection: paused ? { behavior: 'void' } : ('' as never),
@@ -11007,16 +11040,18 @@ export class BarbershopService {
     data: { serviceId: number; name: string; price: number; sessionsPerCycle?: number },
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    const name = subscriptionPlanName(data.name);
     checkMoney('Preço', data.price, barbershop.currency);
     checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
     await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const service = await this.prisma.barbershopService.findFirst({
-      where: { id: data.serviceId, barbershopId, isActive: true },
+      where: { id: data.serviceId, barbershopId },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
+    if (!service.isActive) throw new BadRequestException(SUBSCRIPTION_SERVICE_INACTIVE_MESSAGE);
 
     const product = await this.stripeService.createProduct(
-      `${barbershop.name} — ${data.name}`,
+      `${barbershop.name} — ${name}`,
       `Assinatura recorrente (${service.name})`,
     );
     const price = await this.stripeService.createPrice(
@@ -11030,7 +11065,7 @@ export class BarbershopService {
       data: {
         barbershopId,
         serviceId: data.serviceId,
-        name: data.name,
+        name,
         price: new Decimal(data.price),
         sessionsPerCycle: data.sessionsPerCycle ?? null,
         stripeProductId: product.id,
@@ -11053,12 +11088,17 @@ export class BarbershopService {
     }>,
   ) {
     const barbershop = await this.ensureBarbershopAccess(userId, barbershopId, 'manager');
+    await this.ensureModuleAccess(barbershopId, 'subscriptions');
     const plan = await this.prisma.clientSubscriptionPlan.findFirst({
       where: { id, barbershopId },
     });
     if (!plan) throw new NotFoundException('Plano não encontrado');
+    const name = data.name === undefined ? undefined : subscriptionPlanName(data.name);
     checkMoney('Preço', data.price, barbershop.currency);
     checkSessionCount('Sessões por ciclo', data.sessionsPerCycle);
+    if (name && name !== plan.name && plan.stripeProductId) {
+      await this.stripeService.updateProduct(plan.stripeProductId, `${barbershop.name} — ${name}`);
+    }
 
     let stripePriceId = plan.stripePriceId;
     // Stripe Price é imutável — se o valor mudou, cria um Price novo e
@@ -11077,11 +11117,12 @@ export class BarbershopService {
       stripePriceId = newPrice.id;
     }
 
-    const { price, ...rest } = data;
+    const { price, name: _name, ...rest } = data;
     const updated = await this.prisma.clientSubscriptionPlan.update({
       where: { id },
       data: {
         ...rest,
+        name,
         price: price != null ? new Decimal(price) : undefined,
         stripePriceId,
       },
@@ -13963,7 +14004,21 @@ export class BarbershopService {
   ) {
     const shop = await this.ensureBarbershopAccess(userId, barbershopId);
     await this.ensureModuleAccess(barbershopId, 'packages');
-    if (HEALTH_FORM_TYPES.includes(data.formType)) {
+    if (!CONSENT_FORM_TYPES.includes(data.formType)) {
+      throw new BadRequestException(CONSENT_FORM_TYPE_MESSAGE);
+    }
+    let expiresAt: Date | undefined;
+    if (data.expiresAt) {
+      const parsed = new Date(data.expiresAt);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new BadRequestException(CONSENT_EXPIRES_INVALID_MESSAGE);
+      }
+      if (parsed.getTime() <= Date.now()) {
+        throw new BadRequestException(CONSENT_EXPIRES_PAST_MESSAGE);
+      }
+      expiresAt = parsed;
+    }
+    if (isHealthFormType(data.formType)) {
       const view = await this.healthFormView(userId, shop, data.customerId);
       if (view === 'none' || (view === 'status' && !!data.answers?.trim())) {
         throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
@@ -13976,7 +14031,7 @@ export class BarbershopService {
     if (!customer) throw new NotFoundException('Cliente não encontrado');
     // Dado de saúde é sensível (LGPD, art. 11): só com o consentimento do
     // cliente, específico para esta ficha
-    const health = HEALTH_FORM_TYPES.includes(data.formType) && !!data.answers?.trim();
+    const health = isHealthFormType(data.formType) && !!data.answers?.trim();
     if (health && !data.healthConsent) {
       throw new BadRequestException(
         'Para registrar dados de saúde (alergias, condições), confirme que o cliente autorizou',
@@ -13989,7 +14044,7 @@ export class BarbershopService {
         formType: data.formType,
         category: data.category,
         answers: data.answers,
-        expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+        expiresAt,
         ...(health ? { healthConsentAt: new Date(), healthConsentByUserId: userId } : {}),
         signToken: randomBytes(24).toString('hex'),
       },
@@ -14024,16 +14079,16 @@ export class BarbershopService {
     });
     const now = new Date();
     // Abriu respostas de saúde: fica registrado quem e quando (item 276)
-    if (view === 'full' && forms.some((f) => HEALTH_FORM_TYPES.includes(f.formType) && f.answers)) {
+    if (view === 'full' && forms.some((f) => isHealthFormType(f.formType) && f.answers)) {
       await this.prisma.healthFormAccess.create({
         data: { barbershopId, customerId, userId },
       });
     }
     return forms
-      .filter((f) => view !== 'none' || !HEALTH_FORM_TYPES.includes(f.formType))
+      .filter((f) => view !== 'none' || !isHealthFormType(f.formType))
       .map((f) => ({
         ...f,
-        answers: HEALTH_FORM_TYPES.includes(f.formType) && view !== 'full' ? null : f.answers,
+        answers: isHealthFormType(f.formType) && view !== 'full' ? null : f.answers,
         status: f.status === 'SIGNED' && f.expiresAt && f.expiresAt < now ? 'EXPIRED' : f.status,
       }));
   }
@@ -14048,11 +14103,12 @@ export class BarbershopService {
       );
     }
     if (
-      HEALTH_FORM_TYPES.includes(form.formType) &&
+      isHealthFormType(form.formType) &&
       (await this.healthFormView(userId, shop, form.customerId)) === 'none'
     ) {
       throw new ForbiddenException('Você não pode ver os dados de saúde deste cliente.');
     }
+    const signatureNameClean = consentSignatureName(signatureName);
     const marker = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { fullName: true },
@@ -14060,7 +14116,7 @@ export class BarbershopService {
     return this.prisma.consentForm.update({
       where: { id },
       data: {
-        signatureName: signatureName.trim(),
+        signatureName: signatureNameClean,
         signedAt: new Date(),
         status: 'SIGNED',
         signedVia: 'COUNTER',
@@ -14096,7 +14152,11 @@ export class BarbershopService {
       );
     }
     const name = signatureName.trim();
-    if (name.length < 2) throw new BadRequestException('Informe o nome.');
+    if (name.length < 2 || name.length > SIGNATURE_NAME_MAX) {
+      throw new BadRequestException(
+        name.length > SIGNATURE_NAME_MAX ? CONSENT_SIGNATURE_NAME_MESSAGE : 'Informe o nome.',
+      );
+    }
     return this.prisma.consentForm.update({
       where: { id: form.id },
       data: {

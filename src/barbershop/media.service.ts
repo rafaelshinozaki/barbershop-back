@@ -178,14 +178,28 @@ export class BarbershopMediaService {
     if (key) this.ensureKey(key, this.coverPrefix(barbershopId));
     const shop = await this.prisma.barbershop.findUnique({
       where: { id: barbershopId },
-      select: { coverKey: true },
+      select: { coverKey: true, coverHiddenAt: true, hiddenCoverKeys: true },
     });
+    const hidden = shop?.hiddenCoverKeys ?? [];
+    if (key && (hidden.includes(key) || (shop?.coverHiddenAt && key === shop.coverKey))) {
+      throw new BadRequestException(PHOTO_KEY_USED_MESSAGE);
+    }
+    const retired =
+      shop?.coverHiddenAt && shop.coverKey && shop.coverKey !== key ? shop.coverKey : null;
+    if (retired) {
+      await this.s3
+        .deleteObject(retired)
+        .catch((err) => this.logger.error(`Não apagou a capa ocultada ${retired}: ${String(err)}`));
+    }
     await this.prisma.barbershop.update({
       where: { id: barbershopId },
-      // Outra capa no lugar da ocultada pela moderação volta à página
-      data: key !== shop?.coverKey ? { coverKey: key, coverHiddenAt: null } : { coverKey: key },
+      data: {
+        coverKey: key,
+        ...(key !== shop?.coverKey ? { coverHiddenAt: null } : {}),
+        ...(retired && !hidden.includes(retired) ? { hiddenCoverKeys: { push: retired } } : {}),
+      },
     });
-    if (shop?.coverKey && shop.coverKey !== key) this.discard(shop.coverKey);
+    if (shop?.coverKey && shop.coverKey !== key && !retired) this.discard(shop.coverKey);
     return key ? this.s3.getDownloadUrl(key) : null;
   }
 
@@ -194,7 +208,7 @@ export class BarbershopMediaService {
   private async barberOf(userId: number, barberId: number) {
     const barber = await this.prisma.barber.findUnique({
       where: { id: barberId },
-      select: { id: true, barbershopId: true, avatarKey: true },
+      select: { id: true, barbershopId: true, avatarKey: true, avatarHiddenAt: true, hiddenAvatarKeys: true },
     });
     if (!barber) throw new NotFoundException('Profissional não encontrado');
     // Gerente e dono de qualquer um; o próprio barbeiro, a dele
@@ -217,16 +231,28 @@ export class BarbershopMediaService {
   async setAvatar(userId: number, barberId: number, key: string | null) {
     const barber = await this.barberOf(userId, barberId);
     if (key) this.ensureKey(key, this.avatarPrefix(barber.barbershopId, barber.id));
+    const hidden = barber.hiddenAvatarKeys ?? [];
+    if (key && (hidden.includes(key) || (barber.avatarHiddenAt && key === barber.avatarKey))) {
+      throw new BadRequestException(PHOTO_KEY_USED_MESSAGE);
+    }
+    const retired =
+      barber.avatarHiddenAt && barber.avatarKey && barber.avatarKey !== key ? barber.avatarKey : null;
+    if (retired) {
+      await this.s3
+        .deleteObject(retired)
+        .catch((err) =>
+          this.logger.error(`Não apagou a foto ocultada ${retired}: ${String(err)}`),
+        );
+    }
     await this.prisma.barber.update({
       where: { id: barber.id },
-      // Tirar a foto enviada também limpa o link antigo digitado à mão; outra
-      // foto no lugar da ocultada pela moderação volta à página
       data: {
         ...(key ? { avatarKey: key } : { avatarKey: null, avatarUrl: null }),
         ...(key !== barber.avatarKey ? { avatarHiddenAt: null } : {}),
+        ...(retired && !hidden.includes(retired) ? { hiddenAvatarKeys: { push: retired } } : {}),
       },
     });
-    if (barber.avatarKey && barber.avatarKey !== key) this.discard(barber.avatarKey);
+    if (barber.avatarKey && barber.avatarKey !== key && !retired) this.discard(barber.avatarKey);
     return key ? this.s3.getDownloadUrl(key) : null;
   }
 }

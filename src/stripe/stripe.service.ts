@@ -100,6 +100,11 @@ export class StripeService {
     });
   }
 
+  /** Fatura e recibo usam o nome do produto. Renomear o plano atualiza aqui. */
+  async updateProduct(productId: string, name: string) {
+    return await this.stripe.products.update(productId, { name });
+  }
+
   /** Produto de um preço (para criar o preço novo de um plano no mesmo produto) */
   async getPriceProductId(priceId: string): Promise<string | null> {
     const price = await this.stripe.prices.retrieve(priceId);

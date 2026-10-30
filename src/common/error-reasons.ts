@@ -397,6 +397,12 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Você não pode ver os dados de saúde deste cliente.': 'HEALTH_FORM_FORBIDDEN',
   'Só dá para assinar uma ficha que ainda está pendente e sem o consentimento revogado.':
     'CONSENT_FORM_NOT_SIGNABLE',
+  'Tipo de ficha inválido': 'CONSENT_FORM_TYPE',
+  'Data de validade inválida': 'CONSENT_EXPIRES_INVALID',
+  'A validade precisa ser uma data futura': 'CONSENT_EXPIRES_PAST',
+  'Informe o nome de quem assinou (até 120 caracteres).': 'CONSENT_SIGNATURE_NAME',
+  'Informe o nome do plano (até 120 caracteres).': 'SUBSCRIPTION_PLAN_NAME',
+  'O serviço deste plano está desativado.': 'SUBSCRIPTION_SERVICE_INACTIVE',
   'A comissão tem que ser de 0% a 100%': 'COMMISSION_MUST_BETWEEN_0_AND',
   'Regra de comissão não encontrada': 'COMMISSION_RULE_NOT_FOUND',
   'A sua comissão é definida pelo dono': 'COMMISSION_SET_BY_OWNER',

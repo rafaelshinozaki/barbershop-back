@@ -4,6 +4,7 @@ import { UserService } from '../auth/users/users.service';
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: 7,
+  status: 'ACTIVE',
   stripeSubscriptionId: 'sub_1',
   shopPausedAt: null as Date | null,
   billingPauseReasons: [] as string[],
@@ -124,6 +125,16 @@ describe('clube de unidade fora do ar', () => {
     expect(stripe).not.toHaveBeenCalled();
   });
 
+  it('retomar com assinatura cancelada limpa o motivo e não chama a Stripe', async () => {
+    const { service, stripe, updates, emails } = pauseService([
+      row({ status: 'CANCELLED', billingPauseReasons: ['platform_shop'] }),
+    ]);
+    await expect(service.forShop(3, false)).resolves.toBeUndefined();
+    expect(stripe).not.toHaveBeenCalled();
+    expect(updates[0].data).toEqual({ billingPauseReasons: { set: [] } });
+    expect(emails).toEqual([]);
+  });
+
   it('se a Stripe falha, o motivo não fica marcado', async () => {
     const { service, stripe, updates } = pauseService([row()]);
     stripe.mockRejectedValue(new Error('stripe down'));
@@ -151,6 +162,35 @@ describe('clube de unidade fora do ar', () => {
       },
     });
     await service.setClubBillingPaused(3, false);
+    expect(stripe).not.toHaveBeenCalled();
+    expect(updates[0].data).toEqual({ shopPausedAt: null });
+  });
+
+  it('retomar a unidade com assinatura cancelada não chama a Stripe', async () => {
+    const stripe = jest.fn();
+    const updates: { data: Record<string, unknown> }[] = [];
+    const service = Object.create(BarbershopService.prototype) as BarbershopService;
+    Object.assign(service, {
+      logger: { error: () => undefined },
+      stripeService: { updateSubscription: stripe },
+      prisma: {
+        clientSubscription: {
+          findMany: async () => [
+            {
+              id: 7,
+              status: 'CANCELLED',
+              stripeSubscriptionId: 'sub_1',
+              billingPauseReasons: [],
+            },
+          ],
+          update: async (args: { data: Record<string, unknown> }) => {
+            updates.push(args);
+            return {};
+          },
+        },
+      },
+    });
+    await expect(service.setClubBillingPaused(3, false)).resolves.toBe(1);
     expect(stripe).not.toHaveBeenCalled();
     expect(updates[0].data).toEqual({ shopPausedAt: null });
   });

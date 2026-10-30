@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
 import { NotificationQueueService } from '../queue/notification-queue.service';
-import { langForCountry } from '../email/language';
+import { langForCountry, normalizeLang } from '../email/language';
 import { unsubscribeLinks } from './marketing-unsubscribe';
 
 const MAX_REPLY = 1000;
@@ -158,7 +158,7 @@ export class ReviewManagementService {
       where: { id: reviewId },
       include: {
         barbershop: true,
-        clientAccount: { select: { name: true, email: true } },
+        clientAccount: { select: { name: true, email: true, language: true } },
         customer: { select: { id: true, name: true, email: true, marketingOptOut: true } },
       },
     });
@@ -169,7 +169,9 @@ export class ReviewManagementService {
     // Conta excluída (LGPD) fica com e-mail inválido
     if (!to || to.endsWith('.invalid')) return;
     const shop = review.barbershop;
-    const lang = langForCountry(shop.country);
+    const lang = review.clientAccount?.language
+      ? normalizeLang(review.clientAccount.language)
+      : langForCountry(shop.country);
     const unsubscribe = customer ? unsubscribeLinks(customer.id) : null;
     const front = process.env.FRONTEND_URL || 'http://localhost:5173';
     const name = (review.clientAccount?.name ?? customer?.name ?? '').split(' ')[0];

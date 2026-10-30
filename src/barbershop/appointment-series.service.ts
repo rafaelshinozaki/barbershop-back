@@ -301,12 +301,16 @@ export class AppointmentSeriesService {
       }
     }
     if (allowed.length === 0) return { cancelledCount: 0 };
-    await this.prisma.appointment.updateMany({
-      where: { id: { in: allowed.map((t) => t.id) }, status: 'CONFIRMED' },
-      data: { status: 'CANCELLED', linkVersion: { increment: 1 } },
-    });
+    // Um a um: o que saiu de CONFIRMED nesse meio tempo (começou, foi
+    // concluído) não é cancelado, estornado nem avisado
+    const cancelled: typeof allowed = [];
     for (const t of allowed) {
-      // Cada data liberada pode ser a vaga de alguém da lista de espera
+      const updated = await this.prisma.appointment.updateMany({
+        where: { id: t.id, status: 'CONFIRMED', sale: { is: null } },
+        data: { status: 'CANCELLED', linkVersion: { increment: 1 } },
+      });
+      if (updated.count === 0) continue;
+      cancelled.push(t);
       this.barbershopService
         .checkWaitlistOnCancellation(barbershopId, t)
         .catch((err) => this.logger.error(`Erro ao verificar lista de espera #${t.id}:`, err));
@@ -315,30 +319,29 @@ export class AppointmentSeriesService {
           .refundOnlineDeposit(t.id)
           .catch((err) => this.logger.error(`Erro ao estornar o sinal #${t.id}:`, err));
       }
-      // Pago antes pelo app: volta inteiro
       await this.barbershopService
         .refundPrepayment(t.id)
         .catch((err) => this.logger.error(`Erro ao estornar o pagamento #${t.id}:`, err));
     }
-    // E-mail de contato do horário (o informado no agendamento ou o da ficha)
-    const email = appointmentContactEmail(allowed[0]);
+    if (cancelled.length === 0) return { cancelledCount: 0 };
+    const email = appointmentContactEmail(cancelled[0]);
     if (email) {
       const { timeZone, country } = await this.shop(barbershopId);
       this.barbershopService
         .notifyAppointmentCancelled(
-          allowed[0].id,
+          cancelled[0].id,
           email,
           null,
           this.formatDates(
-            allowed.map((t) => t.startAt),
+            cancelled.map((t) => t.startAt),
             timeZone,
             country,
           ),
-          allowed.map((t) => t.id),
+          cancelled.map((t) => t.id),
         )
         .catch((err) => this.logger.error(`Erro ao avisar cancelamento da série:`, err));
     }
-    return { cancelledCount: allowed.length };
+    return { cancelledCount: cancelled.length };
   }
 
   private async customerEmail(customerId: number) {

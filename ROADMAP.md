@@ -4913,67 +4913,87 @@ Foram lidos no back o login social da equipe e do cliente, o login do cliente co
 
 Foram lidos no back as fichas de consentimento e de saúde, os planos do clube, as fotos da página, a série de horários, a pausa da cobrança do clube, os fechamentos da unidade, as vagas, a resposta às avaliações, o chat, o pagamento da equipe e a escala.
 
-503. ⬜ **Tipo da ficha não é conferido: a anamnese passa sem consentimento e fica visível para todos** (back: `createConsentForm`, `getConsentForms`):
+503. ✅ **Tipo da ficha não é conferido: a anamnese passa sem consentimento e fica visível para todos** (back: `createConsentForm`, `getConsentForms`):
      - `formType` aceita qualquer texto. As regras de saúde (`HEALTH_FORM_TYPES`) comparam com `'ANAMNESIS'` e `'ALLERGY_TEST'` exatos.
      - Uma ficha `anamnesis` (minúsculo) ou `ANAMNESE` com alergias nas respostas é salva sem o consentimento do cliente e sem conferir quem pode ver. Depois, qualquer pessoa da equipe vê as respostas, e a abertura não fica registrada (`healthFormAccess`).
      - `expiresAt` também não é conferido: um texto inválido vira `Invalid Date` e dá erro 500, e uma data passada cria a ficha já vencida.
 
      **Fazer:** aceitar só os tipos da tela (lista fechada), recusar data inválida ou passada com mensagem. Teste: `formType: 'anamnesis'` é recusado e `expiresAt: 'abc'` dá 400.
 
-504. ⬜ **Assinatura da ficha aceita nome vazio** (back: `signConsentForm`):
+     **Feito:** `createConsentForm` só aceita `ANAMNESIS`, `ALLERGY_TEST`, `PHOTO_CONSENT` e `GENERAL`. A leitura trata o tipo de saúde sem diferenciar maiúsculas. Validade inválida ou no passado dá 400. Teste em `src/barbershop/health-form-access.spec.ts`.
+
+504. ✅ **Assinatura da ficha aceita nome vazio** (back: `signConsentForm`):
      - `signatureName` vai direto para o banco: vazio, só espaços ou um texto de qualquer tamanho.
      - A ficha fica "assinada" sem nome de quem assinou, que é o que vale como registro do consentimento.
 
      **Fazer:** tirar os espaços, exigir o nome e limitar o tamanho (ex.: 120). Teste: assinar com `'   '` dá 400 e a ficha continua pendente.
 
-505. ⬜ **Renomear o plano do clube não muda o nome na Stripe, e o nome pode ficar vazio** (back: `createSubscriptionPlan`, `updateSubscriptionPlan`):
+     **Feito:** O nome da assinatura no balcão e no link é cortado, precisa ter pelo menos 2 caracteres e no máximo 120. Nome só com espaços dá 400 e a ficha não é atualizada. Teste em `src/barbershop/health-form-access.spec.ts`.
+
+505. ✅ **Renomear o plano do clube não muda o nome na Stripe, e o nome pode ficar vazio** (back: `createSubscriptionPlan`, `updateSubscriptionPlan`):
      - O produto da Stripe é criado com `"<unidade> — <nome>"`, e editar o nome só muda o banco. A fatura e o recibo do cliente continuam com o nome antigo.
      - O nome não é conferido em nenhum dos dois: vazio, só espaços ou de qualquer tamanho.
 
      **Fazer:** ao trocar o nome, atualizar o produto na Stripe (`products.update`); exigir nome com tamanho máximo. Teste: renomear chama a Stripe com o nome novo e nome vazio dá 400.
 
-506. ⬜ **Editar o plano do clube não confere o módulo, e o plano pode nascer num serviço desativado** (back: `updateSubscriptionPlan`, `createSubscriptionPlan`):
+     **Feito:** Criar e editar exigem nome (até 120 caracteres). Trocar o nome chama `products.update` com `<unidade> — <nome>`. Teste em `src/barbershop/round-503-512.spec.ts`.
+
+506. ✅ **Editar o plano do clube não confere o módulo, e o plano pode nascer num serviço desativado** (back: `updateSubscriptionPlan`, `createSubscriptionPlan`):
      - Criar confere `ensureModuleAccess('subscriptions')`, mas editar não. Uma unidade que saiu do plano com o clube continua trocando preço, reativando e criando preços na Stripe.
      - Criar procura o serviço só pela unidade, sem `isActive`. O plano é vendido para um serviço que não aparece mais para agendar.
 
      **Fazer:** a mesma checagem do módulo ao editar e o serviço ativo ao criar. Teste: editar sem o módulo dá 403, e criar com serviço desativado dá 400.
 
-507. ⬜ **Capa e foto do profissional ocultadas pela moderação voltam confirmando a chave antiga** (back: `BarbershopMediaService.setCover`, `setAvatar`):
+     **Feito:** Editar o plano passa por `ensureModuleAccess('subscriptions')`. Criar recusa serviço desativado com 400; serviço que não existe continua 404. Teste em `src/barbershop/round-503-512.spec.ts`.
+
+507. ✅ **Capa e foto do profissional ocultadas pela moderação voltam confirmando a chave antiga** (back: `BarbershopMediaService.setCover`, `setAvatar`):
      - Trocar a capa limpa `coverHiddenAt` sempre que a chave muda. O arquivo antigo sai do S3 em segundo plano (`discard`), e um erro só vira aviso no log.
      - Com a capa K1 ocultada, a unidade põe outra (ou tira a capa) e logo depois confirma K1 de novo. Se o S3 ainda não apagou (ou falhou), a imagem ocultada volta à página sem passar pela moderação. Com a foto do profissional é igual.
      - A galeria já tem a trava (`PHOTO_KEY_USED_MESSAGE` e a remoção esperada da foto ocultada).
 
      **Fazer:** recusar uma chave que já foi usada e ocultada (guardar as chaves ocultadas, ou apagar do S3 antes de responder quando a atual está ocultada). Teste: confirmar de novo a chave ocultada dá 400.
 
-508. ⬜ **"Cancelar este e os próximos" estorna e avisa também o horário que não foi cancelado** (back: `AppointmentSeriesService.cancelFromHere`):
+     **Feito:** `hiddenCoverKeys` e `hiddenAvatarKeys` guardam as chaves ocultadas. Confirmar de novo dá 400. Ao trocar uma capa ou foto ainda ocultada, o arquivo sai do S3 antes da resposta. Teste em `src/barbershop/round-503-512.spec.ts`.
+
+508. ✅ **"Cancelar este e os próximos" estorna e avisa também o horário que não foi cancelado** (back: `AppointmentSeriesService.cancelFromHere`):
      - Os horários são lidos antes, e o `updateMany` só cancela os que ainda estão `CONFIRMED`. Mas o estorno do sinal, o do pagamento pelo app, a lista de espera e o e-mail usam a lista lida antes, sem saber quais mudaram.
      - Um horário que começou (`IN_PROGRESS`) ou foi concluído nesse meio tempo tem o sinal e o pagamento devolvidos, embora continue de pé. `refundOnlineDeposit` e `refundPrepayment` não olham a situação.
      - O fechamento da unidade já faz um a um e confere o `count`.
 
      **Fazer:** cancelar um a um (condicional) e seguir só com os que mudaram; `cancelledCount` com esse número. Teste: um horário que vira `IN_PROGRESS` antes do cancelamento não é estornado nem entra no e-mail.
 
-509. ⬜ **Assinatura do clube cancelada durante a pausa trava a volta da cobrança** (back: `ClubBillingPauseService.apply`, `BarbershopService.setClubBillingPaused`):
+     **Feito:** Cada horário é cancelado com `updateMany` só se ainda está `CONFIRMED` e sem venda. Estorno, lista de espera e e-mail usam só os que mudaram. `cancelledCount` é esse número. Teste em `src/barbershop/round-503-512.spec.ts`.
+
+509. ✅ **Assinatura do clube cancelada durante a pausa trava a volta da cobrança** (back: `ClubBillingPauseService.apply`, `BarbershopService.setClubBillingPaused`):
      - Ao tirar a pausa, a busca não olha a situação da assinatura. Uma assinatura cancelada durante a suspensão vai para `stripe.updateSubscription`, e a Stripe recusa mexer em assinatura cancelada.
      - Na pausa da plataforma, o erro mantém o motivo na assinatura e faz o comando falhar (`throw` no fim). Reativar o dono (`setUserActive`) devolve erro depois de já ter reativado, e o comando do backoffice tenta de novo sem nunca passar.
      - Na pausa do dono, o erro só vai para o log e `shopPausedAt` fica preenchido para sempre.
 
      **Fazer:** assinatura que não está mais ativa só perde o motivo (sem chamar a Stripe); a Stripe só para as `ACTIVE`/`PAST_DUE`. Teste: retomar com uma assinatura `CANCELLED` limpa o motivo e não falha.
 
-510. ⬜ **Fechamento aceita data que não existe** (back: `ClosureService.parse`):
+     **Feito:** Ao retomar, `CANCELLED` só perde o motivo ou `shopPausedAt`. `updateSubscription` e o e-mail ficam para `ACTIVE` e `PAST_DUE`. Teste em `src/barbershop/club-billing-pause.spec.ts`.
+
+510. ✅ **Fechamento aceita data que não existe** (back: `ClosureService.parse`):
      - A data é conferida com `Date.parse`, que aceita `2026-02-31` (vira 3 de março).
      - O fechamento é salvo com a data `2026-02-31`, que nunca bate com nenhum dia. A tela diz que fechou, e a página pública continua oferecendo horários. Com `endDate`, o laço pula dias (`nextDateStr('2026-02-30')` dá `2026-03-03`).
      - O pagamento da equipe já confere assim (`toISOString().slice(0, 10) === d`).
 
      **Fazer:** a mesma conferência da data. Teste: `date: '2026-02-31'` dá 400.
 
-511. ⬜ **Candidatar, desistir e candidatar de novo enche o sininho da unidade** (back: `JobOpeningService.apply`, `withdraw`):
+     **Feito:** O dia só vale se `YYYY-MM-DD` volta igual depois de virar data UTC. 31 de fevereiro dá 400. Teste em `src/barbershop/round-503-512.spec.ts`.
+
+511. ✅ **Candidatar, desistir e candidatar de novo enche o sininho da unidade** (back: `JobOpeningService.apply`, `withdraw`):
      - Desistir volta a candidatura para `withdrawn`, e candidatar de novo a reabre e avisa todos os gerentes (sininho e celular) a cada vez.
      - Não há limite para esse vai e volta. O limite de candidaturas pendentes não segura, porque a desistida não conta.
 
      **Fazer:** não avisar de novo se a mesma pessoa se candidatou à mesma vaga há pouco (ex.: 24 horas), ou limitar as reaberturas. Teste: candidatar, desistir e candidatar de novo em seguida gera um aviso só.
 
-512. ⬜ **E-mail da resposta à avaliação no idioma do país da unidade, não no do cliente** (back: `ReviewManagementService.notifyReviewer`):
+     **Feito:** Reabrir a candidatura não dispara outro aviso. Uma segunda volta é recusada (`returnedOnce`). Teste em `src/barbershop/round-503-512.spec.ts`.
+
+512. ✅ **E-mail da resposta à avaliação no idioma do país da unidade, não no do cliente** (back: `ReviewManagementService.notifyReviewer`):
      - O idioma vem de `langForCountry(shop.country)`. O cliente com conta em inglês, numa unidade do Brasil, recebe o e-mail em português.
      - O chat e os outros avisos ao cliente usam `clientAccount.language` quando existe.
 
      **Fazer:** usar o idioma da conta quando houver e o do país só para quem avaliou pelo link. Teste: conta em `en` recebe o e-mail em inglês.
+
+     **Feito:** O e-mail usa `clientAccount.language` quando a conta existe. Sem conta, continua o idioma do país da unidade. Teste em `src/barbershop/round-503-512.spec.ts`.
