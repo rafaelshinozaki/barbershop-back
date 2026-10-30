@@ -8,6 +8,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { ChairRentService, dueReached } from './chair-rent.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -42,6 +43,7 @@ describe('Aluguel da cadeira pago direto ao espaço (integração)', () => {
     queue as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(barbershops, ['cashFlow']);
   const rent = new ChairRentService(
     prisma,
     stripe as never,

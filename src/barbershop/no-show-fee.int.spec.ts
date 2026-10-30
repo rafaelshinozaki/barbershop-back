@@ -12,6 +12,7 @@ import {
   GIFT_CARD_SHOP_MESSAGE,
   NO_SHOW_FEE_NOT_PENDING_MESSAGE,
 } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -42,6 +43,7 @@ describe('Taxa de falta (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(shops, ['cashFlow']);
   let ownerId: number;
   let basicId: number;
   let networkId: number;

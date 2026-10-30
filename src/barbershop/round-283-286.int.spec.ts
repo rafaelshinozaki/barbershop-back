@@ -10,6 +10,7 @@ import {
   REMOVED_CUSTOMER_NAME,
   SALE_CUSTOMER_LOCKED_MESSAGE,
 } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { ImportService } from './import.service';
 import { addDaysStr, toZonedParts } from '../common/timezone.util';
 
@@ -29,6 +30,7 @@ describe('Itens 283 a 286 (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(shops, ['products']);
   const imports = new ImportService(prisma, shops);
   let ownerId: number;
   let managerId: number;

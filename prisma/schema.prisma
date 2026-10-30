@@ -957,6 +957,8 @@ model ProfessionalReview {
   // Resposta pública do profissional
   reply          String?
   repliedAt      DateTime?
+  // Só a resposta do profissional ocultada pela moderação (a nota do cliente fica)
+  replyHiddenAt  DateTime?
   // Ocultada pela moderação (fora da página e da nota)
   hiddenAt       DateTime?
   appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
@@ -1098,6 +1100,8 @@ model Professional {
   roles      String[] @default([])
   specialties TreatmentCategory[] @default([])
   cities     String[] @default([])
+  // Slug de cada cidade (sem acento nem caixa), pra busca "sao paulo" achar "São Paulo"
+  citySlugs  String[] @default([])
   openToWork Boolean  @default(false)
   // fixed | freelance | chair_rent
   engagements String[] @default([])
@@ -1429,7 +1433,9 @@ model WaitlistEntry {
   barbershopId Int
   customerId   Int
   barberId     Int?               // null = qualquer barbeiro
-  serviceId    Int?               // null = qualquer serviço
+  serviceId    Int?               // primeiro serviço (compatível com entradas antigas)
+  // Todos os serviços pedidos (corte + barba). Vazio: vale só serviceId
+  serviceIds   Int[]              @default([])
   date         DateTime           // dia desejado (comparado por data, sem hora)
   notes        String?
   status       String             @default("WAITING") // WAITING, NOTIFIED, CANCELLED, BOOKED (já agendou o dia), EXPIRED (o dia passou)

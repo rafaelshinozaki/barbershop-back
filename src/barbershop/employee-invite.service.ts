@@ -11,6 +11,7 @@ import { Equals, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { assertPassword } from '../common/password';
 import { personName, signupPhone, STAFF_GENDERS, staffGender } from '../common/person';
 import { TERMS_REQUIRED_MESSAGE, TERMS_VERSION } from '../common/terms';
+import { TRIAL_PERIOD_MS } from './barbershop-plan.constants';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ActivityNotificationsService } from '../notifications/activity-notifications.service';
 import { langForCountry } from '../email/language';
@@ -462,7 +463,7 @@ export class EmployeeInviteService {
           emailVerifiedAt: new Date(),
           roleId: role.id,
           trialStartDate: new Date(),
-          trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          trialEndDate: new Date(Date.now() + TRIAL_PERIOD_MS),
         },
       });
 

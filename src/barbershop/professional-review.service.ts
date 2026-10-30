@@ -74,8 +74,8 @@ export class ProfessionalReviewService {
       createdAt: r.createdAt,
       reviewerName: reviewerLabel(r.customer?.name),
       shopName: r.barbershop.name,
-      reply: r.reply,
-      repliedAt: r.repliedAt,
+      reply: r.replyHiddenAt ? null : r.reply,
+      repliedAt: r.replyHiddenAt ? null : r.repliedAt,
     }));
   }
 
@@ -127,6 +127,8 @@ export class ProfessionalReviewService {
       where: { id: reviewId, ...this.ownedBy(userId) },
       select: {
         id: true,
+        reply: true,
+        replyHiddenAt: true,
         appointment: {
           select: {
             endAt: true,
@@ -144,9 +146,16 @@ export class ProfessionalReviewService {
     if (text && text.length > MAX_REPLY) {
       throw new BadRequestException(`Resposta com no máximo ${MAX_REPLY} caracteres.`);
     }
+    // O mesmo texto que a moderação ocultou continua oculto. Texto diferente volta à página.
+    const stillHidden =
+      text != null && review.replyHiddenAt != null && text === (review.reply ?? '').trim();
     await this.prisma.professionalReview.update({
       where: { id: review.id },
-      data: { reply: text, repliedAt: text ? new Date() : null },
+      data: {
+        reply: text,
+        repliedAt: text ? new Date() : null,
+        replyHiddenAt: text ? (stillHidden ? review.replyHiddenAt : null) : null,
+      },
     });
     return true;
   }

@@ -287,11 +287,41 @@ export class ClosureService {
     };
   }
 
-  async remove(userId: number, barbershopId: number, date: string) {
+  async remove(userId: number, barbershopId: number, date: string, endDate?: string | null) {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
-    // Dia reaberto: avisa quem está na lista de espera dele
-    await this.barbershopService.withWaitlistOpening(barbershopId, { from: date, to: date }, () =>
-      this.prisma.barbershopClosure.deleteMany({ where: { barbershopId, date } }),
+    const from = date;
+    const to = endDate && endDate >= from ? endDate : from;
+    const first = await this.prisma.barbershopClosure.findUnique({
+      where: { barbershopId_date: { barbershopId, date: from } },
+    });
+    if (!first) return true;
+    // Só os dias seguidos com o mesmo motivo e o mesmo horário
+    const rows = await this.prisma.barbershopClosure.findMany({
+      where: { barbershopId, date: { gte: from, lte: to } },
+      orderBy: { date: 'asc' },
+    });
+    const dates: string[] = [];
+    let cursor = from;
+    for (const row of rows) {
+      if (row.date !== cursor) break;
+      if (
+        row.reason !== first.reason ||
+        row.openTime !== first.openTime ||
+        row.closeTime !== first.closeTime
+      ) {
+        break;
+      }
+      dates.push(row.date);
+      cursor = addDaysStr(cursor, 1);
+    }
+    if (!dates.length) return true;
+    await this.barbershopService.withWaitlistOpening(
+      barbershopId,
+      { from: dates[0], to: dates[dates.length - 1] },
+      () =>
+        this.prisma.barbershopClosure.deleteMany({
+          where: { barbershopId, date: { in: dates } },
+        }),
     );
     return true;
   }

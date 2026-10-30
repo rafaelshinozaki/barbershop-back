@@ -23,21 +23,38 @@ const PLAN_TIERS = {
   PREMIUM: ['Premium'],
 } as const;
 
-/** Módulos incluídos em cada tier */
+/** Dias de teste do dono e de quem entra por convite da equipe. */
+export const TRIAL_DAYS = 30;
+export const TRIAL_PERIOD_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * O que cada plano anuncia (prisma/seed.ts) e o que o app libera.
+ * Basic: clientes, fila, agenda e equipe. Standard soma catálogo e estoque.
+ * Premium soma caixa, relatórios, pacotes, ficha de anamnese e clube.
+ */
 const MODULES_BY_TIER: Record<string, BarbershopModule[]> = {
-  BASIC: ['clients', 'queue', 'cuts', 'barbers'],
-  MEDIUM: ['clients', 'queue', 'cuts', 'barbers', 'appointments', 'products', 'inventory'],
+  BASIC: ['clients', 'queue', 'cuts', 'appointments', 'barbers', 'settings'],
+  MEDIUM: [
+    'clients',
+    'queue',
+    'cuts',
+    'appointments',
+    'barbers',
+    'settings',
+    'products',
+    'inventory',
+  ],
   PREMIUM: [
     'clients',
     'queue',
     'cuts',
-    'barbers',
     'appointments',
+    'barbers',
+    'settings',
     'products',
+    'inventory',
     'cashFlow',
     'reports',
-    'settings',
-    'inventory',
     'packages',
     'subscriptions',
   ],
@@ -81,4 +98,25 @@ export function getModulesForPlanName(planName: string): BarbershopModule[] {
 export function planIncludesModule(planName: string, module: BarbershopModule): boolean {
   const modules = getModulesForPlanName(planName);
   return modules.includes(module);
+}
+
+/** No teste o dono usa o Premium, mesmo sem assinatura ou num plano menor. */
+export function effectivePlanName(planName: string, trialEndDate: Date | null | undefined, now = new Date()): string {
+  if (trialEndDate && now < trialEndDate) return 'Premium';
+  return planName;
+}
+
+/**
+ * Unidades dos testes de integração nascem sem assinatura (Basic).
+ * Libera só os módulos que o caso exercita, sem abrir o Premium inteiro.
+ */
+export function allowModulesInTests(
+  service: {
+    canAccessModule: (barbershopId: number, module: BarbershopModule) => Promise<boolean>;
+  },
+  modules: readonly BarbershopModule[],
+) {
+  const real = service.canAccessModule.bind(service);
+  service.canAccessModule = (barbershopId, module) =>
+    modules.includes(module) ? Promise.resolve(true) : real(barbershopId, module);
 }

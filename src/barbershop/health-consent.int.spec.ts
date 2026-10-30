@@ -7,6 +7,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -22,6 +23,7 @@ describe('Consentimento para dados de saúde (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(service, ['packages']);
   let ownerId: number;
   let otherOwnerId: number;
   let networkId: number;

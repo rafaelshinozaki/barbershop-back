@@ -1,4 +1,5 @@
 import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
+import { GraphQLBoolean } from 'graphql';
 import { PresignedUploadType } from '../types/upload.type';
 import { UseGuards } from '@nestjs/common';
 import { GraphQLJwtAuthGuard } from '../../auth/guards/graphql-jwt-auth.guard';
@@ -51,9 +52,15 @@ export class SocialResolver {
   async getSocialPostImageUploadUrl(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('contentType', { nullable: true }) contentType: string,
+    @Args('instagram', { type: () => GraphQLBoolean, nullable: true }) instagram: boolean,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.socialService.getPostImageUploadUrl(user.id, barbershopId, contentType);
+    return this.socialService.getPostImageUploadUrl(
+      user.id,
+      barbershopId,
+      contentType,
+      instagram === true,
+    );
   }
 
   @UseGuards(GraphQLJwtAuthGuard)

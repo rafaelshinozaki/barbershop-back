@@ -294,6 +294,7 @@ export class AccountDeletionService {
                 acceptingClients: false,
                 showContact: false,
                 cities: [],
+                citySlugs: [],
                 offersHomeService: false,
               },
             }),

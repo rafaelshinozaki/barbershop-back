@@ -18,6 +18,7 @@ function assertHomeServiceAllowed(offers: boolean | null | undefined) {
     throw new BadRequestException('O atendimento a domicílio ainda não está disponível.');
   }
 }
+import { citySlugsOf } from './city-slug';
 import { ProfessionalReviewService } from './professional-review.service';
 import { professionalBadges } from './badges';
 import {
@@ -189,7 +190,7 @@ export class CareerService {
     const professional = await ensureProfessional(this.prisma, userId);
     await this.prisma.professional.update({
       where: { id: professional.id },
-      data: choices,
+      data: { ...choices, citySlugs: citySlugsOf(choices.cities) },
     });
   }
 
@@ -209,6 +210,7 @@ export class CareerService {
       where: { id: professional.id },
       data: {
         ...patch,
+        ...(patch.cities ? { citySlugs: citySlugsOf(patch.cities) } : {}),
         ...(patch.visibility ? { isPublic: patch.visibility === 'public' } : {}),
       },
     });

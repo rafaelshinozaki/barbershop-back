@@ -9,6 +9,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { OWN_PAY_MESSAGE, PERIOD_NOT_OVER_MESSAGE, PayrollService } from './payroll.service';
 
 const RUN = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -29,6 +30,7 @@ describe('Pagamento da equipe (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(barbershops, ['cashFlow', 'products']);
   const payroll = new PayrollService(prisma, barbershops);
 
   let ownerId: number;

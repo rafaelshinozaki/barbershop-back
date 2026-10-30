@@ -4793,7 +4793,7 @@ Foram lidos no back o login social da equipe e do cliente, o login do cliente co
 
      **Feito:** O envio pula quem desligou "Novidades por e-mail", leva o link e o `List-Unsubscribe` de um clique (`/notifications/unsubscribe-news`, que desliga a preferência), e o modelo escapa o texto (`{{message}}`, com as quebras de linha). Falta no backoffice-back: o aviso em massa no app (`createMany`) ainda não filtra as contas desativadas. Teste em `src/auth/round-483-487.int.spec.ts`.
 
-488. ⬜ **O período de teste não libera nada do que o banner promete** (back: `UserService.checkAndUpdateTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
+488. ✅ **O período de teste não libera nada do que o banner promete** (back: `UserService.checkAndUpdateTrialStatus`, `employee-invite.service.ts`; front: `TrialBanner.tsx`):
      - O banner diz "Explore todas as funcionalidades premium", "Análises avançadas ilimitadas", "Exportação em PDF" e "Suporte prioritário". Os módulos dependem só do plano (`ensureModuleAccess`); o teste não libera nenhum, e não há exportação de relatórios em PDF.
      - O fim do teste liga o "modo visualização" e manda um e-mail, mas nada no app usa esse modo.
      - O e-mail de fim de teste sai na consulta de status (uma leitura com efeito colateral).
@@ -4801,83 +4801,113 @@ Foram lidos no back o login social da equipe e do cliente, o login do cliente co
 
      **Fazer:** decidir o que o teste dá (por exemplo o Premium por 30 dias) e aplicar em `canAccessModule`, ou tirar o banner e o e-mail. Mandar o e-mail por uma tarefa agendada e igualar o prazo do convite. Teste: conta em teste abre os relatórios, ou o banner não aparece.
 
-489. ⬜ **Os planos vendem recursos que qualquer plano já usa** (back: `barbershop-plan.constants.ts`, `ensureModuleAccess`; front: telas da unidade):
+     **Feito:** Enquanto `trialEndDate` não passou, `canAccessModule` e os limites usam o Premium (`effectivePlanName`). O e-mail de fim de teste sai na fila `trial` (hora em hora), não na consulta de status. O convite da equipe usa os mesmos 30 dias do cadastro. O banner lista relatórios, caixa, pacotes, ficha e assinaturas. Teste em `src/barbershop/barbershop-plan.constants.spec.ts`.
+
+489. ✅ **Os planos vendem recursos que qualquer plano já usa** (back: `barbershop-plan.constants.ts`, `ensureModuleAccess`; front: telas da unidade):
      - O Standard anuncia "catálogo de produtos" e o Premium "fluxo de caixa" e "ficha de anamnese", mas o back só bloqueia estoque, pacotes, relatórios e clube. O Basic usa produtos, caixa e ficha de anamnese de graça.
      - A lista de módulos do Basic não tem "appointments", e o plano anuncia "Agenda de atendimentos" (funciona porque nada confere).
      - O front não esconde nem marca o que está fora do plano: a pessoa abre "Estoque" no Basic e recebe um erro.
 
      **Fazer:** uma tabela única do que cada plano libera (igual ao anúncio), conferida no back em todas as telas e usada no front para esconder ou marcar com cadeado. Teste: no Basic, abrir produtos dá "faça upgrade", e a agenda funciona.
 
-490. ⬜ **O cliente recebe dois pedidos de avaliação do mesmo atendimento** (back: `ReviewRequestService.enqueueDueRequests`, `staffReviewLink`):
+     **Feito:** A tabela em `barbershop-plan.constants.ts` segue o anúncio (Basic com agenda, sem produtos; Standard com catálogo e estoque; Premium com caixa, relatórios, pacotes e clube). Produtos, caixa, pacotes, fichas e resumo financeiro conferem o módulo. No front a aba leva cadeado e a tela mostra o pedido de upgrade. Teste em `src/barbershop/barbershop-plan.constants.spec.ts`.
+
+490. ✅ **O cliente recebe dois pedidos de avaliação do mesmo atendimento** (back: `ReviewRequestService.enqueueDueRequests`, `staffReviewLink`):
      - O envio automático (2 horas depois) confere só `reviewRequestSentAt` e se já avaliou. O pedido que a equipe manda na hora grava `staffReviewRequestedAt`, que o automático não olha. Quem recebeu o link da equipe e ainda não avaliou recebe outro e-mail.
      - O automático também sai para unidade encerrada ou suspensa.
 
      **Fazer:** o automático pula quem já recebeu o pedido da equipe e unidade fora do ar. Teste: pedir pela equipe e rodar o automático não manda outro e-mail.
 
-491. ⬜ **A escala do profissional pode passar do horário da unidade, e a página pública oferece esses horários** (back: `ScheduleService.setWeeklySchedule`, `getWorkingWindowOn`):
+     **Feito:** O envio automático não manda outro e-mail se a equipe já pediu (`staffReviewRequestedAt`) nem se a unidade está encerrada, inativa ou suspensa (a própria ou a rede). A reserva do envio continua marcada, para não tentar de novo.
+
+491. ✅ **A escala do profissional pode passar do horário da unidade, e a página pública oferece esses horários** (back: `ScheduleService.setWeeklySchedule`, `getWorkingWindowOn`):
      - O dia "personalizado" aceita qualquer horário, inclusive antes da abertura, depois do fechamento ou num dia em que a unidade não abre. Só o fechamento especial do dia corta.
      - A página pública oferece esses horários enquanto mostra a unidade "fechada" ("aberto agora" e horário da semana vêm do horário da unidade).
 
      **Fazer:** limitar a escala própria ao horário da unidade (ou avisar e mostrar o horário do profissional na página). Teste: escala das 6h às 23h numa unidade das 9h às 18h dá erro ou aviso.
 
-492. ⬜ **A lista de espera pública guarda só o primeiro serviço** (back: `joinPublicWaitlist`):
+     **Feito:** Dia personalizado fora do expediente da unidade é recusado (`SCHEDULE_OUTSIDE_SHOP_HOURS`). A janela pública corta o horário do profissional no da unidade. Teste em `src/barbershop/business-hours.spec.ts`.
+
+492. ✅ **A lista de espera pública guarda só o primeiro serviço** (back: `joinPublicWaitlist`):
      - O cliente escolhe "corte + barba", e a entrada guarda só um serviço (`findFirst`). A vaga oferecida depois tem a duração de um serviço só e não cabe os dois.
      - O serviço não precisa estar ativo.
 
      **Fazer:** guardar todos os serviços (ou a duração somada) e só aceitar serviços ativos da unidade. Teste: entrar na lista com dois serviços e abrir uma vaga curta não manda o aviso.
 
-493. ⬜ **O post agendado aceita imagens que o Instagram recusa** (back: `SocialService.createPost`, `getPostImageUploadUrl`):
+     **Feito:** A entrada guarda `serviceIds` (só serviços ativos da unidade). A vaga oferecida usa a duração somada, então um intervalo curto não avisa.
+
+493. ✅ **O post agendado aceita imagens que o Instagram recusa** (back: `SocialService.createPost`, `getPostImageUploadUrl`):
      - O Instagram só publica JPEG pela API. O envio aceita PNG, WebP e GIF, e a falha só aparece na hora de publicar.
 
      **Fazer:** com "Instagram" marcado, aceitar só JPEG (ou converter) e avisar na hora de agendar. Teste: agendar para o Instagram com PNG dá erro na hora.
 
-494. ⬜ **A moderação não consegue ocultar só a resposta do profissional** (back: `ProfessionalReviewService.reply`; backoffice-back: moderação):
+     **Feito:** Com Instagram marcado, o envio e o agendamento recusam o que não é JPEG (`INSTAGRAM_JPEG_ONLY`), antes de publicar.
+
+494. ✅ **A moderação não consegue ocultar só a resposta do profissional** (back: `ProfessionalReviewService.reply`; backoffice-back: moderação):
      - A resposta da unidade tem "ocultar resposta" (`replyHiddenAt`); a do profissional não tem esse campo. Para tirar uma resposta abusiva do profissional, a moderação precisa ocultar a avaliação inteira, que é do cliente.
 
      **Fazer:** `replyHiddenAt` na avaliação do profissional, a ação "ocultar resposta" para ela, e a mesma regra do item 461 (texto igual continua oculto). Teste: ocultar a resposta do profissional mantém a avaliação do cliente.
 
-495. ⬜ **Um fechamento de vários dias só sai um dia por vez** (front: `ClosuresDialog.tsx`; back: `ClosureService.remove`):
+     **Feito:** `ProfessionalReview.replyHiddenAt`. A moderação (back e backoffice) oculta só a resposta; o texto igual continua oculto. A avaliação do cliente permanece.
+
+495. ✅ **Um fechamento de vários dias só sai um dia por vez** (front: `ClosuresDialog.tsx`; back: `ClosureService.remove`):
      - O fechamento de 30 dias de férias vira 30 linhas, e cada uma sai com um clique e uma confirmação. Não há como desfazer o período inteiro.
 
      **Fazer:** agrupar os dias seguidos com o mesmo motivo na lista e aceitar remover um período (data inicial e final). Teste: remover um fechamento de 10 dias apaga os 10 com uma confirmação.
 
-496. ⬜ **Cancelar agendamento, apagar despesa, apagar post e arquivar termo assinado são um clique** (front: `Appointments.tsx`, `Cashier.tsx`, `Social.tsx`, `Customers.tsx`):
+     **Feito:** A lista agrupa dias seguidos com o mesmo motivo e horário. Uma confirmação apaga o período (`deleteBarbershopClosure` com data final).
+
+496. ✅ **Cancelar agendamento, apagar despesa, apagar post e arquivar termo assinado são um clique** (front: `Appointments.tsx`, `Cashier.tsx`, `Social.tsx`, `Customers.tsx`):
      - "Cancelar" no agendamento cancela na hora, avisa o cliente e pode estornar o pago pelo app, sem confirmação.
      - Apagar despesa do caixa, apagar post agendado e arquivar o termo assinado da ficha também não pedem confirmação.
 
      **Fazer:** confirmação nesses quatro, dizendo o que acontece ("o cliente recebe aviso", "R$ X volta para o cartão"). Teste: cancelar a confirmação não muda nada.
 
-497. ⬜ **Desconto no fechamento que deixa a conta abaixo do sinal só falha no back** (front: `AppointmentCheckoutDialog.tsx`):
+     **Feito:** Os quatro já pediam confirmação. O cancelamento pela unidade, quando o atendimento foi pago pelo app, diz quanto volta para o cartão. Fechar o aviso não altera o horário.
+
+497. ✅ **Desconto no fechamento que deixa a conta abaixo do sinal só falha no back** (front: `AppointmentCheckoutDialog.tsx`):
      - A tela aceita qualquer desconto até o subtotal e mostra o sinal limitado ao total. O back recusa quando o sinal (ou o pago pelo app) passa do total (`SALE_BELOW_APPLIED_MESSAGE`), e a tela só mostra o erro depois de enviar.
 
      **Fazer:** limitar o desconto para o total não ficar abaixo do que já foi pago, com o aviso na tela. Teste: com sinal de R$ 30 e serviço de R$ 50, o desconto máximo é R$ 20.
 
-498. ⬜ **No backoffice, a comparação de "este mês" pega dias do mês atual** (backoffice-back: `resultsWindow`):
+     **Feito:** O desconto do fechamento não passa de subtotal menos sinal e pago pelo app. A tela mostra o máximo.
+
+498. ✅ **No backoffice, a comparação de "este mês" pega dias do mês atual** (backoffice-back: `resultsWindow`):
      - O período anterior começa no dia 1º do mês passado e tem o mesmo tamanho do período atual. Quando o mês passado é mais curto, ele passa do fim: no dia 31 de março, o "anterior" vai de 1º de fevereiro a 3 de março e conta de novo os três primeiros dias de março.
 
      **Fazer:** limitar o período anterior ao fim do mês passado (ou comparar com os mesmos dias do mês). Teste: em 31 de março, o anterior termina em 1º de março.
 
-499. ⬜ **"Último login" na lista de usuários do backoffice é a data da última alteração** (backoffice-back: `UsersQueries.detailed`):
+     **Feito:** O período anterior de "este mês" para no fim do mês passado. Teste em `test/results-period.spec.ts`.
+
+499. ✅ **"Último login" na lista de usuários do backoffice é a data da última alteração** (backoffice-back: `UsersQueries.detailed`):
      - A coluna usa `u."updatedAt"` (comentário: "aproximação"). Qualquer mudança na conta (plano, foto, preferência) muda o "último login", e quem entra todo dia sem mexer em nada parece inativo. O histórico de acessos (`LoginHistory`) existe.
 
      **Fazer:** usar o último registro de `LoginHistory` (ou da sessão). Teste: entrar sem mudar nada atualiza a coluna.
 
-500. ⬜ **Buscar profissional por cidade só acha com o nome exato** (back: `searchPublicProfessionals`):
+     **Feito:** A coluna usa o último `LoginHistory` (backoffice-back e o back). Sem acesso, fica vazia. Teste em `test/users.spec.ts`.
+
+500. ✅ **Buscar profissional por cidade só acha com o nome exato** (back: `searchPublicProfessionals`):
      - A cidade é comparada com `cities: { has: query }`: maiúsculas e acentos têm que ser iguais. "sao paulo" e "São paulo" não acham quem pôs "São Paulo".
 
      **Fazer:** comparar sem caixa nem acento (guardar uma versão normalizada das cidades, como o slug da busca de unidades). Teste: buscar "sao paulo" acha o profissional de "São Paulo".
 
-501. ⬜ **A lista pública de cidades repete grafias e ordena errado** (back: `getPublicCities`):
+     **Feito:** `Professional.citySlugs` (preenchido no cadastro e na migração). A busca compara o slug, sem caixa nem acento.
+
+501. ✅ **A lista pública de cidades repete grafias e ordena errado** (back: `getPublicCities`):
      - O `distinct` é pelo texto exato: "São Paulo", "Sao Paulo" e "são paulo" aparecem como três cidades.
      - O `sort()` sem idioma põe "Águas de Lindóia" depois de "Zé Doca".
      - A cidade de uma unidade oculta pela moderação (`searchHiddenAt`) entra na lista e, escolhida, não traz resultado.
 
      **Fazer:** agrupar pelo slug da cidade (como `slugifyCity`), ordenar com `Intl.Collator`, e usar o mesmo filtro da busca. Teste: duas grafias de "São Paulo" viram uma só.
 
-502. ⬜ **Textos da campanha fixos em português** (front: `Marketing.tsx`):
+     **Feito:** `getPublicCities` agrupa pelo slug, ordena com `Intl.Collator` em português e deixa de fora unidade oculta, inativa ou com o dono fora do ar.
+
+502. ✅ **Textos da campanha fixos em português** (front: `Marketing.tsx`):
      - A confirmação do envio monta os canais com `'e-mail'` e `.join(' e ')` fixos. Em inglês e espanhol sai "e-mail e WhatsApp" no meio da frase traduzida.
 
      **Fazer:** os nomes dos canais e o "e" pelas traduções (ou `Intl.ListFormat`). Teste: em inglês, a confirmação diz "email and WhatsApp".
+
+     **Feito:** A confirmação usa `Intl.ListFormat` e os nomes traduzidos dos canais. Em inglês: "Email and WhatsApp".
 
 ### Centésima quadragésima quarta rodada (2026-10-28): fichas, clube, imagens ocultadas, série, pausa do clube e vagas
 

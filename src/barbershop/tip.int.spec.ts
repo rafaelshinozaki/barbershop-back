@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { TipService } from './tip.service';
 import { PayrollService, TIP_ENTRY_MESSAGE } from './payroll.service';
 import { TIP_REACHED_PROFESSIONAL_MESSAGE } from './barbershop.service';
@@ -29,6 +30,7 @@ describe('Caixinha do atendimento (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(barbershops, ['cashFlow']);
   // Stripe simulado: pagamento da caixinha pelo app
   const intents = new Map<string, any>();
   let seq = 0;

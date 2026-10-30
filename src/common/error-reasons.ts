@@ -226,6 +226,9 @@ export const ERROR_REASONS: Readonly<Record<string, string>> = {
   'Origem do agendamento inválida': 'INVALID_BOOKING_SOURCE',
   'Este recurso não está disponível no seu plano atual. Faça upgrade para acessá-lo.':
     'FEATURE_NOT_AVAILABLE_CURRENT_PLAN',
+  'O horário do profissional precisa ficar dentro do expediente da unidade.':
+    'SCHEDULE_OUTSIDE_SHOP_HOURS',
+  'O Instagram só publica JPEG. Envie um JPG ou desmarque o Instagram.': 'INSTAGRAM_JPEG_ONLY',
   'Você não tem acesso a esta unidade': 'NOT_ACCESS_LOCATION',
   'Seu cargo nesta unidade não permite essa ação.': 'ROLE_LOCATION_NOT_ALLOW_ACTION',
   'Seu cargo só permite agendar na sua própria agenda.': 'ROLE_ONLY_ALLOWS_BOOKING_OWN',

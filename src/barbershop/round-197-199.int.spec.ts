@@ -5,6 +5,7 @@
  */
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService, PACKAGE_UNDO_CLOSED_MESSAGE } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { toZonedParts } from '../common/timezone.util';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
@@ -23,6 +24,7 @@ describe('Despesa, indicação e pacote (integração)', () => {
     { email: async () => undefined, whatsapp: async () => undefined } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(shops, ['cashFlow']);
   let ownerId: number;
   let networkId: number;
   let shopId: number;

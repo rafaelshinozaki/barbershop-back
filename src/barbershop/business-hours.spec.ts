@@ -1,5 +1,5 @@
 import { BarbershopService } from './barbershop.service';
-import { DEFAULT_WORKING_HOURS, normalizeBusinessHours, parseBusinessHours } from './working-hours';
+import { DEFAULT_WORKING_HOURS, clipToShopHours, fitsShopHours, normalizeBusinessHours, parseBusinessHours } from './working-hours';
 
 const week = (monday: { start: string; end: string } | null = { start: '09:00', end: '18:00' }) =>
   JSON.stringify({
@@ -80,5 +80,14 @@ describe('horário de funcionamento', () => {
     await expect(service.shopHoursOn(1, 2)).resolves.toEqual({ start: '09:00', end: '18:00' });
     businessHours = '{';
     await expect(service.shopHoursOn(1, 1)).resolves.toEqual({ start: '09:00', end: '18:00' });
+  });
+
+  it('a escala própria cabe no expediente e o horário público é cortado', () => {
+    const shop = { start: '09:00', end: '18:00' };
+    expect(fitsShopHours('09:00', '18:00', shop)).toBe(true);
+    expect(fitsShopHours('06:00', '23:00', shop)).toBe(false);
+    expect(fitsShopHours('10:00', '14:00', null)).toBe(false);
+    expect(clipToShopHours({ start: '06:00', end: '23:00' }, shop)).toEqual({ start: '09:00', end: '18:00' });
+    expect(clipToShopHours({ start: '19:00', end: '22:00' }, shop)).toBeNull();
   });
 });

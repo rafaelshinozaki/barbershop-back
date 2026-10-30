@@ -40,6 +40,39 @@ const validRange = (start: unknown, end: unknown): { start: string; end: string 
  * null (vale o padrão). Dia ausente, fechado, fora de HH:MM ou com início
  * depois do fim fica fechado; os outros dias valem.
  */
+export function minutesOfTime(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function hhmm(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/** A escala própria cabe no expediente. Dia em que a unidade não abre não cabe. */
+export function fitsShopHours(
+  start: string,
+  end: string,
+  shop: { start: string; end: string } | null,
+): boolean {
+  if (!shop) return false;
+  const a = minutesOfTime(start);
+  const b = minutesOfTime(end);
+  return a < b && a >= minutesOfTime(shop.start) && b <= minutesOfTime(shop.end);
+}
+
+/** Corta a janela do profissional no expediente da unidade. Fora dele, não há horário. */
+export function clipToShopHours<T extends { start: string; end: string }>(
+  window: T,
+  shop: { start: string; end: string } | null,
+): T | null {
+  if (!shop) return null;
+  const start = Math.max(minutesOfTime(window.start), minutesOfTime(shop.start));
+  const end = Math.min(minutesOfTime(window.end), minutesOfTime(shop.end));
+  if (start >= end) return null;
+  return { ...window, start: hhmm(start), end: hhmm(end) };
+}
+
 export function parseBusinessHours(json: string | null | undefined): DayHours[] | null {
   if (!json) return null;
   try {

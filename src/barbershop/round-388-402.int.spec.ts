@@ -14,6 +14,7 @@ import {
   SERVICE_DEPOSIT_MESSAGE,
 } from './barbershop.service';
 import { SharedLocationService } from './shared-location.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-de-teste';
 jest.setTimeout(60_000);
@@ -39,6 +40,7 @@ describe('Fila, saldo, foto, busca e slug (integração)', () => {
     { email: async (payload: { context?: { message?: string } }) => void emails.push(payload) } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(shops, ['products']);
   const locations = new SharedLocationService(
     prisma,
     shops,

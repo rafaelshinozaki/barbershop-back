@@ -119,8 +119,9 @@ export class ClosureResolver {
   async deleteBarbershopClosure(
     @Args('barbershopId', { type: () => Int }) barbershopId: number,
     @Args('date') date: string,
+    @Args('endDate', { nullable: true }) endDate: string,
     @CurrentUser() user: UserDTO,
   ) {
-    return this.closures.remove(user.id, barbershopId, date);
+    return this.closures.remove(user.id, barbershopId, date, endDate);
   }
 }

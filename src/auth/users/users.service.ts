@@ -50,6 +50,7 @@ import {
 } from '@/common';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { appUrl, supportEmail } from '../../common/app-urls';
+import { TRIAL_PERIOD_MS } from '../../barbershop/barbershop-plan.constants';
 import { dropPushSubscriptions } from '../../push/push.service';
 import { dropCalendarFeeds } from '../../calendar/calendar-feeds';
 import { ClubBillingPauseService } from '../../barbershop/club-billing-pause.service';
@@ -294,7 +295,7 @@ export class UserService {
 
           // Configurar trial de 30 dias
           trialStartDate: new Date(),
-          trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+          trialEndDate: new Date(Date.now() + TRIAL_PERIOD_MS),
           isInViewerMode: false,
         },
         include: {
@@ -2797,69 +2798,19 @@ export class UserService {
     const trialEndDate = user.trialEndDate;
     // !! porque sem trialEndDate a expressão vira null, e isInTrial é Boolean! no GraphQL
     const isInTrial = !!trialEndDate && now < trialEndDate;
+    const trialEnded = !!trialEndDate && now > trialEndDate;
 
     let trialDaysLeft = 0;
     if (trialEndDate && now < trialEndDate) {
       trialDaysLeft = Math.ceil((trialEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     }
 
-    // Se o trial acabou e o usuário não está em viewer mode, ativar viewer mode
-    if (!isInTrial && !user.isInViewerMode && trialEndDate && now > trialEndDate) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          isInViewerMode: true,
-          viewerModeStartDate: now,
-        },
-      });
-
-      // Enviar email notificando sobre o fim do trial
-      const userData = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true, fullName: true },
-      });
-
-      if (userData) {
-        const context = {
-          FullName: userData.fullName,
-          AppName: 'Barbershop',
-          UpgradeURL: appUrl('/pricing'),
-          SupportEmail: supportEmail(),
-          Year: new Date().getFullYear(),
-        };
-
-        try {
-          await this.emailService.sendTemplateEmail(
-            userId,
-            'trial_ended',
-            context,
-            {
-              pt: 'Seu período de teste acabou - Ative o modo visualização',
-              en: 'Your trial has ended - Switch to viewer mode',
-              es: 'Tu período de prueba terminó - Activa el modo visualización',
-            },
-            'trial-ended',
-            userData.email,
-          );
-        } catch (error) {
-          this.logger.error(`Failed to send trial ended email to user ${userId}`, error);
-        }
-      }
-
-      return {
-        isInTrial: false,
-        isInViewerMode: true,
-        trialDaysLeft: 0,
-        viewerModeDaysLeft: 180, // 6 meses
-      };
-    }
-
-    // Calcular dias restantes do viewer mode
+    // O fim do teste (flag e e-mail) sai na tarefa agendada, não nesta leitura
+    const isInViewerMode = user.isInViewerMode || trialEnded;
+    const viewerStart = user.viewerModeStartDate ?? (trialEnded ? trialEndDate : null);
     let viewerModeDaysLeft = 0;
-    if (user.isInViewerMode && user.viewerModeStartDate) {
-      const viewerModeEndDate = new Date(
-        user.viewerModeStartDate.getTime() + 180 * 24 * 60 * 60 * 1000,
-      ); // 6 meses
+    if (isInViewerMode && viewerStart) {
+      const viewerModeEndDate = new Date(viewerStart.getTime() + 180 * 24 * 60 * 60 * 1000);
       if (now < viewerModeEndDate) {
         viewerModeDaysLeft = Math.ceil(
           (viewerModeEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
@@ -2869,9 +2820,53 @@ export class UserService {
 
     return {
       isInTrial,
-      isInViewerMode: user.isInViewerMode,
+      isInViewerMode,
       trialDaysLeft,
       viewerModeDaysLeft,
     };
+  }
+
+  /**
+   * Teste vencido: liga o modo visualização e manda o e-mail uma vez.
+   * Roda na fila, não na consulta de status.
+   */
+  async processExpiredTrials(now = new Date()) {
+    const users = await this.prisma.user.findMany({
+      where: { trialEndDate: { lt: now }, isInViewerMode: false },
+      select: { id: true, email: true, fullName: true },
+    });
+    let sent = 0;
+    for (const user of users) {
+      const claimed = await this.prisma.user.updateMany({
+        where: { id: user.id, isInViewerMode: false },
+        data: { isInViewerMode: true, viewerModeStartDate: now },
+      });
+      if (claimed.count === 0 || !user.email) continue;
+      try {
+        await this.emailService.sendTemplateEmail(
+          user.id,
+          'trial_ended',
+          {
+            FullName: user.fullName,
+            AppName: 'Barbershop',
+            UpgradeURL: appUrl('/pricing'),
+            SupportEmail: supportEmail(),
+            Year: now.getFullYear(),
+          },
+          {
+            pt: 'Seu período de teste acabou - Ative o modo visualização',
+            en: 'Your trial has ended - Switch to viewer mode',
+            es: 'Tu período de prueba terminó - Activa el modo visualización',
+          },
+          'trial-ended',
+          user.email,
+        );
+        sent++;
+      } catch (error) {
+        this.logger.error(`Failed to send trial ended email to user ${user.id}`, error);
+      }
+    }
+    if (sent) this.logger.log(`E-mails de fim de teste: ${sent}`);
+    return sent;
   }
 }

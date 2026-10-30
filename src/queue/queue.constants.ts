@@ -20,6 +20,8 @@ export const BACKUP_QUEUE = 'backup';
 // Comandos da API do backoffice (barbershop-backoffice-back), que não tem as
 // regras do negócio: ela põe o comando aqui e o back executa (ex.: email.send)
 export const BACKOFFICE_COMMANDS_QUEUE = 'backoffice-commands';
+// Fim do teste: liga o modo visualização e manda o e-mail (não na consulta de status)
+export const TRIAL_QUEUE = 'trial';
 
 // Tentativas com espera exponencial (30s, 1min, 2min, 4min, 8min) — cobre
 // instabilidade do Mailgun/Meta sem martelar o provedor. Guarda histórico

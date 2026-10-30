@@ -321,6 +321,7 @@ describe('resumo financeiro (310)', () => {
     const shop = Object.create(BarbershopService.prototype) as BarbershopService;
     Object.assign(shop, {
       ensureBarbershopAccess: async () => ({ timezone: 'America/Sao_Paulo', currency: 'BRL' }),
+      ensureModuleAccess: async () => undefined,
       retainedPrepayments: async () => [],
       prisma: {
         sale: { findMany: async () => [] },

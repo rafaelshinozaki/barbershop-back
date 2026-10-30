@@ -6,11 +6,15 @@ import { appointmentContactEmail } from './appointment-contact';
 import { safeTimeZone, toZonedParts } from '../common/timezone.util';
 import {
   DEFAULT_WORKING_HOURS,
+  fitsShopHours,
   parseBusinessHours,
   TIME,
   WEEKDAY_KEYS,
   type DayHours,
 } from './working-hours';
+
+export const SCHEDULE_OUTSIDE_SHOP_MESSAGE =
+  'O horário do profissional precisa ficar dentro do expediente da unidade.';
 
 export type BusinessDayInput = {
   dayOfWeek: number;
@@ -400,10 +404,18 @@ export class ScheduleService {
     // ou o da unidade) não pode cruzar o de lá
     for (const d of days) {
       if (d.mode === 'OFF') continue;
+      const shopWindow = await this.barbershopService.shopHoursOn(barber.barbershopId, d.dayOfWeek);
+      if (d.mode === 'CUSTOM') {
+        const start = d.startTime as string;
+        const end = d.endTime as string;
+        if (!fitsShopHours(start, end, shopWindow)) {
+          throw new BadRequestException(SCHEDULE_OUTSIDE_SHOP_MESSAGE);
+        }
+      }
       const window =
         d.mode === 'CUSTOM'
           ? { start: d.startTime as string, end: d.endTime as string }
-          : await this.barbershopService.shopHoursOn(barber.barbershopId, d.dayOfWeek);
+          : shopWindow;
       if (!window) continue;
       await this.barbershopService.ensureShiftFreeAcrossShops(
         barberId,

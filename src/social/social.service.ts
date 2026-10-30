@@ -26,6 +26,13 @@ type FbPage = { id: string; name: string; access_token: string };
 const PAGE_CHOICE_MS = 15 * 60 * 1000;
 const INSTAGRAM_CAPTION_MAX = 2200;
 const INSTAGRAM_HASHTAG_MAX = 30;
+export const INSTAGRAM_JPEG_MESSAGE =
+  'O Instagram só publica JPEG. Envie um JPG ou desmarque o Instagram.';
+
+function isJpegType(contentType?: string) {
+  const type = (contentType ?? '').toLowerCase();
+  return type === 'image/jpeg' || type === 'image/jpg';
+}
 
 function instagramHashtagCount(caption: string): number {
   return caption.match(/#[\p{L}\p{N}_]+/gu)?.length ?? 0;
@@ -389,8 +396,12 @@ export class SocialService {
     userId: number,
     barbershopId: number,
     contentType?: string,
+    instagram = false,
   ): Promise<PresignedUpload> {
     await this.barbershopService.ensureAccess(userId, barbershopId, 'manager');
+    if (instagram && !isJpegType(contentType)) {
+      throw new BadRequestException(INSTAGRAM_JPEG_MESSAGE);
+    }
     return this.s3Service.createImageUpload(
       `social-posts/${barbershopId}/${Date.now()}-${randomUUID().slice(0, 8)}`,
       contentType,
@@ -427,6 +438,9 @@ export class SocialService {
       throw new BadRequestException('Nenhuma conta do Instagram vinculada à Página conectada.');
     }
     this.assertInstagramCaption(data.caption, data.postToInstagram);
+    if (data.postToInstagram && !/\.jpe?g$/i.test(data.imageKey)) {
+      throw new BadRequestException(INSTAGRAM_JPEG_MESSAGE);
+    }
     const scheduledFor = this.parseFutureDate(data.scheduledFor);
     return this.prisma.socialPost.create({
       data: {

@@ -197,7 +197,7 @@ export class ReviewRequestService {
           where: { id },
           include: {
             customer: true,
-            barbershop: true,
+            barbershop: { include: { network: { select: { platformSuspendedAt: true } } } },
             barber: { select: { name: true } },
             services: { include: { service: { select: { name: true } } } },
           },
@@ -214,6 +214,13 @@ export class ReviewRequestService {
       const customer = appt.customer;
       const to = appointmentContactEmail(appt);
       if (!to || customer.marketingOptOut) continue;
+      // A equipe já pediu, ou a unidade encerrou / foi suspensa: não manda de novo
+      const shopDown =
+        appt.barbershop.closedAt != null ||
+        appt.barbershop.platformSuspendedAt != null ||
+        appt.barbershop.isActive === false ||
+        appt.barbershop.network?.platformSuspendedAt != null;
+      if (appt.staffReviewRequestedAt || shopDown) continue;
       // Já avaliou esse atendimento (pelo link que a equipe mandou, por exemplo)
       const reviewed = await this.prisma.professionalReview.findUnique({
         where: { appointmentId: appt.id },

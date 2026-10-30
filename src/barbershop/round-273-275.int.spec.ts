@@ -6,6 +6,7 @@
  */
 import { PrismaService } from '../prisma/prisma.service';
 import { BarbershopService } from './barbershop.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import { createUnsubscribeToken } from './marketing-unsubscribe';
 import { WhatsappOptOutService } from '../whatsapp/whatsapp-opt-out.service';
 
@@ -32,6 +33,7 @@ describe('Itens 273 a 275 (integração)', () => {
     } as never,
     { notify: () => undefined } as never,
   );
+  allowModulesInTests(shops, ['products']);
   const optOut = new WhatsappOptOutService(prisma);
   let ownerId: number;
   let networkId: number;

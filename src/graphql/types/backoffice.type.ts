@@ -133,8 +133,8 @@ export class DetailedUser {
   @Field()
   createdAt: string;
 
-  @Field()
-  lastLogin: string;
+  @Field({ nullable: true })
+  lastLogin?: string | null;
 }
 
 @ObjectType()

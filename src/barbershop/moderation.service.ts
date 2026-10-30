@@ -522,10 +522,12 @@ export class ModerationService {
         if (!r) return null;
         return {
           title: `${r.barber.name} · ${'★'.repeat(r.rating)} · ${reviewerLabel(r.customer?.name)}`,
-          text: r.comment,
+          text: [r.comment, r.reply ? `Resposta do profissional: ${r.reply}` : null]
+            .filter(Boolean)
+            .join('\n'),
           imageUrl: null,
           link: r.professional?.slug ? `/p/${r.professional.slug}` : `/u/${r.barbershop.slug}`,
-          hidden: r.hiddenAt != null,
+          hidden: r.hiddenAt != null || r.replyHiddenAt != null,
         };
       }
       case 'professional_profile': {
@@ -686,15 +688,21 @@ export class ModerationService {
       throw new BadRequestException('Ação inválida');
     }
     const type = targetType as ModeratedTarget;
-    if (action === 'hide_reply' && type !== 'shop_review') {
+    if (action === 'hide_reply' && type !== 'shop_review' && type !== 'professional_review') {
       throw new BadRequestException('Ação inválida');
     }
     if (!(await this.summary(type, targetId))) {
       throw new NotFoundException('Conteúdo não encontrado');
     }
-    if (action === 'hide_reply') {
+    if (action === 'hide_reply' && type === 'shop_review') {
       // Só a resposta da unidade sai da página; a avaliação do cliente fica
       await this.prisma.review.update({
+        where: { id: targetId },
+        data: { replyHiddenAt: new Date() },
+      });
+    }
+    if (action === 'hide_reply' && type === 'professional_review') {
+      await this.prisma.professionalReview.update({
         where: { id: targetId },
         data: { replyHiddenAt: new Date() },
       });
@@ -883,7 +891,10 @@ export class ModerationService {
         await this.prisma.barbershopPhoto.update({ where: { id }, data: { hiddenAt: at } });
         return;
       case 'professional_review':
-        await this.prisma.professionalReview.update({ where: { id }, data: { hiddenAt: at } });
+        await this.prisma.professionalReview.update({
+          where: { id },
+          data: at ? { hiddenAt: at } : { hiddenAt: null, replyHiddenAt: null },
+        });
         return;
       case 'professional_profile':
         await this.prisma.professional.update({ where: { id }, data: { suspendedAt: at } });

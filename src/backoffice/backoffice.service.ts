@@ -538,6 +538,7 @@ export class BackofficeService {
         include: {
           address: true,
           role: true,
+          LoginHistory: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
           subscriptions: {
             include: {
               plan: true,
@@ -633,7 +634,7 @@ export class BackofficeService {
         status: user.isActive ? 'ACTIVE' : 'INACTIVE',
         role: roleEnum,
         createdAt: user.createdAt,
-        lastLogin: user.updatedAt, // Usar updatedAt como aproximação
+        lastLogin: user.LoginHistory[0]?.createdAt ?? null,
       };
     });
 

@@ -2336,7 +2336,7 @@ type Mutation {
   deleteBarberSchedule(id: Int!): Boolean!
   deleteBarberTimeOff(id: Int!): Boolean!
   deleteBarbershop(id: Int!): Boolean!
-  deleteBarbershopClosure(barbershopId: Int!, date: String!): Boolean!
+  deleteBarbershopClosure(barbershopId: Int!, date: String!, endDate: String): Boolean!
   deleteBarbershopProduct(barbershopId: Int!, id: Int!): Boolean!
   deleteBarbershopService(barbershopId: Int!, confirm: Boolean, id: Int!): Boolean!
   deleteCalendarFeed(barbershopId: Int!, scope: String!): Boolean!
@@ -2366,7 +2366,7 @@ type Mutation {
   getNetworkLogoUploadUrl(contentType: String): PresignedUploadType!
   getPhotoUploadUrl(contentType: String): PresignedUploadType!
   getProductPhotoUploadUrl(barbershopId: Int!, contentType: String, productId: Int!): PresignedUploadType!
-  getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String): PresignedUploadType!
+  getSocialPostImageUploadUrl(barbershopId: Int!, contentType: String, instagram: Boolean): PresignedUploadType!
   importShopData(barbershopId: Int!, csv: String!): ShopImportResultType!
   inviteToSharedLocation(barbershopId: Int!, memberPageLink: String!): SharedLocationLinkType!
   joinPublicWaitlist(input: JoinPublicWaitlistInput!): JoinWaitlistResultType!

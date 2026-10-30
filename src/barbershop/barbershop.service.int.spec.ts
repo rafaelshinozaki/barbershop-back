@@ -12,6 +12,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Decimal } from '@prisma/client/runtime/library';
 import { currentPricing } from '../pricing/pricing';
 import { PrismaService } from '../prisma/prisma.service';
+import { allowModulesInTests } from './barbershop-plan.constants';
 import {
   BarbershopService,
   NETWORK_AGENDA_CAP,
@@ -113,6 +114,7 @@ describe('BarbershopService (integração com o banco)', () => {
       { email: async () => undefined, whatsapp: async () => undefined } as never,
       { notify: () => undefined } as never, // RealtimeService
     );
+    allowModulesInTests(service, ['products', 'cashFlow']);
 
     const ownerA = await createUser('ownera', role.id);
     const staffA = await createUser('staffa', role.id);
